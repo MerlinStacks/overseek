@@ -15,11 +15,21 @@ vi.mock('../../utils/prisma', () => ({
         },
         wooOrder: {
             findMany: vi.fn().mockResolvedValue([]),
+            aggregate: vi.fn().mockResolvedValue({
+                _count: { id: 0 },
+                _sum: { total: 0 }
+            }),
         },
         automationEnrollment: {
             findMany: vi.fn().mockResolvedValue([]),
         },
         analyticsSession: {
+            findMany: vi.fn().mockResolvedValue([]),
+        },
+        emailUnsubscribe: {
+            findFirst: vi.fn().mockResolvedValue(null),
+        },
+        conversation: {
             findMany: vi.fn().mockResolvedValue([]),
         }
     }
@@ -68,6 +78,7 @@ describe('CustomersService', () => {
             // Service enriches customer with computed stats from orders (fallback when DB value is 0)
             expect(result?.customer).toEqual({
                 ...mockCustomer,
+                contactStatus: 'SUBSCRIBED',
                 totalSpent: 0,
                 ordersCount: 0
             });

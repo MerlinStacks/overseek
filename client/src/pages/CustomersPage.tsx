@@ -19,6 +19,26 @@ interface Customer {
     totalSpent: number;
     ordersCount: number;
     dateCreated: string;
+    contactStatus?: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
+}
+
+function getContactStatusBadge(status: Customer['contactStatus']) {
+    switch (status || 'SUBSCRIBED') {
+        case 'UNVERIFIED':
+            return { label: 'Unverified', className: 'bg-gray-100 text-gray-700 border-gray-200' };
+        case 'SUBSCRIBED':
+            return { label: 'Subscribed', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+        case 'BOUNCED':
+            return { label: 'Bounced', className: 'bg-red-100 text-red-700 border-red-200' };
+        case 'UNSUBSCRIBED':
+            return { label: 'Unsubscribed', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+        case 'SOFT_BOUNCED':
+            return { label: 'Soft Bounced', className: 'bg-orange-100 text-orange-700 border-orange-200' };
+        case 'COMPLAINT':
+            return { label: 'Complaint', className: 'bg-rose-100 text-rose-700 border-rose-200' };
+        default:
+            return { label: 'Subscribed', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    }
 }
 
 export function CustomersPage() {
@@ -31,6 +51,16 @@ export function CustomersPage() {
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
+    const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT'>('ALL');
+    const [statusCounts, setStatusCounts] = useState<Record<'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT', number>>({
+        ALL: 0,
+        UNVERIFIED: 0,
+        SUBSCRIBED: 0,
+        BOUNCED: 0,
+        UNSUBSCRIBED: 0,
+        SOFT_BOUNCED: 0,
+        COMPLAINT: 0
+    });
 
     const [debouncedQuery, setDebouncedQuery] = useState('');
     const currency = currentAccount?.currency || 'USD';
@@ -51,7 +81,8 @@ export function CustomersPage() {
             const params = new URLSearchParams({
                 page: page.toString(),
                 limit: limit.toString(),
-                q: debouncedQuery
+                q: debouncedQuery,
+                status: statusFilter
             });
 
             const res = await fetch(`/api/customers?${params}`, {
@@ -65,13 +96,16 @@ export function CustomersPage() {
                 const data = await res.json();
                 setCustomers(data.customers);
                 setTotalPages(data.totalPages);
+                if (data.statusCounts) {
+                    setStatusCounts(data.statusCounts);
+                }
             }
         } catch (err) {
             Logger.error('An error occurred', { error: err });
         } finally {
             setIsLoading(false);
         }
-    }, [currentAccount, token, page, limit, debouncedQuery]);
+    }, [currentAccount, token, page, limit, debouncedQuery, statusFilter]);
 
     useEffect(() => {
         fetchCustomers();
@@ -125,7 +159,49 @@ export function CustomersPage() {
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => {
+                            setStatusFilter(e.target.value as typeof statusFilter);
+                            setPage(1);
+                        }}
+                        className="w-full sm:w-44 px-3 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                    >
+                        <option value="ALL">All statuses</option>
+                        <option value="SUBSCRIBED">Subscribed</option>
+                        <option value="UNVERIFIED">Unverified</option>
+                        <option value="UNSUBSCRIBED">Unsubscribed</option>
+                        <option value="SOFT_BOUNCED">Soft Bounced</option>
+                        <option value="BOUNCED">Bounced</option>
+                        <option value="COMPLAINT">Complaint</option>
+                    </select>
                 </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+                {[
+                    ['ALL', 'All'],
+                    ['SUBSCRIBED', 'Subscribed'],
+                    ['UNVERIFIED', 'Unverified'],
+                    ['UNSUBSCRIBED', 'Unsubscribed'],
+                    ['SOFT_BOUNCED', 'Soft Bounced'],
+                    ['BOUNCED', 'Bounced'],
+                    ['COMPLAINT', 'Complaint']
+                ].map(([value, label]) => (
+                    <button
+                        key={value}
+                        onClick={() => {
+                            setStatusFilter(value as typeof statusFilter);
+                            setPage(1);
+                        }}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${statusFilter === value
+                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                            }`}
+                    >
+                        {label} {statusCounts[value as keyof typeof statusCounts] ?? 0}
+                    </button>
+                ))}
             </div>
 
             <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
@@ -135,6 +211,7 @@ export function CustomersPage() {
                             <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-semibold">
                                 <th className="px-3 md:px-6 py-3 md:py-4">Customer</th>
                                 <th className="px-3 md:px-6 py-3 md:py-4">Contact</th>
+                                <th className="px-3 md:px-6 py-3 md:py-4">Status</th>
                                 <th className="px-3 md:px-6 py-3 md:py-4">Orders</th>
                                 <th className="px-3 md:px-6 py-3 md:py-4">Total Spent</th>
                                 <th className="px-3 md:px-6 py-3 md:py-4">Joined</th>
@@ -142,18 +219,21 @@ export function CustomersPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {isLoading ? (
-                                <TableSkeleton rows={8} columns={5} showAvatar />
+                                <TableSkeleton rows={8} columns={6} showAvatar />
                             ) : customers.length === 0 ? (
-                                <tr><td colSpan={5}>
+                                <tr><td colSpan={6}>
                                     <EmptyState
                                         icon={<Users size={48} />}
-                                        title="No customers found"
-                                        description="Customers will appear here once they place orders. Try syncing your store data."
+                                        title={statusFilter === 'ALL' ? 'No customers found' : 'No customers in this status'}
+                                        description={statusFilter === 'ALL'
+                                            ? 'Customers will appear here once they place orders. Try syncing your store data.'
+                                            : 'Try switching to another status filter or clear the search query.'}
                                     />
                                 </td></tr>
                             ) : (
-                                customers.map((customer) => (
-                                    <tr key={customer.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => {
+                                customers.map((customer) => {
+                                    const statusBadge = getContactStatusBadge(customer.contactStatus);
+                                    return <tr key={customer.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => {
                                         navigate(`/customers/${encodeURIComponent(customer.id)}`)
                                     }}>
 
@@ -172,6 +252,11 @@ export function CustomersPage() {
                                                 <Mail size={14} />
                                                 {customer.email}
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
+                                                {statusBadge.label}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">
                                             <div
@@ -199,8 +284,8 @@ export function CustomersPage() {
                                                 </div>
                                             </div>
                                         </td>
-                                    </tr>
-                                ))
+                                    </tr>;
+                                })
                             )}
                         </tbody>
                     </table>

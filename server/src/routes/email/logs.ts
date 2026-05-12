@@ -9,7 +9,12 @@ import { getEmailAccountIdOrReply, parseBodyOrReply } from './routeHelpers';
 
 const emailService = new EmailService();
 
-interface QueryParams { limit?: string; offset?: string; }
+interface QueryParams {
+    limit?: string;
+    offset?: string;
+    status?: string;
+    source?: string;
+}
 
 function parseIntOrFallback(value: string | undefined, fallback: number) {
     const parsed = Number.parseInt(value || String(fallback), 10);
@@ -22,13 +27,33 @@ const emailLogRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/logs', async (request, reply) => {
         const accountId = getEmailAccountIdOrReply(request, reply);
         if (!accountId) return;
-        const { limit: rawLimit, offset: rawOffset } = request.query as QueryParams;
+        const {
+            limit: rawLimit,
+            offset: rawOffset,
+            status: rawStatus,
+            source: rawSource
+        } = request.query as QueryParams;
         const limit = Math.min(parseIntOrFallback(rawLimit, 50), 100);
         const offset = parseIntOrFallback(rawOffset, 0);
+        const statuses = (rawStatus || '')
+            .split(',')
+            .map((value) => value.trim().toUpperCase())
+            .filter(Boolean);
+        const sources = (rawSource || '')
+            .split(',')
+            .map((value) => value.trim().toUpperCase())
+            .filter(Boolean);
+
+        const where = {
+            accountId,
+            ...(statuses.length > 0 ? { status: { in: statuses } } : {}),
+            ...(sources.length > 0 ? { source: { in: sources } } : {})
+        };
+
         try {
             const [logs, total] = await Promise.all([
                 prisma.emailLog.findMany({
-                    where: { accountId },
+                    where,
                     orderBy: { createdAt: 'desc' },
                     take: limit,
                     skip: offset,
@@ -41,7 +66,7 @@ const emailLogRoutes: FastifyPluginAsync = async (fastify) => {
                         }
                     }
                 }),
-                prisma.emailLog.count({ where: { accountId } })
+                prisma.emailLog.count({ where })
             ]);
             return { logs, total, limit, offset };
         } catch (error: any) {

@@ -49,9 +49,46 @@ interface CustomerDetails {
                 country?: string;
             };
         };
+        contactStatus?: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
     };
     orders: CustomerOrder[];
     activity: { id: string; type: string; message: string; timestamp: string }[];
+    sendingMethods?: { marketing: boolean; transactional: boolean };
+    inboxConversations?: Array<{
+        id: string;
+        title?: string | null;
+        status: string;
+        updatedAt: string;
+        lastInboundMessage?: { id: string; content: string; createdAt: string } | null;
+    }>;
+}
+
+const CONTACT_STATUS_OPTIONS = [
+    { value: 'UNVERIFIED', label: 'Unverified' },
+    { value: 'SUBSCRIBED', label: 'Subscribed' },
+    { value: 'BOUNCED', label: 'Bounced' },
+    { value: 'UNSUBSCRIBED', label: 'Unsubscribed' },
+    { value: 'SOFT_BOUNCED', label: 'Soft Bounced' },
+    { value: 'COMPLAINT', label: 'Complaint' }
+] as const;
+
+function getContactStatusBadge(status: CustomerDetails['customer']['contactStatus']) {
+    switch (status || 'SUBSCRIBED') {
+        case 'UNVERIFIED':
+            return { label: 'Unverified', className: 'bg-gray-100 text-gray-700 border-gray-200' };
+        case 'SUBSCRIBED':
+            return { label: 'Subscribed', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+        case 'BOUNCED':
+            return { label: 'Bounced', className: 'bg-red-100 text-red-700 border-red-200' };
+        case 'UNSUBSCRIBED':
+            return { label: 'Unsubscribed', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+        case 'SOFT_BOUNCED':
+            return { label: 'Soft Bounced', className: 'bg-orange-100 text-orange-700 border-orange-200' };
+        case 'COMPLAINT':
+            return { label: 'Complaint', className: 'bg-rose-100 text-rose-700 border-rose-200' };
+        default:
+            return { label: 'Subscribed', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    }
 }
 
 /**
@@ -65,6 +102,7 @@ export function MobileCustomerDetail() {
     const { currentAccount } = useAccount();
     const [data, setData] = useState<CustomerDetails | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
     const fetchCustomer = useCallback(async () => {
         if (!currentAccount || !token || !id) {
@@ -105,7 +143,9 @@ export function MobileCustomerDetail() {
                         total: Number(order.rawData?.total || order.total) || 0,
                         dateCreated: order.rawData?.date_created || order.dateCreated || ''
                     })),
-                    activity: json.activity || []
+                    activity: json.activity || [],
+                    sendingMethods: json.sendingMethods,
+                    inboxConversations: json.inboxConversations || []
                 };
                 setData(mappedData);
             } else {
@@ -118,6 +158,36 @@ export function MobileCustomerDetail() {
             setLoading(false);
         }
     }, [currentAccount, id, token]);
+
+    const updateContactStatus = useCallback(async (status: (typeof CONTACT_STATUS_OPTIONS)[number]['value']) => {
+        if (!id || !token || !currentAccount?.id || !data) return;
+        setIsUpdatingStatus(true);
+        try {
+            const res = await fetch(`/api/customers/${id}/contact-status`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({ status })
+            });
+            if (!res.ok) throw new Error('Failed to update status');
+            const json = await res.json();
+            setData({
+                ...data,
+                customer: {
+                    ...data.customer,
+                    contactStatus: json.contactStatus
+                },
+                sendingMethods: json.sendingMethods
+            });
+        } catch (error) {
+            Logger.error('[MobileCustomerDetail] Failed to update status', { error });
+        } finally {
+            setIsUpdatingStatus(false);
+        }
+    }, [id, token, currentAccount?.id, data]);
 
     useEffect(() => {
         fetchCustomer();
@@ -172,7 +242,8 @@ export function MobileCustomerDetail() {
         );
     }
 
-    const { customer, orders } = data;
+    const { customer, orders, sendingMethods, inboxConversations = [] } = data;
+    const statusBadge = getContactStatusBadge(customer.contactStatus);
     const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Unknown';
     const initials = (customer.firstName?.[0] || '') + (customer.lastName?.[0] || '');
     const avgOrder = customer.ordersCount > 0 ? customer.totalSpent / customer.ordersCount : 0;
@@ -186,6 +257,9 @@ export function MobileCustomerDetail() {
                 </button>
                 <div className="flex-1">
                     <h1 className="text-xl font-bold text-gray-900">{fullName}</h1>
+                    <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusBadge.className}`}>
+                        {statusBadge.label}
+                    </span>
                     <p className="text-sm text-gray-500">Customer Profile</p>
                 </div>
                 <button onClick={fetchCustomer} className="p-2 rounded-full hover:bg-gray-100">
@@ -230,6 +304,22 @@ export function MobileCustomerDetail() {
                             </span>
                         </div>
                     )}
+                    <div className="pt-2">
+                        <p className="text-xs text-gray-500 mb-1">Contact Status</p>
+                        <select
+                            value={customer.contactStatus || 'SUBSCRIBED'}
+                            onChange={(event) => updateContactStatus(event.target.value as (typeof CONTACT_STATUS_OPTIONS)[number]['value'])}
+                            disabled={isUpdatingStatus}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800"
+                        >
+                            {CONTACT_STATUS_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                        <p className="mt-2 text-xs text-gray-600">
+                            Marketing: {sendingMethods?.marketing ? 'Allowed' : 'Blocked'} • Transactional: {sendingMethods?.transactional ? 'Allowed' : 'Blocked'}
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -255,6 +345,27 @@ export function MobileCustomerDetail() {
                         <span className="text-xs font-medium">AOV</span>
                     </div>
                     <p className="text-lg font-bold text-gray-900">{formatAccountCurrency(avgOrder)}</p>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <h2 className="font-semibold text-gray-900 p-4 border-b border-gray-100">Inbox Emails ({inboxConversations.length})</h2>
+                <div className="divide-y divide-gray-100">
+                    {inboxConversations.length > 0 ? (
+                        inboxConversations.map((conversation) => (
+                            <button
+                                key={conversation.id}
+                                onClick={() => navigate(`/m/inbox/${conversation.id}`)}
+                                className="w-full p-4 text-left active:bg-gray-50"
+                            >
+                                <p className="font-medium text-gray-900 truncate">{conversation.title || 'Email conversation'}</p>
+                                <p className="mt-1 text-xs text-gray-500">{formatDate(conversation.updatedAt)} • {conversation.status}</p>
+                                <p className="mt-2 text-sm text-gray-700 line-clamp-2">{conversation.lastInboundMessage?.content || 'No inbound message preview available'}</p>
+                            </button>
+                        ))
+                    ) : (
+                        <div className="p-6 text-center text-gray-400 text-sm">No inbox emails found for this customer yet.</div>
+                    )}
                 </div>
             </div>
 

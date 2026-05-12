@@ -169,6 +169,87 @@ export class EmailIngestion {
         return subject.replace(/^(re:|fwd:|fw:)\s*/gi, '').trim();
     }
 
+    /**
+     * Ensure inbound email senders have a customer profile.
+     * New profiles are created as marketing-unsubscribed by default.
+     */
+    private async ensureInboundEmailCustomerProfile(accountId: string, fromEmail: string, fromName?: string) {
+        const normalizedEmail = fromEmail.toLowerCase().trim();
+
+        const existingCustomer = await prisma.wooCustomer.findFirst({
+            where: { accountId, email: normalizedEmail }
+        });
+
+        if (existingCustomer) {
+            return existingCustomer;
+        }
+
+        const nameParts = (fromName || '').trim().split(/\s+/).filter(Boolean);
+        const firstName = nameParts.length > 0 ? nameParts[0] : null;
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+
+        let createdCustomer: Awaited<ReturnType<typeof prisma.wooCustomer.create>> | null = null;
+
+        // Use negative wooIds for inbox-only contacts to avoid collisions with real Woo IDs.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const minSynthetic = await prisma.wooCustomer.aggregate({
+                where: { accountId, wooId: { lt: 0 } },
+                _min: { wooId: true }
+            });
+
+            const nextSyntheticWooId = (minSynthetic._min.wooId ?? 0) - 1;
+
+            try {
+                createdCustomer = await prisma.wooCustomer.create({
+                    data: {
+                        accountId,
+                        wooId: nextSyntheticWooId,
+                        email: normalizedEmail,
+                        firstName,
+                        lastName,
+                        totalSpent: 0,
+                        ordersCount: 0,
+                        rawData: {
+                            source: 'INBOX_EMAIL',
+                            importedAt: new Date().toISOString(),
+                            marketingSubscribed: false
+                        }
+                    }
+                });
+                break;
+            } catch (error: any) {
+                if (error?.code !== 'P2002' || attempt === 2) {
+                    throw error;
+                }
+            }
+        }
+
+        if (!createdCustomer) {
+            return null;
+        }
+
+        await prisma.emailUnsubscribe.upsert({
+            where: { accountId_email: { accountId, email: normalizedEmail } },
+            create: {
+                accountId,
+                email: normalizedEmail,
+                scope: 'MARKETING',
+                reason: 'Auto-unsubscribed: inbound inbox sender without prior customer profile'
+            },
+            update: {
+                scope: 'MARKETING'
+            }
+        });
+
+        Logger.info('[EmailIngestion] Created inbox customer profile as unsubscribed', {
+            accountId,
+            customerId: createdCustomer.id,
+            email: normalizedEmail
+        });
+
+        return createdCustomer;
+    }
+
     private async resolveConversation(accountId: string, fromEmail: string, fromName?: string, subject?: string, inReplyTo?: string | null, references?: string | null) {
         const cleanTitle = subject ? this.cleanSubjectForTitle(subject) : undefined;
         // TIER 1: Match by threading headers
@@ -272,7 +353,7 @@ export class EmailIngestion {
         // TIER 2: Create new conversation.
         // Intentionally do not fall back to sender-email-only matching because
         // that incorrectly merges brand new emails into old threads.
-        const customer = await prisma.wooCustomer.findFirst({ where: { accountId, email: fromEmail } });
+        const customer = await this.ensureInboundEmailCustomerProfile(accountId, fromEmail, fromName);
 
         const conv = await prisma.conversation.create({
             data: {

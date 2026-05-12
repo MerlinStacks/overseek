@@ -26,6 +26,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
     // Create Modal - simplified: name only
     const [showCreate, setShowCreate] = useState(false);
     const [newFlowName, setNewFlowName] = useState('');
+    const [updatingFlowId, setUpdatingFlowId] = useState<string | null>(null);
 
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
@@ -92,27 +93,35 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
     }
 
     async function toggleActive(flow: FlowRecord) {
-        try {
-            const detailRes = await fetch(`/api/marketing/automations/${flow.id}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
-                }
-            });
-            const detail = await detailRes.json();
+        const nextIsActive = !flow.isActive;
+        setUpdatingFlowId(flow.id);
+        setFlows((prev) => prev.map((item) => (item.id === flow.id ? { ...item, isActive: nextIsActive } : item)));
 
-            await fetch('/api/marketing/automations', {
-                method: 'POST',
+        try {
+            const res = await fetch(`/api/marketing/automations/${flow.id}/status`, {
+                method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount?.id || ''
                 },
-                body: JSON.stringify({ ...detail, isActive: !flow.isActive })
+                body: JSON.stringify({ isActive: nextIsActive })
             });
 
+            if (!res.ok) {
+                throw new Error('Failed to update flow status');
+            }
+
+            showToast(`Flow ${nextIsActive ? 'enabled' : 'disabled'}`, 'success');
+
             fetchData();
-        } catch (err) { Logger.error('Failed to toggle flow', { error: err }); showToast('Failed to toggle flow'); }
+        } catch (err) {
+            Logger.error('Failed to toggle flow', { error: err });
+            setFlows((prev) => prev.map((item) => (item.id === flow.id ? { ...item, isActive: flow.isActive } : item)));
+            showToast('Failed to toggle flow');
+        } finally {
+            setUpdatingFlowId(null);
+        }
     }
 
     async function handleDelete(id: string) {
@@ -203,12 +212,15 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                 <div className="flex items-center gap-3">
                                     <button
                                         onClick={() => toggleActive(flow)}
+                                        disabled={updatingFlowId === flow.id}
                                         className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${flow.isActive
                                             ? 'bg-green-100 text-green-800 hover:bg-green-200'
                                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                            }`}
+                                            } ${updatingFlowId === flow.id ? 'cursor-not-allowed opacity-60' : ''}`}
                                     >
-                                        {flow.isActive ? <><Pause size={14} /> Active</> : <><Play size={14} /> Paused</>}
+                                        {updatingFlowId === flow.id
+                                            ? <>Updating...</>
+                                            : (flow.isActive ? <><Pause size={14} /> Active</> : <><Play size={14} /> Paused</>)}
                                     </button>
                                     <button onClick={() => onEdit(flow.id, flow.name)} className="text-blue-600 hover:text-blue-800 p-2 font-medium text-sm">
                                         Edit Flow

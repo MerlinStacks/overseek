@@ -78,6 +78,44 @@ export class CustomerSync extends BaseSync {
                                 rawData: c as any
                             }
                         }).catch((err) => {
+                            // If an inbox-created placeholder customer already exists by email,
+                            // convert it into the real Woo customer record instead of skipping.
+                            if (err?.code === 'P2002') {
+                                return prisma.wooCustomer.findFirst({
+                                    where: {
+                                        accountId,
+                                        email: { equals: c.email, mode: 'insensitive' }
+                                    }
+                                }).then((existingByEmail) => {
+                                    if (!existingByEmail) {
+                                        throw err;
+                                    }
+
+                                    return prisma.wooCustomer.update({
+                                        where: { id: existingByEmail.id },
+                                        data: {
+                                            wooId: c.id,
+                                            email: c.email,
+                                            firstName: c.first_name,
+                                            lastName: c.last_name,
+                                            totalSpent: c.total_spent ?? 0,
+                                            ordersCount: c.orders_count ?? 0,
+                                            rawData: c as any
+                                        }
+                                    });
+                                }).catch((mergeErr: any) => {
+                                    totalSkipped++;
+                                    failedWooIds.push(c.id);
+                                    Logger.warn('Failed to merge placeholder customer during upsert', {
+                                        accountId,
+                                        syncId,
+                                        wooId: c.id,
+                                        email: c.email,
+                                        error: mergeErr?.message || err.message
+                                    });
+                                });
+                            }
+
                             totalSkipped++;
                             failedWooIds.push(c.id);
                             Logger.warn('Failed to upsert customer', {
@@ -237,4 +275,3 @@ export class CustomerSync extends BaseSync {
         return linkedCount;
     }
 }
-

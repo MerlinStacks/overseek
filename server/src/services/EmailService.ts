@@ -25,6 +25,68 @@ export class EmailService {
     private static readonly RELAY_MAX_ATTACHMENTS = 10;
     private static readonly RELAY_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
+    private wait(ms: number) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private async getEmailSettings(accountId: string) {
+        return prisma.emailSettings.upsert({
+            where: { accountId },
+            update: {},
+            create: {
+                accountId,
+                bounceTrackingEnabled: false,
+                maxSendPerSecond: 1,
+                maxSendPerDay: 6000,
+            },
+        });
+    }
+
+    private async enforceSendingLimits(accountId: string): Promise<{ allowed: boolean; reason?: string }> {
+        const settings = await this.getEmailSettings(accountId);
+
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const sentToday = await prisma.emailLog.count({
+            where: {
+                accountId,
+                status: 'SUCCESS',
+                createdAt: { gte: startOfDay },
+            },
+        });
+
+        if (sentToday >= settings.maxSendPerDay) {
+            return {
+                allowed: false,
+                reason: `Daily send quota reached (${settings.maxSendPerDay}/day)`,
+            };
+        }
+
+        const maxWaitCycles = 20;
+        for (let cycle = 0; cycle < maxWaitCycles; cycle++) {
+            const windowStart = new Date(Date.now() - 1000);
+            const sentLastSecond = await prisma.emailLog.count({
+                where: {
+                    accountId,
+                    status: 'SUCCESS',
+                    createdAt: { gte: windowStart },
+                },
+            });
+
+            if (sentLastSecond < settings.maxSendPerSecond) {
+                return { allowed: true };
+            }
+
+            await this.wait(100);
+        }
+
+        return {
+            allowed: false,
+            reason: `Per-second send rate exceeded (${settings.maxSendPerSecond}/sec)`
+        };
+    }
+
     private shouldRejectUnauthorizedTls(): boolean {
         const allowInsecure = process.env.ALLOW_INSECURE_TLS === 'true';
         if (allowInsecure && process.env.NODE_ENV !== 'production') {
@@ -109,6 +171,24 @@ export class EmailService {
                 }
             });
             throw new Error("Email account not found");
+        }
+
+        const limitCheck = await this.enforceSendingLimits(accountId);
+        if (!limitCheck.allowed) {
+            await prisma.emailLog.create({
+                data: {
+                    accountId,
+                    emailAccountId,
+                    to,
+                    subject,
+                    status: 'SKIPPED',
+                    errorMessage: limitCheck.reason || 'Email sending blocked by account limits',
+                    source: options?.source,
+                    sourceId: options?.sourceId,
+                    canRetry: false
+                }
+            });
+            return { skipped: true, reason: 'account_sending_limit_reached' };
         }
 
         const emailCategory = options?.category || 'MARKETING';

@@ -1,11 +1,12 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type MouseEvent } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Plus, Users, Edit2, Trash2 } from 'lucide-react';
 import { SegmentBuilder, SegmentCriteria } from '../components/segments/SegmentBuilder';
 import { Toast, ToastType } from '../components/ui/Toast';
+import { useNavigate } from 'react-router-dom';
 
 interface Segment {
     id: string;
@@ -14,6 +15,15 @@ interface Segment {
     criteria: SegmentCriteria;
     campaigns?: Array<Record<string, unknown>>;
     _count?: { campaigns: number };
+}
+
+interface SegmentPreviewCustomer {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    ordersCount: number;
+    totalSpent: number | null;
 }
 
 export function SegmentsPage() {
@@ -25,6 +35,14 @@ export function SegmentsPage() {
     const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
     const [segmentName, setSegmentName] = useState('');
     const [segmentDesc, setSegmentDesc] = useState('');
+    const [selectedSegment, setSelectedSegment] = useState<Segment | null>(null);
+    const [previewCustomers, setPreviewCustomers] = useState<SegmentPreviewCustomer[]>([]);
+    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+    const [previewPage, setPreviewPage] = useState(1);
+    const [previewPageSize] = useState(25);
+    const [previewTotal, setPreviewTotal] = useState(0);
+    const [pageInput, setPageInput] = useState('1');
+    const navigate = useNavigate();
 
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
@@ -133,6 +151,81 @@ export function SegmentsPage() {
             Logger.error('An error occurred', { error: err });
             showToast('Failed to delete segment');
         }
+    }
+
+    async function fetchSegmentPreview(segment: Segment, page: number) {
+        if (!currentAccount || !token) return;
+
+        try {
+            setIsLoadingPreview(true);
+
+            const res = await fetch(`/api/segments/${segment.id}/preview?page=${page}&pageSize=${previewPageSize}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setPreviewCustomers(data.customers || []);
+                setPreviewTotal(data.pagination?.total || 0);
+                setPreviewPage(data.pagination?.page || page);
+                setPageInput(String(data.pagination?.page || page));
+            } else {
+                const err = await res.json().catch(() => null);
+                showToast(err?.error || 'Failed to load segment members');
+                setPreviewCustomers([]);
+                setPreviewTotal(0);
+            }
+        } catch (err) {
+            Logger.error('An error occurred', { error: err });
+            showToast('Failed to load segment members');
+            setPreviewCustomers([]);
+            setPreviewTotal(0);
+        } finally {
+            setIsLoadingPreview(false);
+        }
+    }
+
+    async function handlePreview(segment: Segment) {
+        setSelectedSegment(segment);
+        await fetchSegmentPreview(segment, 1);
+    }
+
+    async function handlePreviewPageChange(nextPage: number) {
+        if (!selectedSegment) return;
+        await fetchSegmentPreview(selectedSegment, nextPage);
+    }
+
+    async function handlePageJump() {
+        if (!selectedSegment) return;
+        const totalPages = Math.max(1, Math.ceil(previewTotal / previewPageSize));
+        const requestedPage = Number(pageInput);
+
+        if (!Number.isFinite(requestedPage)) {
+            setPageInput(String(previewPage));
+            return;
+        }
+
+        const targetPage = Math.min(totalPages, Math.max(1, Math.floor(requestedPage)));
+        await fetchSegmentPreview(selectedSegment, targetPage);
+    }
+
+    function handleCustomerRowClick(event: MouseEvent<HTMLTableRowElement>, customerId: string) {
+        const href = `/customers/${encodeURIComponent(customerId)}`;
+        if (event.metaKey || event.ctrlKey) {
+            window.open(href, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        navigate(href);
+    }
+
+    function handleCustomerRowAuxClick(event: MouseEvent<HTMLTableRowElement>, customerId: string) {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        const href = `/customers/${encodeURIComponent(customerId)}`;
+        window.open(href, '_blank', 'noopener,noreferrer');
     }
 
     if (isCreating || editingSegment) {
@@ -246,6 +339,13 @@ export function SegmentsPage() {
                                 {segment._count?.campaigns || 0} Campaigns
                             </span>
                         </div>
+
+                        <button
+                            onClick={() => handlePreview(segment)}
+                            className="mt-4 w-full text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg py-2 hover:bg-blue-100 transition-colors"
+                        >
+                            View Members
+                        </button>
                     </div>
                 ))}
 
@@ -264,8 +364,111 @@ export function SegmentsPage() {
                 )}
             </div>
 
+            {selectedSegment && (
+                <div className="bg-white border border-gray-200 rounded-xl shadow-xs">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                        <div>
+                            <h2 className="text-lg font-semibold text-gray-900">{selectedSegment.name} Members</h2>
+                            <p className="text-xs text-gray-500">Showing {previewCustomers.length} of {previewTotal} matching customers.</p>
+                        </div>
+                        <button
+                            onClick={() => {
+                                setSelectedSegment(null);
+                                setPreviewCustomers([]);
+                                setPreviewTotal(0);
+                                setPreviewPage(1);
+                            }}
+                            className="text-sm text-gray-500 hover:text-gray-700"
+                        >
+                            Close
+                        </button>
+                    </div>
+
+                    {isLoadingPreview ? (
+                        <div className="px-5 py-8 text-sm text-gray-500">Loading members...</div>
+                    ) : previewCustomers.length === 0 ? (
+                        <div className="px-5 py-8 text-sm text-gray-500">No customers match this segment.</div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50 text-gray-600">
+                                    <tr>
+                                        <th className="text-left px-5 py-3 font-medium">Customer</th>
+                                        <th className="text-left px-5 py-3 font-medium">Email</th>
+                                        <th className="text-left px-5 py-3 font-medium">Orders</th>
+                                        <th className="text-left px-5 py-3 font-medium">Total Spent</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {previewCustomers.map(customer => (
+                                        <tr
+                                            key={customer.id}
+                                            className="border-t border-gray-100 hover:bg-blue-50/60 cursor-pointer"
+                                            onClick={(event) => handleCustomerRowClick(event, customer.id)}
+                                            onMouseDown={(event) => handleCustomerRowAuxClick(event, customer.id)}
+                                        >
+                                            <td className="px-5 py-3 text-gray-900">
+                                                {`${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Unnamed customer'}
+                                            </td>
+                                            <td className="px-5 py-3 text-gray-700">{customer.email || 'No email'}</td>
+                                            <td className="px-5 py-3 text-gray-700">{customer.ordersCount || 0}</td>
+                                            <td className="px-5 py-3 text-gray-700">${Number(customer.totalSpent || 0).toFixed(2)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {previewTotal > previewPageSize && (
+                        <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100">
+                            <button
+                                onClick={() => handlePreviewPageChange(previewPage - 1)}
+                                disabled={previewPage <= 1 || isLoadingPreview}
+                                className="px-3 py-1.5 text-sm border border-gray-200 rounded-md text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                            >
+                                Previous
+                            </button>
+                            <span className="text-sm text-gray-500">
+                                Page {previewPage} of {Math.max(1, Math.ceil(previewTotal / previewPageSize))}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={Math.max(1, Math.ceil(previewTotal / previewPageSize))}
+                                    value={pageInput}
+                                    onChange={(e) => setPageInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            void handlePageJump();
+                                        }
+                                    }}
+                                    className="w-20 px-2 py-1.5 text-sm border border-gray-200 rounded-md"
+                                />
+                                <button
+                                    onClick={() => {
+                                        void handlePageJump();
+                                    }}
+                                    disabled={isLoadingPreview}
+                                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-md text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                                >
+                                    Go
+                                </button>
+                            </div>
+                            <button
+                                onClick={() => handlePreviewPageChange(previewPage + 1)}
+                                disabled={previewPage >= Math.ceil(previewTotal / previewPageSize) || isLoadingPreview}
+                                className="px-3 py-1.5 text-sm border border-gray-200 rounded-md text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
         </div>
     );
 }
-

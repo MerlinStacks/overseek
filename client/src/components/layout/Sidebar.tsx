@@ -32,7 +32,8 @@ import {
     RefreshCw,
     Search,
     Bot,
-    FileText
+    FileText,
+    Mail
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -65,8 +66,21 @@ const navItems = [
             { icon: Package, label: 'Inventory', path: '/inventory' },
             { icon: RefreshCw, label: 'BOM Sync', path: '/inventory/bom-sync' },
             { icon: TrendingDown, label: 'Forecasts', path: '/inventory/forecasts' },
+            { icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
+        ]
+    },
+    {
+        type: 'group',
+        label: 'Emails',
+        icon: Mail,
+        children: [
+            { icon: BarChart3, label: 'Email Hub', path: '/emails' },
             { icon: Users, label: 'Customers', path: '/customers' },
             { icon: Filter, label: 'Segments', path: '/customers/segments' },
+            { icon: Zap, label: 'Flows', path: '/flows' },
+            { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
+            { icon: Settings, label: 'Settings', path: '/emails/settings' },
+            { icon: Mail, label: 'Logs', path: '/emails/logs' },
         ]
     },
     {
@@ -88,14 +102,11 @@ const navItems = [
         icon: TrendingUp,
         children: [
             { icon: Megaphone, label: 'Paid Ads', path: '/ads' },
-            { icon: Zap, label: 'Flows', path: '/flows' },
-            { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
             { icon: Star, label: 'Reviews', path: '/reviews' },
             { icon: Search, label: 'SEO Keywords', path: '/seo' },
             { icon: FileText, label: 'SEO Content', path: '/seo/content' },
         ]
     },
-    { type: 'link', icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
     { type: 'link', icon: BookOpen, label: 'Policies & SOP', path: '/policies' },
     { type: 'link', icon: UsersRound, label: 'Team', path: '/team' },
     { type: 'link', icon: HelpCircle, label: 'Help Center', path: '/help' },
@@ -163,7 +174,14 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 const hasChild = item.children?.some(child => {
                     if (child.path === '/orders') return hasPermission('view_orders');
                     if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
+                    return true;
+                });
+                return hasChild;
+            }
+            if (item.label === 'Emails') {
+                const hasChild = item.children?.some(child => {
                     if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
+                    if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
                     return true;
                 });
                 return hasChild;
@@ -180,6 +198,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                         if (child.path === '/orders') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
+                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
                         if (item.label === 'Analytics') return hasPermission('view_finance');
                         if (item.label === 'Growth') return hasPermission('view_marketing');
                         return true;

@@ -2,12 +2,38 @@ import { esClient } from '../utils/elastic';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 
+type ContactStatus = 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
+
+const CONTACT_STATUS_METHODS: Record<ContactStatus, { marketing: boolean; transactional: boolean }> = {
+    UNVERIFIED: { marketing: false, transactional: true },
+    SUBSCRIBED: { marketing: true, transactional: true },
+    BOUNCED: { marketing: false, transactional: false },
+    UNSUBSCRIBED: { marketing: false, transactional: true },
+    SOFT_BOUNCED: { marketing: false, transactional: true },
+    COMPLAINT: { marketing: false, transactional: false }
+};
+
+function normalizeContactStatus(rawStatus: unknown): ContactStatus {
+    const value = String(rawStatus || '').trim().toUpperCase();
+    if (value === 'UNVERIFIED' || value === 'SUBSCRIBED' || value === 'BOUNCED' || value === 'UNSUBSCRIBED' || value === 'SOFT_BOUNCED' || value === 'COMPLAINT') {
+        return value;
+    }
+    return 'SUBSCRIBED';
+}
+
 export class CustomersService {
-    static async searchCustomers(accountId: string, query: string = '', page: number = 1, limit: number = 20) {
+    static async searchCustomers(
+        accountId: string,
+        query: string = '',
+        page: number = 1,
+        limit: number = 20,
+        status: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' | 'ALL' = 'ALL'
+    ) {
         const from = (page - 1) * limit;
 
         const must: any[] = [
-            { term: { accountId } }
+            { term: { accountId } },
+            { range: { ordersCount: { gt: 0 } } }
         ];
 
         if (query) {
@@ -20,11 +46,44 @@ export class CustomersService {
             });
         }
 
+        const statusMust = [...must];
+
+        if (status !== 'ALL') {
+            if (status === 'SUBSCRIBED') {
+                statusMust.push({
+                    bool: {
+                        should: [
+                            { term: { 'rawData.contactStatus.keyword': 'SUBSCRIBED' } },
+                            { term: { 'rawData.contactStatus': 'SUBSCRIBED' } },
+                            {
+                                bool: {
+                                    must_not: [
+                                        { exists: { field: 'rawData.contactStatus' } }
+                                    ]
+                                }
+                            }
+                        ],
+                        minimum_should_match: 1
+                    }
+                });
+            } else {
+                statusMust.push({
+                    bool: {
+                        should: [
+                            { term: { 'rawData.contactStatus.keyword': status } },
+                            { term: { 'rawData.contactStatus': status } }
+                        ],
+                        minimum_should_match: 1
+                    }
+                });
+            }
+        }
+
         try {
             const response = await esClient.search({
                 index: 'customers',
                 query: {
-                    bool: { must }
+                    bool: { must: statusMust }
                 },
                 from,
                 size: limit,
@@ -32,26 +91,71 @@ export class CustomersService {
                     { 'firstName.keyword': { order: 'asc', unmapped_type: 'keyword' } },
                     { 'lastName.keyword': { order: 'asc', unmapped_type: 'keyword' } }
                 ],
-                track_total_hits: true
+                track_total_hits: true,
+                aggs: {
+                    contact_statuses: {
+                        terms: {
+                            field: 'rawData.contactStatus.keyword',
+                            size: 10
+                        }
+                    }
+                }
             });
 
             const hits = response.hits.hits.map(hit => ({
                 id: hit._id,
-                ...(hit._source as any)
+                ...(hit._source as any),
+                contactStatus: normalizeContactStatus((hit._source as any)?.rawData?.contactStatus)
             }));
 
             const total = (response.hits.total as any).value || 0;
-            Logger.debug(`CustomerSearch`, { query, page, total });
+            const buckets = (response.aggregations as any)?.contact_statuses?.buckets || [];
+            const rawCounts = buckets.reduce((acc: Record<string, number>, bucket: { key: string; doc_count: number }) => {
+                acc[bucket.key] = bucket.doc_count;
+                return acc;
+            }, {});
+            const knownStatusesTotal = (rawCounts.UNVERIFIED || 0)
+                + (rawCounts.SUBSCRIBED || 0)
+                + (rawCounts.BOUNCED || 0)
+                + (rawCounts.UNSUBSCRIBED || 0)
+                + (rawCounts.SOFT_BOUNCED || 0)
+                + (rawCounts.COMPLAINT || 0);
+            const missingStatusCount = Math.max(total - knownStatusesTotal, 0);
+            const statusCounts = {
+                ALL: total,
+                UNVERIFIED: rawCounts.UNVERIFIED || 0,
+                SUBSCRIBED: (rawCounts.SUBSCRIBED || 0) + missingStatusCount,
+                BOUNCED: rawCounts.BOUNCED || 0,
+                UNSUBSCRIBED: rawCounts.UNSUBSCRIBED || 0,
+                SOFT_BOUNCED: rawCounts.SOFT_BOUNCED || 0,
+                COMPLAINT: rawCounts.COMPLAINT || 0
+            };
+            Logger.debug(`CustomerSearch`, { query, page, total, status });
 
             return {
                 customers: hits,
                 total,
                 page,
-                totalPages: Math.ceil(total / limit)
+                totalPages: Math.ceil(total / limit),
+                statusCounts
             };
         } catch (error) {
             Logger.error('Elasticsearch Customer Search Error', { error });
-            return { customers: [], total: 0, page, totalPages: 0 };
+            return {
+                customers: [],
+                total: 0,
+                page,
+                totalPages: 0,
+                statusCounts: {
+                    ALL: 0,
+                    UNVERIFIED: 0,
+                    SUBSCRIBED: 0,
+                    BOUNCED: 0,
+                    UNSUBSCRIBED: 0,
+                    SOFT_BOUNCED: 0,
+                    COMPLAINT: 0
+                }
+            };
         }
     }
 
@@ -119,87 +223,217 @@ export class CustomersService {
             return null;
         }
 
-        // 2. Fetch Recent Orders
-        const orders = await prisma.wooOrder.findMany({
-            where: {
-                accountId,
-                rawData: {
-                    path: ['customer_id'],
-                    equals: customer.wooId
+        // 2. Related entities
+        const normalizedEmail = customer.email.trim().toLowerCase();
+        const [orders, orderStats, automationEnrollments, activitySessions, suppression, inboxConversations] = await Promise.all([
+            prisma.wooOrder.findMany({
+                where: {
+                    accountId,
+                    rawData: {
+                        path: ['customer_id'],
+                        equals: customer.wooId
+                    }
+                },
+                select: {
+                    id: true,
+                    wooId: true,
+                    number: true,
+                    status: true,
+                    total: true,
+                    currency: true,
+                    dateCreated: true
+                },
+                orderBy: { dateCreated: 'desc' },
+                take: 10
+            }),
+            prisma.wooOrder.aggregate({
+                where: {
+                    accountId,
+                    rawData: {
+                        path: ['customer_id'],
+                        equals: customer.wooId
+                    }
+                },
+                _count: {
+                    id: true
+                },
+                _sum: {
+                    total: true
                 }
-            },
-            select: {
-                id: true,
-                wooId: true,
-                number: true,
-                status: true,
-                total: true,
-                currency: true,
-                dateCreated: true
-            },
-            orderBy: { dateCreated: 'desc' },
-            take: 10
-        });
+            }),
+            prisma.automationEnrollment.findMany({
+                where: {
+                    automation: { accountId },
+                    email: customer.email
+                },
+                include: {
+                    automation: { select: { name: true } }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 20
+            }),
+            prisma.analyticsSession.findMany({
+                where: {
+                    accountId,
+                    OR: [
+                        { wooCustomerId: customer.wooId },
+                        { email: customer.email }
+                    ]
+                },
+                select: {
+                    id: true,
+                    visitorId: true,
+                    currentPath: true,
+                    lastActiveAt: true,
+                    country: true,
+                    city: true,
+                    deviceType: true,
+                    events: {
+                        select: {
+                            id: true,
+                            type: true,
+                            createdAt: true
+                        },
+                        orderBy: { createdAt: 'desc' },
+                        take: 5
+                    }
+                },
+                orderBy: { lastActiveAt: 'desc' },
+                take: 5
+            }),
+            prisma.emailUnsubscribe.findFirst({
+                where: {
+                    accountId,
+                    email: { equals: normalizedEmail, mode: 'insensitive' }
+                },
+                select: { scope: true }
+            }),
+            prisma.conversation.findMany({
+                where: {
+                    accountId,
+                    channel: 'EMAIL',
+                    mergedIntoId: null,
+                    OR: [
+                        { wooCustomerId: customer.id },
+                        { guestEmail: { equals: normalizedEmail, mode: 'insensitive' } }
+                    ]
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    guestEmail: true,
+                    updatedAt: true,
+                    status: true,
+                    messages: {
+                        where: { senderType: 'CUSTOMER', isInternal: false },
+                        select: { id: true, content: true, createdAt: true },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1
+                    }
+                },
+                orderBy: { updatedAt: 'desc' },
+                take: 8
+            })
+        ]);
 
-        // 3. Automation History
-        const automationEnrollments = await prisma.automationEnrollment.findMany({
-            where: {
-                automation: { accountId },
-                email: customer.email
-            },
-            include: {
-                automation: { select: { name: true } }
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 20
-        });
-
-        // 4. Live Activity (Analytics) - select only needed fields
-        const activitySessions = await prisma.analyticsSession.findMany({
-            where: {
-                accountId,
-                OR: [
-                    { wooCustomerId: customer.wooId },
-                    { email: customer.email }
-                ]
-            },
-            select: {
-                id: true,
-                visitorId: true,
-                currentPath: true,
-                lastActiveAt: true,
-                country: true,
-                city: true,
-                deviceType: true,
-                events: {
-                    select: {
-                        id: true,
-                        type: true,
-                        createdAt: true
-                    },
-                    orderBy: { createdAt: 'desc' },
-                    take: 5
-                }
-            },
-            orderBy: { lastActiveAt: 'desc' },
-            take: 5
-        });
-
-        // Compute stats from actual fetched orders as fallback when WooCommerce reports 0
+        // Compute stats from all local orders as fallback when WooCommerce reports 0
         const dbTotalSpent = Number(customer.totalSpent);
-        const computedTotalSpent = orders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+        const computedTotalSpent = Number(orderStats._sum.total || 0);
         const effectiveTotalSpent = dbTotalSpent > 0 ? dbTotalSpent : computedTotalSpent;
-        const effectiveOrdersCount = customer.ordersCount > 0 ? customer.ordersCount : orders.length;
+        const effectiveOrdersCount = customer.ordersCount > 0 ? customer.ordersCount : (orderStats._count.id || 0);
+
+        const persistedStatus = normalizeContactStatus((customer.rawData as Record<string, unknown> | null)?.contactStatus);
+        const contactStatus: ContactStatus = suppression?.scope === 'ALL'
+            ? 'COMPLAINT'
+            : suppression?.scope === 'MARKETING'
+                ? (persistedStatus === 'SUBSCRIBED' ? 'UNSUBSCRIBED' : persistedStatus)
+                : persistedStatus;
 
         return {
             customer: {
                 ...customer,
                 totalSpent: effectiveTotalSpent,
                 ordersCount: effectiveOrdersCount,
+                contactStatus
             },
             orders,
             automations: automationEnrollments,
-            activity: activitySessions
+            activity: activitySessions,
+            sendingMethods: CONTACT_STATUS_METHODS[contactStatus],
+            inboxConversations: inboxConversations.map((conversation) => ({
+                id: conversation.id,
+                title: conversation.title,
+                guestEmail: conversation.guestEmail,
+                status: conversation.status,
+                updatedAt: conversation.updatedAt,
+                lastInboundMessage: conversation.messages[0]
+                    ? {
+                        id: conversation.messages[0].id,
+                        content: conversation.messages[0].content,
+                        createdAt: conversation.messages[0].createdAt
+                    }
+                    : null
+            }))
+        };
+    }
+
+    static async updateContactStatus(accountId: string, customerId: string, nextStatus: ContactStatus) {
+        const customer = await prisma.wooCustomer.findFirst({ where: { accountId, id: customerId } });
+        if (!customer) return null;
+
+        const existingRawData = (customer.rawData as Record<string, unknown> | null) ?? {};
+        const normalizedEmail = customer.email.trim().toLowerCase();
+
+        await prisma.wooCustomer.update({
+            where: { id: customer.id },
+            data: {
+                rawData: {
+                    ...existingRawData,
+                    contactStatus: nextStatus
+                }
+            }
+        });
+
+        if (nextStatus === 'SUBSCRIBED') {
+            await prisma.emailUnsubscribe.deleteMany({
+                where: {
+                    accountId,
+                    email: { equals: normalizedEmail, mode: 'insensitive' }
+                }
+            });
+        } else if (nextStatus === 'BOUNCED' || nextStatus === 'COMPLAINT') {
+            await prisma.emailUnsubscribe.upsert({
+                where: { accountId_email: { accountId, email: normalizedEmail } },
+                create: {
+                    accountId,
+                    email: normalizedEmail,
+                    scope: 'ALL',
+                    reason: nextStatus === 'COMPLAINT' ? 'Marked as complaint in customer profile' : 'Marked as hard bounce in customer profile'
+                },
+                update: {
+                    scope: 'ALL',
+                    reason: nextStatus === 'COMPLAINT' ? 'Marked as complaint in customer profile' : 'Marked as hard bounce in customer profile'
+                }
+            });
+        } else {
+            await prisma.emailUnsubscribe.upsert({
+                where: { accountId_email: { accountId, email: normalizedEmail } },
+                create: {
+                    accountId,
+                    email: normalizedEmail,
+                    scope: 'MARKETING',
+                    reason: `Marked as ${nextStatus.toLowerCase().replace('_', ' ')} in customer profile`
+                },
+                update: {
+                    scope: 'MARKETING',
+                    reason: `Marked as ${nextStatus.toLowerCase().replace('_', ' ')} in customer profile`
+                }
+            });
+        }
+
+        return {
+            contactStatus: nextStatus,
+            sendingMethods: CONTACT_STATUS_METHODS[nextStatus]
         };
     }
 
@@ -336,4 +570,3 @@ export class CustomersService {
         };
     }
 }
-

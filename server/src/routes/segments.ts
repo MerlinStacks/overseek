@@ -73,10 +73,12 @@ const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Preview Customers in Segment
-    fastify.get<{ Params: { id: string } }>('/:id/preview', async (request, reply) => {
+    fastify.get<{ Params: { id: string }; Querystring: { page?: string; pageSize?: string } }>('/:id/preview', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const customers = await segmentService.previewCustomers(accountId, request.params.id);
+            const page = Number(request.query.page || 1);
+            const pageSize = Number(request.query.pageSize || 25);
+            const customers = await segmentService.previewCustomers(accountId, request.params.id, page, pageSize);
             return customers;
         } catch (error) {
             Logger.error('Error', { error });

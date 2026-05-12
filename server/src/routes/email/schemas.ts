@@ -46,3 +46,9 @@ export const TestRelayBodySchema = z.object({
     emailAccountId: z.string().optional(),
     testEmail: z.string().email().optional(),
 });
+
+export const EmailSettingsBodySchema = z.object({
+    bounceTrackingEnabled: z.boolean(),
+    maxSendPerSecond: z.number().int().min(1).max(1000),
+    maxSendPerDay: z.number().int().min(1).max(1000000),
+});

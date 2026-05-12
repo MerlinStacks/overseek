@@ -121,6 +121,7 @@ model Account {
   features      AccountFeature[]
   dashboards    DashboardLayout[]
   emailAccounts EmailAccount[]
+  emailSettings EmailSettings?
   emailLogs     EmailLog[]
   SyncState     SyncState[]
   SyncLog       SyncLog[]
@@ -143,6 +144,8 @@ model Account {
   marketingAutomations MarketingAutomation[]
   automationEnrollments AutomationEnrollment[]
   emailTemplates       EmailTemplate[]
+  emailLists           EmailList[]
+  emailListMembers     EmailListMember[]
   AnalyticsSession     AnalyticsSession[]
   segments             CustomerSegment[]
   audienceSyncs        AudienceSync[]
@@ -1255,6 +1258,7 @@ model WooCustomer {
 
   conversations Conversation[]
   reviews       WooReview[]
+  emailListMemberships EmailListMember[]
 
   @@unique([accountId, wooId])
   @@index([accountId, email])
@@ -1712,6 +1716,9 @@ model MarketingCampaign {
   segmentId String?
   segment   CustomerSegment? @relation(fields: [segmentId], references: [id])
 
+  listId String?
+  list   EmailList? @relation(fields: [listId], references: [id])
+
   // Stats
   recipientsCount Int @default(0)
   sentCount       Int @default(0)
@@ -2095,6 +2102,22 @@ model EmailAccount {
   @@index([accountId])
 }
 
+model EmailSettings {
+  id String @id @default(uuid())
+
+  accountId String @unique
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  bounceTrackingEnabled Boolean @default(false)
+  maxSendPerSecond      Int     @default(1)
+  maxSendPerDay         Int     @default(6000)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+}
+
 model EmailLog {
   id             String   @id @default(uuid())
   accountId      String
@@ -2166,6 +2189,49 @@ model EmailUnsubscribe {
   
   @@unique([accountId, email])
   @@index([accountId])
+}
+
+/// Curated recipient lists for broadcasts and preference center controls.
+model EmailList {
+  id          String  @id @default(uuid())
+  accountId   String
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  account     Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  memberships EmailListMember[]
+  campaigns   MarketingCampaign[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+  @@index([accountId, isActive])
+}
+
+/// Per-email subscription status for a specific list.
+model EmailListMember {
+  id            String   @id @default(uuid())
+  accountId     String
+  listId        String
+  email         String
+  wooCustomerId String?
+  isSubscribed  Boolean  @default(true)
+  source        String?  // ADMIN, IMPORT, CUSTOMER, PLUGIN
+  subscribedAt  DateTime?
+  unsubscribedAt DateTime?
+
+  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  list       EmailList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  wooCustomer WooCustomer? @relation(fields: [wooCustomerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([listId, email])
+  @@index([accountId, email])
+  @@index([accountId, listId, isSubscribed])
 }
 
 model CustomerSegment {

@@ -1,9 +1,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatDateSafe, formatTimeSafe, formatDateTimeSafe, toValidDate } from '../utils/format';
 import { Mail, Calendar, Activity, Zap, Users } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -31,6 +31,7 @@ interface CustomerDetails {
             };
             [key: string]: unknown;
         };
+        contactStatus?: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
     };
     orders: Array<{
         id: string;
@@ -57,16 +58,62 @@ interface CustomerDetails {
             url?: string;
         }>;
     }>;
+    sendingMethods?: {
+        marketing: boolean;
+        transactional: boolean;
+    };
+    inboxConversations?: Array<{
+        id: string;
+        title?: string | null;
+        guestEmail?: string | null;
+        status: string;
+        updatedAt: string;
+        lastInboundMessage?: {
+            id: string;
+            content: string;
+            createdAt: string;
+        } | null;
+    }>;
+}
+
+const CONTACT_STATUS_OPTIONS = [
+    { value: 'UNVERIFIED', label: 'Unverified' },
+    { value: 'SUBSCRIBED', label: 'Subscribed' },
+    { value: 'BOUNCED', label: 'Bounced' },
+    { value: 'UNSUBSCRIBED', label: 'Unsubscribed' },
+    { value: 'SOFT_BOUNCED', label: 'Soft Bounced' },
+    { value: 'COMPLAINT', label: 'Complaint' }
+] as const;
+
+function getContactStatusBadge(status: CustomerDetails['customer']['contactStatus'] | undefined) {
+    switch (status || 'SUBSCRIBED') {
+        case 'UNVERIFIED':
+            return { label: 'Unverified', className: 'bg-gray-100 text-gray-700 border-gray-200' };
+        case 'SUBSCRIBED':
+            return { label: 'Subscribed', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+        case 'BOUNCED':
+            return { label: 'Bounced', className: 'bg-red-100 text-red-700 border-red-200' };
+        case 'UNSUBSCRIBED':
+            return { label: 'Unsubscribed', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+        case 'SOFT_BOUNCED':
+            return { label: 'Soft Bounced', className: 'bg-orange-100 text-orange-700 border-orange-200' };
+        case 'COMPLAINT':
+            return { label: 'Complaint', className: 'bg-rose-100 text-rose-700 border-rose-200' };
+        default:
+            return { label: 'Subscribed', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    }
 }
 
 export function CustomerDetailsPage() {
+    const navigate = useNavigate();
     const { id } = useParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [data, setData] = useState<CustomerDetails | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'automations' | 'activity'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'automations' | 'activity' | 'inbox'>('overview');
     const [showMergeModal, setShowMergeModal] = useState(false);
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
     const fetchCustomerDetails = useCallback(async () => {
         if (!id) return;
@@ -120,10 +167,41 @@ export function CustomerDetailsPage() {
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [fetchCustomerDetails]);
 
+    const updateContactStatus = useCallback(async (status: (typeof CONTACT_STATUS_OPTIONS)[number]['value']) => {
+        if (!id || !token || !currentAccount?.id || !data) return;
+        setIsUpdatingStatus(true);
+        try {
+            const res = await fetch(`/api/customers/${id}/contact-status`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({ status })
+            });
+            if (!res.ok) throw new Error('Failed to update status');
+            const json = await res.json();
+            setData({
+                ...data,
+                customer: {
+                    ...data.customer,
+                    contactStatus: json.contactStatus
+                },
+                sendingMethods: json.sendingMethods
+            });
+        } catch (err) {
+            Logger.error('Failed to update contact status', { error: err });
+        } finally {
+            setIsUpdatingStatus(false);
+        }
+    }, [id, token, currentAccount?.id, data]);
+
     if (isLoading) return <div className="p-8 text-center text-gray-500">Loading customer profile...</div>;
     if (!data) return <div className="p-8 text-center text-red-500">Customer not found</div>;
 
-    const { customer, orders, automations, activity } = data;
+    const { customer, orders, automations, activity, sendingMethods, inboxConversations = [] } = data;
+    const statusBadge = getContactStatusBadge(customer.contactStatus);
     const currency = currentAccount?.currency || 'USD';
     const fmt = (amount: number) => formatCurrency(amount, currency);
 
@@ -145,9 +223,12 @@ export function CustomerDetailsPage() {
                         </div>
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">{customer.firstName} {customer.lastName}</h1>
+                            <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
+                                {statusBadge.label}
+                            </span>
                             <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
                                 <span className="flex items-center gap-1"><Mail size={14} /> {customer.email}</span>
-                                <span className="flex items-center gap-1"><Calendar size={14} /> Joined {new Date(customer.dateCreated).toLocaleDateString()}</span>
+                                <span className="flex items-center gap-1"><Calendar size={14} /> Joined {formatDateSafe(customer.dateCreated, '-')}</span>
                             </div>
                         </div>
                     </div>
@@ -180,14 +261,14 @@ export function CustomerDetailsPage() {
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                     <p className="text-sm font-medium text-gray-500">Last Active</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{activity[0] ? new Date(activity[0].lastActiveAt).toLocaleDateString() : 'N/A'}</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{activity[0] ? formatDateSafe(activity[0].lastActiveAt) : 'N/A'}</p>
                 </div>
             </div>
 
             {/* Content Tabs */}
             <div className="bg-white rounded-xl shadow-xs border border-gray-200 min-h-[500px]">
                 <div className="border-b border-gray-200 px-6 flex gap-6">
-                    {(['overview', 'orders', 'automations', 'activity'] as const).map(tab => (
+                    {(['overview', 'orders', 'automations', 'activity', 'inbox'] as const).map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -212,6 +293,27 @@ export function CustomerDetailsPage() {
                                     <div>
                                         <dt className="text-sm text-gray-500 mb-1">Phone</dt>
                                         <dd className="font-medium">{customer.rawData?.billing?.phone || 'N/A'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-sm text-gray-500 mb-1">Contact Status</dt>
+                                        <dd>
+                                            <select
+                                                value={customer.contactStatus || 'SUBSCRIBED'}
+                                                onChange={(event) => updateContactStatus(event.target.value as (typeof CONTACT_STATUS_OPTIONS)[number]['value'])}
+                                                disabled={isUpdatingStatus}
+                                                className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 focus:border-blue-500 focus:outline-none"
+                                            >
+                                                {CONTACT_STATUS_OPTIONS.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-sm text-gray-500 mb-1">Sending Methods</dt>
+                                        <dd className="font-medium text-sm text-gray-700">
+                                            Marketing: {sendingMethods?.marketing ? 'Allowed' : 'Blocked'} • Transactional: {sendingMethods?.transactional ? 'Allowed' : 'Blocked'}
+                                        </dd>
                                     </div>
                                 </dl>
                             </div>
@@ -247,7 +349,7 @@ export function CustomerDetailsPage() {
                                 {orders.map(order => (
                                     <tr key={order.id} className="hover:bg-gray-50">
                                         <td className="py-4 font-medium text-blue-600">#{order.number}</td>
-                                        <td className="py-4 text-gray-600">{new Date(order.dateCreated).toLocaleDateString()}</td>
+                                        <td className="py-4 text-gray-600">{formatDateSafe(order.dateCreated, '-')}</td>
                                         <td className="py-4">
                                             <span className={`px-2 py-1 rounded text-xs font-semibold uppercase ${order.status === 'completed' ? 'bg-green-100 text-green-700' :
                                                 order.status === 'processing' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
@@ -292,7 +394,7 @@ export function CustomerDetailsPage() {
                                                     {auto.status}
                                                 </span>
                                             </td>
-                                            <td className="py-4 text-gray-600">{new Date(auto.createdAt).toLocaleString()}</td>
+                                            <td className="py-4 text-gray-600">{formatDateTimeSafe(auto.createdAt, '-')}</td>
                                         </tr>
                                     ))}
                                     {automations.length === 0 && (
@@ -314,8 +416,8 @@ export function CustomerDetailsPage() {
                                         </div>
                                         <div className="flex-1 pb-4">
                                             <div className="flex justify-between">
-                                                <h4 className="font-semibold text-gray-900">Session on {new Date(session.lastActiveAt).toLocaleDateString()}</h4>
-                                                <span className="text-xs text-gray-400">{new Date(session.lastActiveAt).toLocaleTimeString()}</span>
+                                                <h4 className="font-semibold text-gray-900">Session on {formatDateSafe(session.lastActiveAt, '-')}</h4>
+                                                <span className="text-xs text-gray-400">{formatTimeSafe(session.lastActiveAt, '-')}</span>
                                             </div>
                                             <p className="text-sm text-gray-500 mb-2">
                                                 Referrer: {session.referrer || 'Direct'} • Device: {session.deviceType || 'Unknown'}
@@ -323,7 +425,7 @@ export function CustomerDetailsPage() {
                                             <div className="bg-gray-50 rounded-lg p-3 space-y-2">
                                                 {session.events.map((event, idx: number) => (
                                                     <div key={idx} className="text-sm flex gap-2 items-start">
-                                                        <span className="text-gray-400 min-w-[60px]">{new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        <span className="text-gray-400 min-w-[60px]">{toValidDate(event.createdAt)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? '--:--'}</span>
                                                         <span className={
                                                             event.type === 'purchase' ? 'text-green-600 font-medium' :
                                                                 event.type === 'add_to_cart' ? 'text-blue-600 font-medium' :
@@ -341,6 +443,30 @@ export function CustomerDetailsPage() {
                                     <div className="text-center text-gray-400 py-8">No live activity recorded</div>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'inbox' && (
+                        <div className="space-y-4">
+                            {inboxConversations.length === 0 && (
+                                <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-gray-500">
+                                    No inbox emails found for this customer yet.
+                                </div>
+                            )}
+                            {inboxConversations.map((conversation) => (
+                                <button
+                                    key={conversation.id}
+                                    onClick={() => navigate(`/inbox?conversationId=${conversation.id}`)}
+                                    className="w-full rounded-lg border border-gray-200 p-4 text-left transition-colors hover:bg-gray-50"
+                                >
+                                    <div className="flex items-center justify-between gap-4">
+                                        <p className="font-medium text-gray-900">{conversation.title || 'Email conversation'}</p>
+                                        <span className="text-xs uppercase text-gray-500">{conversation.status}</span>
+                                    </div>
+                                    <p className="mt-1 text-xs text-gray-500">Updated {formatDateTimeSafe(conversation.updatedAt, '-')}</p>
+                                    <p className="mt-2 text-sm text-gray-700 line-clamp-2">{conversation.lastInboundMessage?.content || 'No inbound message preview available'}</p>
+                                </button>
+                            ))}
                         </div>
                     )}
                 </div>

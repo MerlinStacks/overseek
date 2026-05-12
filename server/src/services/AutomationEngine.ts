@@ -344,13 +344,38 @@ export class AutomationEngine {
             }
         }
 
+        const orderItems = data.line_items || data?.cart?.items || data?.order?.line_items || [];
+
         if (config.requiredProductIds?.length > 0) {
-            const orderItems = data.line_items || data?.cart?.items || data?.order?.line_items || [];
             const hasProduct = orderItems.some((item: any) => {
                 const productId = String(item.product_id ?? item.id ?? '');
                 return config.requiredProductIds.includes(productId);
             });
             if (!hasProduct) return false;
+        }
+
+        if (config.filterByProduct && config.filterProductId) {
+            const targetProductId = String(config.filterProductId);
+            const hasConfiguredProduct = orderItems.some((item: any) => {
+                const productId = String(item.product_id ?? item.productId ?? item.id ?? '');
+                return productId === targetProductId;
+            });
+
+            if (!hasConfiguredProduct) {
+                return false;
+            }
+        }
+
+        if (config.filterByCategory && config.filterCategoryId) {
+            const targetCategoryId = String(config.filterCategoryId);
+            const hasConfiguredCategory = orderItems.some((item: any) => {
+                const categories = Array.isArray(item?.categories) ? item.categories : [];
+                return categories.some((category: any) => String(category?.id ?? category?.term_id ?? '') === targetCategoryId);
+            });
+
+            if (!hasConfiguredCategory) {
+                return false;
+            }
         }
 
         if (config.tagName && data?.tagName && String(config.tagName) !== String(data.tagName)) {

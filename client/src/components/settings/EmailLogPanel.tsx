@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail, AlertTriangle, ShieldAlert, Clock3 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
 interface EmailLog {
@@ -44,14 +45,27 @@ export function EmailLogPanel() {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [offset, setOffset] = useState(0);
     const [busyLogId, setBusyLogId] = useState<string | null>(null);
+    const location = useLocation();
+    const navigate = useNavigate();
     const limit = 20;
+
+    const searchParams = new URLSearchParams(location.search);
+    const statusFilter = searchParams.get('status') || '';
+    const sourceFilter = searchParams.get('source') || '';
 
     const fetchLogs = useCallback(async () => {
         if (!currentAccount || !token) return;
         setIsLoading(true);
 
         try {
-            const res = await fetch(`/api/email/logs?limit=${limit}&offset=${offset}`, {
+            const params = new URLSearchParams({
+                limit: String(limit),
+                offset: String(offset)
+            });
+            if (statusFilter) params.set('status', statusFilter);
+            if (sourceFilter) params.set('source', sourceFilter);
+
+            const res = await fetch(`/api/email/logs?${params.toString()}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id
@@ -68,11 +82,19 @@ export function EmailLogPanel() {
         } finally {
             setIsLoading(false);
         }
-    }, [currentAccount, offset, token]);
+    }, [currentAccount, offset, sourceFilter, statusFilter, token]);
+
+    useEffect(() => {
+        setOffset(0);
+    }, [statusFilter, sourceFilter]);
 
     useEffect(() => {
         fetchLogs();
     }, [fetchLogs]);
+
+    const clearFilters = () => {
+        navigate('/emails/logs');
+    };
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -100,7 +122,15 @@ export function EmailLogPanel() {
         if (status === 'COMPLAINED') {
             return <ShieldAlert size={18} className="text-orange-600 flex-shrink-0" />;
         }
+        if (status === 'PENDING_RETRY') {
+            return <Clock3 size={18} className="text-blue-500 flex-shrink-0" />;
+        }
         return <XCircle size={18} className="text-red-500 flex-shrink-0" />;
+    };
+
+    const getStatusLabel = (status: EmailLog['status']) => {
+        if (status === 'PENDING_RETRY') return 'QUEUED';
+        return status;
     };
 
     const markDeliveryEvent = async (logId: string, eventType: 'BOUNCE' | 'COMPLAINT') => {
@@ -133,6 +163,7 @@ export function EmailLogPanel() {
 
     const totalPages = Math.ceil(total / limit);
     const currentPage = Math.floor(offset / limit) + 1;
+    const queuedCount = logs.filter((log) => log.status === 'PENDING_RETRY').length;
 
     if (isLoading && logs.length === 0) {
         return (
@@ -153,15 +184,35 @@ export function EmailLogPanel() {
                     <Mail size={18} className="text-gray-500" />
                     <h3 className="font-medium text-gray-900">Email Logs</h3>
                     <span className="text-sm text-gray-500">({total} total)</span>
+                    {(statusFilter || sourceFilter) && (
+                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                            Filtered
+                        </span>
+                    )}
+                    {queuedCount > 0 && (
+                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            {queuedCount} queued
+                        </span>
+                    )}
                 </div>
-                <button
-                    onClick={fetchLogs}
-                    disabled={isLoading}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Refresh"
-                >
-                    <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-                </button>
+                <div className="flex items-center gap-2">
+                    {(statusFilter || sourceFilter) && (
+                        <button
+                            onClick={clearFilters}
+                            className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                        >
+                            Clear filters
+                        </button>
+                    )}
+                    <button
+                        onClick={fetchLogs}
+                        disabled={isLoading}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Refresh"
+                    >
+                        <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                    </button>
+                </div>
             </div>
 
             {/* Logs Table */}
@@ -194,6 +245,11 @@ export function EmailLogPanel() {
                                                 {getSourceLabel(log.source)}
                                             </span>
                                         )}
+                                        {log.status === 'PENDING_RETRY' && (
+                                            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
+                                                Queued
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-sm text-gray-500 truncate">{log.subject}</p>
                                 </div>
@@ -223,8 +279,8 @@ export function EmailLogPanel() {
                                         </div>
                                         <div>
                                             <span className="text-gray-500">Status:</span>
-                                            <p className={`font-medium ${log.status === 'SUCCESS' || log.status === 'RETRIED' ? 'text-green-600' : log.status === 'BOUNCED' ? 'text-amber-600' : log.status === 'COMPLAINED' ? 'text-orange-600' : 'text-red-600'}`}>
-                                                {log.status}
+                                            <p className={`font-medium ${log.status === 'SUCCESS' || log.status === 'RETRIED' ? 'text-green-600' : log.status === 'BOUNCED' ? 'text-amber-600' : log.status === 'COMPLAINED' ? 'text-orange-600' : log.status === 'PENDING_RETRY' ? 'text-blue-600' : 'text-red-600'}`}>
+                                                {getStatusLabel(log.status)}
                                             </p>
                                         </div>
                                         {log.trackingEvents && log.trackingEvents.length > 0 && (
@@ -255,7 +311,7 @@ export function EmailLogPanel() {
                                         {log.errorMessage && (
                                             <div className="col-span-2">
                                                 <span className="text-gray-500">Error:</span>
-                                                <div className="mt-1 p-2 bg-red-50 border border-red-200 rounded text-red-700">
+                                                <div className={`mt-1 p-2 rounded border ${log.status === 'PENDING_RETRY' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                                                     {log.errorCode && (
                                                         <span className="font-mono text-xs mr-2">[{log.errorCode}]</span>
                                                     )}

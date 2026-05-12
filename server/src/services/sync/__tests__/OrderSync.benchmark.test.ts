@@ -80,8 +80,8 @@ describe('OrderSync Benchmark', () => {
         // 4. Verify two-step approach: $queryRaw for counts, updateMany per customer batch
         expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
 
-        // updateMany called once per customer (batched in groups of 50)
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(customerCount);
+        // updateMany is called once to reset all customers, plus once per counted customer
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(customerCount + 1);
 
     });
 });

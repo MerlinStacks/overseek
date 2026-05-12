@@ -51,6 +51,9 @@ const CAPIHealthPage = lazy(() => import('./pages/CAPIHealthPage').then(m => ({ 
 const SeoPage = lazy(() => import('./pages/SeoPage').then(m => ({ default: m.SeoPage })));
 const SeoContentPage = lazy(() => import('./pages/SeoContentPage').then(m => ({ default: m.SeoContentPage })));
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage').then(m => ({ default: m.BroadcastsPage })));
+const EmailDashboardPage = lazy(() => import('./pages/EmailDashboardPage').then(m => ({ default: m.EmailDashboardPage })));
+const EmailSettingsPage = lazy(() => import('./pages/EmailSettingsPage').then(m => ({ default: m.EmailSettingsPage })));
+const EmailLogsPage = lazy(() => import('./pages/EmailLogsPage').then(m => ({ default: m.EmailLogsPage })));
 const HelpCenterHome = lazy(() => import('./pages/HelpCenter/HelpCenterHome').then(m => ({ default: m.HelpCenterHome })));
 const HelpArticle = lazy(() => import('./pages/HelpCenter/HelpArticle').then(m => ({ default: m.HelpArticle })));
 const LiveAnalyticsPage = lazy(() => import('./pages/LiveAnalyticsPage').then(m => ({ default: m.LiveAnalyticsPage })));
@@ -247,6 +250,9 @@ function App() {
                                                 <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path="/seo/content" element={<AccountGuard><SeoContentPage /></AccountGuard>} />
                                                 <Route path="/broadcasts" element={<AccountGuard><BroadcastsPage /></AccountGuard>} />
+                                                <Route path="/emails" element={<AccountGuard><EmailDashboardPage /></AccountGuard>} />
+                                                <Route path="/emails/settings" element={<AccountGuard><EmailSettingsPage /></AccountGuard>} />
+                                                <Route path="/emails/logs" element={<AccountGuard><EmailLogsPage /></AccountGuard>} />
                                                 <Route path="/flows" element={<AccountGuard><FlowsPage /></AccountGuard>} />
                                                 <Route path="/inbox" element={<AccountGuard><InboxPage /></AccountGuard>} />
                                                 <Route path="/live" element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />

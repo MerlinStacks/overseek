@@ -19,6 +19,29 @@ interface EventItem {
     icon: string;
 }
 
+const EVENT_ICON_EMOJIS: Record<string, string> = {
+    Cart: '🛒',
+    Card: '💳',
+    Check: '✅',
+    Sparkles: '✨',
+    Refresh: '🔄',
+    Eye: '👁️',
+    Star: '⭐',
+    User: '👤',
+    Clock: '⏰',
+    Hand: '✋',
+    Tag: '🏷️',
+    TagOff: '🏷️',
+    Alert: '⚠️',
+    Cake: '🎂',
+    Repeat: '🔁',
+    Ban: '⛔',
+    MailOpen: '📬',
+    Link: '🔗',
+    Mute: '🔕',
+    Webhook: '🪝',
+};
+
 const EVENTS_BY_CATEGORY: Record<string, { subcategory?: string; events: EventItem[] }[]> = {
     woocommerce: [
         {
@@ -183,19 +206,23 @@ export const EventSelectorModal: React.FC<EventSelectorModalProps> = ({
                                     </h3>
                                 )}
                                 <div className="flex flex-wrap gap-2">
-                                    {group.events.map((event) => (
-                                        <button
-                                            key={event.id}
-                                            onClick={() => setSelectedEvent(event)}
-                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-full transition-all ${selectedEvent?.id === event.id
-                                                ? 'bg-blue-50 border-blue-400 text-blue-700 ring-2 ring-blue-200'
-                                                : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                        >
-                                            <span>{event.icon}</span>
-                                            {event.label}
-                                        </button>
-                                    ))}
+                                    {group.events.map((event) => {
+                                        const emoji = EVENT_ICON_EMOJIS[event.icon] ?? '•';
+
+                                        return (
+                                            <button
+                                                key={event.id}
+                                                onClick={() => setSelectedEvent(event)}
+                                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-full transition-all ${selectedEvent?.id === event.id
+                                                    ? 'bg-blue-50 border-blue-400 text-blue-700 ring-2 ring-blue-200'
+                                                    : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                                                    }`}
+                                            >
+                                                <span aria-hidden="true">{emoji}</span>
+                                                {event.label}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         ))}

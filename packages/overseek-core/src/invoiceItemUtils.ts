@@ -51,6 +51,7 @@ const isExcludedInvoiceMetaKey = (key: string) =>
 
 interface InvoiceMetaEntry {
   key?: string;
+  name?: string;
   value?: unknown;
   display_key?: string;
   display_value?: unknown;
@@ -100,18 +101,25 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
 
   const customMeta =
     item.meta_data?.filter((entry) => {
-      const key = entry.key || '';
-      if (isExcludedInvoiceMetaKey(key)) return false;
+      const key = String(entry.key || entry.name || '');
+      if (key && isExcludedInvoiceMetaKey(key)) return false;
       if (key.startsWith('pa_')) return false;
-      if (!entry.display_key && !entry.display_value) return false;
+
+      const rawValue = entry.display_value ?? entry.value;
+      const value = stringifyInvoiceValue(rawValue).trim();
+      if (!value) return false;
+
+      const label = String(entry.display_key || key).trim();
+      if (!label) return false;
       return true;
     }) || [];
 
   customMeta.forEach((entry) => {
-    const rawValue = entry.display_value || entry.value;
+    const rawValue = entry.display_value ?? entry.value;
     const value = stringifyInvoiceValue(rawValue);
     if (value.length > 0) {
-      const label = entry.display_key || (entry.key || '').replace(/_/g, ' ');
+      const baseLabel = entry.display_key || entry.key || entry.name || '';
+      const label = String(baseLabel).replace(/_/g, ' ');
       addMeta(label, value);
     }
   });

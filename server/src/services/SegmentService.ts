@@ -76,17 +76,36 @@ export class SegmentService {
     /**
      * previewCustomers - Returns a list of customers matching the segment criteria
      */
-    async previewCustomers(accountId: string, segmentId: string) {
+    async previewCustomers(accountId: string, segmentId: string, page = 1, pageSize = 25) {
         const segment = await this.getSegment(segmentId, accountId);
         if (!segment) throw new Error('Segment not found');
 
         const criteria = segment.criteria as unknown as SegmentCriteria;
         const whereClause = this.buildWhereClause(accountId, criteria);
 
-        return prisma.wooCustomer.findMany({
-            where: whereClause,
-            take: 50 // Preview limit
-        });
+        const safePage = Math.max(1, page);
+        const safePageSize = Math.min(100, Math.max(1, pageSize));
+        const skip = (safePage - 1) * safePageSize;
+
+        const [customers, total] = await Promise.all([
+            prisma.wooCustomer.findMany({
+                where: whereClause,
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: safePageSize
+            }),
+            prisma.wooCustomer.count({ where: whereClause })
+        ]);
+
+        return {
+            customers,
+            pagination: {
+                page: safePage,
+                pageSize: safePageSize,
+                total,
+                totalPages: Math.max(1, Math.ceil(total / safePageSize))
+            }
+        };
     }
 
     /**

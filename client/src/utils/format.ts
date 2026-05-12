@@ -2,14 +2,21 @@ import { formatRelativeTime } from './relativeTime';
 
 const DEFAULT_LOCALE = 'en-AU';
 
+function parseDate(value?: string | Date | null): Date | null {
+    if (!value) return null;
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 /**
  * Format a date string into a date-only format.
  * @param dateString - ISO date string to format
  * @returns Formatted date string (e.g., "Jan 15, 2026")
  */
 export function formatDate(dateString: string): string {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString(DEFAULT_LOCALE, {
+    const parsed = parseDate(dateString);
+    if (!parsed) return '-';
+    return parsed.toLocaleDateString(DEFAULT_LOCALE, {
         month: 'short',
         day: 'numeric',
         year: 'numeric'
@@ -22,8 +29,9 @@ export function formatDate(dateString: string): string {
  * @returns Formatted time string (e.g., "3:30 pm")
  */
 export function formatTime(dateString: string): string {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleTimeString(DEFAULT_LOCALE, {
+    const parsed = parseDate(dateString);
+    if (!parsed) return '';
+    return parsed.toLocaleTimeString(DEFAULT_LOCALE, {
         hour: 'numeric',
         minute: '2-digit'
     });
@@ -35,14 +43,34 @@ export function formatTime(dateString: string): string {
  * @returns Formatted date string (e.g., "Jan 15, 2026, 3:30 pm")
  */
 export function formatDateTime(dateString: string): string {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString(DEFAULT_LOCALE, {
+    const parsed = parseDate(dateString);
+    if (!parsed) return '-';
+    return parsed.toLocaleDateString(DEFAULT_LOCALE, {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
         hour: 'numeric',
         minute: 'numeric'
     });
+}
+
+export function formatDateSafe(value?: string | Date | null, fallback = '-'): string {
+    const parsed = parseDate(value);
+    return parsed ? parsed.toLocaleDateString(DEFAULT_LOCALE) : fallback;
+}
+
+export function formatTimeSafe(value?: string | Date | null, fallback = ''): string {
+    const parsed = parseDate(value);
+    return parsed ? parsed.toLocaleTimeString(DEFAULT_LOCALE) : fallback;
+}
+
+export function formatDateTimeSafe(value?: string | Date | null, fallback = '-'): string {
+    const parsed = parseDate(value);
+    return parsed ? parsed.toLocaleString(DEFAULT_LOCALE) : fallback;
+}
+
+export function toValidDate(value?: string | Date | null): Date | null {
+    return parseDate(value);
 }
 
 /**

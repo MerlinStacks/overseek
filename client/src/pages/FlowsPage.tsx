@@ -8,6 +8,7 @@ import type { Edge, Node } from '@xyflow/react';
 import { AutomationsList } from '../components/marketing/AutomationsList';
 import { FlowBuilder } from '../components/marketing/FlowBuilder';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { Toast, ToastType } from '../components/ui/Toast';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
 import { Logger } from '../utils/logger';
@@ -145,6 +146,10 @@ export function FlowsPage() {
     const [analytics, setAnalytics] = useState<AutomationAnalytics | null>(null);
     const [recentEnrollments, setRecentEnrollments] = useState<EnrollmentRow[]>([]);
     const [recentRunEvents, setRecentRunEvents] = useState<RunEventRow[]>([]);
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastType, setToastType] = useState<ToastType>('error');
 
     const handleEditFlow = async (id: string, name: string) => {
         setEditingItem({ id, name });
@@ -271,6 +276,41 @@ export function FlowsPage() {
         }
     };
 
+    const handleToggleFlowStatus = async () => {
+        if (!editingItem || !currentAccount || !editingFlowData || typeof editingFlowData.isActive !== 'boolean') return;
+
+        const nextIsActive = !editingFlowData.isActive;
+        setIsUpdatingStatus(true);
+
+        try {
+            const res = await fetch(`/api/marketing/automations/${editingItem.id}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({ isActive: nextIsActive })
+            });
+
+            if (!res.ok) {
+                throw new Error('Failed to update flow status');
+            }
+
+            setEditingFlowData((prev) => prev ? { ...prev, isActive: nextIsActive } : prev);
+            setToastMessage(`Flow ${nextIsActive ? 'enabled' : 'disabled'}`);
+            setToastType('success');
+            setToastVisible(true);
+        } catch (error) {
+            Logger.error('Failed to update flow status', { error });
+            setToastMessage('Failed to update flow status');
+            setToastType('error');
+            setToastVisible(true);
+        } finally {
+            setIsUpdatingStatus(false);
+        }
+    };
+
     if (isEditing) {
         return (
             <div className="absolute inset-0 top-16 z-50 -m-6 h-[calc(100vh-64px)] bg-white">
@@ -290,6 +330,17 @@ export function FlowsPage() {
                                 )}
                             </div>
                         </div>
+                        <button
+                            onClick={handleToggleFlowStatus}
+                            disabled={isUpdatingStatus || typeof editingFlowData?.isActive !== 'boolean'}
+                            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${editingFlowData?.isActive
+                                ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${isUpdatingStatus ? 'cursor-not-allowed opacity-60' : ''}`}
+                        >
+                            {isUpdatingStatus
+                                ? 'Updating...'
+                                : (editingFlowData?.isActive ? 'Enabled' : 'Disabled')}
+                        </button>
                     </div>
 
                     {analytics && (
@@ -397,10 +448,12 @@ export function FlowsPage() {
                                 initialFlow={editingFlowData?.flowDefinition}
                                 onSave={handleSaveFlow}
                                 onCancel={handleCloseEditor}
+                                isSaveDisabled={isUpdatingStatus}
                             />
                         </ErrorBoundary>
                     </div>
                 </div>
+                <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
             </div>
         );
     }
@@ -415,6 +468,7 @@ export function FlowsPage() {
             <ErrorBoundary>
                 <AutomationsList onEdit={handleEditFlow} />
             </ErrorBoundary>
+            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
         </div>
     );
 }

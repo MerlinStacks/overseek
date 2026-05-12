@@ -43,8 +43,9 @@ export class MarketingService {
 
     async createCampaign(accountId: string, data: Partial<MarketingCampaign>) {
         const segmentId = data.segmentId && data.segmentId.trim() !== '' ? data.segmentId : undefined;
+        const listId = (data as any).listId && (data as any).listId.trim() !== '' ? (data as any).listId : undefined;
 
-        Logger.info(`Creating campaign`, { accountId, segmentId: segmentId || 'ALL' });
+        Logger.info(`Creating campaign`, { accountId, segmentId: segmentId || 'ALL', listId: listId || 'NONE' });
 
         return prisma.marketingCampaign.create({
             data: {
@@ -54,7 +55,8 @@ export class MarketingService {
                 content: data.content || '',
                 status: 'DRAFT',
                 scheduledAt: data.scheduledAt,
-                segmentId: segmentId
+                segmentId: segmentId,
+                listId
             }
         });
     }
@@ -90,7 +92,15 @@ export class MarketingService {
 
         let totalRecipients = 0;
 
-        if (campaign.segmentId) {
+        if ((campaign as any).listId) {
+            totalRecipients = await prisma.emailListMember.count({
+                where: {
+                    accountId,
+                    listId: (campaign as any).listId,
+                    isSubscribed: true
+                }
+            });
+        } else if (campaign.segmentId) {
             totalRecipients = await this.segmentService.getSegmentCount(accountId, campaign.segmentId);
         } else {
             totalRecipients = await prisma.wooCustomer.count({
@@ -98,7 +108,12 @@ export class MarketingService {
             });
         }
 
-        Logger.info(`Sending Campaign`, { campaignId, recipientCount: totalRecipients, segmentId: campaign.segmentId || 'ALL' });
+        Logger.info(`Sending Campaign`, {
+            campaignId,
+            recipientCount: totalRecipients,
+            segmentId: campaign.segmentId || 'ALL',
+            listId: (campaign as any).listId || 'NONE'
+        });
 
         await prisma.marketingCampaign.update({
             where: { id: campaignId },
@@ -149,7 +164,29 @@ export class MarketingService {
         };
 
         try {
-            if (campaign.segmentId) {
+            if ((campaign as any).listId) {
+                let cursor: string | undefined;
+                while (true) {
+                    const memberships = await prisma.emailListMember.findMany({
+                        where: {
+                            accountId,
+                            listId: (campaign as any).listId,
+                            isSubscribed: true,
+                            email: { not: '' }
+                        },
+                        select: { id: true, email: true },
+                        orderBy: { id: 'asc' },
+                        take: BATCH_SIZE,
+                        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+                    });
+
+                    if (memberships.length === 0) break;
+                    await sendToBatch(memberships.map((m) => ({ id: m.id, email: m.email })));
+
+                    if (memberships.length < BATCH_SIZE) break;
+                    cursor = memberships[memberships.length - 1].id;
+                }
+            } else if (campaign.segmentId) {
                 for await (const batch of this.segmentService.iterateCustomersInSegment(accountId, campaign.segmentId, BATCH_SIZE)) {
                     await sendToBatch(batch);
                 }
@@ -284,6 +321,25 @@ export class MarketingService {
 
     async deleteAutomation(id: string, accountId: string) {
         return prisma.marketingAutomation.deleteMany({ where: { id, accountId } });
+    }
+
+    async setAutomationEnabled(id: string, accountId: string, isActive: boolean) {
+        const automation = await prisma.marketingAutomation.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+
+        if (!automation) {
+            throw new Error('Automation not found');
+        }
+
+        return prisma.marketingAutomation.update({
+            where: { id },
+            data: {
+                isActive,
+                status: isActive ? 'ACTIVE' : 'PAUSED'
+            }
+        });
     }
 
     async getAutomationAnalytics(id: string, accountId: string) {

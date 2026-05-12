@@ -12,7 +12,8 @@ vi.mock('../../utils/prisma', () => ({
             delete: vi.fn()
         },
         wooCustomer: {
-            updateMany: vi.fn()
+            updateMany: vi.fn(),
+            findMany: vi.fn()
         },
         syncState: {
             findUnique: vi.fn(),
@@ -48,7 +49,8 @@ vi.mock('../woo', () => ({
 vi.mock('../search/IndexingService', () => ({
     IndexingService: {
         indexOrder: vi.fn(),
-        deleteOrder: vi.fn()
+        deleteOrder: vi.fn(),
+        bulkIndexCustomers: vi.fn()
     }
 }));
 
@@ -91,12 +93,13 @@ describe('OrderSync Optimization', () => {
 
         // Step 1: $queryRaw returns aggregated counts
         const mockCounts = [
-            { woo_id: 101, count: 3 },
-            { woo_id: 202, count: 5 },
+            { woo_id: 101, count: 3, total_spent: 120.5 },
+            { woo_id: 202, count: 5, total_spent: 250.0 },
         ];
         (prisma.$queryRaw as any).mockResolvedValue(mockCounts);
 
         (prisma.wooCustomer.updateMany as any).mockResolvedValue({ count: 1 });
+        (prisma.wooCustomer.findMany as any).mockResolvedValue([]);
 
         await orderSync.testRecalculate(accountId);
 
@@ -104,14 +107,18 @@ describe('OrderSync Optimization', () => {
         expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
 
         // Verify Step 2: Individual updateMany calls (no $transaction)
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(2);
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(3);
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
+            where: { accountId },
+            data: { ordersCount: 0, totalSpent: 0 }
+        });
         expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
             where: { accountId, wooId: 101 },
-            data: { ordersCount: 3 }
+            data: { ordersCount: 3, totalSpent: 120.5 }
         });
         expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
             where: { accountId, wooId: 202 },
-            data: { ordersCount: 5 }
+            data: { ordersCount: 5, totalSpent: 250 }
         });
     });
 
@@ -122,7 +129,11 @@ describe('OrderSync Optimization', () => {
         await orderSync.testRecalculate(accountId);
 
         expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-        expect(prisma.wooCustomer.updateMany).not.toHaveBeenCalled();
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(1);
+        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
+            where: { accountId },
+            data: { ordersCount: 0, totalSpent: 0 }
+        });
     });
 
     it('should not break sync if recalculation fails', async () => {

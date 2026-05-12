@@ -59,9 +59,10 @@ const getId = () => `node_${Date.now()}_${id++}`;
 interface ControlsProps {
     onSave: (nodes: Node[], edges: Edge[]) => void;
     onCancel: () => void;
+    isSaveDisabled?: boolean;
 }
 
-const FlowControls: React.FC<ControlsProps> = ({ onSave, onCancel }) => {
+const FlowControls: React.FC<ControlsProps> = ({ onSave, onCancel, isSaveDisabled = false }) => {
     const { getNodes, getEdges } = useReactFlow();
 
     return (
@@ -73,8 +74,9 @@ const FlowControls: React.FC<ControlsProps> = ({ onSave, onCancel }) => {
                 Cancel
             </button>
             <button
-                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700"
+                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => onSave(getNodes(), getEdges())}
+                disabled={isSaveDisabled}
             >
                 Save Flow
             </button>
@@ -86,9 +88,10 @@ interface Props {
     initialFlow?: { nodes: Node[], edges: Edge[] } | null;
     onSave: (flow: { nodes: Node[], edges: Edge[] }) => void;
     onCancel: () => void;
+    isSaveDisabled?: boolean;
 }
 
-const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) => {
+const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, isSaveDisabled = false }) => {
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -401,6 +404,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel }) 
                         <FlowControls
                             onSave={(n, e) => onSave({ nodes: n, edges: e })}
                             onCancel={onCancel}
+                            isSaveDisabled={isSaveDisabled}
                         />
                     </Panel>
                 </ReactFlow>

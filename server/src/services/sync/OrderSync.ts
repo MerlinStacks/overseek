@@ -360,15 +360,21 @@ export class OrderSync extends BaseSync {
 
         try {
             // Step 1: Read counts (no locks held)
-            const counts = await prisma.$queryRaw<Array<{ woo_id: number; count: number }>>`
+            const counts = await prisma.$queryRaw<Array<{ woo_id: number; count: number; total_spent: number }>>`
                 SELECT
                     "wooCustomerId" as woo_id,
-                    COUNT(*)::int as count
+                    COUNT(*)::int as count,
+                    COALESCE(SUM("total"), 0)::float8 as total_spent
                 FROM "WooOrder"
                 WHERE "accountId" = ${accountId}
                   AND "wooCustomerId" IS NOT NULL
                 GROUP BY "wooCustomerId"
             `;
+
+            await prisma.wooCustomer.updateMany({
+                where: { accountId },
+                data: { ordersCount: 0, totalSpent: 0 }
+            });
 
             if (counts.length === 0) {
                 Logger.info('No customer order counts to update', { accountId, syncId });
@@ -384,7 +390,7 @@ export class OrderSync extends BaseSync {
                 await Promise.all(batch.map(c =>
                     prisma.wooCustomer.updateMany({
                         where: { accountId, wooId: c.woo_id },
-                        data: { ordersCount: c.count }
+                        data: { ordersCount: c.count, totalSpent: c.total_spent }
                     }).catch(err => {
                         Logger.warn('Failed to update order count for customer', {
                             accountId, syncId, wooId: c.woo_id, error: err.message
@@ -395,6 +401,37 @@ export class OrderSync extends BaseSync {
             }
 
             Logger.info(`Updated customer order counts: ${updated} customers`, { accountId, syncId });
+
+            const updatedCustomers = await prisma.wooCustomer.findMany({
+                where: {
+                    accountId,
+                    wooId: { in: counts.map(c => c.woo_id) }
+                },
+                select: {
+                    wooId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    totalSpent: true,
+                    ordersCount: true,
+                    createdAt: true
+                }
+            });
+
+            if (updatedCustomers.length > 0) {
+                await IndexingService.bulkIndexCustomers(
+                    accountId,
+                    updatedCustomers.map(customer => ({
+                        id: customer.wooId,
+                        email: customer.email,
+                        first_name: customer.firstName,
+                        last_name: customer.lastName,
+                        total_spent: Number(customer.totalSpent || 0).toString(),
+                        orders_count: customer.ordersCount,
+                        date_created: customer.createdAt?.toISOString()
+                    }))
+                );
+            }
 
         } catch (error: any) {
             // Non-fatal — don't break the sync for a count mismatch

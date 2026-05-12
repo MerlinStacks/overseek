@@ -127,6 +127,22 @@ export async function applyDeliveryEventToLog(params: {
     });
     if (!log) return null;
 
+    if (params.eventType === 'BOUNCE') {
+        const settings = await prisma.emailSettings.findUnique({
+            where: { accountId: params.accountId },
+            select: { bounceTrackingEnabled: true }
+        });
+
+        if (!settings?.bounceTrackingEnabled) {
+            Logger.info('Ignoring bounce delivery event because bounce tracking is disabled', {
+                accountId: params.accountId,
+                emailLogId: log.id,
+                recipientEmail: log.to,
+            });
+            return log;
+        }
+    }
+
     const existingEvent = await prisma.messageTrackingEvent.findFirst({
         where: { emailLogId: log.id, eventType: params.eventType },
         select: { id: true }

@@ -123,6 +123,26 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.patch<{ Params: { id: string }; Body: { isActive: boolean } }>('/automations/:id/status', async (request, reply) => {
+        try {
+            if (typeof request.body?.isActive !== 'boolean') {
+                return reply.code(400).send({ error: 'isActive boolean is required' });
+            }
+
+            return await service.setAutomationEnabled(
+                request.params.id,
+                request.user!.accountId!,
+                request.body.isActive
+            );
+        } catch (e) {
+            const message = (e as Error).message;
+            if (message === 'Automation not found') {
+                return reply.code(404).send({ error: message });
+            }
+            return reply.code(500).send({ error: e });
+        }
+    });
+
     fastify.get<{ Params: { id: string } }>('/automations/:id/analytics', async (request, reply) => {
         try {
             return await service.getAutomationAnalytics(request.params.id, request.user!.accountId!);
@@ -267,6 +287,151 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             return overview;
         } catch (e) {
             Logger.error('Error fetching campaign overview', { error: e });
+            return reply.code(500).send({ error: e });
+        }
+    });
+
+    fastify.get<{ Querystring: { days?: string } }>('/analytics/email-dashboard', async (request, reply) => {
+        try {
+            const days = parseInt(request.query.days || '30', 10);
+            const safeDays = Number.isFinite(days) && days > 0 ? days : 30;
+            const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+            const accountId = request.user!.accountId!;
+
+            const [campaignEvents, emailLogStats, recentUnsubscribes, emailLogsForTrend, unsubscribesForTrend] = await Promise.all([
+                prisma.campaignEvent.groupBy({
+                    by: ['campaignType', 'eventType'],
+                    where: {
+                        accountId,
+                        createdAt: { gte: since }
+                    },
+                    _count: true,
+                    _sum: { revenue: true }
+                }),
+                prisma.emailLog.groupBy({
+                    by: ['status'],
+                    where: {
+                        accountId,
+                        createdAt: { gte: since }
+                    },
+                    _count: true
+                }),
+                prisma.emailUnsubscribe.findMany({
+                    where: { accountId },
+                    orderBy: { createdAt: 'desc' },
+                    take: 10,
+                    select: {
+                        id: true,
+                        email: true,
+                        scope: true,
+                        reason: true,
+                        createdAt: true
+                    }
+                }),
+                prisma.emailLog.findMany({
+                    where: {
+                        accountId,
+                        createdAt: { gte: since }
+                    },
+                    select: {
+                        status: true,
+                        createdAt: true
+                    }
+                }),
+                prisma.emailUnsubscribe.findMany({
+                    where: {
+                        accountId,
+                        createdAt: { gte: since }
+                    },
+                    select: {
+                        createdAt: true
+                    }
+                })
+            ]);
+
+            let flowRevenue = 0;
+            let broadcastRevenue = 0;
+            let flowSends = 0;
+            let broadcastSends = 0;
+            let totalUnsubscribes = 0;
+
+            for (const event of campaignEvents) {
+                if (event.eventType === 'purchase') {
+                    const revenue = event._sum.revenue || 0;
+                    if (event.campaignType === 'automation') flowRevenue += revenue;
+                    if (event.campaignType === 'broadcast') broadcastRevenue += revenue;
+                }
+
+                if (event.eventType === 'send') {
+                    if (event.campaignType === 'automation') flowSends += event._count;
+                    if (event.campaignType === 'broadcast') broadcastSends += event._count;
+                }
+
+                if (event.eventType === 'unsubscribe') {
+                    totalUnsubscribes += event._count;
+                }
+            }
+
+            const sentCount = emailLogStats.reduce((sum, row) => sum + row._count, 0);
+            const failedCount = emailLogStats
+                .filter((row) => row.status === 'FAILED')
+                .reduce((sum, row) => sum + row._count, 0);
+            const bounceRate = sentCount > 0 ? (failedCount / sentCount) * 100 : 0;
+
+            const dayLabels: string[] = [];
+            const trendMap = new Map<string, { sent: number; failed: number; unsubscribes: number }>();
+
+            for (let i = safeDays - 1; i >= 0; i -= 1) {
+                const date = new Date();
+                date.setHours(0, 0, 0, 0);
+                date.setDate(date.getDate() - i);
+                const key = date.toISOString().slice(0, 10);
+                dayLabels.push(key);
+                trendMap.set(key, { sent: 0, failed: 0, unsubscribes: 0 });
+            }
+
+            for (const log of emailLogsForTrend) {
+                const key = log.createdAt.toISOString().slice(0, 10);
+                const bucket = trendMap.get(key);
+                if (!bucket) continue;
+                bucket.sent += 1;
+                if (log.status === 'FAILED') bucket.failed += 1;
+            }
+
+            for (const unsub of unsubscribesForTrend) {
+                const key = unsub.createdAt.toISOString().slice(0, 10);
+                const bucket = trendMap.get(key);
+                if (!bucket) continue;
+                bucket.unsubscribes += 1;
+            }
+
+            const trends = dayLabels.map((date) => {
+                const bucket = trendMap.get(date) || { sent: 0, failed: 0, unsubscribes: 0 };
+                return {
+                    date,
+                    unsubscribes: bucket.unsubscribes,
+                    bounceRate: bucket.sent > 0 ? (bucket.failed / bucket.sent) * 100 : 0
+                };
+            });
+
+            return {
+                days: safeDays,
+                rangeStart: since.toISOString(),
+                kpis: {
+                    flowRevenue,
+                    broadcastRevenue,
+                    flowSends,
+                    broadcastSends,
+                    totalUnsubscribes,
+                    bounceRate,
+                    sentCount,
+                    failedCount
+                },
+                recentUnsubscribes,
+                trends
+            };
+        } catch (e) {
+            Logger.error('Error fetching email dashboard analytics', { error: e });
             return reply.code(500).send({ error: e });
         }
     });
@@ -593,4 +758,3 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 export default marketingRoutes;
-
