@@ -10,6 +10,12 @@ import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
 
+const parseOptionalInt = (value: unknown): number | null => {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
 export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
@@ -45,9 +51,9 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
                     email,
                     phone,
                     currency: currency || 'USD',
-                    leadTimeDefault: leadTimeDefault ? parseInt(leadTimeDefault, 10) : null,
-                    leadTimeMin: leadTimeMin ? parseInt(leadTimeMin, 10) : null,
-                    leadTimeMax: leadTimeMax ? parseInt(leadTimeMax, 10) : null,
+                    leadTimeDefault: parseOptionalInt(leadTimeDefault),
+                    leadTimeMin: parseOptionalInt(leadTimeMin),
+                    leadTimeMax: parseOptionalInt(leadTimeMax),
                     paymentTerms
                 }
             });
@@ -78,9 +84,9 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
                     email,
                     phone,
                     currency: currency || 'USD',
-                    leadTimeDefault: leadTimeDefault ? parseInt(leadTimeDefault, 10) : null,
-                    leadTimeMin: leadTimeMin ? parseInt(leadTimeMin, 10) : null,
-                    leadTimeMax: leadTimeMax ? parseInt(leadTimeMax, 10) : null,
+                    leadTimeDefault: parseOptionalInt(leadTimeDefault),
+                    leadTimeMin: parseOptionalInt(leadTimeMin),
+                    leadTimeMax: parseOptionalInt(leadTimeMax),
                     paymentTerms
                 }
             });
@@ -130,8 +136,8 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
                     name,
                     sku,
                     cost: isNaN(parsedCost) ? 0 : parsedCost,
-                    leadTime: leadTime ? parseInt(leadTime, 10) : null,
-                    moq: moq ? parseInt(moq, 10) : 1
+                    leadTime: parseOptionalInt(leadTime),
+                    moq: parseOptionalInt(moq) ?? 1
                 }
             });
             return item;

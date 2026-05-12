@@ -36,6 +36,46 @@ async function wooRetry(fn: () => Promise<void>, label: string): Promise<void> {
 
 export class PurchaseOrderService {
 
+    private async validateOwnershipForPOInputs(
+        accountId: string,
+        supplierId?: string,
+        items?: Array<{ productId?: string; supplierItemId?: string }>
+    ): Promise<void> {
+        if (supplierId) {
+            const supplier = await prisma.supplier.findFirst({
+                where: { id: supplierId, accountId },
+                select: { id: true }
+            });
+            if (!supplier) throw new Error('Supplier not found');
+        }
+
+        if (!items || items.length === 0) return;
+
+        const productIds = [...new Set(items.map(i => i.productId).filter(Boolean) as string[])];
+        const supplierItemIds = [...new Set(items.map(i => i.supplierItemId).filter(Boolean) as string[])];
+
+        const [validProducts, validSupplierItems] = await Promise.all([
+            productIds.length > 0
+                ? prisma.wooProduct.findMany({ where: { id: { in: productIds }, accountId }, select: { id: true } })
+                : [],
+            supplierItemIds.length > 0
+                ? prisma.supplierItem.findMany({ where: { id: { in: supplierItemIds }, supplier: { accountId } }, select: { id: true } })
+                : []
+        ]);
+
+        const validProductSet = new Set(validProducts.map(p => p.id));
+        const validSupplierItemSet = new Set(validSupplierItems.map(s => s.id));
+
+        const invalidItem = items.find(item =>
+            (item.productId && !validProductSet.has(item.productId)) ||
+            (item.supplierItemId && !validSupplierItemSet.has(item.supplierItemId))
+        );
+
+        if (invalidItem) {
+            throw new Error('One or more PO items are invalid for this account');
+        }
+    }
+
     /**
      * List Purchase Orders for an account with optional status filtering
      */
@@ -91,6 +131,8 @@ export class PurchaseOrderService {
         trackingNumber?: string;
         trackingLink?: string;
     }) {
+        await this.validateOwnershipForPOInputs(accountId, data.supplierId, data.items);
+
         // Calculate totals
         let totalAmount = 0;
         const itemsToCreate = data.items.map(item => {
@@ -161,6 +203,8 @@ export class PurchaseOrderService {
             }
         }
 
+        await this.validateOwnershipForPOInputs(accountId, data.supplierId, data.items);
+
         // Build update payload dynamically
         const updateData: Record<string, unknown> = {};
 
@@ -173,7 +217,7 @@ export class PurchaseOrderService {
         if (data.trackingLink !== undefined) updateData.trackingLink = data.trackingLink || null;
 
         // If items are provided, recalculate totalAmount and replace items
-        if (data.items && data.items.length > 0) {
+        if (data.items !== undefined) {
             let totalAmount = 0;
             const itemsToCreate = data.items.map(item => {
                 const lineTotal = item.quantity * item.unitCost;

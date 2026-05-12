@@ -150,7 +150,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
     }, [editingVariants, onUpdate]);
 
     const handleBomCogsUpdate = useCallback((variantId: number, cogs: number, hasItems: boolean) => {
-        setBomCogsMap(prev => ({ ...prev, [variantId]: cogs }));
+        setBomCogsMap(prev => ({ ...prev, [variantId]: hasItems ? cogs : null }));
         setBomExistsMap(prev => ({ ...prev, [variantId]: hasItems }));
     }, []);
 

@@ -13,7 +13,7 @@ function backgroundReindex(accountId: string, productIds: string[]) {
         (async () => {
             for (const productId of productIds) {
                 try {
-                    const product = await prisma.wooProduct.findUnique({ where: { id: productId }, include: { variations: true } });
+                    const product = await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, include: { variations: true } });
                     if (product) {
                         await IndexingService.indexProduct(accountId, {
                             ...product,
@@ -59,6 +59,9 @@ const purchaseOrderRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             return await poService.createPurchaseOrder(accountId, request.body as any);
         } catch (error: any) {
+            const msg = error?.message || '';
+            if (msg === 'Supplier not found') return reply.code(404).send({ error: msg });
+            if (msg === 'One or more PO items are invalid for this account') return reply.code(400).send({ error: msg });
             Logger.error('Error creating PO', { error });
             return reply.code(500).send({ error: 'Failed to create PO' });
         }
@@ -103,6 +106,9 @@ const purchaseOrderRoutes: FastifyPluginAsync = async (fastify) => {
             }
             return updated;
         } catch (error: any) {
+            const msg = error?.message || '';
+            if (msg === 'Supplier not found') return reply.code(404).send({ error: msg });
+            if (msg === 'One or more PO items are invalid for this account') return reply.code(400).send({ error: msg });
             Logger.error('Error updating PO', { error, poId: id });
             return reply.code(500).send({ error: 'Failed to update PO' });
         }

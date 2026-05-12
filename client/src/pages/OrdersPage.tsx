@@ -5,8 +5,9 @@
  * State management delegated to useOrders hook.
  */
 
+import { useCallback, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, RefreshCw, Search, Tag, TrendingUp, X, Eye, ShoppingBag } from 'lucide-react';
+import { Loader2, RefreshCw, Search, Tag, TrendingUp, X, Eye, ShoppingBag, CheckCircle2, FileText } from 'lucide-react';
 import { formatDate, formatTime, formatCurrency } from '../utils/format';
 import { Pagination } from '../components/ui/Pagination';
 import { OrderPreviewModal } from '../components/orders/OrderPreviewModal';
@@ -16,8 +17,22 @@ import { useOrders } from '../hooks/useOrders';
 import { EmptyState } from '../components/ui/EmptyState';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { RelativeTime } from '../components/ui/RelativeTime';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { generateInvoicePDF } from '../utils/InvoiceGenerator';
+import { Logger } from '../utils/logger';
+
+interface InvoiceTemplate {
+    name: string;
+    layout?: {
+        grid?: unknown[];
+        items?: unknown[];
+    };
+}
 
 export function OrdersPage() {
+    const { token } = useAuth();
+    const toast = useToast();
     const {
         orders, isLoading, isSyncing, searchQuery, setSearchQuery,
         page, setPage, limit, setLimit, totalPages,
@@ -27,8 +42,67 @@ export function OrdersPage() {
         selectedStatus, setSelectedStatus, statusCountsKey,
         picklistStatus, setPicklistStatus, isGeneratingPicklist,
         currentAccount,
-        handleSync, handleGeneratePicklist, removeTag
+        handleSync, handleGeneratePicklist, removeTag, handleMarkOrderCompleted
     } = useOrders();
+    const [busyActionOrderIds, setBusyActionOrderIds] = useState<Record<number, { completing?: boolean; invoicing?: boolean }>>({});
+    const invoiceTemplateRef = useRef<InvoiceTemplate | null | undefined>(undefined);
+
+    const setOrderActionState = useCallback((orderId: number, key: 'completing' | 'invoicing', value: boolean) => {
+        setBusyActionOrderIds(prev => ({
+            ...prev,
+            [orderId]: { ...prev[orderId], [key]: value }
+        }));
+    }, []);
+
+    const fetchLatestInvoiceTemplate = useCallback(async (): Promise<InvoiceTemplate | null> => {
+        if (invoiceTemplateRef.current !== undefined) {
+            return invoiceTemplateRef.current;
+        }
+        const res = await fetch('/api/invoices/templates', {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-Account-ID': currentAccount?.id || ''
+            }
+        });
+        if (!res.ok) throw new Error('Failed to fetch invoice templates');
+        const templates: InvoiceTemplate[] = await res.json();
+        invoiceTemplateRef.current = templates.length > 0 ? templates[0] : null;
+        return invoiceTemplateRef.current;
+    }, [token, currentAccount?.id]);
+
+    const handleQuickComplete = useCallback(async (orderId: number) => {
+        setOrderActionState(orderId, 'completing', true);
+        const ok = await handleMarkOrderCompleted(orderId);
+        if (ok) toast.success(`Order #${orderId} marked as completed`);
+        else toast.error(`Failed to update order #${orderId}`);
+        setOrderActionState(orderId, 'completing', false);
+    }, [handleMarkOrderCompleted, setOrderActionState, toast]);
+
+    const handleQuickInvoice = useCallback(async (orderId: number) => {
+        const order = orders.find((item) => item.id === orderId);
+        if (!order) return;
+        setOrderActionState(orderId, 'invoicing', true);
+        try {
+            const template = await fetchLatestInvoiceTemplate();
+            if (!template) {
+                toast.error('No invoice template found. Please design one first.');
+                return;
+            }
+            await generateInvoicePDF(
+                { ...order, number: String(order.id) },
+                (template.layout?.grid || []) as Array<{ i: string; x: number; y: number; w: number; h: number }>,
+                (template.layout?.items || []) as unknown as Parameters<typeof generateInvoicePDF>[2],
+                template.name
+            );
+            toast.success(`Invoice generated for order #${orderId}`);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            Logger.error('Quick invoice generation failed', { error: message, orderId });
+            toast.error(`Failed to generate invoice for #${orderId}`);
+        } finally {
+            setOrderActionState(orderId, 'invoicing', false);
+        }
+    }, [orders, fetchLatestInvoiceTemplate, setOrderActionState, toast]);
 
     return (
         <div className="space-y-6">
@@ -148,13 +222,14 @@ export function OrdersPage() {
                                 <th className="px-6 py-4">Tags</th>
                                 <th className="px-6 py-4">Attribution</th>
                                 <th className="px-6 py-4">Items</th>
+                                <th className="px-6 py-4">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {isLoading ? (
-                                <TableSkeleton rows={8} columns={8} />
+                                <TableSkeleton rows={8} columns={9} />
                             ) : orders.length === 0 ? (
-                                <tr><td colSpan={8}>
+                                <tr><td colSpan={9}>
                                     <EmptyState
                                         icon={<ShoppingBag size={48} />}
                                         title="No orders found"
@@ -255,6 +330,30 @@ export function OrdersPage() {
                                             >
                                                 {order.line_items.length} item{order.line_items.length !== 1 ? 's' : ''}
                                             </span>
+                                        </td>
+                                        <td className="px-3 md:px-6 py-3 md:py-4">
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleQuickComplete(order.id)}
+                                                    disabled={order.status === 'completed' || busyActionOrderIds[order.id]?.completing}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    title={order.status === 'completed' ? 'Order already completed' : 'Mark as completed'}
+                                                >
+                                                    {busyActionOrderIds[order.id]?.completing ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                                    Complete
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleQuickInvoice(order.id)}
+                                                    disabled={busyActionOrderIds[order.id]?.invoicing}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    title="Generate invoice"
+                                                >
+                                                    {busyActionOrderIds[order.id]?.invoicing ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
+                                                    Invoice
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))

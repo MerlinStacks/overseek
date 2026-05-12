@@ -62,8 +62,8 @@ export class InventoryService {
             attributes?: string;
         }>;
     }> {
-        const product = await prisma.wooProduct.findUnique({
-            where: { id: productId },
+        const product = await prisma.wooProduct.findFirst({
+            where: { id: productId, accountId },
             select: {
                 stockQuantity: true,
                 manageStock: true,

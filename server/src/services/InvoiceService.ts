@@ -692,6 +692,17 @@ export class InvoiceService {
                             renderTableHeader();
                         };
 
+                        const getSafeContentLimitY = () => getPageContentLimitY(currentPageIndex) - tableFooterSafetyBuffer;
+
+                        const ensureSpaceForHeight = (requiredHeight: number) => {
+                            let contentLimitY = getSafeContentLimitY();
+                            if ((tableY + requiredHeight) > contentLimitY) {
+                                moveTableToNextPage();
+                                contentLimitY = getSafeContentLimitY();
+                            }
+                            return contentLimitY;
+                        };
+
                         lineItems.forEach((item: any) => {
                             const itemName = item.name || 'Product';
                             const qty = item.quantity || 1;
@@ -699,24 +710,21 @@ export class InvoiceService {
                             const itemMeta = getInvoiceItemMeta(item).slice(0, 6);
 
                             const titleHeight = Math.max(12, doc.heightOfString(itemName, { width: descWidth - 10 }));
-                            const metaHeight = itemMeta.reduce((acc, meta) => {
+                            const metaLineHeights = itemMeta.map((meta) => {
                                 const metaText = decodeInvoiceEntities(`${meta.label}: ${meta.value}`);
-                                const singleMetaHeight = Math.max(
+                                return Math.max(
                                     10,
                                     doc.heightOfString(metaText, {
                                         width: descWidth - 20,
                                         lineGap: 0
                                     })
                                 );
-                                return acc + singleMetaHeight;
-                            }, 0);
-                            const metaSpacingHeight = itemMeta.length > 0 ? 12 : 0;
-                            const pageBreakSafetyBuffer = 6;
-                            const estimatedRowHeight = titleHeight + metaSpacingHeight + metaHeight + 14 + pageBreakSafetyBuffer;
-                            const contentLimitY = getPageContentLimitY(currentPageIndex) - tableFooterSafetyBuffer;
-                            if ((tableY + estimatedRowHeight) > contentLimitY) {
-                                moveTableToNextPage();
-                            }
+                            });
+                            const metaHeight = metaLineHeights.reduce((acc, h) => acc + h, 0);
+                            const metaSpacingHeight = itemMeta.length > 0 ? 2 : 0;
+                            const rowBottomSpacing = 8;
+                            const requiredRowHeight = titleHeight + metaSpacingHeight + metaHeight + rowBottomSpacing;
+                            ensureSpaceForHeight(requiredRowHeight);
 
                             doc.text(itemName, tableX, tableY, { width: descWidth - 10 });
                             doc.text(String(qty), tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
@@ -729,15 +737,10 @@ export class InvoiceService {
                             if (itemMeta.length > 0) {
                                 tableY += 2;
                                 doc.fontSize(8).fillColor('#64748b');
-                                itemMeta.forEach((meta) => {
+                                itemMeta.forEach((meta, metaIdx) => {
                                     const metaText = decodeInvoiceEntities(`${meta.label}: ${meta.value}`);
-                                    const metaLineHeight = Math.max(
-                                        10,
-                                        doc.heightOfString(metaText, {
-                                            width: descWidth - 20,
-                                            lineGap: 0
-                                        })
-                                    );
+                                    const metaLineHeight = metaLineHeights[metaIdx] || 10;
+                                    ensureSpaceForHeight(metaLineHeight + rowBottomSpacing);
                                     doc.text(
                                         metaText,
                                         tableX + 10,
@@ -754,11 +757,8 @@ export class InvoiceService {
 
                         // Totals integrated into table — use rawData for consistency
                         const rawOrderData = order.rawData as any || {};
-                        const contentLimitY = getPageContentLimitY(currentPageIndex) - tableFooterSafetyBuffer;
                         const estimatedTotalsHeight = 90;
-                        if ((tableY + estimatedTotalsHeight) > contentLimitY) {
-                            moveTableToNextPage();
-                        }
+                        ensureSpaceForHeight(estimatedTotalsHeight);
                         doc.moveTo(tableX, tableY).lineTo(tableX + fullTableWidth, tableY).stroke();
                         tableY += 10;
 

@@ -10,6 +10,14 @@ import { WooService, WooProductData } from './woo';
 import { ProductSearchService } from './productSearch';
 import { redisClient } from '../utils/redis';
 
+const hasValue = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
+const toNumberOrUndefined = (value: unknown): number | undefined => (hasValue(value) ? Number(value) : undefined);
+const toNumberOrNull = (value: unknown): number | null | undefined => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    return Number(value);
+};
+
 export class ProductsService {
     /**
      * Create a new product via WooCommerce API
@@ -58,7 +66,7 @@ export class ProductsService {
                 backorders: varRaw.backorders || 'no',
                 weight,
                 dimensions: { length, width, height },
-                cogs: lv.cogs?.toString() || '',
+                cogs: lv.cogs != null ? lv.cogs.toString() : '',
                 miscCosts: lv.miscCosts || [],
                 binLocation: lv.binLocation || '',
                 isGoldPriceApplied: lv.isGoldPriceApplied || false,
@@ -128,27 +136,25 @@ export class ProductsService {
         // Update Parent Product
         const updated = await prisma.wooProduct.update({
             where: { accountId_wooId: { accountId, wooId } },
-            data: {
-                binLocation: productData.binLocation,
-                name: productData.name,
-                stockStatus: productData.stockStatus,
-                manageStock: productData.manageStock,
-                sku: productData.sku,
-                price: productData.price ? parseFloat(productData.price) : undefined,
-                weight: productData.weight ? parseFloat(productData.weight) : undefined,
-                length: productData.length ? parseFloat(productData.length) : undefined,
-                width: productData.width ? parseFloat(productData.width) : undefined,
-                height: productData.height ? parseFloat(productData.height) : undefined,
-                isGoldPriceApplied: productData.isGoldPriceApplied,
-                goldPriceType: productData.goldPriceType,
-                cogs: productData.cogs !== undefined
-                    ? (productData.cogs ? parseFloat(productData.cogs) : null)
-                    : undefined,
-                miscCosts: productData.miscCosts || undefined,
-                supplierId: productData.supplierId || null,
-                images: productData.images || undefined,
-                rawData: updatedRawData,
-                seoData: updatedSeoData
+                data: {
+                    binLocation: productData.binLocation,
+                    name: productData.name,
+                    stockStatus: productData.stockStatus,
+                    manageStock: productData.manageStock,
+                    sku: productData.sku,
+                    price: toNumberOrUndefined(productData.price),
+                    weight: toNumberOrUndefined(productData.weight),
+                    length: toNumberOrUndefined(productData.length),
+                    width: toNumberOrUndefined(productData.width),
+                    height: toNumberOrUndefined(productData.height),
+                    isGoldPriceApplied: productData.isGoldPriceApplied,
+                    goldPriceType: productData.goldPriceType,
+                    cogs: toNumberOrNull(productData.cogs),
+                    miscCosts: productData.miscCosts || undefined,
+                    supplierId: productData.supplierId || null,
+                    images: productData.images || undefined,
+                    rawData: updatedRawData,
+                    seoData: updatedSeoData
             }
         });
 
@@ -170,9 +176,9 @@ export class ProductsService {
         // Handle dimensions - only include if at least one dimension is provided
         if (productData.length !== undefined || productData.width !== undefined || productData.height !== undefined) {
             wooUpdateData.dimensions = {
-                length: productData.length ? String(productData.length) : '',
-                width: productData.width ? String(productData.width) : '',
-                height: productData.height ? String(productData.height) : ''
+                length: hasValue(productData.length) ? String(productData.length) : '',
+                width: hasValue(productData.width) ? String(productData.width) : '',
+                height: hasValue(productData.height) ? String(productData.height) : ''
             };
         }
 
@@ -227,36 +233,36 @@ export class ProductsService {
                         await prisma.productVariation.upsert({
                             where: { productId_wooId: { productId: updated.id, wooId: v.id } },
                             update: {
-                                cogs: v.cogs !== undefined ? (v.cogs ? parseFloat(v.cogs) : null) : undefined,
+                                cogs: toNumberOrNull(v.cogs),
                                 miscCosts: v.miscCosts || undefined,
                                 binLocation: v.binLocation,
                                 isGoldPriceApplied: v.isGoldPriceApplied,
                                 goldPriceType: v.goldPriceType,
                                 sku: v.sku,
-                                price: v.price ? parseFloat(v.price) : undefined,
-                                salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
+                                price: toNumberOrUndefined(v.price),
+                                salePrice: toNumberOrUndefined(v.salePrice),
                                 stockStatus: v.stockStatus,
-                                weight: v.weight ? parseFloat(v.weight) : undefined,
-                                length: v.dimensions?.length ? parseFloat(v.dimensions.length) : undefined,
-                                width: v.dimensions?.width ? parseFloat(v.dimensions.width) : undefined,
-                                height: v.dimensions?.height ? parseFloat(v.dimensions.height) : undefined
+                                weight: toNumberOrUndefined(v.weight),
+                                length: toNumberOrUndefined(v.dimensions?.length),
+                                width: toNumberOrUndefined(v.dimensions?.width),
+                                height: toNumberOrUndefined(v.dimensions?.height)
                             },
                             create: {
                                 productId: updated.id,
                                 wooId: v.id,
-                                cogs: v.cogs !== undefined ? (v.cogs ? parseFloat(v.cogs) : null) : undefined,
+                                cogs: toNumberOrNull(v.cogs),
                                 miscCosts: v.miscCosts || undefined,
                                 binLocation: v.binLocation,
                                 isGoldPriceApplied: v.isGoldPriceApplied || false,
                                 goldPriceType: v.goldPriceType || null,
                                 sku: v.sku,
-                                price: v.price ? parseFloat(v.price) : undefined,
-                                salePrice: v.salePrice ? parseFloat(v.salePrice) : undefined,
+                                price: toNumberOrUndefined(v.price),
+                                salePrice: toNumberOrUndefined(v.salePrice),
                                 stockStatus: v.stockStatus,
-                                weight: v.weight ? parseFloat(v.weight) : undefined,
-                                length: v.dimensions?.length ? parseFloat(v.dimensions.length) : undefined,
-                                width: v.dimensions?.width ? parseFloat(v.dimensions.width) : undefined,
-                                height: v.dimensions?.height ? parseFloat(v.dimensions.height) : undefined
+                                weight: toNumberOrUndefined(v.weight),
+                                length: toNumberOrUndefined(v.dimensions?.length),
+                                width: toNumberOrUndefined(v.dimensions?.width),
+                                height: toNumberOrUndefined(v.dimensions?.height)
                             }
                         });
 

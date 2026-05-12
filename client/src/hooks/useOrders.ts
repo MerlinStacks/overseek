@@ -299,6 +299,40 @@ export function useOrders() {
         }
     }, [currentAccount, token]);
 
+    const handleMarkOrderCompleted = useCallback(async (orderId: number) => {
+        if (!currentAccount || !token) return false;
+        try {
+            const res = await fetch('/api/orders/bulk-status', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ orderIds: [orderId], status: 'completed' })
+            });
+
+            if (!res.ok) return false;
+
+            setOrders(prev => prev.map(order =>
+                order.id === orderId ? { ...order, status: 'completed' } : order
+            ));
+            setStatusCountsKey(prev => prev + 1);
+
+            emitCrossTabEvent({
+                resource: 'order',
+                type: 'status-updated',
+                accountId: currentAccount.id,
+                resourceId: String(orderId),
+            });
+
+            return true;
+        } catch (err) {
+            Logger.error('Failed to mark order completed', { error: err, orderId });
+            return false;
+        }
+    }, [currentAccount, token]);
+
     return {
         // State
         orders, isLoading, isSyncing, searchQuery, setSearchQuery,
@@ -311,6 +345,6 @@ export function useOrders() {
         currentAccount,
 
         // Actions
-        handleSync, handleGeneratePicklist, removeTag
+        handleSync, handleGeneratePicklist, removeTag, handleMarkOrderCompleted
     };
 }
