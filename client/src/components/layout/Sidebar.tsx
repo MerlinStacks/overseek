@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, memo } from 'react';
+import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePrefetch } from '../../hooks/usePrefetch';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -51,6 +51,7 @@ interface SidebarProps {
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'overseek:sidebar-collapsed';
+const SIDEBAR_IDLE_COLLAPSE_DELAY_MS = 1200;
 
 const navItems = [
     { type: 'link', icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -105,9 +106,12 @@ const navItems = [
  *  rather than on every parent re-render from DashboardLayout. */
 export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile = false }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(() => {
-        if (typeof window === 'undefined') return false;
-        return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+        if (typeof window === 'undefined') return true;
+        const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+        return stored === null ? true : stored === 'true';
     });
+    const [isInteracting, setIsInteracting] = useState(false);
+    const collapseDelayTimeoutRef = useRef<number | null>(null);
     const { currentAccount } = useAccount();
     const accountId = currentAccount?.id;
     const { token } = useAuth();
@@ -120,6 +124,36 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
         if (typeof window === 'undefined') return;
         window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
     }, [collapsed]);
+
+    useEffect(() => {
+        return () => {
+            if (collapseDelayTimeoutRef.current !== null) {
+                window.clearTimeout(collapseDelayTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    const isCollapsedView = !isMobile && collapsed && !isInteracting;
+
+    const clearCollapseDelay = () => {
+        if (collapseDelayTimeoutRef.current !== null) {
+            window.clearTimeout(collapseDelayTimeoutRef.current);
+            collapseDelayTimeoutRef.current = null;
+        }
+    };
+
+    const startCollapseDelay = () => {
+        clearCollapseDelay();
+        collapseDelayTimeoutRef.current = window.setTimeout(() => {
+            setIsInteracting(false);
+            collapseDelayTimeoutRef.current = null;
+        }, SIDEBAR_IDLE_COLLAPSE_DELAY_MS);
+    };
+
+    const handleSidebarEnter = () => {
+        clearCollapseDelay();
+        setIsInteracting(true);
+    };
 
     /** Why useMemo: Permission filtering was running on every render (every route change).
      *  Permissions and nav items rarely change — only when user role or account changes. */
@@ -237,7 +271,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
         const activeGroup = navItems.find(item =>
             item.type === 'group' && item.children?.some(child => location.pathname.startsWith(child.path))
         );
-        if (activeGroup && !collapsed) {
+        if (activeGroup && !isCollapsedView) {
             // Defer state update to avoid cascading renders
             const timeoutId = setTimeout(() => {
                 // Use functional update to avoid dependency on expandedGroups
@@ -250,7 +284,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             }, 0);
             return () => clearTimeout(timeoutId);
         }
-    }, [location.pathname, collapsed]);
+    }, [location.pathname, isCollapsedView]);
 
     // Close drawer on navigation (mobile only)
     useEffect(() => {
@@ -265,7 +299,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
 
 
     const toggleGroup = (label: string) => {
-        if (collapsed && !isMobile) {
+        if (isCollapsedView) {
             setCollapsed(false);
             setExpandedGroups([label]);
         } else {
@@ -287,13 +321,13 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             <div className="flex-col px-3 pt-4 pb-2">
                 {/* Whitelabel Logo */}
                 {logoUrl && (
-                    <div className={cn("mb-4 flex justify-center", (collapsed && !isMobile) ? "px-0" : "px-2")}>
+                    <div className={cn("mb-4 flex justify-center", isCollapsedView ? "px-0" : "px-2")}>
                         <img src={logoUrl} alt={appName} className="max-h-8 object-contain" />
                     </div>
                 )}
 
                 {/* Account Switcher or Default Logo */}
-                {(!collapsed || isMobile) ? (
+                {!isCollapsedView ? (
                     <AccountSwitcher />
                 ) : (
                     // Only show default 'O' if no logo is provided
@@ -318,8 +352,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                 to={item.path!}
                                 onMouseEnter={() => prefetch(item.path!)}
                                 onFocus={() => prefetch(item.path!)}
-                                title={collapsed && !isMobile ? item.label : undefined}
-                                aria-label={collapsed && !isMobile ? item.label : undefined}
+                                title={isCollapsedView ? item.label : undefined}
+                                aria-label={isCollapsedView ? item.label : undefined}
                                 className={({ isActive }) => cn(
                                     "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActive
@@ -334,8 +368,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                         <span className="absolute -top-1 -right-1 h-2.5 w-2.5 bg-red-500 rounded-full ring-2 ring-white" />
                                     )}
                                 </div>
-                                {(!collapsed || isMobile) && <span>{item.label}</span>}
-                                {collapsed && !isMobile && (
+                                {!isCollapsedView && <span>{item.label}</span>}
+                                {isCollapsedView && (
                                     <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                                         {item.label}
                                         {isInbox && hasUnread && <span className="ml-1 text-red-400">•</span>}
@@ -355,8 +389,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                             <button
                                 onClick={() => toggleGroup(item.label)}
                                 aria-expanded={isExpanded}
-                                aria-label={collapsed && !isMobile ? item.label : undefined}
-                                title={collapsed && !isMobile ? item.label : undefined}
+                                aria-label={isCollapsedView ? item.label : undefined}
+                                title={isCollapsedView ? item.label : undefined}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative",
                                     isActiveGroup && !isExpanded
@@ -365,7 +399,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                 )}
                             >
                                 <item.icon size={22} strokeWidth={1.5} className={cn(isActiveGroup ? "text-blue-600" : "")} />
-                                {(!collapsed || isMobile) && (
+                                {!isCollapsedView && (
                                     <>
                                         <span className="flex-1 text-left font-medium text-sm">{item.label}</span>
                                         <ChevronDown
@@ -376,7 +410,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                                 )}
 
                                 {/* Collapsed Tooltip/Popover preview */}
-                                {collapsed && !isMobile && (
+                                {isCollapsedView && (
                                     <div className="absolute left-full ml-2 top-0 bg-white border border-gray-200 shadow-lg rounded-lg p-2 min-w-[160px] opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none group-hover:pointer-events-auto">
                                         <div className="font-semibold text-xs text-gray-400 mb-2 px-2 uppercase">{item.label}</div>
                                         {item.children?.map(child => (
@@ -402,7 +436,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                             </button>
 
                             {/* Expanded Children (Only when not collapsed or on mobile) */}
-                            {(!collapsed || isMobile) && isExpanded && (
+                            {!isCollapsedView && isExpanded && (
                                 <div className="mt-1 ml-4 border-l-2 border-slate-200/60 dark:border-slate-600/40 pl-2 space-y-0.5">
                                     {item.children?.map(child => (
                                         <NavLink
@@ -434,8 +468,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 {/* Settings Link (Pinned Bottom) */}
                 <NavLink
                     to="/settings"
-                    title={collapsed && !isMobile ? 'Settings' : undefined}
-                    aria-label={collapsed && !isMobile ? 'Settings' : undefined}
+                    title={isCollapsedView ? 'Settings' : undefined}
+                    aria-label={isCollapsedView ? 'Settings' : undefined}
                     className={({ isActive }) => cn(
                         "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative mb-2",
                         isActive
@@ -444,15 +478,15 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     )}
                 >
                     <Settings size={22} strokeWidth={1.5} />
-                    {(!collapsed || isMobile) && <span>Settings</span>}
-                    {collapsed && !isMobile && (
+                    {!isCollapsedView && <span>Settings</span>}
+                    {isCollapsedView && (
                         <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-sm opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                             Settings
                         </div>
                     )}
                 </NavLink>
 
-                <SidebarSyncStatus collapsed={collapsed && !isMobile} />
+                <SidebarSyncStatus collapsed={isCollapsedView} />
 
                 {/* Collapse button (desktop only) */}
                 {!isMobile && (
@@ -503,12 +537,20 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     // Desktop: render as sticky sidebar (CSS hides on mobile via hidden lg:flex)
     return (
         <aside
+            onMouseEnter={handleSidebarEnter}
+            onMouseLeave={startCollapseDelay}
+            onFocusCapture={handleSidebarEnter}
+            onBlurCapture={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    startCollapseDelay();
+                }
+            }}
             className={cn(
                 "h-screen sticky top-0 transition-all duration-300 flex-col z-50",
                 "bg-gradient-to-b from-white via-white to-slate-50/80 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950",
                 "border-r border-slate-200/80 dark:border-slate-700/50",
                 "hidden lg:flex", // Critical: CSS-hide on mobile
-                collapsed ? "w-20" : "w-64"
+                isCollapsedView ? "w-20" : "w-64"
             )}
         >
             {sidebarContent}

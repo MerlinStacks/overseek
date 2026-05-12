@@ -483,10 +483,11 @@ export class InvoiceService {
                 }
             });
 
+            const defaultBottomReserve = 120;
             const getPageContentLimitY = (pageIndex: number) => {
                 const footerStart = footerStartByPage.get(pageIndex);
                 if (typeof footerStart === 'number') return Math.max(marginTop + 40, footerStart - 10);
-                return marginTop + pageHeight - 16;
+                return marginTop + pageHeight - defaultBottomReserve;
             };
 
             let currentPageIndex = 0;
