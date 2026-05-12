@@ -47,6 +47,9 @@ export function SeoContentPage() {
     const [editorTab, setEditorTab] = useState<EditorTab>('content');
     const [sortField, setSortField] = useState<SortField>('dateModified');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+    const [createTitle, setCreateTitle] = useState('');
+    const [createStatus, setCreateStatus] = useState<'draft' | 'publish'>('draft');
+    const [creating, setCreating] = useState(false);
 
     const endpoint = useMemo(() => tab === 'pages' ? '/api/content/pages' : '/api/content/posts', [tab]);
 
@@ -182,6 +185,42 @@ export function SeoContentPage() {
         }
     };
 
+    const createContent = async () => {
+        if (!token || !currentAccount?.id || !createTitle.trim()) return;
+        setCreating(true);
+        setError(null);
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount.id,
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: createTitle.trim(),
+                    status: createStatus,
+                }),
+            });
+            if (!res.ok) throw new Error(`Failed to create ${tab === 'pages' ? 'page' : 'post'}`);
+            const created = await res.json();
+            setCreateTitle('');
+            await fetchItems();
+            if (created?.id) {
+                setSearchParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set('tab', tab);
+                    next.set('edit', created.id);
+                    return next;
+                });
+            }
+        } catch (e: any) {
+            setError(e?.message || `Failed to create ${tab === 'pages' ? 'page' : 'post'}`);
+        } finally {
+            setCreating(false);
+        }
+    };
+
     const sortedItems = useMemo(() => {
         const list = [...items];
         list.sort((a, b) => {
@@ -243,12 +282,47 @@ ${html}
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white">SEO Content</h1>
                     <p className="text-slate-500 dark:text-slate-400">Synced WordPress pages and blog posts for ranking and AI analysis.</p>
                 </div>
-                <button
-                    onClick={fetchItems}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                >
-                    <RefreshCw size={14} /> Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={fetchItems}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                        <RefreshCw size={14} /> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+                <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+                    <div className="flex-1">
+                        <label className="block text-sm font-medium mb-1">New {tab === 'pages' ? 'Page' : 'Blog Post'} Title</label>
+                        <input
+                            value={createTitle}
+                            onChange={(e) => setCreateTitle(e.target.value)}
+                            placeholder={tab === 'pages' ? 'About Us' : 'How to care for your product'}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Status</label>
+                        <select
+                            value={createStatus}
+                            onChange={(e) => setCreateStatus(e.target.value as 'draft' | 'publish')}
+                            className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                        >
+                            <option value="draft">Draft</option>
+                            <option value="publish">Publish</option>
+                        </select>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={createContent}
+                        disabled={creating || !createTitle.trim()}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                        {creating ? 'Creating...' : `Create ${tab === 'pages' ? 'Page' : 'Post'}`}
+                    </button>
+                </div>
             </div>
 
             <div className="flex items-center gap-2">

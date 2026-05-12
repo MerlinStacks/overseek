@@ -65,6 +65,25 @@ const stockUpdateBodySchema = z.object({
     stockQuantity: z.number().int().min(0, 'Stock quantity must be a non-negative integer')
 });
 
+const createProductBodySchema = z.object({
+    name: z.string().min(1),
+    type: z.enum(['simple', 'variable', 'grouped', 'external']).optional().default('simple'),
+    regular_price: z.union([z.string(), z.number()]).transform(val => String(val)).optional(),
+    status: z.enum(['draft', 'publish', 'private', 'pending']).optional().default('draft'),
+    slug: z.string().trim().min(1).optional(),
+    description: z.string().optional(),
+    short_description: z.string().optional(),
+    images: z.array(z.object({ src: z.string().url() })).optional().default([]),
+    categories: z.array(z.object({ id: z.number().int().positive() })).optional().default([]),
+    tags: z.array(z.object({ id: z.number().int().positive() })).optional().default([]),
+});
+
+const termsQuerySchema = z.object({
+    q: z.string().optional(),
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(100).default(100),
+});
+
 const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
@@ -89,9 +108,55 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(500).send({ error: 'Failed to fetch products' });
         }
     });
-    // POST / - Create product (Currently disabled - products should be created in WooCommerce)
-    fastify.post('/', async (_request, reply) => {
-        return reply.code(501).send({ error: 'Product creation not yet implemented. Please create products in WooCommerce directly.' });
+    // POST / - Create product in WooCommerce and sync locally
+    fastify.post('/', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const payload = createProductBodySchema.parse(request.body);
+
+            const woo = await WooService.forAccount(accountId);
+            const created = await woo.createProduct(payload, request.user?.id);
+
+            await prisma.wooProduct.upsert({
+                where: { accountId_wooId: { accountId, wooId: created.id } },
+                update: {
+                    name: created.name,
+                    sku: created.sku,
+                    price: created.price === '' ? null : created.price,
+                    stockStatus: created.stock_status,
+                    stockQuantity: created.stock_quantity ?? null,
+                    manageStock: created.manage_stock ?? false,
+                    permalink: created.permalink,
+                    mainImage: created.images?.[0]?.src,
+                    images: created.images || [],
+                    rawData: created as any,
+                },
+                create: {
+                    accountId,
+                    wooId: created.id,
+                    name: created.name,
+                    sku: created.sku,
+                    price: created.price === '' ? null : created.price,
+                    stockStatus: created.stock_status,
+                    stockQuantity: created.stock_quantity ?? null,
+                    manageStock: created.manage_stock ?? false,
+                    permalink: created.permalink,
+                    mainImage: created.images?.[0]?.src,
+                    images: created.images || [],
+                    rawData: created as any,
+                }
+            });
+
+            return reply.code(201).send({
+                id: created.id,
+                name: created.name,
+                status: created.status,
+                permalink: created.permalink,
+            });
+        } catch (error: any) {
+            Logger.error('Error creating product', { error: error?.message || error });
+            return reply.code(500).send({ error: error?.message || 'Failed to create product' });
+        }
     });
 
     // GET /:id - Get single product
@@ -107,6 +172,34 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error: any) {
             Logger.error('Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch product' });
+        }
+    });
+
+    // GET /categories - list WooCommerce product categories
+    fastify.get('/categories', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { q, page, limit } = termsQuerySchema.parse(request.query);
+            const woo = await WooService.forAccount(accountId);
+            const result = await woo.getProductCategories({ page, per_page: limit, search: q });
+            return { items: result.data || [], total: result.total || 0, totalPages: result.totalPages || 0 };
+        } catch (error: any) {
+            Logger.error('Error fetching product categories', { error: error?.message || error });
+            return reply.code(500).send({ error: 'Failed to fetch categories' });
+        }
+    });
+
+    // GET /tags - list WooCommerce product tags
+    fastify.get('/tags', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { q, page, limit } = termsQuerySchema.parse(request.query);
+            const woo = await WooService.forAccount(accountId);
+            const result = await woo.getProductTags({ page, per_page: limit, search: q });
+            return { items: result.data || [], total: result.total || 0, totalPages: result.totalPages || 0 };
+        } catch (error: any) {
+            Logger.error('Error fetching product tags', { error: error?.message || error });
+            return reply.code(500).send({ error: 'Failed to fetch tags' });
         }
     });
 

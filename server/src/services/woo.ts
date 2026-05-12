@@ -23,9 +23,13 @@ export interface WooProductData {
     name: string;
     type?: 'simple' | 'variable' | 'grouped' | 'external' | string; // Extended to support ATUM's custom types
     regular_price?: string;
+    status?: 'draft' | 'pending' | 'private' | 'publish';
+    slug?: string;
     description?: string;
     short_description?: string;
     images?: { src: string }[];
+    categories?: { id: number }[];
+    tags?: { id: number }[];
 }
 
 interface WooCredentials {
@@ -269,6 +273,24 @@ export class WooService {
         return this.requestWithRetry('get', 'products', apiParams);
     }
 
+    async getProductCategories(params: { page?: number; per_page?: number; search?: string } = {}) {
+        if (this.isDemo) return Promise.resolve({ data: [], total: 0, totalPages: 0 });
+        return this.requestWithRetry('get', 'products/categories', {
+            page: params.page || 1,
+            per_page: params.per_page || 100,
+            ...(params.search ? { search: params.search } : {}),
+        });
+    }
+
+    async getProductTags(params: { page?: number; per_page?: number; search?: string } = {}) {
+        if (this.isDemo) return Promise.resolve({ data: [], total: 0, totalPages: 0 });
+        return this.requestWithRetry('get', 'products/tags', {
+            page: params.page || 1,
+            per_page: params.per_page || 100,
+            ...(params.search ? { search: params.search } : {}),
+        });
+    }
+
     async getCustomers(params: { after?: string; page?: number; per_page?: number } = {}) {
         if (this.isDemo) return Promise.resolve({ data: MOCK_CUSTOMERS, total: MOCK_CUSTOMERS.length, totalPages: 1 });
         const { after, ...rest } = params;
@@ -404,6 +426,72 @@ export class WooService {
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');
             await AuditService.log(this.accountId, userId || null, 'UPDATE', 'BLOG_POST', id.toString(), data);
+        }
+
+        return response.data;
+    }
+
+    async createPage(data: { title: string; content?: string; excerpt?: string; status?: string }, userId?: string) {
+        if (this.isDemo) {
+            Logger.debug('[Demo] Created Page', { data });
+            return {
+                id: Math.floor(Math.random() * 100000),
+                title: { rendered: data.title },
+                content: { rendered: data.content || '' },
+                excerpt: { rendered: data.excerpt || '' },
+                status: data.status || 'draft',
+                slug: data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+                link: `${this.url}/?page_id=demo`
+            };
+        }
+
+        const wpApi = new WooCommerceRestApi({
+            url: this.url,
+            consumerKey: this.consumerKey,
+            consumerSecret: this.consumerSecret,
+            version: 'wp/v2' as any,
+            queryStringAuth: true,
+            axiosConfig: this.axiosConfig
+        });
+
+        const response = await wpApi.post('pages', data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(this.accountId, userId || null, 'CREATE', 'PAGE', response.data.id.toString(), data);
+        }
+
+        return response.data;
+    }
+
+    async createPost(data: { title: string; content?: string; excerpt?: string; status?: string }, userId?: string) {
+        if (this.isDemo) {
+            Logger.debug('[Demo] Created Post', { data });
+            return {
+                id: Math.floor(Math.random() * 100000),
+                title: { rendered: data.title },
+                content: { rendered: data.content || '' },
+                excerpt: { rendered: data.excerpt || '' },
+                status: data.status || 'draft',
+                slug: data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+                link: `${this.url}/?p=demo`
+            };
+        }
+
+        const wpApi = new WooCommerceRestApi({
+            url: this.url,
+            consumerKey: this.consumerKey,
+            consumerSecret: this.consumerSecret,
+            version: 'wp/v2' as any,
+            queryStringAuth: true,
+            axiosConfig: this.axiosConfig
+        });
+
+        const response = await wpApi.post('posts', data);
+
+        if (this.accountId) {
+            const { AuditService } = await import('./AuditService');
+            await AuditService.log(this.accountId, userId || null, 'CREATE', 'BLOG_POST', response.data.id.toString(), data);
         }
 
         return response.data;

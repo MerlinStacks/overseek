@@ -43,10 +43,11 @@ function err(error: unknown) {
 // ── Server ────────────────────────────────────
 
 const server = new McpServer({ name: 'overseek', version: '1.0.0' });
+const registerTool = server.tool.bind(server) as (...args: any[]) => void;
 
 // ── Orders ────────────────────────────────────
 
-server.tool(
+registerTool(
   'overseek_orders_list',
   'List WooCommerce orders. Filter by status, customer ID, or billing email.',
   {
@@ -55,19 +56,19 @@ server.tool(
     customerId: z.string().optional().describe('WooCommerce customer ID'),
     billingEmail: z.string().optional().describe('Billing email address'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.listOrders(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_orders_get',
   'Get a single order by ID (internal UUID or WooCommerce ID). Returns line items, shipping, tracking, tags.',
   {
     id: z.string().describe('Order ID (UUID or WooCommerce numeric ID)'),
   },
-  async ({ id }) => {
+  async ({ id }: { id: string }) => {
     try { return ok(await client.getOrder(id)); }
     catch (e) { return err(e); }
   }
@@ -75,7 +76,7 @@ server.tool(
 
 // ── Products ──────────────────────────────────
 
-server.tool(
+registerTool(
   'overseek_products_list',
   'List or search WooCommerce products. Returns name, SKU, price, stock, and status.',
   {
@@ -83,19 +84,19 @@ server.tool(
     limit: z.number().min(1).max(100).optional().describe('Results per page (default 20)'),
     q: z.string().optional().describe('Search query (name, SKU, description)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.listProducts(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_products_get',
   'Get a single product by WooCommerce product ID. Returns full details including variants, stock, pricing.',
   {
     id: z.string().describe('WooCommerce product ID'),
   },
-  async ({ id }) => {
+  async ({ id }: { id: string }) => {
     try { return ok(await client.getProduct(id)); }
     catch (e) { return err(e); }
   }
@@ -103,7 +104,7 @@ server.tool(
 
 // ── Customers ─────────────────────────────────
 
-server.tool(
+registerTool(
   'overseek_customers_list',
   'List or search customers. Returns name, email, order count, total spent.',
   {
@@ -111,19 +112,19 @@ server.tool(
     limit: z.number().min(1).max(100).optional().describe('Results per page (default 20)'),
     q: z.string().optional().describe('Search query (name, email)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.listCustomers(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_customers_get',
   'Get a single customer profile by internal ID. Full details, order count, lifetime value.',
   {
     id: z.string().describe('Customer internal ID'),
   },
-  async ({ id }) => {
+  async ({ id }: { id: string }) => {
     try { return ok(await client.getCustomer(id)); }
     catch (e) { return err(e); }
   }
@@ -131,20 +132,20 @@ server.tool(
 
 // ── Analytics ─────────────────────────────────
 
-server.tool(
+registerTool(
   'overseek_analytics_sales',
   'Sales summary (total revenue, order count, currency) for a date range.',
   {
     startDate: z.string().optional().describe('Start date (YYYY-MM-DD)'),
     endDate: z.string().optional().describe('End date (YYYY-MM-DD)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.getSalesSummary(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_analytics_sales_chart',
   'Sales data over time for charting — date, revenue, order count per interval.',
   {
@@ -152,26 +153,26 @@ server.tool(
     endDate: z.string().optional().describe('End date (YYYY-MM-DD)'),
     interval: z.enum(['daily', 'weekly', 'monthly']).optional().describe('Data interval (default daily)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.getSalesChart(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_analytics_top_products',
   'Top-selling products for a date range — product name, quantity sold, revenue.',
   {
     startDate: z.string().optional().describe('Start date (YYYY-MM-DD)'),
     endDate: z.string().optional().describe('End date (YYYY-MM-DD)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.getTopProducts(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_analytics_ads',
   'Advertising summary across all connected ad platforms — spend, ROAS, clicks, impressions.',
   {},
@@ -181,7 +182,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   'overseek_analytics_product_rankings',
   'Product performance rankings sorted by revenue, units, orders, or margin.',
   {
@@ -189,51 +190,51 @@ server.tool(
     sortBy: z.enum(['revenue', 'units', 'orders', 'margin']).optional().describe('Sort metric (default revenue)'),
     limit: z.number().optional().describe('Max results (default 10)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.getProductRankings(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_analytics_forecast',
   'AI-powered sales forecast for the next N days.',
   {
     days: z.number().optional().describe('Days to forecast (default 30)'),
   },
-  async ({ days }) => {
+  async ({ days }: { days?: number }) => {
     try { return ok(await client.getSalesForecast(days)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_analytics_customer_growth',
   'Customer growth metrics over a date range.',
   {
     startDate: z.string().optional().describe('Start date (YYYY-MM-DD)'),
     endDate: z.string().optional().describe('End date (YYYY-MM-DD)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.getCustomerGrowth(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_analytics_channels',
   'Acquisition channel breakdown — where traffic and orders come from.',
   {
     startDate: z.string().optional().describe('Start date (YYYY-MM-DD)'),
     endDate: z.string().optional().describe('End date (YYYY-MM-DD)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.getAcquisitionChannels(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_analytics_anomalies',
   'Detect revenue anomalies — unusual spikes or dips vs historical patterns.',
   {},
@@ -245,7 +246,7 @@ server.tool(
 
 // ── Inventory ─────────────────────────────────
 
-server.tool(
+registerTool(
   'overseek_inventory_health',
   'Inventory health report — products at risk of stockout, sorted by urgency.',
   {},
@@ -255,7 +256,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   'overseek_inventory_settings',
   'Current inventory settings — thresholds, alert emails, enabled status.',
   {},
@@ -265,25 +266,25 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   'overseek_purchase_orders_list',
   'List purchase orders. Optionally filter by status.',
   {
     status: z.string().optional().describe('PO status (draft, ordered, received)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.listPurchaseOrders(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_purchase_orders_get',
   'Get a single purchase order by ID with line items.',
   {
     id: z.string().describe('Purchase order ID'),
   },
-  async ({ id }) => {
+  async ({ id }: { id: string }) => {
     try { return ok(await client.getPurchaseOrder(id)); }
     catch (e) { return err(e); }
   }
@@ -291,7 +292,7 @@ server.tool(
 
 // ── Inbox / Conversations ─────────────────────
 
-server.tool(
+registerTool(
   'overseek_inbox_list',
   'List customer conversations from the unified inbox. Filter by status and assignee.',
   {
@@ -300,25 +301,25 @@ server.tool(
     assignedTo: z.string().optional().describe('Assignee user ID'),
     cursor: z.string().optional().describe('Pagination cursor from previous response'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.listConversations(args)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_inbox_get',
   'Get a single conversation with full message history.',
   {
     id: z.string().describe('Conversation ID'),
   },
-  async ({ id }) => {
+  async ({ id }: { id: string }) => {
     try { return ok(await client.getConversation(id)); }
     catch (e) { return err(e); }
   }
 );
 
-server.tool(
+registerTool(
   'overseek_inbox_unread',
   'Get the count of unread conversations in the inbox.',
   {},
@@ -330,7 +331,7 @@ server.tool(
 
 // ── Reviews ───────────────────────────────────
 
-server.tool(
+registerTool(
   'overseek_reviews_list',
   'List product reviews. Filter by status or search content. Returns reviewer, rating, review text.',
   {
@@ -339,7 +340,7 @@ server.tool(
     status: z.string().optional().describe('Review status'),
     search: z.string().optional().describe('Search review content'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.listReviews(args)); }
     catch (e) { return err(e); }
   }
@@ -347,7 +348,7 @@ server.tool(
 
 // ── Search Console / SEO ──────────────────────
 
-server.tool(
+registerTool(
   'overseek_seo_keywords',
   'Google Search Console keyword rankings — position, clicks, impressions, CTR.',
   {
@@ -355,7 +356,7 @@ server.tool(
     endDate: z.string().optional().describe('End date (YYYY-MM-DD)'),
     limit: z.number().optional().describe('Max results (default 20)'),
   },
-  async (args) => {
+  async (args: any) => {
     try { return ok(await client.getKeywordRankings(args)); }
     catch (e) { return err(e); }
   }
@@ -363,7 +364,7 @@ server.tool(
 
 // ── Sync Status ───────────────────────────────
 
-server.tool(
+registerTool(
   'overseek_sync_status',
   'WooCommerce sync status — last sync time, counts, health.',
   {},

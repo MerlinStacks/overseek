@@ -19,6 +19,14 @@ const updateContentBodySchema = z.object({
     focusKeyword: z.string().optional(),
 });
 
+const createContentBodySchema = z.object({
+    title: z.string().min(1),
+    content: z.string().optional().default(''),
+    excerpt: z.string().optional().default(''),
+    status: z.enum(['draft', 'publish', 'private', 'pending']).optional().default('draft'),
+    focusKeyword: z.string().optional(),
+});
+
 type ContentListQuery = { q?: string; page?: string; limit?: string; status?: string };
 
 const contentSelect = {
@@ -127,6 +135,122 @@ const contentRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return;
 
         return fetchContentList(prisma.wooBlogPost, accountId, request.query as ContentListQuery);
+    });
+
+    fastify.post('/pages', async (request, reply) => {
+        const accountId = getRouteAccountIdOrReply(request, reply);
+        if (!accountId) return;
+
+        const payload = createContentBodySchema.parse(request.body);
+        const woo = await WooService.forAccount(accountId);
+        const created = await woo.createPage({
+            title: payload.title,
+            content: payload.content,
+            excerpt: payload.excerpt,
+            status: payload.status,
+        }, request.user?.id);
+
+        const focusKeyword = payload.focusKeyword || '';
+        const seoResult = calculateContentSeoScore({
+            title: created?.title?.rendered ?? payload.title,
+            content: created?.content?.rendered ?? payload.content,
+            excerpt: created?.excerpt?.rendered ?? payload.excerpt,
+            slug: created?.slug ?? null,
+            permalink: created?.link ?? null,
+            focusKeyword,
+        });
+
+        const item = await prisma.wooPage.upsert({
+            where: { accountId_wooId: { accountId, wooId: created.id } },
+            update: {
+                title: created?.title?.rendered ?? payload.title,
+                slug: created?.slug ?? null,
+                status: created?.status ?? payload.status,
+                permalink: created?.link ?? null,
+                content: created?.content?.rendered ?? payload.content,
+                excerpt: created?.excerpt?.rendered ?? payload.excerpt,
+                dateModified: new Date(created?.modified_gmt || created?.modified || Date.now()),
+                seoScore: seoResult.score,
+                seoData: { focusKeyword, analysis: seoResult.tests } as any,
+                rawData: created as any,
+            },
+            create: {
+                wooId: created.id,
+                title: created?.title?.rendered ?? payload.title,
+                slug: created?.slug ?? null,
+                status: created?.status ?? payload.status,
+                permalink: created?.link ?? null,
+                content: created?.content?.rendered ?? payload.content,
+                excerpt: created?.excerpt?.rendered ?? payload.excerpt,
+                dateCreated: new Date(created?.date_gmt || created?.date || Date.now()),
+                dateModified: new Date(created?.modified_gmt || created?.modified || Date.now()),
+                seoScore: seoResult.score,
+                seoData: { focusKeyword, analysis: seoResult.tests } as any,
+                rawData: created as any,
+                account: { connect: { id: accountId } },
+            },
+            select: contentSelect,
+        });
+
+        return reply.code(201).send(item);
+    });
+
+    fastify.post('/posts', async (request, reply) => {
+        const accountId = getRouteAccountIdOrReply(request, reply);
+        if (!accountId) return;
+
+        const payload = createContentBodySchema.parse(request.body);
+        const woo = await WooService.forAccount(accountId);
+        const created = await woo.createPost({
+            title: payload.title,
+            content: payload.content,
+            excerpt: payload.excerpt,
+            status: payload.status,
+        }, request.user?.id);
+
+        const focusKeyword = payload.focusKeyword || '';
+        const seoResult = calculateContentSeoScore({
+            title: created?.title?.rendered ?? payload.title,
+            content: created?.content?.rendered ?? payload.content,
+            excerpt: created?.excerpt?.rendered ?? payload.excerpt,
+            slug: created?.slug ?? null,
+            permalink: created?.link ?? null,
+            focusKeyword,
+        });
+
+        const item = await prisma.wooBlogPost.upsert({
+            where: { accountId_wooId: { accountId, wooId: created.id } },
+            update: {
+                title: created?.title?.rendered ?? payload.title,
+                slug: created?.slug ?? null,
+                status: created?.status ?? payload.status,
+                permalink: created?.link ?? null,
+                content: created?.content?.rendered ?? payload.content,
+                excerpt: created?.excerpt?.rendered ?? payload.excerpt,
+                dateModified: new Date(created?.modified_gmt || created?.modified || Date.now()),
+                seoScore: seoResult.score,
+                seoData: { focusKeyword, analysis: seoResult.tests } as any,
+                rawData: created as any,
+            },
+            create: {
+                wooId: created.id,
+                title: created?.title?.rendered ?? payload.title,
+                slug: created?.slug ?? null,
+                status: created?.status ?? payload.status,
+                permalink: created?.link ?? null,
+                content: created?.content?.rendered ?? payload.content,
+                excerpt: created?.excerpt?.rendered ?? payload.excerpt,
+                dateCreated: new Date(created?.date_gmt || created?.date || Date.now()),
+                dateModified: new Date(created?.modified_gmt || created?.modified || Date.now()),
+                seoScore: seoResult.score,
+                seoData: { focusKeyword, analysis: seoResult.tests } as any,
+                rawData: created as any,
+                account: { connect: { id: accountId } },
+            },
+            select: contentSelect,
+        });
+
+        return reply.code(201).send(item);
     });
 
     fastify.get('/pages/:id', async (request, reply) => {

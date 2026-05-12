@@ -60,6 +60,12 @@ interface Product {
     }>;
 }
 
+interface ProductTerm {
+    id: number;
+    name: string;
+    slug?: string;
+}
+
 import { ProductService } from '../services/ProductService';
 
 function isSeoTest(value: unknown): value is SeoTest {
@@ -115,6 +121,62 @@ export function InventoryPage() {
     const [viewingSeo, setViewingSeo] = useState<Product | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newProductName, setNewProductName] = useState('');
+    const [newProductType, setNewProductType] = useState<'simple' | 'variable' | 'grouped' | 'external'>('simple');
+    const [newProductPrice, setNewProductPrice] = useState('');
+    const [newProductShortDescription, setNewProductShortDescription] = useState('');
+    const [newProductDescription, setNewProductDescription] = useState('');
+    const [newProductImageUrl, setNewProductImageUrl] = useState('');
+    const [newProductSlug, setNewProductSlug] = useState('');
+    const [newProductStatus, setNewProductStatus] = useState<'draft' | 'publish'>('draft');
+    const [newProductGalleryUrls, setNewProductGalleryUrls] = useState('');
+    const [categories, setCategories] = useState<ProductTerm[]>([]);
+    const [tags, setTags] = useState<ProductTerm[]>([]);
+    const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
+    const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+
+    const resetCreateModal = () => {
+        setShowCreateModal(false);
+        setNewProductName('');
+        setNewProductType('simple');
+        setNewProductPrice('');
+        setNewProductShortDescription('');
+        setNewProductDescription('');
+        setNewProductImageUrl('');
+        setNewProductSlug('');
+        setNewProductStatus('draft');
+        setNewProductGalleryUrls('');
+        setSelectedCategoryIds([]);
+        setSelectedTagIds([]);
+    };
+
+    useEffect(() => {
+        const fetchTerms = async () => {
+            if (!showCreateModal || !token || !currentAccount?.id) return;
+            try {
+                const [catRes, tagRes] = await Promise.all([
+                    fetch('/api/products/categories?limit=100', {
+                        headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+                    }),
+                    fetch('/api/products/tags?limit=100', {
+                        headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
+                    }),
+                ]);
+
+                if (catRes.ok) {
+                    const catData = await catRes.json();
+                    setCategories(Array.isArray(catData.items) ? catData.items : []);
+                }
+                if (tagRes.ok) {
+                    const tagData = await tagRes.json();
+                    setTags(Array.isArray(tagData.items) ? tagData.items : []);
+                }
+            } catch (err) {
+                Logger.warn('Failed to load categories/tags for product create', { err });
+            }
+        };
+
+        void fetchTerms();
+    }, [showCreateModal, token, currentAccount?.id]);
 
     // Debounce search
     useEffect(() => {
@@ -189,9 +251,52 @@ export function InventoryPage() {
 
         setIsCreating(true);
         try {
-            const newProduct = await ProductService.createProduct({ name: newProductName.trim() }, token, currentAccount.id) as { id: string };
-            setShowCreateModal(false);
-            setNewProductName('');
+            const trimmedImage = newProductImageUrl.trim();
+            if (trimmedImage) {
+                try {
+                    new URL(trimmedImage);
+                } catch {
+                    toast.error('Image URL must be a valid URL');
+                    setIsCreating(false);
+                    return;
+                }
+            }
+
+            const payload: Record<string, unknown> = {
+                name: newProductName.trim(),
+                type: newProductType,
+                status: newProductStatus,
+                slug: newProductSlug.trim() || undefined,
+                short_description: newProductShortDescription.trim() || undefined,
+                description: newProductDescription.trim() || undefined,
+                regular_price: newProductPrice.trim() || undefined,
+                images: [],
+                categories: selectedCategoryIds.map((id) => ({ id })),
+                tags: selectedTagIds.map((id) => ({ id })),
+            };
+
+            const imageUrls = [
+                trimmedImage,
+                ...newProductGalleryUrls
+                    .split('\n')
+                    .map((url) => url.trim())
+                    .filter(Boolean),
+            ].filter((value, index, self) => self.indexOf(value) === index);
+
+            for (const url of imageUrls) {
+                try {
+                    new URL(url);
+                } catch {
+                    toast.error('Each gallery image URL must be valid');
+                    setIsCreating(false);
+                    return;
+                }
+            }
+
+            payload.images = imageUrls.map((src) => ({ src }));
+
+            const newProduct = await ProductService.createProduct(payload, token, currentAccount.id) as { id: string };
+            resetCreateModal();
             navigate(`/inventory/product/${newProduct.id}`);
         } catch (err) {
             Logger.error('An error occurred', { error: err });
@@ -497,7 +602,7 @@ export function InventoryPage() {
 
             <Modal
                 isOpen={showCreateModal}
-                onClose={() => { setShowCreateModal(false); setNewProductName(''); }}
+                onClose={resetCreateModal}
                 title="Create New Product"
             >
                 <form onSubmit={(e) => { e.preventDefault(); handleCreateProduct(); }} className="space-y-4">
@@ -513,10 +618,132 @@ export function InventoryPage() {
                             required
                         />
                     </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product Type</label>
+                            <select
+                                value={newProductType}
+                                onChange={(e) => setNewProductType(e.target.value as 'simple' | 'variable' | 'grouped' | 'external')}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            >
+                                <option value="simple">Simple</option>
+                                <option value="variable">Variable</option>
+                                <option value="grouped">Grouped</option>
+                                <option value="external">External</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Regular Price</label>
+                            <input
+                                type="text"
+                                value={newProductPrice}
+                                onChange={(e) => setNewProductPrice(e.target.value)}
+                                placeholder="e.g. 49.99"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Slug (optional)</label>
+                            <input
+                                type="text"
+                                value={newProductSlug}
+                                onChange={(e) => setNewProductSlug(e.target.value)}
+                                placeholder="my-product-slug"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Publish</label>
+                            <select
+                                value={newProductStatus}
+                                onChange={(e) => setNewProductStatus(e.target.value as 'draft' | 'publish')}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            >
+                                <option value="draft">Save as Draft</option>
+                                <option value="publish">Publish Immediately</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Featured Image URL</label>
+                        <input
+                            type="url"
+                            value={newProductImageUrl}
+                            onChange={(e) => setNewProductImageUrl(e.target.value)}
+                            placeholder="https://example.com/product-image.jpg"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gallery Image URLs (one per line)</label>
+                        <textarea
+                            value={newProductGalleryUrls}
+                            onChange={(e) => setNewProductGalleryUrls(e.target.value)}
+                            placeholder={'https://example.com/image-2.jpg\nhttps://example.com/image-3.jpg'}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                        />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categories</label>
+                            <select
+                                multiple
+                                value={selectedCategoryIds.map(String)}
+                                onChange={(e) => {
+                                    const values = Array.from(e.target.selectedOptions).map((option) => Number(option.value));
+                                    setSelectedCategoryIds(values);
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white min-h-[120px]"
+                            >
+                                {categories.map((category) => (
+                                    <option key={category.id} value={category.id}>{category.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tags</label>
+                            <select
+                                multiple
+                                value={selectedTagIds.map(String)}
+                                onChange={(e) => {
+                                    const values = Array.from(e.target.selectedOptions).map((option) => Number(option.value));
+                                    setSelectedTagIds(values);
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white min-h-[120px]"
+                            >
+                                {tags.map((tag) => (
+                                    <option key={tag.id} value={tag.id}>{tag.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Short Description</label>
+                        <textarea
+                            value={newProductShortDescription}
+                            onChange={(e) => setNewProductShortDescription(e.target.value)}
+                            placeholder="Quick summary shown in product snippets"
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                        <textarea
+                            value={newProductDescription}
+                            onChange={(e) => setNewProductDescription(e.target.value)}
+                            placeholder="Full product description"
+                            rows={5}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                        />
+                    </div>
                     <div className="flex justify-end gap-3">
                         <button
                             type="button"
-                            onClick={() => { setShowCreateModal(false); setNewProductName(''); }}
+                            onClick={resetCreateModal}
                             className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
                         >
                             Cancel
