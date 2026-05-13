@@ -59,7 +59,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
         // POST /:id/messages
         fastify.post<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
             try {
-                const { content, type, isInternal, channel, emailAccountId } = request.body as any;
+                const { content, type, isInternal, channel, emailAccountId, clientRequestId } = request.body as any;
                 const userId = request.user?.id;
                 const accountId = getRouteAccountIdOrReply(request, reply);
                 if (!accountId) return;
@@ -73,11 +73,11 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 }
 
                 // Store the message first
-                const msg = await chatService.addMessage(request.params.id, content, type || 'AGENT', userId, isInternal, accountId);
+                const msg = await chatService.addMessage(request.params.id, content, type || 'AGENT', userId, isInternal, accountId, clientRequestId);
 
                 // If internal note, don't route externally
                 if (isInternal) {
-                    return msg;
+                    return { ...msg, ...(clientRequestId ? { clientRequestId } : {}) };
                 }
 
                 // Route to external channel if specified
@@ -90,7 +90,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                     }
                 }
 
-                return msg;
+                return { ...msg, ...(clientRequestId ? { clientRequestId } : {}) };
             } catch (error: any) {
                 Logger.error('Failed to send message', { conversationId: request.params.id, error: error?.message || error });
                 return reply.code(500).send({ error: error?.message || 'Failed to send message' });
@@ -166,6 +166,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 let isInternal = false;
                 let channel: string | undefined;
                 let emailAccountId: string | undefined;
+                let clientRequestId: string | undefined;
                 const attachmentLinks: string[] = [];
                 // Track attachments with full paths for email relay
                 const attachments: Array<{ filename: string; path: string; contentType: string }> = [];
@@ -242,6 +243,9 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                                 case 'channel':
                                     channel = value;
                                     break;
+                                case 'clientRequestId':
+                                    clientRequestId = value;
+                                    break;
                             }
                         }
                     }
@@ -254,7 +258,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 }
 
                 // Add message to conversation
-                const msg = await chatService.addMessage(conversationId, fullContent, type, userId, isInternal, accountId);
+                const msg = await chatService.addMessage(conversationId, fullContent, type, userId, isInternal, accountId, clientRequestId);
 
                 // Route externally when this is not an internal note.
                 // Why: attachment sends previously swallowed routing errors, so agents saw
@@ -282,6 +286,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 return {
                     success: true,
                     message: msg,
+                    ...(clientRequestId ? { clientRequestId } : {}),
                     attachmentCount: attachmentLinks.length
                 };
             } catch (error) {

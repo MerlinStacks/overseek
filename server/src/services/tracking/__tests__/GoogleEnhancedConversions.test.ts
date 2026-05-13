@@ -77,7 +77,14 @@ describe('GoogleEnhancedConversionsService', () => {
         const addToCartData = {
             ...purchaseData,
             type: 'add_to_cart',
-            payload: { ...purchaseData.payload, total: 49.99 },
+            payload: {
+                ...purchaseData.payload,
+                total: 49.99,
+                items: [
+                    { id: 101, sku: 'SKU-101', quantity: 2, price: 24.995 },
+                    { productId: 202, quantity: 1, unitPrice: 10 },
+                ],
+            },
         };
 
         await service.sendEvent(accountId, configWithAtc, addToCartData, session);
@@ -90,6 +97,10 @@ describe('GoogleEnhancedConversionsService', () => {
         expect(body.conversions).toBeDefined();
         expect(body.conversions[0].conversionAction).toContain('atc-action-456');
         expect(body.conversions[0].conversionValue).toBe(49.99);
+        expect(body.conversions[0].cartData.items).toEqual([
+            { productId: 'SKU-101', quantity: 2, unitPrice: 24.995 },
+            { productId: '202', quantity: 1, unitPrice: 10 },
+        ]);
     });
 
     it('should process begin_checkout when per-event conversionActionId is configured', async () => {
@@ -201,5 +212,23 @@ describe('GoogleEnhancedConversionsService', () => {
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
         expect(body.conversions[0].gclid).toBe('gclid-abc123');
+    });
+
+    it('should omit cartData when no valid items are present', async () => {
+        const configWithAtc = { ...config, conversionActionIdAddToCart: 'atc-action-456' };
+        const addToCartData = {
+            ...purchaseData,
+            type: 'add_to_cart',
+            payload: {
+                ...purchaseData.payload,
+                total: 49.99,
+                items: [{ quantity: 2, price: 10 }],
+            },
+        };
+
+        await service.sendEvent(accountId, configWithAtc, addToCartData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.conversions[0].cartData).toBeUndefined();
     });
 });

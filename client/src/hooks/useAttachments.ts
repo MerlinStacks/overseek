@@ -13,7 +13,7 @@ import type { ConversationChannel } from '../components/chat/ChannelSelector';
 
 interface UseAttachmentsOptions {
     conversationId: string;
-    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string) => Promise<void>;
+    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string, clientRequestId?: string) => Promise<void>;
 }
 
 /** 10 MB per file — matches inbox relay limit. */
@@ -30,7 +30,7 @@ interface UseAttachmentsResult {
     attachmentError: string | null;
     handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleRemoveAttachment: (index: number) => void;
-    sendMessageWithAttachments: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string) => Promise<void>;
+    sendMessageWithAttachments: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string, clientRequestId?: string) => Promise<void>;
     clearAttachments: () => void;
 }
 
@@ -99,11 +99,12 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
         type: 'AGENT' | 'SYSTEM',
         isInternal: boolean,
         channel?: ConversationChannel,
-        emailAccId?: string
+        emailAccId?: string,
+        clientRequestId?: string
     ) => {
         // If no staged attachments, use normal send
         if (stagedAttachments.length === 0) {
-            return onSendMessage(content, type, isInternal, channel, emailAccId);
+            return onSendMessage(content, type, isInternal, channel, emailAccId, clientRequestId);
         }
 
         // Upload attachments with message content
@@ -118,6 +119,7 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
             formData.append('isInternal', String(isInternal));
             if (channel) formData.append('channel', channel);
             if (emailAccId) formData.append('emailAccountId', emailAccId);
+            if (clientRequestId) formData.append('clientRequestId', clientRequestId);
 
             stagedAttachments.forEach(file => {
                 formData.append('attachments', file);

@@ -288,7 +288,8 @@ export class ChatService {
         senderType: 'AGENT' | 'CUSTOMER' | 'SYSTEM',
         senderId?: string,
         isInternal: boolean = false,
-        accountId?: string
+        accountId?: string,
+        clientRequestId?: string
     ) {
         // Resolve conversation first so we can enforce account ownership before writing.
         const conversation = await prisma.conversation.findFirst({
@@ -360,6 +361,7 @@ export class ChatService {
         // Include accountId for client-side account isolation filtering
         this.io.to(`conversation:${conversationId}`).emit('message:new', {
             ...message,
+            ...(clientRequestId ? { clientRequestId } : {}),
             accountId: conversation.accountId,
             priority: conversation.priority,
             assignedTo: conversation.assignedTo

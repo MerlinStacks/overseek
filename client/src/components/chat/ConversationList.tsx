@@ -135,7 +135,9 @@ export function ConversationList({
             const controller = new AbortController();
             activeSearchController.current = controller;
             try {
-                const res = await fetch(`/api/chat/conversations/search?q=${encodeURIComponent(searchQuery)}`, {
+                const params = new URLSearchParams({ q: searchQuery });
+                params.set('status', showResolved ? 'ALL' : 'OPEN');
+                const res = await fetch(`/api/chat/conversations/search?${params.toString()}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'x-account-id': currentAccount.id
@@ -163,7 +165,7 @@ export function ConversationList({
             clearTimeout(timeout);
             activeSearchController.current?.abort();
         };
-    }, [searchQuery, token, currentAccount, isSearchMode]);
+    }, [searchQuery, token, currentAccount, isSearchMode, showResolved]);
 
     // Memoized: Use search results when searching, otherwise normal filtered list
     const filteredConversations = useMemo(() => {

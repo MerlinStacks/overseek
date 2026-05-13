@@ -102,7 +102,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // GET /conversations/search - Global search across conversations
         fastify.get('/conversations/search', async (request, reply) => {
             try {
-                const { q, limit = '20' } = request.query as { q?: string; limit?: string };
+                const { q, limit = '20', status = 'ALL' } = request.query as { q?: string; limit?: string; status?: string };
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
                 if (!q || q.trim().length < 2) return reply.code(400).send({ error: 'Search query must be at least 2 characters' });
@@ -159,27 +159,80 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     });
                 }
 
-                const conversations = await prisma.conversation.findMany({
+                const normalizedStatus = status.toUpperCase();
+                const statusFilter = normalizedStatus === 'ALL'
+                    ? undefined
+                    : normalizedStatus === 'OPEN'
+                        ? 'OPEN'
+                        : normalizedStatus === 'CLOSED'
+                            ? 'CLOSED'
+                            : null;
+
+                if (statusFilter === null) {
+                    return reply.code(400).send({ error: 'Invalid status filter' });
+                }
+
+                const baseWhere: Prisma.ConversationWhereInput = {
+                    accountId,
+                    ...(statusFilter ? { status: statusFilter } : {}),
+                };
+
+                const directFieldFilters: Prisma.ConversationWhereInput[] = [
+                    { guestEmail: { contains: searchTerm, mode: 'insensitive' } },
+                    { guestName: { contains: searchTerm, mode: 'insensitive' } },
+                    { title: { contains: searchTerm, mode: 'insensitive' } },
+                    { wooCustomer: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
+                    { wooCustomer: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
+                    { wooCustomer: { email: { contains: searchTerm, mode: 'insensitive' } } },
+                ];
+
+                const includePayload = {
+                    wooCustomer: { select: { firstName: true, lastName: true, email: true } },
+                    messages: { take: 1, orderBy: { createdAt: 'desc' as const } },
+                    assignee: { select: { fullName: true } }
+                };
+
+                const directMatches = await prisma.conversation.findMany({
                     where: {
-                        accountId,
+                        ...baseWhere,
+                        OR: directFieldFilters,
+                    },
+                    include: includePayload,
+                    orderBy: { updatedAt: 'desc' },
+                    take: maxResults,
+                });
+
+                if (directMatches.length >= maxResults) {
+                    return { results: directMatches, query: q };
+                }
+
+                const messageFilters: Prisma.ConversationWhereInput[] = [
+                    { messages: { some: { content: { contains: searchTerm, mode: 'insensitive' } } } },
+                    ...attachmentFilters,
+                ];
+
+                if (messageFilters.length === 0) {
+                    return { results: directMatches, query: q };
+                }
+
+                const messageMatches = await prisma.conversation.findMany({
+                    where: {
+                        ...baseWhere,
+                        ...(directMatches.length > 0
+                            ? { id: { notIn: directMatches.map((conv) => conv.id) } }
+                            : {}),
                         OR: [
-                            { messages: { some: { content: { contains: searchTerm, mode: 'insensitive' } } } },
-                            { guestEmail: { contains: searchTerm, mode: 'insensitive' } },
-                            { guestName: { contains: searchTerm, mode: 'insensitive' } },
-                            { wooCustomer: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
-                            { wooCustomer: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
-                            { wooCustomer: { email: { contains: searchTerm, mode: 'insensitive' } } },
-                            ...attachmentFilters
+                            ...messageFilters
                         ]
                     },
-                    include: {
-                        wooCustomer: { select: { firstName: true, lastName: true, email: true } },
-                        messages: { take: 1, orderBy: { createdAt: 'desc' } },
-                        assignee: { select: { fullName: true } }
-                    },
+                    include: includePayload,
                     orderBy: { updatedAt: 'desc' },
-                    take: maxResults
+                    take: maxResults - directMatches.length
                 });
+
+                const conversations = [...directMatches, ...messageMatches]
+                    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+                    .slice(0, maxResults);
 
                 return { results: conversations, query: q };
             } catch (error) {

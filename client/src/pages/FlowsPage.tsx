@@ -2,12 +2,13 @@
  * FlowsPage - Dedicated page for automation flows (formerly "Automations" tab).
  * Part of the Growth menu in the sidebar.
  */
-import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Redo2, Undo2 } from 'lucide-react';
 import type { Edge, Node } from '@xyflow/react';
 import { AutomationsList } from '../components/marketing/AutomationsList';
 import { FlowBuilder } from '../components/marketing/FlowBuilder';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { Modal } from '../components/ui/Modal';
 import { Toast, ToastType } from '../components/ui/Toast';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
@@ -31,6 +32,94 @@ interface FlowRecord {
     isActive?: boolean;
     flowDefinition?: FlowDefinition | null;
     [key: string]: unknown;
+}
+
+interface FlowDraftPayload {
+    flowDefinition: FlowDefinition;
+    savedAt: string;
+}
+
+type SaveIndicatorState = 'saved' | 'saving' | 'unsaved';
+
+function validateFlowDefinition(flow: FlowDefinition): string | null {
+    const nodes = flow.nodes || [];
+    const edges = flow.edges || [];
+
+    if (nodes.length === 0) return 'Add at least one node to the flow.';
+
+    const triggerNodes = nodes.filter((node) => String(node.type).toLowerCase() === 'trigger');
+    if (triggerNodes.length === 0) return 'Flow must include a trigger node.';
+    if (triggerNodes.length > 1) return 'Flow can only have one trigger node.';
+
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const incoming = new Map<string, number>();
+    for (const node of nodes) incoming.set(node.id, 0);
+    for (const edge of edges) {
+        if (nodeIds.has(edge.target)) {
+            incoming.set(edge.target, (incoming.get(edge.target) || 0) + 1);
+        }
+    }
+
+    for (const node of nodes) {
+        if (node.id !== triggerNodes[0].id && (incoming.get(node.id) || 0) === 0) {
+            return `Node "${(node.data as { label?: string } | undefined)?.label || node.id}" is disconnected.`;
+        }
+
+        const config = (node.data as { config?: Record<string, unknown> } | undefined)?.config || {};
+        if (node.type === 'delay' && typeof config.duration !== 'number' && !config.delayUntilTime) {
+            return `Delay node "${(node.data as { label?: string } | undefined)?.label || node.id}" is missing timing.`;
+        }
+        if (node.type === 'action' && typeof config.actionType !== 'string') {
+            return `Action node "${(node.data as { label?: string } | undefined)?.label || node.id}" is missing action type.`;
+        }
+        if (node.type === 'condition') {
+            if (!config.field || !config.operator || !config.value) {
+                return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" is incomplete.`;
+            }
+            const trueBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'true');
+            const falseBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'false');
+            if (!trueBranch || !falseBranch) {
+                return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" requires both YES and NO branches.`;
+            }
+        }
+    }
+
+    return null;
+}
+
+function getInvalidNodeIds(flow: FlowDefinition): string[] {
+    const nodes = flow.nodes || [];
+    const edges = flow.edges || [];
+    const invalid = new Set<string>();
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const triggerNodes = nodes.filter((node) => String(node.type).toLowerCase() === 'trigger');
+
+    if (triggerNodes.length !== 1) {
+        triggerNodes.forEach((node) => invalid.add(node.id));
+    }
+
+    const incoming = new Map<string, number>();
+    for (const node of nodes) incoming.set(node.id, 0);
+    for (const edge of edges) {
+        if (nodeIds.has(edge.target)) {
+            incoming.set(edge.target, (incoming.get(edge.target) || 0) + 1);
+        }
+    }
+
+    for (const node of nodes) {
+        const config = (node.data as { config?: Record<string, unknown> } | undefined)?.config || {};
+        if (triggerNodes[0] && node.id !== triggerNodes[0].id && (incoming.get(node.id) || 0) === 0) invalid.add(node.id);
+        if (node.type === 'delay' && typeof config.duration !== 'number' && !config.delayUntilTime) invalid.add(node.id);
+        if (node.type === 'action' && typeof config.actionType !== 'string') invalid.add(node.id);
+        if (node.type === 'condition') {
+            if (!config.field || !config.operator || !config.value) invalid.add(node.id);
+            const trueBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'true');
+            const falseBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'false');
+            if (!trueBranch || !falseBranch) invalid.add(node.id);
+        }
+    }
+
+    return Array.from(invalid);
 }
 
 interface AutomationAnalytics {
@@ -150,6 +239,32 @@ export function FlowsPage() {
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
     const [toastType, setToastType] = useState<ToastType>('error');
+    const [recoveryPrompt, setRecoveryPrompt] = useState<{ flowId: string; flowName: string; draftSavedAt?: string } | null>(null);
+    const [saveState, setSaveState] = useState<SaveIndicatorState>('saved');
+    const [isDirty, setIsDirty] = useState(false);
+    const [pendingClose, setPendingClose] = useState(false);
+    const [undoRedoState, setUndoRedoState] = useState({ canUndo: false, canRedo: false });
+    const [invalidNodeIds, setInvalidNodeIds] = useState<string[]>([]);
+
+    const baselineFlowRef = useRef<string>('');
+    const autosaveTimerRef = useRef<number | null>(null);
+    const undoRedoHandlersRef = useRef<{ undo: () => void; redo: () => void } | null>(null);
+
+    const showToast = (message: string, type: ToastType = 'error') => {
+        setToastMessage(message);
+        setToastType(type);
+        setToastVisible(true);
+    };
+
+    const getDraftKey = (flowId: string) => {
+        if (!currentAccount?.id) return null;
+        return `overseek-flow-draft:${currentAccount.id}:${flowId}`;
+    };
+
+    const serializeFlow = (flow: FlowDefinition | null | undefined) => {
+        if (!flow) return JSON.stringify({ nodes: [], edges: [] });
+        return JSON.stringify({ nodes: flow.nodes || [], edges: flow.edges || [] });
+    };
 
     const handleEditFlow = async (id: string, name: string) => {
         setEditingItem({ id, name });
@@ -163,27 +278,112 @@ export function FlowsPage() {
             });
 
             if (!res.ok) {
-                alert('Failed to load flow details');
+                showToast('Failed to load flow details');
                 return;
             }
 
             const data: FlowRecord = await res.json();
+
+            const draftKey = getDraftKey(id);
+            if (draftKey) {
+                try {
+                    const rawDraft = window.localStorage.getItem(draftKey);
+                    if (rawDraft) {
+                        const parsedDraft = JSON.parse(rawDraft) as FlowDraftPayload;
+                        if (parsedDraft?.flowDefinition?.nodes && Array.isArray(parsedDraft.flowDefinition.nodes)) {
+                            setRecoveryPrompt({
+                                flowId: id,
+                                flowName: name,
+                                draftSavedAt: parsedDraft.savedAt,
+                            });
+                        }
+                    }
+                } catch (error) {
+                    Logger.warn('Failed to parse flow draft from localStorage', { error, flowId: id });
+                }
+            }
+
             setEditingFlowData(data);
             setIsEditing(true);
+            baselineFlowRef.current = serializeFlow(data.flowDefinition as FlowDefinition | undefined);
+            setIsDirty(false);
+            setSaveState('saved');
+            setInvalidNodeIds(getInvalidNodeIds((data.flowDefinition as FlowDefinition | undefined) || { nodes: [], edges: [] }));
         } catch (error) {
             Logger.error('An error occurred', { error });
-            alert('Failed to load flow details');
+            showToast('Failed to load flow details');
         }
     };
 
     const handleCloseEditor = () => {
+        if (autosaveTimerRef.current) {
+            window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
         setIsEditing(false);
         setEditingItem(null);
         setEditingFlowData(null);
         setAnalytics(null);
         setRecentEnrollments([]);
         setRecentRunEvents([]);
+        setRecoveryPrompt(null);
+        setInvalidNodeIds([]);
     };
+
+    const handleFlowChange = (flow: FlowDefinition) => {
+        if (!editingItem) return;
+        const draftKey = getDraftKey(editingItem.id);
+        if (!draftKey) return;
+
+        const current = serializeFlow(flow);
+        const dirty = current !== baselineFlowRef.current;
+        setIsDirty(dirty);
+        setSaveState(dirty ? 'unsaved' : 'saved');
+        setInvalidNodeIds(getInvalidNodeIds(flow));
+
+        if (autosaveTimerRef.current) {
+            window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+
+        try {
+            setSaveState(dirty ? 'saving' : 'saved');
+            autosaveTimerRef.current = window.setTimeout(() => {
+                try {
+                    const payload: FlowDraftPayload = {
+                        flowDefinition: flow,
+                        savedAt: new Date().toISOString()
+                    };
+                    window.localStorage.setItem(draftKey, JSON.stringify(payload));
+                    setSaveState(dirty ? 'unsaved' : 'saved');
+                } catch (error) {
+                    Logger.warn('Failed to persist flow draft to localStorage', { error, flowId: editingItem.id });
+                }
+            }, 700);
+        } catch (error) {
+            Logger.warn('Failed to persist flow draft to localStorage', { error, flowId: editingItem.id });
+        }
+    };
+
+    const handleRequestCloseEditor = () => {
+        if (isDirty) {
+            setPendingClose(true);
+            return;
+        }
+        handleCloseEditor();
+    };
+
+    useEffect(() => {
+        if (!isEditing || !editingItem || !isDirty) return;
+
+        const onBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = '';
+        };
+
+        window.addEventListener('beforeunload', onBeforeUnload);
+        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, [isEditing, editingItem, isDirty]);
 
     useEffect(() => {
         const loadAutomationInsights = async () => {
@@ -233,6 +433,12 @@ export function FlowsPage() {
     const handleSaveFlow = async (flow: FlowDefinition) => {
         if (!editingItem || !currentAccount) return;
 
+        const validationError = validateFlowDefinition(flow);
+        if (validationError) {
+            showToast(validationError);
+            return;
+        }
+
         try {
             const triggerNode = flow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
             const triggerConfig =
@@ -269,11 +475,77 @@ export function FlowsPage() {
 
             const updated: FlowRecord = await res.json();
             setEditingFlowData(updated);
-            alert('Flow saved!');
+
+            const draftKey = getDraftKey(editingItem.id);
+            if (draftKey) {
+                window.localStorage.removeItem(draftKey);
+            }
+
+            baselineFlowRef.current = serializeFlow((updated.flowDefinition as FlowDefinition | undefined) || flow);
+            setIsDirty(false);
+            setSaveState('saved');
+
+            showToast('Flow saved', 'success');
         } catch (error) {
             Logger.error('An error occurred', { error });
-            alert('Failed to save');
+            showToast('Failed to save flow');
         }
+    };
+
+    const handleRestoreDraft = () => {
+        if (!recoveryPrompt || !editingFlowData) return;
+        const draftKey = getDraftKey(recoveryPrompt.flowId);
+        if (!draftKey) return;
+
+        try {
+            const rawDraft = window.localStorage.getItem(draftKey);
+            if (!rawDraft) {
+                showToast('No unsaved draft found');
+                setRecoveryPrompt(null);
+                return;
+            }
+
+            const parsedDraft = JSON.parse(rawDraft) as FlowDraftPayload;
+            if (!parsedDraft?.flowDefinition?.nodes || !Array.isArray(parsedDraft.flowDefinition.nodes)) {
+                showToast('Draft data is invalid');
+                setRecoveryPrompt(null);
+                return;
+            }
+
+            setEditingFlowData((prev) => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    flowDefinition: parsedDraft.flowDefinition,
+                };
+            });
+            setIsDirty(true);
+            setSaveState('unsaved');
+            setInvalidNodeIds(getInvalidNodeIds(parsedDraft.flowDefinition));
+            showToast('Unsaved draft restored', 'success');
+        } catch (error) {
+            Logger.warn('Failed to restore flow draft from localStorage', { error, flowId: recoveryPrompt.flowId });
+            showToast('Failed to restore draft');
+        } finally {
+            setRecoveryPrompt(null);
+        }
+    };
+
+    const handleDiscardDraft = () => {
+        if (!recoveryPrompt) return;
+        const draftKey = getDraftKey(recoveryPrompt.flowId);
+        if (draftKey) {
+            window.localStorage.removeItem(draftKey);
+        }
+        setRecoveryPrompt(null);
+        showToast('Unsaved draft discarded', 'info');
+    };
+
+    const discardUnsavedAndClose = () => {
+        setPendingClose(false);
+        setIsDirty(false);
+        setSaveState('saved');
+        handleCloseEditor();
     };
 
     const handleToggleFlowStatus = async () => {
@@ -317,7 +589,7 @@ export function FlowsPage() {
                 <div className="flex h-full flex-col">
                     <div className="flex items-center justify-between border-b bg-gray-50 p-4">
                         <div className="flex items-center gap-2">
-                            <button onClick={handleCloseEditor} className="rounded-full p-2 hover:bg-gray-200">
+                            <button onClick={handleRequestCloseEditor} className="rounded-full p-2 hover:bg-gray-200">
                                 <ArrowLeft size={20} />
                             </button>
                             <div>
@@ -328,19 +600,48 @@ export function FlowsPage() {
                                         {analytics.goals.revenue.toFixed(2)} revenue
                                     </p>
                                 )}
+                                <div className="mt-1 flex items-center gap-2 text-xs">
+                                    <span className={`rounded-full px-2 py-0.5 font-medium ${saveState === 'saving'
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : isDirty
+                                            ? 'bg-blue-100 text-blue-800'
+                                            : 'bg-green-100 text-green-800'}`}>
+                                        {saveState === 'saving' ? 'Saving draft...' : isDirty ? 'Unsaved changes' : 'All changes saved'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                        <button
-                            onClick={handleToggleFlowStatus}
-                            disabled={isUpdatingStatus || typeof editingFlowData?.isActive !== 'boolean'}
-                            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${editingFlowData?.isActive
-                                ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${isUpdatingStatus ? 'cursor-not-allowed opacity-60' : ''}`}
-                        >
-                            {isUpdatingStatus
-                                ? 'Updating...'
-                                : (editingFlowData?.isActive ? 'Enabled' : 'Disabled')}
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => undoRedoHandlersRef.current?.undo()}
+                                disabled={!undoRedoState.canUndo}
+                                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Undo (Ctrl/Cmd+Z)"
+                            >
+                                <Undo2 size={16} />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => undoRedoHandlersRef.current?.redo()}
+                                disabled={!undoRedoState.canRedo}
+                                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Redo (Ctrl/Cmd+Shift+Z)"
+                            >
+                                <Redo2 size={16} />
+                            </button>
+                            <button
+                                onClick={handleToggleFlowStatus}
+                                disabled={isUpdatingStatus || typeof editingFlowData?.isActive !== 'boolean'}
+                                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${editingFlowData?.isActive
+                                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${isUpdatingStatus ? 'cursor-not-allowed opacity-60' : ''}`}
+                            >
+                                {isUpdatingStatus
+                                    ? 'Updating...'
+                                    : (editingFlowData?.isActive ? 'Enabled' : 'Disabled')}
+                            </button>
+                        </div>
                     </div>
 
                     {analytics && (
@@ -447,13 +748,77 @@ export function FlowsPage() {
                             <FlowBuilder
                                 initialFlow={editingFlowData?.flowDefinition}
                                 onSave={handleSaveFlow}
-                                onCancel={handleCloseEditor}
+                                onCancel={handleRequestCloseEditor}
                                 isSaveDisabled={isUpdatingStatus}
+                                onFlowChange={handleFlowChange}
+                                onUndoRedoStateChange={setUndoRedoState}
+                                onUndoRedoHandlersChange={(handlers) => {
+                                    undoRedoHandlersRef.current = handlers;
+                                }}
+                                invalidNodeIds={invalidNodeIds}
+                                flowId={editingItem?.id}
                             />
                         </ErrorBoundary>
                     </div>
                 </div>
                 <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
+                <Modal
+                    isOpen={Boolean(recoveryPrompt)}
+                    onClose={() => setRecoveryPrompt(null)}
+                    title="Restore unsaved changes"
+                    maxWidth="max-w-md"
+                >
+                    <div className="space-y-4">
+                        <p className="text-sm text-slate-700 dark:text-slate-200">
+                            We found unsaved changes for <span className="font-semibold">{recoveryPrompt?.flowName}</span>.
+                            {recoveryPrompt?.draftSavedAt ? ` Last saved ${new Date(recoveryPrompt.draftSavedAt).toLocaleString()}.` : ''}
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={handleDiscardDraft}
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                            >
+                                Discard Draft
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleRestoreDraft}
+                                className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                            >
+                                Restore Draft
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+                <Modal
+                    isOpen={pendingClose}
+                    onClose={() => setPendingClose(false)}
+                    title="Discard unsaved changes?"
+                    maxWidth="max-w-md"
+                >
+                    <div className="space-y-4">
+                        <p className="text-sm text-slate-700 dark:text-slate-200">
+                            You have unsaved changes in this flow. Leave editor and discard them?
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setPendingClose(false)}
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                            >
+                                Keep Editing
+                            </button>
+                            <button
+                                type="button"
+                                onClick={discardUnsavedAndClose}
+                                className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+                            >
+                                Discard Changes
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
             </div>
         );
     }

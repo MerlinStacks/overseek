@@ -2,7 +2,7 @@
  * FlowBuilder - Visual automation flow builder using ReactFlow.
  * Popup-driven canvas experience with modal selectors for triggers, steps, and actions.
  */
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
     ReactFlow,
     ReactFlowProvider,
@@ -18,6 +18,7 @@ import {
     useReactFlow,
     NodeTypes,
     MarkerType,
+    MiniMap,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -89,9 +90,14 @@ interface Props {
     onSave: (flow: { nodes: Node[], edges: Edge[] }) => void;
     onCancel: () => void;
     isSaveDisabled?: boolean;
+    onFlowChange?: (flow: { nodes: Node[], edges: Edge[] }) => void;
+    onUndoRedoStateChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
+    onUndoRedoHandlersChange?: (handlers: { undo: () => void; redo: () => void }) => void;
+    invalidNodeIds?: string[];
+    flowId?: string;
 }
 
-const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, isSaveDisabled = false }) => {
+const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, isSaveDisabled = false, onFlowChange, onUndoRedoStateChange, onUndoRedoHandlersChange, invalidNodeIds = [], flowId }) => {
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -104,33 +110,120 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     const [showRecipeSelector, setShowRecipeSelector] = useState(false);
     const [stepPopupPosition, setStepPopupPosition] = useState({ x: 0, y: 0 });
     const [pendingNodeParent, setPendingNodeParent] = useState<string | null>(null);
+    const [selectionCount, setSelectionCount] = useState(0);
+    const { setViewport, getViewport } = useReactFlow();
 
 
     // Stable callback refs for node operations (to avoid circular deps in node data)
     const copyNodeRef = useRef<(nodeId: string) => void>(() => { });
     const deleteNodeRef = useRef<(nodeId: string) => void>(() => { });
+    const historyRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
+    const historyIndexRef = useRef(-1);
+    const suppressHistoryRef = useRef(false);
+
+    const pushHistorySnapshot = useCallback((nextNodes: Node[], nextEdges: Edge[]) => {
+        if (suppressHistoryRef.current) return;
+
+        const snapshot = {
+            nodes: JSON.parse(JSON.stringify(nextNodes)) as Node[],
+            edges: JSON.parse(JSON.stringify(nextEdges)) as Edge[],
+        };
+
+        const current = historyRef.current[historyIndexRef.current];
+        if (current) {
+            const sameNodes = JSON.stringify(current.nodes) === JSON.stringify(snapshot.nodes);
+            const sameEdges = JSON.stringify(current.edges) === JSON.stringify(snapshot.edges);
+            if (sameNodes && sameEdges) return;
+        }
+
+        historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+        historyRef.current.push(snapshot);
+        if (historyRef.current.length > 80) {
+            historyRef.current.shift();
+        }
+        historyIndexRef.current = historyRef.current.length - 1;
+
+        onUndoRedoStateChange?.({
+            canUndo: historyIndexRef.current > 0,
+            canRedo: historyIndexRef.current < historyRef.current.length - 1,
+        });
+    }, [onUndoRedoStateChange]);
+
+    const applyHistorySnapshot = useCallback((index: number) => {
+        const snap = historyRef.current[index];
+        if (!snap) return;
+
+        suppressHistoryRef.current = true;
+        setNodes(snap.nodes);
+        setEdges(snap.edges);
+        setSelectedNode(null);
+        setTimeout(() => {
+            suppressHistoryRef.current = false;
+        }, 0);
+        historyIndexRef.current = index;
+        onUndoRedoStateChange?.({
+            canUndo: historyIndexRef.current > 0,
+            canRedo: historyIndexRef.current < historyRef.current.length - 1,
+        });
+    }, [setEdges, setNodes, onUndoRedoStateChange]);
+
+    const undo = useCallback(() => {
+        if (historyIndexRef.current <= 0) return;
+        applyHistorySnapshot(historyIndexRef.current - 1);
+    }, [applyHistorySnapshot]);
+
+    const redo = useCallback(() => {
+        if (historyIndexRef.current >= historyRef.current.length - 1) return;
+        applyHistorySnapshot(historyIndexRef.current + 1);
+    }, [applyHistorySnapshot]);
+
+    useEffect(() => {
+        onUndoRedoHandlersChange?.({ undo, redo });
+    }, [undo, redo, onUndoRedoHandlersChange]);
 
     // Load initial flow - start with empty canvas if no existing flow
     useEffect(() => {
         if (initialFlow && initialFlow.nodes && initialFlow.nodes.length > 0) {
             setNodes(initialFlow.nodes);
             setEdges(initialFlow.edges || []);
+            historyRef.current = [{
+                nodes: JSON.parse(JSON.stringify(initialFlow.nodes)) as Node[],
+                edges: JSON.parse(JSON.stringify(initialFlow.edges || [])) as Edge[],
+            }];
         } else {
             // Empty canvas - show starting point card
             setNodes([]);
             setEdges([]);
+            historyRef.current = [{ nodes: [], edges: [] }];
         }
-    }, [initialFlow, setNodes, setEdges]);
+        historyIndexRef.current = 0;
+        onUndoRedoStateChange?.({ canUndo: false, canRedo: false });
+    }, [initialFlow, onUndoRedoStateChange, setNodes, setEdges]);
 
-    // Clear stale pending parent when step selection is fully dismissed
     useEffect(() => {
-        if (!showStepPopup && !showActionSelector) {
-            setPendingNodeParent(null);
-        }
-    }, [showStepPopup, showActionSelector]);
+        pushHistorySnapshot(nodes, edges);
+    }, [nodes, edges, pushHistorySnapshot]);
 
     const onConnect = useCallback(
-        (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+        (params: Connection) => {
+            const conditionBranch = params.sourceHandle === 'true' ? 'YES' : params.sourceHandle === 'false' ? 'NO' : undefined;
+            if (conditionBranch && params.source && params.target) {
+                setEdges((eds) => ([
+                    ...eds,
+                    {
+                        id: `e_${params.source}_${params.target}_${Date.now()}`,
+                        source: params.source,
+                        target: params.target,
+                        sourceHandle: params.sourceHandle,
+                        targetHandle: params.targetHandle,
+                        label: conditionBranch,
+                        ...defaultEdgeOptions,
+                    },
+                ]));
+                return;
+            }
+            setEdges((eds) => addEdge(params, eds));
+        },
         [setEdges],
     );
 
@@ -142,6 +235,10 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     // Handle pane click to close config panel
     const onPaneClick = useCallback(() => {
         setSelectedNode(null);
+    }, []);
+
+    const onSelectionChange = useCallback(({ nodes: selectedNodes = [], edges: selectedEdges = [] }: { nodes?: Node[]; edges?: Edge[] }) => {
+        setSelectionCount(selectedNodes.length + selectedEdges.length);
     }, []);
 
     // Update node data from config panel
@@ -181,10 +278,84 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     }, [nodes]);
 
     const handleDeleteNode = useCallback((nodeId: string) => {
-        if (confirm('Delete this node?')) {
-            deleteNode(nodeId);
-        }
+        deleteNode(nodeId);
     }, [deleteNode]);
+
+    const deleteSelection = useCallback(() => {
+        setNodes((nds) => nds.filter((node) => !node.selected));
+        setEdges((eds) => eds.filter((edge) => !edge.selected && !nodes.some((n) => n.selected && (edge.source === n.id || edge.target === n.id))));
+        setSelectedNode(null);
+    }, [nodes, setEdges, setNodes]);
+
+    const duplicateSelection = useCallback(() => {
+        const selectedNodes = nodes.filter((node) => node.selected);
+        if (selectedNodes.length === 0) return;
+
+        const idMap = new Map<string, string>();
+        const duplicatedNodes = selectedNodes.map((node) => {
+            const nextId = getId();
+            idMap.set(node.id, nextId);
+            return {
+                ...node,
+                id: nextId,
+                position: { x: node.position.x + 40, y: node.position.y + 40 },
+                selected: false,
+                data: {
+                    ...(node.data as Record<string, unknown>),
+                },
+            } as Node;
+        });
+
+        const duplicatedEdges = edges
+            .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+            .map((edge) => ({
+                ...edge,
+                id: `e_${getId()}`,
+                source: idMap.get(edge.source)!,
+                target: idMap.get(edge.target)!,
+                selected: false,
+            }));
+
+        setNodes((nds) => [...nds, ...duplicatedNodes]);
+        setEdges((eds) => [...eds, ...duplicatedEdges]);
+    }, [nodes, edges, setNodes, setEdges]);
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            const isMeta = event.ctrlKey || event.metaKey;
+            const target = event.target as HTMLElement | null;
+            const inInput = !!target?.closest('input, textarea, [contenteditable="true"]');
+            if (inInput) return;
+
+            if (isMeta && event.key.toLowerCase() === 'z' && !event.shiftKey) {
+                event.preventDefault();
+                undo();
+                return;
+            }
+
+            if (isMeta && event.key.toLowerCase() === 'z' && event.shiftKey) {
+                event.preventDefault();
+                redo();
+                return;
+            }
+
+            if (isMeta && event.key.toLowerCase() === 'd') {
+                event.preventDefault();
+                duplicateSelection();
+                return;
+            }
+
+            if (event.key === 'Delete' || event.key === 'Backspace') {
+                if (selectionCount > 0) {
+                    event.preventDefault();
+                    deleteSelection();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [undo, redo, duplicateSelection, deleteSelection, selectionCount]);
 
     // Keep refs in sync with callbacks
     useEffect(() => {
@@ -388,24 +559,69 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     // Check if canvas is empty
     const isEmptyCanvas = nodes.length === 0;
 
+    useEffect(() => {
+        if (!onFlowChange) return;
+        onFlowChange({ nodes, edges });
+    }, [nodes, edges, onFlowChange]);
+
+    useEffect(() => {
+        if (!flowId) return;
+        const key = `overseek-flow-viewport:${flowId}`;
+        try {
+            const raw = window.localStorage.getItem(key);
+            if (!raw) return;
+            const parsed = JSON.parse(raw) as { x: number; y: number; zoom: number };
+            if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number' && typeof parsed?.zoom === 'number') {
+                setTimeout(() => setViewport(parsed), 0);
+            }
+        } catch {
+            // Ignore invalid viewport cache
+        }
+    }, [flowId, setViewport]);
+
+    const onMoveEnd = useCallback(() => {
+        if (!flowId) return;
+        const key = `overseek-flow-viewport:${flowId}`;
+        try {
+            window.localStorage.setItem(key, JSON.stringify(getViewport()));
+        } catch {
+            // Ignore localStorage write failures
+        }
+    }, [flowId, getViewport]);
+
+    const renderNodes = useMemo(() => {
+        if (!invalidNodeIds.length) return nodes;
+        const invalidSet = new Set(invalidNodeIds);
+        return nodes.map((node) => {
+            const hasError = invalidSet.has(node.id);
+            const className = `${node.className || ''} ${hasError ? 'ring-2 ring-red-400 ring-offset-2 rounded-xl' : ''}`.trim();
+            return { ...node, className };
+        });
+    }, [nodes, invalidNodeIds]);
+
     return (
         <div className="h-full w-full relative">
             {/* Canvas */}
             <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
                 <ReactFlow
-                    nodes={nodes}
+                    nodes={renderNodes}
                     edges={edges}
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     onConnect={onConnect}
                     onNodeClick={onNodeClick}
                     onPaneClick={onPaneClick}
+                    onMoveEnd={onMoveEnd}
+                    onSelectionChange={onSelectionChange}
                     nodeTypes={nodeTypes}
                     fitView
                     defaultEdgeOptions={defaultEdgeOptions}
                     snapToGrid
+                    multiSelectionKeyCode={['Control', 'Meta']}
+                    deleteKeyCode={null}
                 >
                     <Controls />
+                    <MiniMap pannable zoomable className="!bg-white/90 !border !border-gray-200 !rounded-lg" />
                     <Background color="#e2e8f0" gap={16} />
                     <Panel position="top-right">
                         <FlowControls
@@ -448,6 +664,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 position={stepPopupPosition}
                 onClose={() => {
                     setShowStepPopup(false);
+                    setPendingNodeParent(null);
                 }}
                 onSelect={handleStepSelect}
             />

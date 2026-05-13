@@ -7,6 +7,7 @@ import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Zap, Play, Pause, Trash2, Loader2, GitBranch } from 'lucide-react';
+import { Modal } from '../ui/Modal';
 import { Toast, ToastType } from '../ui/Toast';
 
 interface FlowRecord {
@@ -27,6 +28,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
     const [showCreate, setShowCreate] = useState(false);
     const [newFlowName, setNewFlowName] = useState('');
     const [updatingFlowId, setUpdatingFlowId] = useState<string | null>(null);
+    const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
 
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
@@ -125,17 +127,26 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this flow?')) return;
         try {
-            await fetch(`/api/marketing/automations/${id}`, {
+            const res = await fetch(`/api/marketing/automations/${id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount?.id || ''
                 }
             });
+            if (!res.ok) {
+                throw new Error('Failed to delete flow');
+            }
             fetchData();
         } catch (err) { Logger.error('Failed to delete flow', { error: err }); showToast('Failed to delete flow'); }
+    }
+
+    async function confirmDeleteFlow() {
+        if (!pendingDelete) return;
+        await handleDelete(pendingDelete.id);
+        setPendingDelete(null);
+        showToast('Flow deleted', 'success');
     }
 
     // Trigger type display labels
@@ -225,7 +236,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                     <button onClick={() => onEdit(flow.id, flow.name)} className="text-blue-600 hover:text-blue-800 p-2 font-medium text-sm">
                                         Edit Flow
                                     </button>
-                                    <button onClick={() => handleDelete(flow.id)} className="p-2 text-gray-400 hover:text-red-600">
+                                    <button onClick={() => setPendingDelete({ id: flow.id, name: flow.name })} className="p-2 text-gray-400 hover:text-red-600">
                                         <Trash2 size={18} />
                                     </button>
                                 </div>
@@ -240,5 +251,33 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
             </div >
 
             <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
+            <Modal
+                isOpen={Boolean(pendingDelete)}
+                onClose={() => setPendingDelete(null)}
+                title="Delete flow"
+                maxWidth="max-w-md"
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-700 dark:text-slate-200">
+                        This will permanently delete <span className="font-semibold">{pendingDelete?.name}</span>.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setPendingDelete(null)}
+                            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={confirmDeleteFlow}
+                            className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+                        >
+                            Delete Flow
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </>);
 }

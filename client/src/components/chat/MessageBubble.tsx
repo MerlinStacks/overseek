@@ -28,8 +28,10 @@ interface MessageBubbleProps {
         isInternal: boolean;
         senderId?: string;
         readAt?: string | null;
-        status?: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+        status?: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'PENDING';
         reactions?: Record<string, Array<{ userId: string; userName: string | null }>>;
+        pendingUndo?: boolean;
+        remainingSeconds?: number;
         // Email tracking fields
         trackingId?: string | null;
         firstOpenedAt?: string | null;
@@ -40,6 +42,7 @@ interface MessageBubbleProps {
     onImageClick?: (src: string) => void;
     onQuoteReply?: (message: { id: string; content: string; senderType: string }) => void;
     onReactionToggle?: (messageId: string, emoji: string) => Promise<void>;
+    onUndoPending?: () => void;
 }
 
 /**
@@ -51,7 +54,8 @@ export const MessageBubble = memo(function MessageBubble({
     recipientEmail,
     onImageClick,
     onQuoteReply,
-    onReactionToggle
+    onReactionToggle,
+    onUndoPending
 }: MessageBubbleProps) {
     const [showQuoted, setShowQuoted] = useState(false);
     const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
@@ -59,6 +63,7 @@ export const MessageBubble = memo(function MessageBubble({
 
     const isMe = message.senderType === 'AGENT';
     const isSystem = message.senderType === 'SYSTEM';
+    const isPendingUndo = Boolean(message.pendingUndo);
 
     const { subject, body } = useMemo(() => parseEmailContent(message.content), [message.content]);
     const { mainContent, quotedContent, quotedPreview, quotedLineCount, quotedAttachmentCount } = useMemo(() => parseQuotedContent(body), [body]);
@@ -273,7 +278,8 @@ export const MessageBubble = memo(function MessageBubble({
                         isMe
                             ? "bg-blue-600 text-white rounded-br-md"
                             : "bg-white text-gray-900 rounded-bl-md border border-gray-200",
-                        message.isInternal && "bg-amber-50 border border-amber-200 text-gray-900 shadow-none"
+                        message.isInternal && "bg-amber-50 border border-amber-200 text-gray-900 shadow-none",
+                        isPendingUndo && "bg-blue-600/85 border-2 border-dashed border-blue-400"
                     )}>
                         {/* Subject line (if present) */}
                         {subject && (
@@ -358,8 +364,24 @@ export const MessageBubble = memo(function MessageBubble({
                     )}>
                         <span>{format(new Date(message.createdAt), 'MMM d · h:mm a')}</span>
 
+                        {isPendingUndo && (
+                            <>
+                                <span className="text-blue-600 font-medium">
+                                    Sending in {message.remainingSeconds ?? 0}s...
+                                </span>
+                                {onUndoPending && (
+                                    <button
+                                        onClick={onUndoPending}
+                                        className="px-2 py-0.5 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors font-semibold"
+                                    >
+                                        Undo
+                                    </button>
+                                )}
+                            </>
+                        )}
+
                         {/* Status indicators for sent messages */}
-                        {isMe && !message.isInternal && (
+                        {isMe && !message.isInternal && !isPendingUndo && (
                             <span className="flex items-center gap-0.5">
                                 {message.status === 'FAILED' ? (
                                     <AlertCircle size={12} className="text-red-500" />
@@ -372,7 +394,7 @@ export const MessageBubble = memo(function MessageBubble({
                         )}
 
                         {/* Reply button on hover */}
-                        {onQuoteReply && (
+                        {onQuoteReply && !isPendingUndo && (
                             <button
                                 onClick={() => onQuoteReply(message)}
                                 className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-all opacity-0 group-hover:opacity-100"

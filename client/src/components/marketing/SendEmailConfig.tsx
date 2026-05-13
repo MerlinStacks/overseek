@@ -9,6 +9,7 @@ import { EmailTemplateSelectorModal } from './flow/EmailTemplateSelectorModal';
 import { SaveAsTemplateModal } from './flow/SaveAsTemplateModal';
 import { EmailPreviewModal } from './flow/EmailPreviewModal';
 import type { EmailTemplate } from './flow/EmailTemplateSelectorModal';
+import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
 
 interface SendEmailNodeConfig {
     templateType?: 'visual' | 'richtext' | 'html';
@@ -41,6 +42,8 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [showVisualBuilder, setShowVisualBuilder] = useState(false);
+    const [showPreflightModal, setShowPreflightModal] = useState(false);
+    const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([]);
 
     const templateType = config.templateType || 'visual';
     const emailCategory = config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING');
@@ -67,6 +70,25 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const handleHtmlChange = (value: string) => {
         onUpdate('htmlContent', value);
     };
+
+    const runPreflightChecks = (): PreflightIssue[] => evaluateEmailPreflight({
+        html: config.htmlContent || '',
+        subject: config.subject || '',
+        emailCategory,
+    });
+
+    const handlePreviewAndTest = () => {
+        const issues = runPreflightChecks();
+        setPreflightIssues(issues);
+        if (issues.length === 0) {
+            setShowPreview(true);
+            return;
+        }
+        setShowPreflightModal(true);
+    };
+
+    const hasBlockingIssues = preflightIssues.some((issue) => issue.severity === 'blocking');
+    const groupedIssues = groupPreflightIssues(preflightIssues);
 
     return (
         <div className="space-y-4">
@@ -261,7 +283,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                 </button>
                 <button
                     type="button"
-                    onClick={() => setShowPreview(true)}
+                    onClick={handlePreviewAndTest}
                     disabled={!config.htmlContent}
                     className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -443,6 +465,59 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                     onSave={handleVisualBuilderSave}
                     onCancel={() => setShowVisualBuilder(false)}
                 />
+            )}
+
+            {showPreflightModal && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-xs">
+                    <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-2xl">
+                        <h3 className="text-lg font-semibold text-gray-900">Preflight Check</h3>
+                        <p className="mt-1 text-sm text-gray-500">We found a few things to review before preview/testing.</p>
+
+                        <div className="mt-4 space-y-3">
+                            {groupedIssues.blocking.length > 0 && (
+                                <div className="space-y-2">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-red-700">Blocking issues</p>
+                                    {groupedIssues.blocking.map((issue) => (
+                                        <div key={issue.id} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                                            {issue.message}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {groupedIssues.warning.length > 0 && (
+                                <div className="space-y-2">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Warnings</p>
+                                    {groupedIssues.warning.map((issue) => (
+                                        <div key={issue.id} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                            {issue.message}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-5 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowPreflightModal(false)}
+                                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                                Fix First
+                            </button>
+                            <button
+                                type="button"
+                                disabled={hasBlockingIssues}
+                                onClick={() => {
+                                    setShowPreflightModal(false);
+                                    setShowPreview(true);
+                                }}
+                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Continue to Preview
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

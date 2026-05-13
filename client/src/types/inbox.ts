@@ -7,6 +7,7 @@ export interface InboxMessage {
     createdAt: string;
     isInternal: boolean;
     conversationId?: string;
+    clientRequestId?: string;
     [key: string]: unknown;
 }
 

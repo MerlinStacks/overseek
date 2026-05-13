@@ -51,6 +51,7 @@ const CAPIHealthPage = lazy(() => import('./pages/CAPIHealthPage').then(m => ({ 
 const SeoPage = lazy(() => import('./pages/SeoPage').then(m => ({ default: m.SeoPage })));
 const SeoContentPage = lazy(() => import('./pages/SeoContentPage').then(m => ({ default: m.SeoContentPage })));
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage').then(m => ({ default: m.BroadcastsPage })));
+const EmailListsPage = lazy(() => import('./pages/EmailListsPage').then(m => ({ default: m.EmailListsPage })));
 const EmailDashboardPage = lazy(() => import('./pages/EmailDashboardPage').then(m => ({ default: m.EmailDashboardPage })));
 const EmailSettingsPage = lazy(() => import('./pages/EmailSettingsPage').then(m => ({ default: m.EmailSettingsPage })));
 const EmailLogsPage = lazy(() => import('./pages/EmailLogsPage').then(m => ({ default: m.EmailLogsPage })));
@@ -250,6 +251,7 @@ function App() {
                                                 <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path="/seo/content" element={<AccountGuard><SeoContentPage /></AccountGuard>} />
                                                 <Route path="/broadcasts" element={<AccountGuard><BroadcastsPage /></AccountGuard>} />
+                                                <Route path="/emails/lists" element={<AccountGuard><EmailListsPage /></AccountGuard>} />
                                                 <Route path="/emails" element={<AccountGuard><EmailDashboardPage /></AccountGuard>} />
                                                 <Route path="/emails/settings" element={<AccountGuard><EmailSettingsPage /></AccountGuard>} />
                                                 <Route path="/emails/logs" element={<AccountGuard><EmailLogsPage /></AccountGuard>} />

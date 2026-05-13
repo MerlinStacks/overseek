@@ -102,7 +102,7 @@ export function useInboxSocket({
 
             if (selectedId === data.id && lastMessage) {
                 setMessages(prev => {
-                    if (prev.find(m => m.id === lastMessage.id)) return prev;
+                    if (prev.find(m => m.id === lastMessage.id || (lastMessage.clientRequestId && m.clientRequestId === lastMessage.clientRequestId))) return prev;
                     return [...prev, lastMessage];
                 });
             }
@@ -123,7 +123,7 @@ export function useInboxSocket({
                 setMessages(prev => {
                     // Why: conversation:updated can also append this message via lastMessage,
                     // causing duplicates. Guard against it here.
-                    if (prev.find(m => m.id === msg.id)) return prev;
+                    if (prev.find(m => m.id === msg.id || (msg.clientRequestId && m.clientRequestId === msg.clientRequestId))) return prev;
                     const updated = [...prev, msg];
                     messagesCache.current.set(conversationId, updated);
                     return updated;

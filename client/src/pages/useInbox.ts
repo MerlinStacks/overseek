@@ -276,18 +276,27 @@ export function useInbox() {
         isInternal: boolean,
         channel?: ConversationChannel,
         emailAccountId?: string,
+        clientRequestId?: string,
     ) => {
         if (!selectedId) return;
         try {
             const res = await fetch(`/api/chat/${selectedId}/messages`, {
                 method: 'POST',
                 headers: buildHeaders(token!, currentAccount!.id, true),
-                body: JSON.stringify({ content, type, isInternal, channel, emailAccountId }),
+                body: JSON.stringify({ content, type, isInternal, channel, emailAccountId, clientRequestId }),
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || 'Failed to send message');
             }
+            const created = await res.json() as InboxMessage;
+            setMessages(prev => {
+                const duplicate = prev.some(m => m.id === created.id || (created.clientRequestId && m.clientRequestId === created.clientRequestId));
+                if (duplicate) return prev;
+                const updated = [...prev, created];
+                messagesCache.current.set(selectedId, updated);
+                return updated;
+            });
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
             Logger.error('Failed to send message', { error: message });
@@ -324,15 +333,6 @@ export function useInbox() {
         // Refetch immediately when server-side list filters change.
         fetchConversations();
     }, [fetchConversations]);
-
-    useEffect(() => {
-        if (!selectedId) return;
-        const stillVisible = conversations.some(c => c.id === selectedId);
-        if (!stillVisible) {
-            setSelectedId(null);
-            setMessages([]);
-        }
-    }, [conversations, selectedId]);
 
     // Fetch messages when a conversation is selected
     useEffect(() => {

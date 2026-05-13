@@ -4,8 +4,6 @@
  * Memoized to prevent re-renders from parent state changes (e.g. conversation list updates).
  */
 import { useState, useEffect, useRef, useMemo, memo } from 'react';
-import DOMPurify from 'dompurify';
-import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 
@@ -34,8 +32,10 @@ interface Message {
     isInternal: boolean;
     senderId?: string;
     readAt?: string | null;
-    status?: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+    status?: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'PENDING';
     reactions?: Record<string, Array<{ userId: string; userName: string | null }>>;
+    pendingUndo?: boolean;
+    remainingSeconds?: number;
 }
 
 interface ChannelOption {
@@ -58,7 +58,7 @@ interface CustomerData {
 interface ChatWindowProps {
     conversationId: string;
     messages: Message[];
-    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string) => Promise<void>;
+    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string, clientRequestId?: string) => Promise<void>;
     recipientEmail?: string;
     recipientName?: string;
     status?: string;
@@ -215,10 +215,26 @@ export const ChatWindow = memo(function ChatWindow({
 
     // === FILTERED MESSAGES FOR SEARCH ===
     const filteredMessages = useMemo(() => {
-        if (!searchQuery.trim()) return messages;
+        const renderedMessages = messageSend.pendingSend
+            ? [
+                ...messages,
+                {
+                    id: messageSend.pendingSend.tempId,
+                    content: messageSend.pendingSend.content,
+                    senderType: 'AGENT' as const,
+                    createdAt: messageSend.pendingSend.createdAt,
+                    isInternal: messageSend.isInternal,
+                    status: 'PENDING' as const,
+                    pendingUndo: true,
+                    remainingSeconds: messageSend.pendingSend.remainingSeconds,
+                }
+            ]
+            : messages;
+
+        if (!searchQuery.trim()) return renderedMessages;
         const query = searchQuery.toLowerCase();
-        return messages.filter(msg => msg.content.toLowerCase().includes(query));
-    }, [messages, searchQuery]);
+        return renderedMessages.filter(msg => msg.content.toLowerCase().includes(query));
+    }, [messages, searchQuery, messageSend.pendingSend, messageSend.isInternal]);
 
     // NOTE: Reaction toggle API is not yet implemented.
     // When ready, add a callback here and pass it to MessageBubble via onReactionToggle.
@@ -279,48 +295,12 @@ export const ChatWindow = memo(function ChatWindow({
                         recipientEmail={recipientEmail}
                         onImageClick={(src) => setLightboxImage(src)}
                         onQuoteReply={(msg) => messageSend.setQuotedMessage(msg)}
+                        onUndoPending={msg.id === messageSend.pendingSend?.tempId ? messageSend.cancelPendingSend : undefined}
                     />
                 ))}
 
                 {/* Typing Indicator */}
                 {isCustomerTyping && <TypingIndicator name={recipientName} />}
-
-                {/* Pending Message Bubble with Undo */}
-                {messageSend.pendingSend && (
-                    <div className="mb-3 flex justify-end">
-                        <div className="flex gap-2 max-w-[85%] flex-row-reverse">
-                            {/* Avatar placeholder */}
-                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center self-end">
-                                <Loader2 size={16} className="animate-spin text-blue-600" />
-                            </div>
-                            {/* Pending bubble */}
-                            <div className="flex flex-col">
-                                <div className="rounded-2xl px-4 py-2.5 relative shadow-sm bg-blue-600/70 text-white rounded-br-md border-2 border-dashed border-blue-400">
-                                    <div
-                                        className="text-sm leading-relaxed opacity-90"
-                                        dangerouslySetInnerHTML={{
-                                            __html: DOMPurify.sanitize(messageSend.pendingSend.content, {
-                                                ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'p', 'br', 'a', 'span', 'div', 'img'],
-                                                ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class', 'style']
-                                            })
-                                        }}
-                                    />
-                                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-blue-400/40">
-                                        <span className="text-xs text-blue-200">
-                                            Sending in {messageSend.pendingSend.remainingSeconds}s...
-                                        </span>
-                                        <button
-                                            onClick={messageSend.cancelPendingSend}
-                                            className="text-sm font-semibold text-white bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full transition-colors"
-                                        >
-                                            Undo
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 <div ref={bottomRef} />
             </div>

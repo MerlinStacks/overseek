@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Loader2, Trash2, AlertTriangle, ListChecks } from 'lucide-react';
+import { Plus, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../ui/Modal';
 
@@ -36,12 +36,6 @@ interface EmailListItem {
     _count?: { memberships?: number };
 }
 
-interface EmailListMember {
-    id: string;
-    email: string;
-    isSubscribed: boolean;
-}
-
 export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, subject?: string) => void }) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -56,11 +50,6 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
     const [segments, setSegments] = useState<SegmentItem[]>([]);
     const [lists, setLists] = useState<EmailListItem[]>([]);
     const [audienceType, setAudienceType] = useState<'all' | 'segment' | 'list'>('all');
-    const [showListManager, setShowListManager] = useState(false);
-    const [selectedListId, setSelectedListId] = useState<string>('');
-    const [members, setMembers] = useState<EmailListMember[]>([]);
-    const [newListName, setNewListName] = useState('');
-    const [newMemberEmail, setNewMemberEmail] = useState('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const fetchLists = useCallback(async () => {
@@ -75,30 +64,9 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
             if (res.ok) {
                 const data = await res.json();
                 setLists(Array.isArray(data) ? data : []);
-                if (!selectedListId && data.length > 0) {
-                    setSelectedListId(data[0].id);
-                }
             }
         } catch (e) {
             Logger.error('An error occurred', { error: e });
-        }
-    }, [currentAccount, selectedListId, token]);
-
-    const fetchMembers = useCallback(async (listId: string) => {
-        if (!currentAccount || !listId) return;
-        try {
-            const res = await fetch(`/api/email/lists/${listId}/members`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setMembers(Array.isArray(data) ? data : []);
-            }
-        } catch (e) {
-            Logger.error('Failed to fetch list members', { error: e });
         }
     }, [currentAccount, token]);
 
@@ -155,12 +123,6 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         void fetchLists();
     }, [fetchData, fetchSegments, fetchLists]);
 
-    useEffect(() => {
-        if (selectedListId) {
-            void fetchMembers(selectedListId);
-        }
-    }, [fetchMembers, selectedListId]);
-
     async function handleCreate(e: React.FormEvent) {
         e.preventDefault();
         try {
@@ -214,78 +176,11 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         } catch (err) { toast.error('Failed to delete campaign'); }
     }
 
-    async function handleCreateList(e: React.FormEvent) {
-        e.preventDefault();
-        if (!newListName.trim()) return;
-        const res = await fetch('/api/email/lists', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-                'x-account-id': currentAccount?.id || ''
-            },
-            body: JSON.stringify({ name: newListName.trim() })
-        });
-        if (!res.ok) {
-            toast.error('Failed to create list');
-            return;
-        }
-        const created = await res.json();
-        setNewListName('');
-        await fetchLists();
-        setSelectedListId(created.id);
-        toast.success('List created');
-    }
-
-    async function handleAddMember(e: React.FormEvent) {
-        e.preventDefault();
-        if (!selectedListId || !newMemberEmail.trim()) return;
-        const res = await fetch(`/api/email/lists/${selectedListId}/members`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-                'x-account-id': currentAccount?.id || ''
-            },
-            body: JSON.stringify({ email: newMemberEmail.trim(), isSubscribed: true, source: 'ADMIN' })
-        });
-        if (!res.ok) {
-            toast.error('Failed to add member');
-            return;
-        }
-        setNewMemberEmail('');
-        await fetchMembers(selectedListId);
-        await fetchLists();
-    }
-
-    async function handleToggleMember(member: EmailListMember) {
-        if (!selectedListId) return;
-        const res = await fetch(`/api/email/lists/${selectedListId}/members`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-                'x-account-id': currentAccount?.id || ''
-            },
-            body: JSON.stringify({ email: member.email, isSubscribed: !member.isSubscribed, source: 'ADMIN' })
-        });
-        if (res.ok) {
-            await fetchMembers(selectedListId);
-            await fetchLists();
-        }
-    }
-
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold text-gray-900">Email Broadcasts</h2>
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setShowListManager(true)}
-                        className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50"
-                    >
-                        <ListChecks size={18} /> Manage Lists
-                    </button>
                     <button
                         onClick={() => setShowCreate(true)}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
@@ -461,63 +356,6 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 </div>
             </Modal>
 
-            <Modal isOpen={showListManager} onClose={() => setShowListManager(false)} title="Email Lists" maxWidth="max-w-2xl">
-                <div className="space-y-4">
-                    <form onSubmit={handleCreateList} className="flex gap-2">
-                        <input
-                            className="flex-1 p-2 border rounded-sm"
-                            placeholder="New list name"
-                            value={newListName}
-                            onChange={(e) => setNewListName(e.target.value)}
-                        />
-                        <button type="submit" className="px-3 py-2 bg-blue-600 text-white rounded-sm">Create</button>
-                    </form>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="border rounded-lg p-3">
-                            <div className="text-sm font-medium mb-2">Lists</div>
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {lists.map((list) => (
-                                    <button
-                                        key={list.id}
-                                        onClick={() => setSelectedListId(list.id)}
-                                        className={`w-full text-left p-2 rounded ${selectedListId === list.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'}`}
-                                    >
-                                        <div className="font-medium text-sm text-gray-900">{list.name}</div>
-                                        <div className="text-xs text-gray-500">{list._count?.memberships || 0} subscribed</div>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="border rounded-lg p-3">
-                            <div className="text-sm font-medium mb-2">Members</div>
-                            <form onSubmit={handleAddMember} className="flex gap-2 mb-3">
-                                <input
-                                    className="flex-1 p-2 border rounded-sm"
-                                    placeholder="customer@email.com"
-                                    value={newMemberEmail}
-                                    onChange={(e) => setNewMemberEmail(e.target.value)}
-                                />
-                                <button type="submit" className="px-3 py-2 bg-gray-900 text-white rounded-sm">Add</button>
-                            </form>
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {members.map((member) => (
-                                    <div key={member.id} className="flex items-center justify-between text-sm border rounded p-2">
-                                        <span className="truncate pr-2">{member.email}</span>
-                                        <button
-                                            onClick={() => handleToggleMember(member)}
-                                            className={`px-2 py-1 rounded text-xs ${member.isSubscribed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
-                                        >
-                                            {member.isSubscribed ? 'Subscribed' : 'Unsubscribed'}
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </Modal>
         </div>
     );
 }

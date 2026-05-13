@@ -13,14 +13,17 @@ import { lintOutboundMessage, type OutboundSafetyIssue } from '../utils/outbound
 
 interface UseMessageSendOptions {
     conversationId: string;
-    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string) => Promise<void>;
+    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string, clientRequestId?: string) => Promise<void>;
     recipientEmail?: string;
     isLiveChat?: boolean;
     emailAccountId?: string;
 }
 
 interface PendingSend {
+    tempId: string;
+    clientRequestId: string;
     content: string;
+    createdAt: string;
     timeout: NodeJS.Timeout;
     countdownInterval: NodeJS.Timeout;
     remainingSeconds: number;
@@ -253,6 +256,7 @@ export function useMessageSend({
         setRequiresSafetyApproval(false);
 
         const finalContent = prepareContent(input);
+        const clientRequestId = `client-${conversationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
         // Store content and start undo timer with countdown
         const startSeconds = Math.ceil(UNDO_DELAY_MS / 1000);
@@ -260,7 +264,7 @@ export function useMessageSend({
         const timeout = setTimeout(async () => {
             setIsSending(true);
             try {
-                await onSendMessage(finalContent, 'AGENT', isInternal, channel, emailAccountId);
+                await onSendMessage(finalContent, 'AGENT', isInternal, channel, emailAccountId, clientRequestId);
                 clearDraft(conversationId);
             } finally {
                 setIsSending(false);
@@ -276,7 +280,15 @@ export function useMessageSend({
             });
         }, 1000);
 
-        setPendingSend({ content: input, timeout, countdownInterval, remainingSeconds: startSeconds });
+        setPendingSend({
+            tempId: `pending-${Date.now()}`,
+            clientRequestId,
+            content: input,
+            createdAt: new Date().toISOString(),
+            timeout,
+            countdownInterval,
+            remainingSeconds: startSeconds
+        });
         setInput('');
         setQuotedMessage(null);
 

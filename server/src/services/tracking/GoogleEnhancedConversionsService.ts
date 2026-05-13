@@ -23,6 +23,13 @@ import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
 const MAX_RETRIES = 3;
+const MAX_CART_ITEMS = 20;
+
+type NormalizedBasketItem = {
+    productId: string;
+    quantity: number;
+    unitPrice: number;
+};
 
 /**
  * Google Enhanced Conversions endpoint.
@@ -98,6 +105,41 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         const deliveryId = await this.logDelivery(accountId, googleEventName, eventId, payload);
 
         await this.sendWithRetry(customerId, adAccount, payload, deliveryId, isPurchase);
+    }
+
+    private parseNumber(value: unknown): number | null {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (typeof value === 'string') {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+    }
+
+    private normalizeBasketItems(payload: Record<string, any> | undefined): NormalizedBasketItem[] {
+        const rawItems = payload?.items;
+        if (!Array.isArray(rawItems)) return [];
+
+        return rawItems
+            .slice(0, MAX_CART_ITEMS)
+            .map((item) => {
+                if (!item || typeof item !== 'object') return null;
+
+                const rawId = item.sku || item.contentId || item.id || item.productId || item.variationId;
+                const productId = rawId !== undefined && rawId !== null ? String(rawId).trim() : '';
+                if (!productId) return null;
+
+                const quantity = this.parseNumber(item.quantity) ?? 1;
+                const unitPriceRaw = this.parseNumber(item.unitPrice) ?? this.parseNumber(item.price);
+                const unitPrice = unitPriceRaw ?? 0;
+
+                return {
+                    productId,
+                    quantity: quantity > 0 ? quantity : 1,
+                    unitPrice: unitPrice >= 0 ? unitPrice : 0,
+                };
+            })
+            .filter((item): item is NormalizedBasketItem => item !== null);
     }
 
     /**
@@ -264,6 +306,13 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             conversion.currencyCode = data.payload.currency || 'USD';
         }
 
+        const basketItems = this.normalizeBasketItems(data.payload);
+        if (basketItems.length > 0) {
+            conversion.cartData = {
+                items: basketItems,
+            };
+        }
+
         return {
             conversions: [conversion],
             partialFailure: true,
@@ -426,6 +475,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                     // Log whether Google returned results or an empty array.
                     const resultCount = parsed?.results?.length ?? 0;
                     const conversionData = payload.conversionAdjustments?.[0] || payload.conversions?.[0];
+                    const cartItemCount = conversionData?.cartData?.items?.length ?? 0;
                     if (resultCount === 0 && isPurchase) {
                         // An empty results array for enhancements means no base conversion
                         // was found — usually because the Google Ads tag didn't fire on
@@ -443,6 +493,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                             resultCount,
                             isPurchase,
                             orderId: conversionData?.orderId,
+                            cartItemCount,
                         });
                     }
 

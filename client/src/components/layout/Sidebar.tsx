@@ -77,6 +77,7 @@ const navItems = [
             { icon: Filter, label: 'Segments', path: '/customers/segments' },
             { icon: Zap, label: 'Flows', path: '/flows' },
             { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
+            { icon: Users, label: 'Email Lists', path: '/emails/lists' },
             { icon: Settings, label: 'Settings', path: '/emails/settings' },
             { icon: Mail, label: 'Logs', path: '/emails/logs' },
         ]
@@ -179,7 +180,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             if (item.label === 'Emails') {
                 const hasChild = item.children?.some(child => {
                     if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
-                    if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
+                    if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/lists' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
                     return true;
                 });
                 return hasChild;
@@ -196,7 +197,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                         if (child.path === '/orders') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
-                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
+                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/lists' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
                         if (item.label === 'Analytics') return hasPermission('view_finance');
                         if (item.label === 'Growth') return hasPermission('view_marketing');
                         return true;
