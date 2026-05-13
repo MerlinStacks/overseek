@@ -96,6 +96,8 @@ interface BoxMm {
     h: number;
 }
 
+const FOOTER_BOTTOM_MARGIN_MM = 8;
+
 const toDataUrl = async (url: string): Promise<string | null> => {
     try {
         const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
@@ -208,8 +210,11 @@ export async function generateVectorInvoicePDF(
         const lineTotal = toNumber(item.total);
         const unitPrice = quantity > 0 ? lineTotal / quantity : 0;
         const meta = getInvoiceItemMeta(item)
-            .map((entry) => `${entry.label}: ${entry.value}`)
-            .join(' | ');
+            .map((entry) => {
+                const normalizedValue = String(entry.value || '').replace(/\s\|\s/g, '\n');
+                return `${entry.label}: ${normalizedValue}`;
+            })
+            .join('\n');
         const description = [cleanText(item.name), meta].filter(Boolean).join('\n');
 
         return [
@@ -221,6 +226,9 @@ export async function generateVectorInvoicePDF(
     });
 
     let afterTableGlobalY = 0;
+
+    let footerItem: InvoiceItem | null = null;
+    let footerBox: BoxMm | null = null;
 
     for (const layoutItem of sortedLayout) {
         const item = itemById.get(layoutItem.i);
@@ -330,8 +338,8 @@ export async function generateVectorInvoicePDF(
         }
 
         if (item.type === 'footer') {
-            const footerText = cleanText(item.content || mergedSettings.compliance.legalFooter || 'Thank you for your business!');
-            renderTextBlock(footerText, box, { fontSize: '9', textAlign: 'center' }, 'center');
+            footerItem = item;
+            footerBox = box;
             continue;
         }
 
@@ -393,6 +401,23 @@ export async function generateVectorInvoicePDF(
             }
         },
     });
+
+    if (footerItem && footerBox) {
+        const footerText = cleanText(footerItem.content || mergedSettings.compliance.legalFooter || 'Thank you for your business!');
+        const totalsPage = (doc as jsPDF & { lastAutoTable?: { pageNumber?: number } }).lastAutoTable?.pageNumber || totalsPageInfo.page;
+        const totalsFinalY = (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || totalsPageInfo.y;
+        const minFooterYGlobal = ((totalsPage - 1) * pageHeight) + totalsFinalY + 4;
+        const footerYGlobal = Math.max(footerBox.y, minFooterYGlobal);
+        const footerPageInfo = ensurePageForY(footerYGlobal);
+        const maxFooterTop = pageHeight - FOOTER_BOTTOM_MARGIN_MM - 4;
+        const clampedFooterY = Math.min(footerPageInfo.y, maxFooterTop);
+        renderTextBlock(
+            footerText,
+            { x: footerBox.x, y: ((footerPageInfo.page - 1) * pageHeight) + clampedFooterY, w: footerBox.w, h: footerBox.h },
+            { fontSize: '9', textAlign: 'center' },
+            'center'
+        );
+    }
 
     const safeTemplateName = cleanFileName(templateName || 'Invoice');
     const safeOrderNumber = cleanFileName(String(orderNumber));
