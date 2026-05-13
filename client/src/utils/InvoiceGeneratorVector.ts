@@ -88,6 +88,7 @@ const GRID_COLS = 12;
 const GRID_ROW_HEIGHT_PX = 30;
 const GRID_MARGIN_X_PX = 16;
 const GRID_MARGIN_Y_PX = 8;
+const PAGE_PADDING_MM = 8;
 
 interface BoxMm {
     x: number;
@@ -129,9 +130,10 @@ export async function generateVectorInvoicePDF(
     const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 0;
+    const margin = PAGE_PADDING_MM;
     const contentWidth = pageWidth - margin * 2;
-    const pxToMm = pageWidth / DESIGN_WIDTH_PX;
+    const usablePageHeight = pageHeight - (PAGE_PADDING_MM * 2);
+    const pxToMm = contentWidth / DESIGN_WIDTH_PX;
     const colWidthPx = (DESIGN_WIDTH_PX - (GRID_COLS - 1) * GRID_MARGIN_X_PX) / GRID_COLS;
     const rowSpanPx = GRID_ROW_HEIGHT_PX + GRID_MARGIN_Y_PX;
 
@@ -158,7 +160,12 @@ export async function generateVectorInvoicePDF(
         const yPx = entry.y * rowSpanPx;
         const wPx = entry.w * colWidthPx + Math.max(0, entry.w - 1) * GRID_MARGIN_X_PX;
         const hPx = entry.h * GRID_ROW_HEIGHT_PX + Math.max(0, entry.h - 1) * GRID_MARGIN_Y_PX;
-        return { x: xPx * pxToMm, y: yPx * pxToMm, w: wPx * pxToMm, h: hPx * pxToMm };
+        return {
+            x: margin + (xPx * pxToMm),
+            y: margin + (yPx * pxToMm),
+            w: wPx * pxToMm,
+            h: hPx * pxToMm,
+        };
     };
 
     const sortedLayout = [...layout].sort((a, b) => (a.y - b.y) || (a.x - b.x));
@@ -178,9 +185,18 @@ export async function generateVectorInvoicePDF(
     ].filter(Boolean);
 
     const ensurePageForY = (yMm: number): { page: number; y: number } => {
-        const page = Math.max(1, Math.floor(yMm / pageHeight) + 1);
+        const normalized = Math.max(0, yMm - margin);
+        const page = Math.max(1, Math.floor(normalized / usablePageHeight) + 1);
         while (doc.getNumberOfPages() < page) doc.addPage();
-        return { page, y: yMm - ((page - 1) * pageHeight) };
+        const pageStart = margin + ((page - 1) * usablePageHeight);
+        return { page, y: yMm - pageStart + margin };
+    };
+
+    const getWrappedTextHeight = (text: string, width: number, fontSize: number): number => {
+        const lines = text
+            .split('\n')
+            .flatMap((line) => doc.splitTextToSize(line || ' ', Math.max(5, width - 1.5)));
+        return lines.length * (fontSize * 0.36);
     };
 
     const renderTextBlock = (rawText: string, box: BoxMm, style?: InvoiceItemStyle, align: 'left' | 'center' | 'right' = 'left') => {
@@ -409,12 +425,14 @@ export async function generateVectorInvoicePDF(
         const minFooterYGlobal = ((totalsPage - 1) * pageHeight) + totalsFinalY + 4;
         const footerYGlobal = Math.max(footerBox.y, minFooterYGlobal);
         const footerPageInfo = ensurePageForY(footerYGlobal);
-        const maxFooterTop = pageHeight - FOOTER_BOTTOM_MARGIN_MM - 4;
+        const footerFontSize = 9;
+        const footerHeight = getWrappedTextHeight(footerText, footerBox.w, footerFontSize);
+        const maxFooterTop = pageHeight - FOOTER_BOTTOM_MARGIN_MM - footerHeight;
         const clampedFooterY = Math.min(footerPageInfo.y, maxFooterTop);
         renderTextBlock(
             footerText,
             { x: footerBox.x, y: ((footerPageInfo.page - 1) * pageHeight) + clampedFooterY, w: footerBox.w, h: footerBox.h },
-            { fontSize: '9', textAlign: 'center' },
+            { fontSize: String(footerFontSize), textAlign: 'center' },
             'center'
         );
     }
