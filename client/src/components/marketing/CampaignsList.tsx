@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Loader2, Trash2, AlertTriangle, CalendarClock, X } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../ui/Modal';
 
@@ -14,6 +14,13 @@ interface MarketingCampaign {
     sentCount: number;
     openedCount: number;
     scheduledAt?: string | null;
+    progress?: {
+        processedCount: number;
+        sentCount: number;
+        failedCount: number;
+        skippedCount: number;
+        lastEventAt?: string | null;
+    };
 }
 
 interface SegmentItem {
@@ -28,6 +35,8 @@ interface NewCampaignInput {
     segmentId?: string;
     listId?: string;
 }
+
+type AudienceType = 'all' | 'segment' | 'list';
 
 interface EmailListItem {
     id: string;
@@ -49,8 +58,11 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
 
     const [segments, setSegments] = useState<SegmentItem[]>([]);
     const [lists, setLists] = useState<EmailListItem[]>([]);
-    const [audienceType, setAudienceType] = useState<'all' | 'segment' | 'list'>('all');
+    const [audienceType, setAudienceType] = useState<AudienceType | ''>('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [sendingId, setSendingId] = useState<string | null>(null);
+    const [schedulingId, setSchedulingId] = useState<string | null>(null);
+    const [scheduleValue, setScheduleValue] = useState('');
 
     const fetchLists = useCallback(async () => {
         if (!currentAccount) return;
@@ -123,9 +135,35 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         void fetchLists();
     }, [fetchData, fetchSegments, fetchLists]);
 
+    useEffect(() => {
+        const hasSendingCampaign = campaigns.some((campaign) => campaign.status === 'SENDING');
+        if (!hasSendingCampaign) return;
+
+        const timer = window.setInterval(() => {
+            void fetchData();
+        }, 5000);
+
+        return () => window.clearInterval(timer);
+    }, [campaigns, fetchData]);
+
     async function handleCreate(e: React.FormEvent) {
         e.preventDefault();
         try {
+            if (!audienceType) {
+                toast.error('Please choose an audience before creating a campaign');
+                return;
+            }
+
+            if (audienceType === 'segment' && !newItem.segmentId) {
+                toast.error('Please select a segment');
+                return;
+            }
+
+            if (audienceType === 'list' && !newItem.listId) {
+                toast.error('Please select an email list');
+                return;
+            }
+
             const payload: NewCampaignInput = { ...newItem };
             if (audienceType === 'all') {
                 payload.segmentId = '';
@@ -149,7 +187,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 const data = await res.json();
                 setShowCreate(false);
                 setNewItem({ name: '', subject: '' });
-                setAudienceType('all');
+                setAudienceType('');
                 // fetchData(); // No need if we switch view
                 onEdit(data.id, data.name, data.subject);
             } else {
@@ -176,6 +214,95 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         } catch (err) { toast.error('Failed to delete campaign'); }
     }
 
+    async function handleSendCampaign(id: string) {
+        if (!currentAccount) return;
+        setSendingId(id);
+        try {
+            const res = await fetch(`/api/marketing/campaigns/${id}/send`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Failed to queue campaign send');
+            }
+
+            toast.success('Campaign queued for sending');
+            await fetchData();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to queue campaign send');
+        } finally {
+            setSendingId(null);
+        }
+    }
+
+    function openScheduleModal(campaign: MarketingCampaign) {
+        setSchedulingId(campaign.id);
+        if (campaign.scheduledAt) {
+            const date = new Date(campaign.scheduledAt);
+            setScheduleValue(new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+            return;
+        }
+
+        const nextHour = new Date();
+        nextHour.setMinutes(0, 0, 0);
+        nextHour.setHours(nextHour.getHours() + 1);
+        setScheduleValue(new Date(nextHour.getTime() - nextHour.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+    }
+
+    async function handleScheduleCampaign(id: string) {
+        if (!currentAccount || !scheduleValue) return;
+        try {
+            const res = await fetch(`/api/marketing/campaigns/${id}/schedule`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({ scheduledAt: new Date(scheduleValue).toISOString() })
+            });
+
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Failed to schedule campaign');
+            }
+
+            setSchedulingId(null);
+            toast.success('Campaign scheduled');
+            await fetchData();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to schedule campaign');
+        }
+    }
+
+    async function handleUnscheduleCampaign(id: string) {
+        if (!currentAccount) return;
+        try {
+            const res = await fetch(`/api/marketing/campaigns/${id}/schedule`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Failed to unschedule campaign');
+            }
+
+            toast.success('Campaign unscheduled');
+            await fetchData();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to unschedule campaign');
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -194,6 +321,54 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
                     <form onSubmit={handleCreate} className="flex flex-col gap-4">
                         <div className="flex gap-4 items-end">
+                            <div className="w-72 space-y-2">
+                                <label className="block text-sm font-medium mb-1">Audience</label>
+                                <select
+                                    className="w-full p-2 border rounded-sm"
+                                    value={audienceType}
+                                    onChange={e => {
+                                        const nextAudienceType = e.target.value as AudienceType | '';
+                                        setAudienceType(nextAudienceType);
+                                        setNewItem(prev => ({
+                                            ...prev,
+                                            segmentId: nextAudienceType === 'segment' ? prev.segmentId : '',
+                                            listId: nextAudienceType === 'list' ? prev.listId : ''
+                                        }));
+                                    }}
+                                    required
+                                >
+                                    <option value="">Select Audience</option>
+                                    <option value="all">All Customers</option>
+                                    <option value="segment">Segment</option>
+                                    <option value="list">Email List</option>
+                                </select>
+                                {audienceType === 'segment' && (
+                                    <select
+                                        className="w-full p-2 border rounded-sm"
+                                        value={newItem.segmentId || ''}
+                                        onChange={e => setNewItem({ ...newItem, segmentId: e.target.value })}
+                                        required
+                                    >
+                                        <option value="">Select Segment</option>
+                                        {segments.map(s => (
+                                            <option key={s.id} value={s.id}>{s.name} ({s._count?.campaigns || 0} used)</option>
+                                        ))}
+                                    </select>
+                                )}
+                                {audienceType === 'list' && (
+                                    <select
+                                        className="w-full p-2 border rounded-sm"
+                                        value={newItem.listId || ''}
+                                        onChange={e => setNewItem({ ...newItem, listId: e.target.value })}
+                                        required
+                                    >
+                                        <option value="">Select Email List</option>
+                                        {lists.map(l => (
+                                            <option key={l.id} value={l.id}>{l.name} ({l._count?.memberships || 0} subscribed)</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
                             <div className="flex-1">
                                 <label className="block text-sm font-medium mb-1">Campaign Name</label>
                                 <input
@@ -211,42 +386,6 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                     onChange={e => setNewItem({ ...newItem, subject: e.target.value })}
                                     required
                                 />
-                            </div>
-                            <div className="w-72 space-y-2">
-                                <label className="block text-sm font-medium mb-1">Audience</label>
-                                <select
-                                    className="w-full p-2 border rounded-sm"
-                                    value={audienceType}
-                                    onChange={e => setAudienceType(e.target.value as 'all' | 'segment' | 'list')}
-                                >
-                                    <option value="all">All Customers</option>
-                                    <option value="segment">Segment</option>
-                                    <option value="list">Email List</option>
-                                </select>
-                                {audienceType === 'segment' && (
-                                    <select
-                                        className="w-full p-2 border rounded-sm"
-                                        value={newItem.segmentId || ''}
-                                        onChange={e => setNewItem({ ...newItem, segmentId: e.target.value })}
-                                    >
-                                        <option value="">Select Segment</option>
-                                        {segments.map(s => (
-                                            <option key={s.id} value={s.id}>{s.name} ({s._count?.campaigns || 0} used)</option>
-                                        ))}
-                                    </select>
-                                )}
-                                {audienceType === 'list' && (
-                                    <select
-                                        className="w-full p-2 border rounded-sm"
-                                        value={newItem.listId || ''}
-                                        onChange={e => setNewItem({ ...newItem, listId: e.target.value })}
-                                    >
-                                        <option value="">Select Email List</option>
-                                        {lists.map(l => (
-                                            <option key={l.id} value={l.id}>{l.name} ({l._count?.memberships || 0} subscribed)</option>
-                                        ))}
-                                    </select>
-                                )}
                             </div>
                         </div>
                         <div className="flex gap-2 justify-end">
@@ -289,14 +428,19 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                         </span>
                                     </td>
                                     <td className="p-4 text-sm text-gray-600">
+                                        {c.progress && c.status === 'SENDING' && (
+                                            <div className="mb-1 text-xs text-gray-500">
+                                                {c.progress.processedCount} processed · {c.progress.failedCount} failed · {c.progress.skippedCount} skipped
+                                            </div>
+                                        )}
                                         <span
-                                            title={c.sentCount > 0 ? `Open rate: ${((c.openedCount / c.sentCount) * 100).toFixed(1)}%` : 'No sends yet'}
+                                            title={(c.progress?.sentCount || c.sentCount) > 0 ? `Open rate: ${((c.openedCount / (c.progress?.sentCount || c.sentCount)) * 100).toFixed(1)}%` : 'No sends yet'}
                                             className="cursor-default"
                                         >
-                                            {c.sentCount} sent · {c.openedCount} opened
-                                            {c.sentCount > 0 && (
+                                            {(c.progress?.sentCount || c.sentCount)} sent · {c.openedCount} opened
+                                            {(c.progress?.sentCount || c.sentCount) > 0 && (
                                                 <span className="ml-1 text-xs text-gray-400">
-                                                    ({((c.openedCount / c.sentCount) * 100).toFixed(0)}%)
+                                                    ({((c.openedCount / (c.progress?.sentCount || c.sentCount)) * 100).toFixed(0)}%)
                                                 </span>
                                             )}
                                         </span>
@@ -313,6 +457,29 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                         <button onClick={() => setDeletingId(c.id)} className="text-red-500 hover:text-red-700 p-2">
                                             <Trash2 size={16} />
                                         </button>
+                                        <button
+                                            onClick={() => handleSendCampaign(c.id)}
+                                            disabled={c.status === 'SENDING' || c.status === 'SENT' || sendingId === c.id}
+                                            className="text-emerald-600 hover:text-emerald-800 disabled:opacity-50 p-2 font-medium text-sm"
+                                        >
+                                            {sendingId === c.id ? 'Queueing...' : (c.status === 'SENDING' ? 'Sending...' : (c.status === 'SENT' ? 'Sent' : 'Send'))}
+                                        </button>
+                                        {c.status === 'SCHEDULED' ? (
+                                            <button
+                                                onClick={() => handleUnscheduleCampaign(c.id)}
+                                                className="text-amber-600 hover:text-amber-800 p-2 font-medium text-sm"
+                                            >
+                                                Unschedule
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => openScheduleModal(c)}
+                                                disabled={c.status === 'SENDING' || c.status === 'SENT'}
+                                                className="text-violet-600 hover:text-violet-800 disabled:opacity-50 p-2 font-medium text-sm inline-flex items-center gap-1"
+                                            >
+                                                <CalendarClock size={14} /> {c.scheduledAt ? 'Reschedule' : 'Schedule'}
+                                            </button>
+                                        )}
                                         <button onClick={() => onEdit(c.id, c.name, c.subject)} className="text-blue-600 hover:text-blue-800 p-2 font-medium text-sm">
                                             Edit
                                         </button>
@@ -323,6 +490,37 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                     </table>
                 </div>
             )}
+
+            <Modal
+                isOpen={!!schedulingId}
+                onClose={() => setSchedulingId(null)}
+                title="Schedule Campaign"
+                maxWidth="max-w-md"
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">Choose when this campaign should start sending.</p>
+                    <input
+                        type="datetime-local"
+                        value={scheduleValue}
+                        onChange={(e) => setScheduleValue(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="flex justify-end gap-3">
+                        <button
+                            onClick={() => setSchedulingId(null)}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors inline-flex items-center gap-2"
+                        >
+                            <X size={14} /> Cancel
+                        </button>
+                        <button
+                            onClick={() => schedulingId && handleScheduleCampaign(schedulingId)}
+                            className="px-4 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-lg transition-colors"
+                        >
+                            Schedule
+                        </button>
+                    </div>
+                </div>
+            </Modal>
 
             <Modal
                 isOpen={!!deletingId}

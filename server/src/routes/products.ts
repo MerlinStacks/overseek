@@ -22,7 +22,9 @@ import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
 const searchQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(100).default(20),
-    q: z.string().optional().default('')
+    q: z.string().optional().default(''),
+    sortField: z.enum(['name', 'price']).nullable().optional().default(null),
+    sortDirection: z.enum(['asc', 'desc']).optional().default('asc')
 });
 
 const productIdParamSchema = z.object({
@@ -91,14 +93,14 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const { page, limit, q } = searchQuerySchema.parse(request.query);
+            const { page, limit, q, sortField, sortDirection } = searchQuerySchema.parse(request.query);
 
             // Cache product search results for 60 seconds
             // Key includes query params to avoid returning wrong results
-            const cacheKey = `products:list:${accountId}:${page}:${limit}:${q || 'all'}`;
+            const cacheKey = `products:list:${accountId}:${page}:${limit}:${q || 'all'}:${sortField || 'default'}:${sortDirection}`;
             const result = await cacheAside(
                 cacheKey,
-                () => ProductsService.searchProducts(accountId, q, page, limit),
+                () => ProductsService.searchProducts(accountId, q, page, limit, sortField, sortDirection),
                 { ttl: CacheTTL.SHORT * 2, namespace: 'products' } // 60s cache
             );
 
@@ -682,6 +684,9 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 return {
                     orderId: order.id,
                     orderNumber: order.number || `#${order.id}`,
+                    customerWooId: typeof order.customer_id === 'number' && order.customer_id > 0
+                        ? order.customer_id
+                        : null,
                     date: order.date_created,
                     status: order.status,
                     customerName: order.billing

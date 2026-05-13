@@ -1,5 +1,6 @@
 import { esClient, isElasticsearchAvailable } from '../../utils/elastic';
 import { Logger } from '../../utils/logger';
+import { normalizeOrderStatus } from '../../constants/orderStatus';
 
 export class IndexingService {
 
@@ -243,7 +244,7 @@ export class IndexingService {
             document: {
                 accountId,
                 id: order.id,
-                status: order.status.toLowerCase(),
+                status: normalizeOrderStatus(order.status),
                 total: parseFloat(order.total),
                 total_tax: parseFloat(order.total_tax || '0'),
                 net_sales: parseFloat(order.total) - parseFloat(order.total_tax || '0'),
@@ -341,7 +342,7 @@ export class IndexingService {
                 {
                     accountId,
                     id: order.id,
-                    status: order.status.toLowerCase(),
+                    status: normalizeOrderStatus(order.status),
                     total: parseFloat(order.total),
                     total_tax: parseFloat(order.total_tax || '0'),
                     net_sales: parseFloat(order.total) - parseFloat(order.total_tax || '0'),

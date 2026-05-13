@@ -7,12 +7,7 @@ import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 import { WooOrderSchema, WooOrder } from './wooSchemas';
 import { esClient } from '../../utils/elastic';
-
-/** Standard WooCommerce statuses we track. Others are skipped during sync. */
-const VALID_ORDER_STATUSES = new Set([
-    'pending', 'processing', 'on-hold', 'completed',
-    'cancelled', 'refunded', 'failed'
-]);
+import { isExcludedOrderStatus, normalizeOrderStatus } from '../../constants/orderStatus';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -64,16 +59,17 @@ export class OrderSync extends BaseSync {
 
 
             const orders: WooOrder[] = [];
-            const nonStandardWooIds: number[] = [];
+            const excludedWooIds: number[] = [];
             for (const raw of rawOrders) {
                 const result = WooOrderSchema.safeParse(raw);
                 if (result.success) {
-                    if (!VALID_ORDER_STATUSES.has(result.data.status.toLowerCase())) {
-                        // Track non-standard orders per page (not across all pages)
+                    const normalizedStatus = normalizeOrderStatus(result.data.status);
+                    if (isExcludedOrderStatus(normalizedStatus)) {
+                        // Track excluded-status orders per page (not across all pages)
                         // so we can touch their updatedAt without upserting new records.
-                        nonStandardWooIds.push(result.data.id);
+                        excludedWooIds.push(result.data.id);
                         totalSkipped++;
-                        Logger.debug('Skipping order with non-standard status', {
+                        Logger.debug('Skipping order with excluded status', {
                             accountId, syncId, orderId: result.data.id,
                             status: result.data.status
                         });
@@ -92,10 +88,10 @@ export class OrderSync extends BaseSync {
             // Touch updatedAt on non-standard-status orders that already exist in DB
             // so reconciliation doesn't delete them (they still exist in WooCommerce).
             // Uses raw SQL because Prisma's @updatedAt can't be set explicitly via Client.
-            if (nonStandardWooIds.length > 0) {
+            if (excludedWooIds.length > 0) {
                 await prisma.$executeRawUnsafe(
                     `UPDATE "WooOrder" SET "updatedAt" = NOW() WHERE "accountId" = $1 AND "wooId" = ANY($2::int[])`,
-                    accountId, nonStandardWooIds
+                    accountId, excludedWooIds
                 );
             }
 
@@ -130,7 +126,7 @@ export class OrderSync extends BaseSync {
                         return prisma.wooOrder.upsert({
                             where: { accountId_wooId: { accountId, wooId: order.id } },
                             update: {
-                                status: order.status.toLowerCase(),
+                                status: normalizeOrderStatus(order.status),
                                 total: order.total === '' ? '0' : order.total,
                                 currency: order.currency,
                                 billingEmail,
@@ -143,7 +139,7 @@ export class OrderSync extends BaseSync {
                                 accountId,
                                 wooId: order.id,
                                 number: order.number,
-                                status: order.status.toLowerCase(),
+                                status: normalizeOrderStatus(order.status),
                                 total: order.total === '' ? '0' : order.total,
                                 currency: order.currency,
                                 billingEmail,
@@ -190,9 +186,10 @@ export class OrderSync extends BaseSync {
             const finalTagsMap = new Map<number, string[]>();
 
             for (const order of orders) {
+                const normalizedStatus = normalizeOrderStatus(order.status);
                 const existingStatus = existingMap.get(order.id);
                 const isNew = !existingStatus;
-                const isStatusChanged = existingStatus && existingStatus !== order.status;
+                const isStatusChanged = existingStatus && existingStatus !== normalizedStatus;
 
                 const orderDate = new Date(order.date_created_gmt || order.date_created || new Date());
                 const isRecent = (new Date().getTime() - orderDate.getTime()) < 24 * 60 * 60 * 1000;
@@ -206,15 +203,15 @@ export class OrderSync extends BaseSync {
                         accountId,
                         order,
                         previousStatus: existingStatus,
-                        newStatus: order.status.toLowerCase()
+                        newStatus: normalizedStatus
                     });
                 }
 
-                if ((order.status.toLowerCase() === 'processing' || order.status.toLowerCase() === 'on-hold') && (isNew || isStatusChanged)) {
+                if ((normalizedStatus === 'processing' || normalizedStatus === 'on-hold') && (isNew || isStatusChanged)) {
                     EventBus.emit(EVENTS.ORDER.PAID, { accountId, order });
                 }
 
-                if (order.status.toLowerCase() === 'completed' && (isNew || isStatusChanged)) {
+                if (normalizedStatus === 'completed' && (isNew || isStatusChanged)) {
                     EventBus.emit(EVENTS.ORDER.COMPLETED, { accountId, order });
                 }
 

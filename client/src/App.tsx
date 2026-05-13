@@ -51,6 +51,7 @@ const PaidAdsPage = lazy(() => import('./pages/PaidAdsPage').then(m => ({ defaul
 const CAPIHealthPage = lazy(() => import('./pages/CAPIHealthPage').then(m => ({ default: m.CAPIHealthPage })));
 const SeoPage = lazy(() => import('./pages/SeoPage').then(m => ({ default: m.SeoPage })));
 const SeoContentPage = lazy(() => import('./pages/SeoContentPage').then(m => ({ default: m.SeoContentPage })));
+const AiManagerPage = lazy(() => import('./pages/AiManagerPage').then(m => ({ default: m.AiManagerPage })));
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage').then(m => ({ default: m.BroadcastsPage })));
 const EmailListsPage = lazy(() => import('./pages/EmailListsPage').then(m => ({ default: m.EmailListsPage })));
 const EmailDashboardPage = lazy(() => import('./pages/EmailDashboardPage').then(m => ({ default: m.EmailDashboardPage })));
@@ -257,6 +258,7 @@ function App() {
                                                 <Route path="/conversions/health" element={<AccountGuard><CAPIHealthPage /></AccountGuard>} />
                                                 <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path="/seo/content" element={<AccountGuard><SeoContentPage /></AccountGuard>} />
+                                                <Route path="/ai-manager" element={<AccountGuard><FeatureGuard featureKey="AI_MANAGER"><AiManagerPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/broadcasts" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BroadcastsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/emails/lists" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailListsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/emails" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailDashboardPage /></FeatureGuard></AccountGuard>} />

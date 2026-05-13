@@ -106,6 +106,73 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.post<{ Params: { id: string } }>('/campaigns/:id/send', async (request, reply) => {
+        try {
+            const result = await service.enqueueCampaignSend(request.params.id, request.user!.accountId!);
+            if (!result.queued) {
+                return reply.code(409).send({ success: false, error: 'Campaign is already sending' });
+            }
+
+            return reply.code(202).send({ success: true, queued: true, jobId: result.jobId });
+        } catch (e) {
+            const message = (e as Error).message;
+            if (message === 'Campaign not found') {
+                return reply.code(404).send({ error: message });
+            }
+            Logger.error('Error queueing campaign send', { error: e });
+            return reply.code(500).send({ error: 'Failed to queue campaign send' });
+        }
+    });
+
+    fastify.post<{ Params: { id: string }; Body: { scheduledAt: string } }>('/campaigns/:id/schedule', async (request, reply) => {
+        try {
+            const scheduledAtValue = request.body?.scheduledAt;
+            if (!scheduledAtValue || typeof scheduledAtValue !== 'string') {
+                return reply.code(400).send({ error: 'scheduledAt is required' });
+            }
+
+            const scheduledAt = new Date(scheduledAtValue);
+            if (Number.isNaN(scheduledAt.getTime())) {
+                return reply.code(400).send({ error: 'Invalid scheduledAt value' });
+            }
+
+            const result = await service.scheduleCampaign(request.params.id, request.user!.accountId!, scheduledAt);
+            return reply.code(202).send({ success: true, ...result });
+        } catch (e) {
+            const message = (e as Error).message;
+            if (message === 'Campaign not found') {
+                return reply.code(404).send({ error: message });
+            }
+            if (
+                message === 'Campaign already sent'
+                || message === 'Campaign must have subject and content before scheduling'
+                || message === 'Scheduled time must be in the future'
+            ) {
+                return reply.code(400).send({ error: message });
+            }
+            Logger.error('Error scheduling campaign send', { error: e });
+            return reply.code(500).send({ error: 'Failed to schedule campaign send' });
+        }
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/campaigns/:id/schedule', async (request, reply) => {
+        try {
+            const result = await service.unscheduleCampaign(request.params.id, request.user!.accountId!);
+            if (!result.unscheduled && result.reason === 'not_scheduled') {
+                return reply.code(409).send({ success: false, error: 'Campaign is not scheduled' });
+            }
+
+            return { success: true };
+        } catch (e) {
+            const message = (e as Error).message;
+            if (message === 'Campaign not found') {
+                return reply.code(404).send({ error: message });
+            }
+            Logger.error('Error unscheduling campaign send', { error: e });
+            return reply.code(500).send({ error: 'Failed to unschedule campaign send' });
+        }
+    });
+
     // Automations
     fastify.get('/automations', async (request, reply) => {
         try {

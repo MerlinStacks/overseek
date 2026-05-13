@@ -253,9 +253,6 @@ export class WooService {
         const apiParams = {
             ...rest,
             per_page: params.per_page || 20,
-            // Only fetch standard WooCommerce statuses — excludes checkout-draft,
-            // trash, auto-draft, and custom plugin statuses that inflate counts.
-            status: 'pending,processing,on-hold,completed,cancelled,refunded,failed',
             // Use modified_after for incremental syncs to catch status changes
             ...(after && { modified_after: after })
         };

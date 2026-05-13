@@ -23,6 +23,7 @@ interface AccountFeature {
 }
 
 const KNOWN_FEATURES = [
+    'AI_MANAGER',
     'META_ADS',
     'GOOGLE_ADS',
     'ADVANCED_REPORTS',

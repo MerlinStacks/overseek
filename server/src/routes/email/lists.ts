@@ -1,9 +1,17 @@
 import { FastifyPluginAsync } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthFastify } from '../../middleware/auth';
 import { emailListService } from '../../services/EmailListService';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+
+const MAX_BULK_UNSUBSCRIBE_PAYLOAD_CHARS = 2_000_000;
+const MAX_BULK_UNSUBSCRIBE_EMAILS = 25_000;
+const BULK_UNSUBSCRIBE_RATE_LIMIT = {
+    max: 5,
+    timeWindow: 60 * 1000
+};
 
 const CreateListSchema = z.object({
     name: z.string().min(1),
@@ -37,6 +45,25 @@ const PublicUnifiedPreferencesUpdateSchema = z.object({
     reason: z.string().optional()
 });
 
+const BulkUnsubscribeSchema = z.object({
+    emails: z.array(z.string()).optional(),
+    payload: z.string().max(MAX_BULK_UNSUBSCRIBE_PAYLOAD_CHARS).optional(),
+    scope: z.enum(['MARKETING', 'ALL']).default('MARKETING'),
+    reason: z.string().optional()
+}).refine((value) => {
+    return (value.emails && value.emails.length > 0) || (value.payload && value.payload.trim().length > 0);
+}, {
+    message: 'Provide at least one email via emails or payload'
+});
+
+function extractEmailsFromPayload(payload: string): string[] {
+    return payload
+        .split(/[\s,;\n\r\t]+/)
+        .map((part) => part.trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, MAX_BULK_UNSUBSCRIBE_EMAILS);
+}
+
 async function verifyAccountSecret(accountId: string, providedSecret?: string) {
     const account = await prisma.account.findUnique({
         where: { id: accountId },
@@ -65,6 +92,9 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             return await emailListService.createList(accountId, parsed.data);
         } catch (error) {
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                return reply.code(409).send({ error: 'A list with this name already exists' });
+            }
             Logger.error('Failed to create email list', { error });
             return reply.code(500).send({ error: 'Failed to create list' });
         }
@@ -118,6 +148,106 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
 
         await emailListService.setBulkSubscriptions(accountId, body.data.email, body.data.listIds, 'CUSTOMER');
         return { success: true };
+    });
+
+    fastify.post('/unsubscribes/bulk', {
+        config: {
+            rateLimit: BULK_UNSUBSCRIBE_RATE_LIMIT
+        }
+    }, async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
+
+        const parsed = BulkUnsubscribeSchema.safeParse(request.body);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid input' });
+
+        const rawEmails = [
+            ...(parsed.data.emails || []),
+            ...(parsed.data.payload ? extractEmailsFromPayload(parsed.data.payload) : [])
+        ];
+
+        if (rawEmails.length > MAX_BULK_UNSUBSCRIBE_EMAILS) {
+            return reply.code(400).send({
+                error: `Too many emails in a single request. Maximum is ${MAX_BULK_UNSUBSCRIBE_EMAILS}.`,
+                maxAllowed: MAX_BULK_UNSUBSCRIBE_EMAILS
+            });
+        }
+
+        const validator = z.string().email();
+        const validEmailSet = new Set<string>();
+        const invalidEmails: string[] = [];
+
+        for (const raw of rawEmails) {
+            const normalized = raw.trim().toLowerCase();
+            if (!normalized) continue;
+
+            const isValid = validator.safeParse(normalized).success;
+            if (!isValid) {
+                invalidEmails.push(raw);
+                continue;
+            }
+
+            validEmailSet.add(normalized);
+        }
+
+        const validEmails = Array.from(validEmailSet);
+        if (validEmails.length === 0) {
+            return reply.code(400).send({
+                error: 'No valid emails found',
+                invalidCount: invalidEmails.length,
+                invalidEmails: invalidEmails.slice(0, 20)
+            });
+        }
+
+        const existing = await prisma.emailUnsubscribe.findMany({
+            where: {
+                accountId,
+                email: { in: validEmails }
+            },
+            select: { email: true }
+        });
+
+        const existingSet = new Set(existing.map((row) => row.email.toLowerCase()));
+        const toCreate = validEmails.filter((email) => !existingSet.has(email));
+        const toUpdate = validEmails.filter((email) => existingSet.has(email));
+
+        await prisma.$transaction([
+            ...(toCreate.length > 0
+                ? [
+                    prisma.emailUnsubscribe.createMany({
+                        data: toCreate.map((email) => ({
+                            accountId,
+                            email,
+                            scope: parsed.data.scope,
+                            reason: parsed.data.reason?.trim() || 'Bulk unsubscribe upload'
+                        }))
+                    })
+                ]
+                : []),
+            ...(toUpdate.length > 0
+                ? [
+                    prisma.emailUnsubscribe.updateMany({
+                        where: {
+                            accountId,
+                            email: { in: toUpdate }
+                        },
+                        data: {
+                            scope: parsed.data.scope,
+                            reason: parsed.data.reason?.trim() || 'Bulk unsubscribe upload'
+                        }
+                    })
+                ]
+                : [])
+        ]);
+
+        return {
+            success: true,
+            processed: validEmails.length,
+            created: toCreate.length,
+            updated: toUpdate.length,
+            invalidCount: invalidEmails.length,
+            invalidEmails: invalidEmails.slice(0, 20)
+        };
     });
 };
 

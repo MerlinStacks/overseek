@@ -16,6 +16,7 @@ export function EmailSettings() {
     const toast = useToast();
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [accountsLoadError, setAccountsLoadError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -26,6 +27,7 @@ export function EmailSettings() {
 
     const fetchAccounts = useCallback(async () => {
         if (!currentAccount || !token) return;
+        setAccountsLoadError(null);
         try {
             const res = await fetch('/api/email/accounts', {
                 headers: {
@@ -33,16 +35,22 @@ export function EmailSettings() {
                     'x-account-id': currentAccount.id
                 }
             });
-            if (res.ok) {
-                const data = await res.json();
-                setAccounts(data);
+            if (!res.ok) {
+                const payload = await res.json().catch(() => null) as { error?: string } | null;
+                throw new Error(payload?.error || 'Failed to load email accounts');
             }
+
+            const data = await res.json();
+            setAccounts(data);
         } catch (error) {
             Logger.error('An error occurred', { error: error });
+            const message = error instanceof Error ? error.message : 'Failed to load email accounts.';
+            setAccountsLoadError(message);
+            toast.error(message);
         } finally {
             setIsLoading(false);
         }
-    }, [currentAccount, token]);
+    }, [currentAccount, token, toast]);
 
     useEffect(() => {
         if (currentAccount && token) {
@@ -209,13 +217,28 @@ export function EmailSettings() {
             )}
 
             {!editingAccount && (
-                <EmailAccountList
-                    accounts={accounts}
-                    onEdit={setEditingAccount}
-                    onDelete={handleDelete}
-                    onAdd={() => setEditingAccount({ smtpEnabled: false, imapEnabled: false })}
-                    onSetDefault={handleSetDefault}
-                />
+                accountsLoadError ? (
+                    <div className="bg-white rounded-xl shadow-xs border border-red-200 p-6">
+                        <h3 className="text-base font-medium text-red-700">Couldn\'t load email accounts</h3>
+                        <p className="text-sm text-red-600 mt-1">
+                            {accountsLoadError}. Your inbox can still receive messages from previously configured accounts.
+                        </p>
+                        <button
+                            onClick={fetchAccounts}
+                            className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-300 text-red-700 hover:bg-red-50 transition-colors text-sm font-medium"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                ) : (
+                    <EmailAccountList
+                        accounts={accounts}
+                        onEdit={setEditingAccount}
+                        onDelete={handleDelete}
+                        onAdd={() => setEditingAccount({ smtpEnabled: false, imapEnabled: false })}
+                        onSetDefault={handleSetDefault}
+                    />
+                )
             )}
 
             {editingAccount && (

@@ -1,5 +1,6 @@
 import { esClient } from '../../utils/elastic';
 import { Logger } from '../../utils/logger';
+import { normalizeOrderStatus } from '../../constants/orderStatus';
 import { prisma } from '../../utils/prisma';
 
 export class SearchQueryService {
@@ -126,8 +127,9 @@ export class SearchQueryService {
             const must: any[] = [{ term: { accountId } }];
 
             // Status filter
-            if (status && status.toLowerCase() !== 'all') {
-                must.push({ term: { status: status.toLowerCase() } });
+            const normalizedStatus = normalizeOrderStatus(status);
+            if (normalizedStatus && normalizedStatus !== 'all') {
+                must.push({ term: { status: normalizedStatus } });
             }
 
             // Tag filter

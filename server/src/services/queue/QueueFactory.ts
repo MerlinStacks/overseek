@@ -17,6 +17,7 @@ export const QUEUES = {
     REPORTS: 'report-generation',
     BOM_SYNC: 'bom-inventory-sync',
     AUTOMATIONS: 'automation-execution',
+    CAMPAIGNS: 'campaign-send',
 };
 
 // Global Store for Queues to adapter
@@ -102,7 +103,7 @@ export class QueueFactory {
         const isLongRunning = [
             QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS, QUEUES.REVIEWS,
             QUEUES.PAGES, QUEUES.BLOG_POSTS,
-            QUEUES.BOM_SYNC, QUEUES.REPORTS
+            QUEUES.BOM_SYNC, QUEUES.REPORTS, QUEUES.CAMPAIGNS
         ].includes(name);
 
         const worker = new Worker(name, async (job) => {

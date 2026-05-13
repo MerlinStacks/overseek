@@ -45,6 +45,13 @@ export class MarketingScheduler {
             jobId: 'weekly-digest-monday'
         });
         Logger.info('Scheduled Weekly Performance Digest (Monday at 9 AM UTC)');
+
+        // AI Manager Suggestions (daily at 8 AM UTC)
+        await this.queue.add('ai-manager-suggestions', {}, {
+            repeat: { pattern: '0 8 * * *' },
+            jobId: 'ai-manager-suggestions-daily'
+        });
+        Logger.info('Scheduled AI Manager suggestion generation (Daily at 8 AM UTC)');
     }
 
 
@@ -539,6 +546,42 @@ export class MarketingScheduler {
             }
         } catch (error) {
             Logger.error('[Scheduler] Weekly digest dispatch failed', { error });
+        }
+    }
+
+    static async dispatchAiManagerSuggestions() {
+        Logger.info('[Scheduler] Starting AI Manager suggestion generation');
+
+        try {
+            const { AiManagerService } = await import('../ai/AiManagerService');
+
+            const enabledAccounts = await prisma.accountFeature.findMany({
+                where: {
+                    featureKey: 'AI_MANAGER',
+                    isEnabled: true,
+                },
+                select: { accountId: true },
+                distinct: ['accountId'],
+            });
+
+            Logger.info(`[Scheduler] Generating AI Manager suggestions for ${enabledAccounts.length} accounts`);
+
+            for (const entry of enabledAccounts) {
+                try {
+                    const result = await AiManagerService.generateSuggestions(entry.accountId);
+                    Logger.info('[Scheduler] AI Manager suggestions generated', {
+                        accountId: entry.accountId,
+                        created: result.created,
+                    });
+                } catch (error) {
+                    Logger.error('[Scheduler] AI Manager generation failed for account', {
+                        accountId: entry.accountId,
+                        error,
+                    });
+                }
+            }
+        } catch (error) {
+            Logger.error('[Scheduler] AI Manager suggestion dispatch failed', { error });
         }
     }
 }

@@ -5,6 +5,7 @@ import emailWebhookRoutes from './webhooks';
 import emailListRoutes, { emailListPublicRoutes } from './lists';
 import emailSettingsRoutes from './settings';
 import { isAccountFeatureEnabled } from '../../utils/accountFeatures';
+import { requireAuthFastify } from '../../middleware/auth';
 
 async function isEmailFeatureEnabled(accountId: string): Promise<boolean> {
     // Backward compatibility: legacy accounts without an explicit row keep access.
@@ -18,8 +19,9 @@ const emailRoutes: FastifyPluginAsync = async (fastify) => {
 
     // All other routes require auth + feature gate
     await fastify.register(async (authScope) => {
+        authScope.addHook('preHandler', requireAuthFastify);
         authScope.addHook('preHandler', async (request, reply) => {
-            const accountId = request.accountId;
+            const accountId = request.accountId || request.user?.accountId;
             if (!accountId) {
                 return reply.code(400).send({ error: 'Account context required' });
             }

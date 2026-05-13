@@ -217,7 +217,9 @@ export class ProductSearchService {
         accountId: string,
         query: string = '',
         page: number = 1,
-        limit: number = 20
+        limit: number = 20,
+        sortField: 'name' | 'price' | null = null,
+        sortDirection: 'asc' | 'desc' = 'asc'
     ): Promise<SearchResult> {
         const from = (page - 1) * limit;
 
@@ -242,15 +244,21 @@ export class ProductSearchService {
             });
         }
 
+        const explicitSort = sortField
+            ? sortField === 'name'
+                ? [{ 'name.keyword': { order: sortDirection, unmapped_type: 'keyword' } }] as any
+                : [{ price: { order: sortDirection, missing: '_last', unmapped_type: 'double' } }] as any
+            : null;
+
         try {
             const response = await esClient.search({
                 index: 'products',
                 query: { bool: { must } },
                 from,
                 size: limit,
-                sort: query
+                sort: explicitSort || (query
                     ? [{ _score: { order: 'desc' } }, { date_created: { order: 'desc' } }] as any
-                    : [{ date_created: { order: 'desc' } }] as any
+                    : [{ date_created: { order: 'desc' } }] as any)
             });
 
             const hits = response.hits.hits.map(hit => ({
@@ -262,7 +270,7 @@ export class ProductSearchService {
 
             if (total === 0) {
                 Logger.info('Elasticsearch returned 0 results, attempting DB fallback', { accountId, query });
-                return this.searchProductsFromDB(accountId, query, page, limit);
+                return this.searchProductsFromDB(accountId, query, page, limit, sortField, sortDirection);
             }
 
             // Enrich with BOM status
@@ -298,7 +306,7 @@ export class ProductSearchService {
             };
         } catch (error) {
             Logger.error('Elasticsearch Product Search Error, falling back to DB', { error });
-            return this.searchProductsFromDB(accountId, query, page, limit);
+            return this.searchProductsFromDB(accountId, query, page, limit, sortField, sortDirection);
         }
     }
 
@@ -309,7 +317,9 @@ export class ProductSearchService {
         accountId: string,
         query: string,
         page: number,
-        limit: number
+        limit: number,
+        sortField: 'name' | 'price' | null = null,
+        sortDirection: 'asc' | 'desc' = 'asc'
     ): Promise<SearchResult> {
         const skip = (page - 1) * limit;
 
@@ -341,6 +351,12 @@ export class ProductSearchService {
             ];
         }
 
+        const orderBy = sortField
+            ? sortField === 'name'
+                ? { name: sortDirection }
+                : { price: sortDirection }
+            : { createdAt: 'desc' as const };
+
         try {
             const [total, products] = await Promise.all([
                 prisma.wooProduct.count({ where: finalWhere }),
@@ -348,7 +364,7 @@ export class ProductSearchService {
                     where: finalWhere,
                     skip,
                     take: limit,
-                    orderBy: { createdAt: 'desc' },
+                    orderBy,
                     select: {
                         id: true,
                         wooId: true,

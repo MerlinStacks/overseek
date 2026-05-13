@@ -223,7 +223,9 @@ export class AutomationEngine {
                 return;
             }
 
+            const nodeStartTime = Date.now();
             const result = await this.nodeExecutor.execute(node, enrollment);
+            const executionMs = Date.now() - nodeStartTime;
             await automationEnrollmentService.recordRunEvent({
                 accountId: enrollment.automation.accountId,
                 automationId: enrollment.automationId,
@@ -233,6 +235,7 @@ export class AutomationEngine {
                 outcome: result.outcome || result.action,
                 metadata: {
                     nodeType: node.type,
+                    executionMs,
                     ...(result.metadata || {})
                 }
             });

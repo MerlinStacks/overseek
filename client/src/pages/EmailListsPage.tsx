@@ -27,6 +27,10 @@ export function EmailListsPage() {
     const [members, setMembers] = useState<EmailListMember[]>([]);
     const [newListName, setNewListName] = useState('');
     const [newMemberEmail, setNewMemberEmail] = useState('');
+    const [bulkUnsubscribeInput, setBulkUnsubscribeInput] = useState('');
+    const [bulkUnsubscribeReason, setBulkUnsubscribeReason] = useState('');
+    const [bulkUnsubscribeScope, setBulkUnsubscribeScope] = useState<'MARKETING' | 'ALL'>('MARKETING');
+    const [isBulkUploading, setIsBulkUploading] = useState(false);
 
     const fetchLists = useCallback(async () => {
         if (!currentAccount) return;
@@ -77,20 +81,25 @@ export function EmailListsPage() {
     }, [currentAccount, token]);
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         void fetchLists();
     }, [fetchLists]);
 
     useEffect(() => {
         if (selectedListId) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             void fetchMembers(selectedListId);
         }
     }, [fetchMembers, selectedListId]);
 
     async function handleCreateList(e: React.FormEvent) {
         e.preventDefault();
-        if (!newListName.trim()) return;
+        const trimmedName = newListName.trim();
+        if (!trimmedName) return;
+
+        const duplicateExists = lists.some((list) => list.name.trim().toLowerCase() === trimmedName.toLowerCase());
+        if (duplicateExists) {
+            toast.error('A list with this name already exists');
+            return;
+        }
 
         const res = await fetch('/api/email/lists', {
             method: 'POST',
@@ -99,11 +108,12 @@ export function EmailListsPage() {
                 'Authorization': `Bearer ${token}`,
                 'x-account-id': currentAccount?.id || ''
             },
-            body: JSON.stringify({ name: newListName.trim() })
+            body: JSON.stringify({ name: trimmedName })
         });
 
         if (!res.ok) {
-            toast.error('Failed to create list');
+            const data = await res.json().catch(() => null);
+            toast.error(data?.error || 'Failed to create list');
             return;
         }
 
@@ -154,6 +164,46 @@ export function EmailListsPage() {
         if (res.ok) {
             await fetchMembers(selectedListId);
             await fetchLists();
+        }
+    }
+
+    async function handleBulkUnsubscribeUpload(e: React.FormEvent) {
+        e.preventDefault();
+        if (!bulkUnsubscribeInput.trim() || !currentAccount) return;
+
+        setIsBulkUploading(true);
+        try {
+            const res = await fetch('/api/email/unsubscribes/bulk', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({
+                    payload: bulkUnsubscribeInput,
+                    scope: bulkUnsubscribeScope,
+                    reason: bulkUnsubscribeReason.trim() || undefined
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                toast.error(data?.error || 'Bulk unsubscribe upload failed');
+                return;
+            }
+
+            setBulkUnsubscribeInput('');
+            setBulkUnsubscribeReason('');
+            const invalidSuffix = data.invalidCount ? `, ${data.invalidCount} invalid` : '';
+            toast.success(`Processed ${data.processed} emails (${data.created} new, ${data.updated} updated${invalidSuffix})`);
+            await fetchLists();
+            if (selectedListId) await fetchMembers(selectedListId);
+        } catch (error) {
+            Logger.error('Bulk unsubscribe upload failed', { error });
+            toast.error('Bulk unsubscribe upload failed');
+        } finally {
+            setIsBulkUploading(false);
         }
     }
 
@@ -220,6 +270,50 @@ export function EmailListsPage() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 space-y-3">
+                <div>
+                    <h2 className="text-sm font-semibold text-gray-900">Bulk Unsubscribe Upload</h2>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Paste emails separated by commas, spaces, or new lines. Use this to suppress recipients at once.
+                    </p>
+                </div>
+
+                <form onSubmit={handleBulkUnsubscribeUpload} className="space-y-3">
+                    <textarea
+                        className="w-full min-h-32 p-2 border rounded-sm"
+                        placeholder="customer1@email.com\ncustomer2@email.com"
+                        value={bulkUnsubscribeInput}
+                        onChange={(e) => setBulkUnsubscribeInput(e.target.value)}
+                    />
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <select
+                            value={bulkUnsubscribeScope}
+                            onChange={(e) => setBulkUnsubscribeScope(e.target.value as 'MARKETING' | 'ALL')}
+                            className="p-2 border rounded-sm"
+                        >
+                            <option value="MARKETING">Marketing only</option>
+                            <option value="ALL">All email</option>
+                        </select>
+
+                        <input
+                            className="md:col-span-2 p-2 border rounded-sm"
+                            placeholder="Reason (optional)"
+                            value={bulkUnsubscribeReason}
+                            onChange={(e) => setBulkUnsubscribeReason(e.target.value)}
+                        />
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={isBulkUploading || !bulkUnsubscribeInput.trim()}
+                        className="px-3 py-2 bg-red-600 text-white rounded-sm disabled:opacity-60"
+                    >
+                        {isBulkUploading ? 'Uploading...' : 'Upload Unsubscribes'}
+                    </button>
+                </form>
             </div>
         </div>
     );

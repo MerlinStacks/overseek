@@ -105,6 +105,7 @@ const navItems = [
             { icon: Star, label: 'Reviews', path: '/reviews' },
             { icon: Search, label: 'SEO Keywords', path: '/seo' },
             { icon: FileText, label: 'SEO Content', path: '/seo/content' },
+            { icon: Bot, label: 'AI Manager', path: '/ai-manager' },
         ]
     },
     { type: 'link', icon: BookOpen, label: 'Policies & SOP', path: '/policies' },
@@ -130,6 +131,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     const { hasPermission } = usePermissions(); // Permission hook
     const isEmailEnabled = useAccountFeature('EMAIL');
     const isBotShieldEnabled = useAccountFeature('BOT_SHIELD');
+    const isAiManagerEnabled = useAccountFeature('AI_MANAGER');
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
 
@@ -199,6 +201,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     ...item,
                     children: item.children.filter(child => {
                         if (child.path === '/crawlers') return isBotShieldEnabled;
+                        if (child.path === '/ai-manager') return isAiManagerEnabled && hasPermission('view_marketing');
                         if (child.path === '/orders') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
@@ -213,7 +216,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             }
             return item;
         });
-    }, [hasPermission, isBotShieldEnabled, isEmailEnabled]);
+    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled]);
 
     // State for expanded groups
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);

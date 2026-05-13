@@ -590,14 +590,24 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     }, [flowId, getViewport]);
 
     const renderNodes = useMemo(() => {
-        if (!invalidNodeIds.length) return nodes;
         const invalidSet = new Set(invalidNodeIds);
+
         return nodes.map((node) => {
             const hasError = invalidSet.has(node.id);
             const className = `${node.className || ''} ${hasError ? 'ring-2 ring-red-400 ring-offset-2 rounded-xl' : ''}`.trim();
-            return { ...node, className };
+
+            return {
+                ...node,
+                className,
+                data: {
+                    ...(node.data as Record<string, unknown>),
+                    onAddStep: handleOpenStepPopup,
+                    onCopy: onNodeCopy,
+                    onDelete: onNodeDelete,
+                },
+            };
         });
-    }, [nodes, invalidNodeIds]);
+    }, [nodes, invalidNodeIds, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
 
     return (
         <div className="h-full w-full relative">

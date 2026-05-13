@@ -152,6 +152,16 @@ interface AutomationAnalytics {
         duplicateEnrollments: number;
         recoveredOrders: number;
     };
+    nodePerformance?: Array<{
+        nodeId: string;
+        executions: number;
+        failed: number;
+        skipped: number;
+        failureRate: number;
+        avgExecutionMs: number | null;
+        lastOutcome: string | null;
+        lastSeenAt: string;
+    }>;
 }
 
 interface EnrollmentRow {
@@ -739,6 +749,29 @@ export function FlowsPage() {
                                         </div>
                                     );
                                 })}
+                            </div>
+                        </div>
+                    )}
+
+                    {analytics?.nodePerformance && analytics.nodePerformance.length > 0 && (
+                        <div className="border-b bg-white px-4 py-3">
+                            <div className="mb-2 text-xs uppercase text-gray-500">Node Reliability</div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                                {analytics.nodePerformance.map((nodeStats) => (
+                                    <div key={nodeStats.nodeId} className="rounded-xl border border-gray-200 p-3 text-sm text-gray-700">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-medium text-gray-900">Node {nodeStats.nodeId}</span>
+                                            <span className="text-xs text-gray-500">{nodeStats.executions} runs</span>
+                                        </div>
+                                        <div className="mt-1 text-xs text-gray-500">
+                                            {nodeStats.failed} failed · {nodeStats.skipped} skipped · {(nodeStats.failureRate * 100).toFixed(1)}% failure
+                                        </div>
+                                        <div className="mt-1 text-xs text-gray-500">
+                                            Avg latency: {nodeStats.avgExecutionMs !== null ? `${nodeStats.avgExecutionMs}ms` : 'N/A'}
+                                            {nodeStats.lastOutcome ? ` · Last: ${nodeStats.lastOutcome}` : ''}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}

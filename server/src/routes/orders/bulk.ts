@@ -7,8 +7,7 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { requireAuthFastify } from '../../middleware/auth';
 import { getOrderRequestAccountIdOrReply } from './helpers';
-
-const VALID_ORDER_STATUSES = ['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed'];
+import { isValidWooOrderStatusSlug, normalizeOrderStatus } from '../../constants/orderStatus';
 
 const bulkRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -31,8 +30,9 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: 'status is required' });
         }
 
-        if (!VALID_ORDER_STATUSES.includes(body.status)) {
-            return reply.code(400).send({ error: `Invalid status. Must be one of: ${VALID_ORDER_STATUSES.join(', ')}` });
+        const normalizedStatus = normalizeOrderStatus(body.status);
+        if (!isValidWooOrderStatusSlug(normalizedStatus)) {
+            return reply.code(400).send({ error: 'Invalid status. Use a WooCommerce status slug (for example: processing or wc-awaiting-shipment), excluding trash/auto-draft/checkout-draft.' });
         }
 
         // Limit bulk updates to prevent abuse
@@ -45,7 +45,7 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
             const woo = await WooService.forAccount(accountId);
 
             // Use WooCommerce Batch API for efficient bulk update (single API call)
-            const updates = body.orderIds.map(id => ({ id, status: body.status }));
+            const updates = body.orderIds.map(id => ({ id, status: normalizedStatus }));
 
             let updated = 0;
             let failed = 0;
@@ -81,7 +81,7 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
                             accountId,
                             wooId: { in: successfulIds }
                         },
-                        data: { status: body.status }
+                        data: { status: normalizedStatus }
                     });
                 }
             } catch (batchError) {
@@ -91,10 +91,10 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
 
                 for (const orderId of body.orderIds) {
                     try {
-                        await woo.updateOrder(orderId, { status: body.status });
+                        await woo.updateOrder(orderId, { status: normalizedStatus });
                         await prisma.wooOrder.updateMany({
                             where: { accountId, wooId: orderId },
-                            data: { status: body.status }
+                            data: { status: normalizedStatus }
                         });
                         updated++;
                     } catch (err) {
@@ -106,7 +106,7 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
 
             Logger.info('Bulk order status update completed', {
                 accountId,
-                status: body.status,
+                status: normalizedStatus,
                 updated,
                 failed,
                 total: body.orderIds.length,

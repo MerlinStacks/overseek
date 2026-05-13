@@ -11,12 +11,7 @@ import { IndexingService } from '../services/search/IndexingService';
 import { WebhookDeliveryService } from '../services/WebhookDeliveryService';
 import { EventBus, EVENTS } from '../services/events';
 import { redisClient } from '../utils/redis';
-
-/** Standard WooCommerce statuses we track. Others are skipped. */
-const VALID_ORDER_STATUSES = new Set([
-    'pending', 'processing', 'on-hold', 'completed',
-    'cancelled', 'refunded', 'failed'
-]);
+import { isExcludedOrderStatus, normalizeOrderStatus } from '../constants/orderStatus';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -90,9 +85,9 @@ export async function processWebhookPayload(
         });
         const previousStatus = existingOrder?.status || null;
 
-        const orderStatus = ((body as any).status || '').toLowerCase();
-        if (!VALID_ORDER_STATUSES.has(orderStatus)) {
-            Logger.debug('[Webhook] Skipping order with non-standard status', {
+        const orderStatus = normalizeOrderStatus((body as any).status);
+        if (isExcludedOrderStatus(orderStatus)) {
+            Logger.debug('[Webhook] Skipping order with excluded status', {
                 accountId, orderId: body.id, status: orderStatus
             });
             return;
@@ -102,6 +97,7 @@ export async function processWebhookPayload(
         // (Sync Engine checks if order exists in DB to determine if it's "new")
         try {
             const order = body as any;
+            const normalizedStatus = normalizeOrderStatus(order.status);
             const rawEmail = order.billing?.email;
             const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
             const billingCountry = order.billing?.country || null;
@@ -110,7 +106,7 @@ export async function processWebhookPayload(
             await prisma.wooOrder.upsert({
                 where: { accountId_wooId: { accountId, wooId: order.id } },
                 update: {
-                    status: order.status.toLowerCase(),
+                    status: normalizedStatus,
                     total: order.total === '' ? '0' : order.total,
                     currency: order.currency,
                     billingEmail,
@@ -123,7 +119,7 @@ export async function processWebhookPayload(
                     accountId,
                     wooId: order.id,
                     number: order.number,
-                    status: order.status.toLowerCase(),
+                    status: normalizedStatus,
                     total: order.total === '' ? '0' : order.total,
                     currency: order.currency,
                     billingEmail,

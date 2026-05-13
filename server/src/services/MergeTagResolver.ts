@@ -5,6 +5,8 @@
  * Extracted from MarketingService.ts for maintainability.
  */
 
+import { normalizeOrderStatus } from '../constants/orderStatus';
+
 interface MergeTagContext {
     order?: any;
     customer?: any;
@@ -207,6 +209,7 @@ export function formatDate(date: string | Date | undefined): string {
  */
 export function formatStatus(status: string | undefined): string {
     if (!status) return '';
+    const normalizedStatus = normalizeOrderStatus(status);
 
     const statusMap: Record<string, string> = {
         'pending': 'Pending Payment',
@@ -218,5 +221,5 @@ export function formatStatus(status: string | undefined): string {
         'failed': 'Failed'
     };
 
-    return statusMap[status.toLowerCase()] || status.charAt(0).toUpperCase() + status.slice(1);
+    return statusMap[normalizedStatus] || normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
 }

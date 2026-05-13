@@ -9,9 +9,12 @@ import { BlogPostSync } from '../services/sync/BlogPostSync';
 import { EventBus, EVENTS } from '../services/events';
 import { Worker } from 'bullmq';
 import { automationEngine } from '../services/AutomationEngine';
+import { MarketingService } from '../services/MarketingService';
+import { normalizeOrderStatus } from '../constants/orderStatus';
 
 /** Track all workers for graceful shutdown */
 const activeWorkers: Worker[] = [];
+const marketingService = new MarketingService();
 
 // Register SIGTERM handler exactly once at module load. Previously it was
 // attached inside startWorkers(), so if the function was ever invoked more
@@ -88,6 +91,16 @@ export async function startWorkers() {
         await automationEngine.processEnrollment(enrollmentId);
     }));
 
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.CAMPAIGNS, async (job) => {
+        const { campaignId, accountId } = job.data as { campaignId?: string; accountId?: string };
+        if (!campaignId || !accountId) {
+            Logger.warn('[Campaign Worker] Missing campaignId/accountId in job payload', { jobId: job.id });
+            return;
+        }
+
+        await marketingService.sendCampaign(campaignId, accountId);
+    }));
+
 
     try {
         const { BOMInventorySyncService } = await import('../services/BOMInventorySyncService');
@@ -110,7 +123,7 @@ export async function startWorkers() {
     await import('../services/BOMConsumptionService').then(({ BOMConsumptionService }) => {
         EventBus.on(EVENTS.ORDER.SYNCED, async ({ accountId, order }) => {
             try {
-                const status = (order?.status || '').toLowerCase();
+                const status = normalizeOrderStatus(order?.status);
 
                 if (status === 'processing' || status === 'completed') {
                     // Consume BOM components (dedup prevents double-consumption)

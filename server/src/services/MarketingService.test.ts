@@ -40,7 +40,9 @@ const mocks = vi.hoisted(() => ({
         trackSend: vi.fn().mockResolvedValue(undefined),
     },
     logger: {
+        warn: vi.fn(),
         info: vi.fn(),
+        debug: vi.fn(),
         error: vi.fn(),
     },
     segmentService: {

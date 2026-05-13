@@ -39,7 +39,8 @@ export function EmailSettingsPage() {
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to load email settings');
+                    const payload = await response.json().catch(() => null) as { error?: string } | null;
+                    throw new Error(payload?.error || 'Failed to load email settings');
                 }
 
                 const data = await response.json() as EmailSettings;
@@ -50,7 +51,8 @@ export function EmailSettingsPage() {
                 });
             } catch (error) {
                 Logger.error('Failed to load email settings', { error });
-                toast.error('Failed to load email settings.');
+                const message = error instanceof Error ? error.message : 'Failed to load email settings.';
+                toast.error(message);
             } finally {
                 setIsLoading(false);
             }
@@ -75,13 +77,15 @@ export function EmailSettingsPage() {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to save email settings');
+                const payload = await response.json().catch(() => null) as { error?: string } | null;
+                throw new Error(payload?.error || 'Failed to save email settings');
             }
 
             toast.success('Email settings saved.');
         } catch (error) {
             Logger.error('Failed to save email settings', { error });
-            toast.error('Failed to save email settings.');
+            const message = error instanceof Error ? error.message : 'Failed to save email settings.';
+            toast.error(message);
         } finally {
             setIsSaving(false);
         }

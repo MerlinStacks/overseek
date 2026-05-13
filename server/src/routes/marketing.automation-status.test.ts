@@ -48,6 +48,10 @@ vi.mock('../utils/prisma', () => ({
     },
 }));
 
+vi.mock('../utils/accountFeatures', () => ({
+    isAccountFeatureEnabled: vi.fn().mockResolvedValue(true),
+}));
+
 import marketingRoutes from './marketing';
 
 describe('marketing automation status route', () => {

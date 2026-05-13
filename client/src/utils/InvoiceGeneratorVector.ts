@@ -101,12 +101,20 @@ interface BoxMm {
 }
 
 const FOOTER_BOTTOM_MARGIN_MM = 8;
+const MAX_INVOICE_IMAGE_BYTES = 2 * 1024 * 1024;
 
 const toDataUrl = async (url: string): Promise<string | null> => {
     try {
         const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
         if (!response.ok) return null;
+        const contentLength = Number(response.headers.get('content-length') || '0');
+        if (Number.isFinite(contentLength) && contentLength > MAX_INVOICE_IMAGE_BYTES) {
+            return null;
+        }
         const blob = await response.blob();
+        if (blob.size > MAX_INVOICE_IMAGE_BYTES) {
+            return null;
+        }
         return await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => {
@@ -197,17 +205,6 @@ export async function generateVectorInvoicePDF(
     const logoCache = new Map<string, string>();
 
     const billing = order.billing || {};
-    const billTo = [
-        cleanText(`${billing.first_name || ''} ${billing.last_name || ''}`),
-        cleanText(billing.company),
-        cleanText(billing.address_1),
-        cleanText(billing.address_2),
-        cleanText(`${billing.city || ''}${billing.city && billing.state ? ', ' : ''}${billing.state || ''} ${billing.postcode || ''}`),
-        cleanText(billing.country),
-        cleanText(billing.email),
-        cleanText(billing.phone),
-    ].filter(Boolean);
-
     const ensurePageForY = (yMm: number): { page: number; y: number } => {
         const normalized = Math.max(0, yMm - margin);
         const page = Math.max(1, Math.floor(normalized / usablePageHeight) + 1);
@@ -300,7 +297,6 @@ export async function generateVectorInvoicePDF(
         drawDebugBox(box, pageInfo.page, item.type);
 
         if (PDF_DEBUG_LAYOUT) {
-            // eslint-disable-next-line no-console
             console.log('[InvoiceVectorLayout]', {
                 type: item.type,
                 grid: { x: layoutItem.x, y: layoutItem.y, w: layoutItem.w, h: layoutItem.h },

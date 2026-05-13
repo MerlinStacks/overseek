@@ -454,14 +454,54 @@ export class InvoiceService {
 
             const rawData = order.rawData as any || {};
 
-            // Page dimensions (A4 with 50pt margins)
-            const pageWidth = 495; // 595 - 100 (margins)
-            const colWidth = pageWidth / 12;
-            const rowHeight = 30;
+            // Page + grid metrics (aligned with designer canvas/react-grid-layout spacing)
+            const pageWidth = 495; // 595 - 100 (A4 width minus 50pt margins)
             const marginLeft = 50;
             const marginTop = 50;
             const pageHeight = 742;
-            const rowsPerPage = Math.max(1, Math.floor(pageHeight / rowHeight));
+            const DESIGN_WIDTH_PX = 794;
+            const GRID_COLS = 12;
+            const GRID_ROW_HEIGHT_PX = 30;
+            const GRID_MARGIN_X_PX = 16;
+            const GRID_MARGIN_Y_PX = 8;
+
+            const pxToPt = pageWidth / DESIGN_WIDTH_PX;
+            const colWidthPx = (DESIGN_WIDTH_PX - ((GRID_COLS - 1) * GRID_MARGIN_X_PX)) / GRID_COLS;
+            const rowSpanPx = GRID_ROW_HEIGHT_PX + GRID_MARGIN_Y_PX;
+            const usablePageHeight = pageHeight;
+
+            const normalizeGridItem = (entry: any, itemType?: string) => {
+                let x = Math.max(0, Math.min(GRID_COLS - 1, Number(entry?.x || 0)));
+                let w = Math.max(1, Math.min(GRID_COLS, Number(entry?.w || 1)));
+                if (x + w > GRID_COLS) w = GRID_COLS - x;
+
+                // Match the client vector renderer behavior: nearly full-width tables snap to full width.
+                if (itemType === 'order_table' && w >= 11) {
+                    x = 0;
+                    w = GRID_COLS;
+                }
+
+                return {
+                    ...entry,
+                    x,
+                    y: Math.max(0, Number(entry?.y || 0)),
+                    w,
+                    h: Math.max(1, Number(entry?.h || 1)),
+                };
+            };
+
+            const toItemBounds = (entry: any) => {
+                const xPx = entry.x * (colWidthPx + GRID_MARGIN_X_PX);
+                const yPx = entry.y * rowSpanPx;
+                const wPx = (entry.w * colWidthPx) + (Math.max(0, entry.w - 1) * GRID_MARGIN_X_PX);
+                const hPx = (entry.h * GRID_ROW_HEIGHT_PX) + (Math.max(0, entry.h - 1) * GRID_MARGIN_Y_PX);
+                return {
+                    x: marginLeft + (xPx * pxToPt),
+                    y: marginTop + (yPx * pxToPt),
+                    w: Math.max(20, wPx * pxToPt),
+                    h: Math.max(18, hPx * pxToPt),
+                };
+            };
 
             // Sort grid items by Y position
             const sortedGrid = [...grid].sort((a: any, b: any) => (a.y - b.y) || (a.x - b.x));
@@ -473,10 +513,11 @@ export class InvoiceService {
             sortedGrid.forEach((gridItem: any) => {
                 const itemConfig = getItemConfig(gridItem.i);
                 if (!itemConfig || itemConfig.type !== 'footer') return;
-                const rowIndex = Number(gridItem.y || 0);
-                const pageIndex = Math.floor(rowIndex / rowsPerPage);
-                const localRow = rowIndex % rowsPerPage;
-                const footerY = marginTop + (localRow * rowHeight);
+                const normalizedGridItem = normalizeGridItem(gridItem, itemConfig.type);
+                const bounds = toItemBounds(normalizedGridItem);
+                const normalizedY = Math.max(0, bounds.y - marginTop);
+                const pageIndex = Math.floor(normalizedY / usablePageHeight);
+                const footerY = marginTop + (normalizedY - (pageIndex * usablePageHeight));
                 const current = footerStartByPage.get(pageIndex);
                 if (current === undefined || footerY < current) {
                     footerStartByPage.set(pageIndex, footerY);
@@ -582,12 +623,13 @@ export class InvoiceService {
                     }
 
                     case 'customer_details': {
-                        doc.fontSize(10).font('Helvetica-Bold');
-                        doc.text('Bill To:', x, startY);
-                        doc.font('Helvetica').fontSize(9);
-                        let custY = startY + 15;
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor('#94a3b8');
+                        doc.text('BILL TO', x, startY);
+                        doc.font('Helvetica').fontSize(9).fillColor('#334155');
+                        let custY = startY + 14;
                         if (billing.first_name || billing.last_name) {
-                            doc.text(`${billing.first_name || ''} ${billing.last_name || ''}`, x, custY);
+                            doc.font('Helvetica-Bold').fillColor('#1f2937').text(`${billing.first_name || ''} ${billing.last_name || ''}`, x, custY);
+                            doc.font('Helvetica').fillColor('#334155');
                             custY += 12;
                         }
                         if (billing.company) {
@@ -611,15 +653,16 @@ export class InvoiceService {
                             custY += 12;
                         }
                         if (billing.email) {
-                            doc.fillColor('#4f46e5').text(billing.email, x, custY);
-                            doc.fillColor('black');
+                            doc.fillColor('#2563eb').text(billing.email, x, custY);
+                            doc.fillColor('#334155');
                             custY += 12;
                         }
                         if (billing.phone) {
                             doc.text(billing.phone, x, custY);
                             custY += 12;
                         }
-                        blockHeight = custY - startY + 10;
+                        doc.fillColor('black').font('Helvetica').fontSize(10);
+                        blockHeight = custY - startY + 8;
                         break;
                     }
 
@@ -644,11 +687,15 @@ export class InvoiceService {
                         ];
 
                         let detY = startY;
+                        const detailLabelWidth = Math.min(120, Math.max(88, width * 0.45));
                         detailsData.forEach(([label, value]) => {
-                            doc.font('Helvetica').fillColor('#64748b').text(label, x, detY, { continued: false });
-                            doc.font('Helvetica-Bold').fillColor('black').text(value, x + 100, detY);
-                            detY += 14;
+                            doc.font('Helvetica').fillColor('#64748b').text(label, x, detY, { width: detailLabelWidth });
+                            doc.font('Helvetica-Bold').fillColor('#1f2937').text(value, x + detailLabelWidth + 6, detY, {
+                                width: Math.max(40, width - detailLabelWidth - 6)
+                            });
+                            detY += 13;
                         });
+                        doc.fillColor('black').font('Helvetica').fontSize(10);
                         blockHeight = detY - startY + 10;
                         break;
                     }
@@ -664,25 +711,27 @@ export class InvoiceService {
                         const priceWidth = 70;
                         const totalWidth = fullTableWidth - descWidth - qtyWidth - priceWidth;
 
-                        doc.text('Description', tableX, startY);
+                        doc.fillColor('#334155').text('Description', tableX, startY);
                         doc.text('Qty', tableX + descWidth, startY, { width: qtyWidth, align: 'center' });
                         doc.text('Unit Price', tableX + descWidth + qtyWidth, startY, { width: priceWidth, align: 'right' });
                         doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, startY, { width: totalWidth, align: 'right' });
 
-                        doc.moveTo(tableX, startY + 12).lineTo(tableX + fullTableWidth, startY + 12).stroke();
+                        doc.moveTo(tableX, startY + 12).lineTo(tableX + fullTableWidth, startY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
+                        doc.strokeColor('black').lineWidth(1);
 
                         let tableY = startY + 18;
                         doc.font('Helvetica').fontSize(9);
 
                         const renderTableHeader = () => {
                             doc.fontSize(9).font('Helvetica-Bold');
-                            doc.text('Description', tableX, tableY);
+                            doc.fillColor('#334155').text('Description', tableX, tableY);
                             doc.text('Qty', tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
                             doc.text('Unit Price', tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
-                            doc.moveTo(tableX, tableY + 12).lineTo(tableX + fullTableWidth, tableY + 12).stroke();
+                            doc.moveTo(tableX, tableY + 12).lineTo(tableX + fullTableWidth, tableY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
+                            doc.strokeColor('black').lineWidth(1);
                             tableY += 18;
-                            doc.font('Helvetica').fontSize(9);
+                            doc.font('Helvetica').fontSize(9).fillColor('black');
                         };
 
                         const moveTableToNextPage = () => {
@@ -707,11 +756,21 @@ export class InvoiceService {
                             const itemName = item.name || 'Product';
                             const qty = item.quantity || 1;
                             const unitPrice = qty > 0 ? (parseFloat(item.total || 0) / qty) : 0;
-                            const itemMeta = getInvoiceItemMeta(item).slice(0, 6);
+                            const itemMeta = getInvoiceItemMeta(item)
+                                .filter((meta) => {
+                                    const value = String(meta?.value || '').trim();
+                                    return value.length > 0;
+                                })
+                                .slice(0, 6);
+                            const truncateMetaValue = (value: string) => {
+                                const compact = value.replace(/\s+/g, ' ').trim();
+                                if (compact.length <= 120) return compact;
+                                return `${compact.slice(0, 117)}...`;
+                            };
 
                             const titleHeight = Math.max(12, doc.heightOfString(itemName, { width: descWidth - 10 }));
                             const metaLineHeights = itemMeta.map((meta) => {
-                                const metaText = decodeInvoiceEntities(`${meta.label}: ${meta.value}`);
+                                const metaText = decodeInvoiceEntities(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
                                 return Math.max(
                                     10,
                                     doc.heightOfString(metaText, {
@@ -738,7 +797,7 @@ export class InvoiceService {
                                 tableY += 2;
                                 doc.fontSize(8).fillColor('#64748b');
                                 itemMeta.forEach((meta, metaIdx) => {
-                                    const metaText = decodeInvoiceEntities(`${meta.label}: ${meta.value}`);
+                                    const metaText = decodeInvoiceEntities(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
                                     const metaLineHeight = metaLineHeights[metaIdx] || 10;
                                     ensureSpaceForHeight(metaLineHeight + rowBottomSpacing);
                                     doc.text(
@@ -753,13 +812,16 @@ export class InvoiceService {
                             }
 
                             tableY += 8;
+                            doc.moveTo(tableX, tableY - 3).lineTo(tableX + fullTableWidth, tableY - 3).strokeColor('#f1f5f9').lineWidth(0.7).stroke();
+                            doc.strokeColor('black').lineWidth(1);
                         });
 
                         // Totals integrated into table — use rawData for consistency
                         const rawOrderData = order.rawData as any || {};
                         const estimatedTotalsHeight = 90;
                         ensureSpaceForHeight(estimatedTotalsHeight);
-                        doc.moveTo(tableX, tableY).lineTo(tableX + fullTableWidth, tableY).stroke();
+                        doc.moveTo(tableX, tableY).lineTo(tableX + fullTableWidth, tableY).strokeColor('#cbd5e1').lineWidth(1).stroke();
+                        doc.strokeColor('black').lineWidth(1);
                         tableY += 10;
 
                         const taxVal = parseFloat(rawOrderData.total_tax ?? order.taxTotal ?? 0);
@@ -768,14 +830,14 @@ export class InvoiceService {
                         const subtotal = totalVal - taxVal - shipVal;
                         const totalsX = tableX + fullTableWidth - 170;
 
-                        doc.font('Helvetica').fontSize(9);
+                        doc.font('Helvetica').fontSize(9).fillColor('#475569');
                         doc.text('Subtotal', totalsX, tableY);
-                        doc.text(formatCurrency(subtotal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        doc.fillColor('#334155').text(formatCurrency(subtotal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         tableY += 14;
 
                         if (shipVal > 0) {
-                            doc.text('Shipping', totalsX, tableY);
-                            doc.text(formatCurrency(shipVal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                            doc.fillColor('#475569').text('Shipping', totalsX, tableY);
+                            doc.fillColor('#334155').text(formatCurrency(shipVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                             tableY += 14;
                         }
 
@@ -788,13 +850,17 @@ export class InvoiceService {
                             doc.fillColor('black');
                         }
 
-                        doc.text('Tax', totalsX, tableY);
-                        doc.text(formatCurrency(taxVal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        doc.fillColor('#475569').text('Tax', totalsX, tableY);
+                        doc.fillColor('#334155').text(formatCurrency(taxVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         tableY += 16;
 
-                        doc.font('Helvetica-Bold').fontSize(11);
+                        doc.moveTo(totalsX, tableY - 3).lineTo(totalsX + 150, tableY - 3).strokeColor('#cbd5e1').lineWidth(1).stroke();
+                        doc.strokeColor('black').lineWidth(1);
+
+                        doc.font('Helvetica-Bold').fontSize(11).fillColor('#0f172a');
                         doc.text('Total', totalsX, tableY);
                         doc.text(formatCurrency(totalVal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        doc.fillColor('black');
                         tableY += 20;
 
                         blockHeight = tableY - startY;
@@ -963,16 +1029,17 @@ export class InvoiceService {
                 const itemConfig = getItemConfig(gridItem.i);
                 if (!itemConfig) return;
 
-                const rowIndex = Number(gridItem.y || 0);
-                const pageIndex = Math.floor(rowIndex / rowsPerPage);
-                const localRow = rowIndex % rowsPerPage;
+                const normalizedGridItem = normalizeGridItem(gridItem, itemConfig.type);
+                const bounds = toItemBounds(normalizedGridItem);
+                const normalizedY = Math.max(0, bounds.y - marginTop);
+                const pageIndex = Math.floor(normalizedY / usablePageHeight);
+                const localY = normalizedY - (pageIndex * usablePageHeight);
                 ensurePage(pageIndex);
 
-                const itemX = marginLeft + ((gridItem.x || 0) * colWidth);
-                const itemWidth = Math.max(colWidth, (gridItem.w || 1) * colWidth);
-                const itemY = marginTop + (localRow * rowHeight);
-
-                const itemHeight = Math.max(rowHeight, (gridItem.h || 1) * rowHeight);
+                const itemX = bounds.x;
+                const itemWidth = bounds.w;
+                const itemY = marginTop + localY;
+                const itemHeight = bounds.h;
                 renderBlock(itemConfig, itemX, itemWidth, itemY, itemHeight);
             });
 

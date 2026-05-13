@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -89,13 +89,21 @@ export function InventoryPage() {
     const tabFromUrl = searchParams.get('tab') as 'catalog' | 'suppliers' | 'purchasing' | 'components' | null;
     const validTabs = ['catalog', 'suppliers', 'purchasing', 'components'];
     const initialTab = (tabFromUrl && validTabs.includes(tabFromUrl)) ? tabFromUrl : 'catalog';
+    const sortFieldFromUrl = searchParams.get('sortField');
+    const initialSortField: 'name' | 'price' | null = sortFieldFromUrl === 'name' || sortFieldFromUrl === 'price'
+        ? sortFieldFromUrl
+        : null;
+    const sortDirectionFromUrl = searchParams.get('sortDirection');
+    const initialSortDirection: 'asc' | 'desc' = sortDirectionFromUrl === 'desc' ? 'desc' : 'asc';
     const [activeTab, setActiveTab] = useState<'catalog' | 'suppliers' | 'purchasing' | 'components'>(initialTab);
 
     // Sync URL when tab changes
     useEffect(() => {
         const currentTabParam = searchParams.get('tab');
         if (activeTab !== 'catalog' && currentTabParam !== activeTab) {
-            setSearchParams({ tab: activeTab }, { replace: true });
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.set('tab', activeTab);
+            setSearchParams(nextParams, { replace: true });
         } else if (activeTab === 'catalog' && currentTabParam) {
             // Remove tab param when on default catalog tab
             const nextParams = new URLSearchParams(searchParams);
@@ -109,8 +117,8 @@ export function InventoryPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortField, setSortField] = useState<'name' | 'price' | null>(null);
-    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+    const [sortField, setSortField] = useState<'name' | 'price' | null>(initialSortField);
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(initialSortDirection);
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
@@ -198,6 +206,11 @@ export function InventoryPage() {
                 q: debouncedQuery
             });
 
+            if (sortField) {
+                params.set('sortField', sortField);
+                params.set('sortDirection', sortDirection);
+            }
+
             const res = await fetch(`/api/products?${params}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -215,7 +228,27 @@ export function InventoryPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [currentAccount, token, page, limit, debouncedQuery]);
+    }, [currentAccount, token, page, limit, debouncedQuery, sortField, sortDirection]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [sortField, sortDirection]);
+
+    useEffect(() => {
+        const nextParams = new URLSearchParams(searchParams);
+
+        if (sortField) {
+            nextParams.set('sortField', sortField);
+            nextParams.set('sortDirection', sortDirection);
+        } else {
+            nextParams.delete('sortField');
+            nextParams.delete('sortDirection');
+        }
+
+        if (nextParams.toString() !== searchParams.toString()) {
+            setSearchParams(nextParams, { replace: true });
+        }
+    }, [sortField, sortDirection, searchParams, setSearchParams]);
 
     useEffect(() => {
         if (activeTab === 'catalog') {
@@ -305,26 +338,6 @@ export function InventoryPage() {
             setIsCreating(false);
         }
     }
-
-    // Memoize sorted products to avoid re-sorting on every render
-    const sortedProducts = useMemo(() => {
-        if (!sortField) return products;
-        return [...products].sort((a, b) => {
-            if (sortField === 'name') {
-                const nameA = a.name.toLowerCase();
-                const nameB = b.name.toLowerCase();
-                return sortDirection === 'asc'
-                    ? nameA.localeCompare(nameB)
-                    : nameB.localeCompare(nameA);
-            }
-            if (sortField === 'price') {
-                const priceA = parseFloat(a.price) || 0;
-                const priceB = parseFloat(b.price) || 0;
-                return sortDirection === 'asc' ? priceA - priceB : priceB - priceA;
-            }
-            return 0;
-        });
-    }, [products, sortField, sortDirection]);
 
     return (
         <div className="space-y-6">
@@ -469,8 +482,7 @@ export function InventoryPage() {
                                             />
                                         </td></tr>
                                     ) : (
-                                        [...sortedProducts]
-                                            .map((product) => (
+                                        products.map((product) => (
                                                 <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                                                     <td className="px-6 py-4">
                                                         <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">

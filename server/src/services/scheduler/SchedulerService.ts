@@ -14,6 +14,11 @@ import { MarketingScheduler } from './MarketingScheduler';
 import { MaintenanceScheduler } from './MaintenanceScheduler';
 
 export class SchedulerService {
+    private static readonly DEPRECATED_JOB_NAMES = new Set([
+        'execute-pending-actions',
+        'audience-refresh'
+    ]);
+
     /**
      * Start all scheduled tasks
      */
@@ -25,11 +30,38 @@ export class SchedulerService {
         await MarketingScheduler.register();
         await MaintenanceScheduler.register();
 
+        // Remove stale repeatable jobs from older deployments.
+        await this.cleanupDeprecatedJobs();
+
         // Start all setInterval tickers
         this.startTickers();
 
         // Register the unified worker to route jobs to appropriate handlers
         this.registerWorker();
+    }
+
+    /**
+     * Remove repeatable jobs that no longer exist in the current scheduler.
+     */
+    private static async cleanupDeprecatedJobs() {
+        try {
+            const queue = QueueFactory.createQueue('scheduler');
+            const repeatableJobs = await queue.getRepeatableJobs();
+            let removed = 0;
+
+            for (const job of repeatableJobs) {
+                if (!this.DEPRECATED_JOB_NAMES.has(job.name)) continue;
+
+                await queue.removeRepeatableByKey(job.key);
+                removed++;
+            }
+
+            if (removed > 0) {
+                Logger.info(`[Scheduler] Removed ${removed} deprecated repeatable job(s)`);
+            }
+        } catch (error) {
+            Logger.warn('[Scheduler] Failed to cleanup deprecated repeatable jobs', { error });
+        }
     }
 
     /**
@@ -95,11 +127,20 @@ export class SchedulerService {
                 case 'weekly-digest':
                     await MarketingScheduler.dispatchWeeklyDigests();
                     break;
+                case 'ai-manager-suggestions':
+                    await MarketingScheduler.dispatchAiManagerSuggestions();
+                    break;
 
                 // Why: stale repeatable job from a previous deployment persists
                 // in Redis. No-op until the job is properly removed or re-implemented.
                 case 'audience-refresh':
                     Logger.debug('[Scheduler] audience-refresh is deprecated, skipping');
+                    break;
+
+                // Why: stale repeatable job from a previous deployment persists
+                // in Redis. No-op until the job is removed.
+                case 'execute-pending-actions':
+                    Logger.debug('[Scheduler] execute-pending-actions is deprecated, skipping');
                     break;
 
                 default:

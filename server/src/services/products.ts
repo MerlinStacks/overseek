@@ -362,7 +362,14 @@ export class ProductsService {
     /**
      * Search products in Elasticsearch (delegates to ProductSearchService)
      */
-    static async searchProducts(accountId: string, query: string = '', page: number = 1, limit: number = 20) {
-        return ProductSearchService.searchProducts(accountId, query, page, limit);
+    static async searchProducts(
+        accountId: string,
+        query: string = '',
+        page: number = 1,
+        limit: number = 20,
+        sortField: 'name' | 'price' | null = null,
+        sortDirection: 'asc' | 'desc' = 'asc'
+    ) {
+        return ProductSearchService.searchProducts(accountId, query, page, limit, sortField, sortDirection);
     }
 }

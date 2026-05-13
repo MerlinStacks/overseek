@@ -14,6 +14,7 @@ import { EmailService } from './EmailService';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { campaignTrackingService } from './CampaignTrackingService';
 import { automationAnalyticsService } from './AutomationAnalyticsService';
+import { QueueFactory, QUEUES } from './queue/QueueFactory';
 
 export class MarketingService {
     private segmentService: SegmentService;
@@ -29,9 +30,70 @@ export class MarketingService {
     // -------------------
 
     async listCampaigns(accountId: string) {
-        return prisma.marketingCampaign.findMany({
+        const campaigns = await prisma.marketingCampaign.findMany({
             where: { accountId },
             orderBy: { createdAt: 'desc' }
+        });
+
+        if (campaigns.length === 0) return campaigns;
+
+        const campaignIds = campaigns.map((campaign) => campaign.id);
+        const [statusGroups, latestLogPerCampaign] = await Promise.all([
+            prisma.emailLog.groupBy({
+                by: ['sourceId', 'status'],
+                where: {
+                    accountId,
+                    source: 'CAMPAIGN',
+                    sourceId: { in: campaignIds }
+                },
+                _count: true
+            }),
+            prisma.emailLog.findMany({
+                where: {
+                    accountId,
+                    source: 'CAMPAIGN',
+                    sourceId: { in: campaignIds }
+                },
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    sourceId: true,
+                    createdAt: true
+                }
+            })
+        ]);
+
+        const groupedCounts = new Map<string, { processed: number; sent: number; failed: number; skipped: number }>();
+        for (const group of statusGroups) {
+            const sourceId = group.sourceId;
+            if (!sourceId) continue;
+
+            const current = groupedCounts.get(sourceId) || { processed: 0, sent: 0, failed: 0, skipped: 0 };
+            const count = group._count;
+            current.processed += count;
+            if (group.status === 'SUCCESS' || group.status === 'RETRIED') current.sent += count;
+            if (group.status === 'FAILED') current.failed += count;
+            if (group.status === 'SKIPPED') current.skipped += count;
+            groupedCounts.set(sourceId, current);
+        }
+
+        const latestByCampaign = new Map<string, Date>();
+        for (const item of latestLogPerCampaign) {
+            if (!item.sourceId || latestByCampaign.has(item.sourceId)) continue;
+            latestByCampaign.set(item.sourceId, item.createdAt);
+        }
+
+        return campaigns.map((campaign) => {
+            const progress = groupedCounts.get(campaign.id) || { processed: 0, sent: 0, failed: 0, skipped: 0 };
+            return {
+                ...campaign,
+                progress: {
+                    processedCount: progress.processed,
+                    sentCount: progress.sent,
+                    failedCount: progress.failed,
+                    skippedCount: progress.skipped,
+                    lastEventAt: latestByCampaign.get(campaign.id) || null
+                }
+            };
         });
     }
 
@@ -123,6 +185,7 @@ export class MarketingService {
         let processedCount = 0;
         let sentCount = 0;
         let failedCount = 0;
+        let skippedCount = 0;
         const BATCH_SIZE = 1000;
 
         const sendToBatch = async (customers: Array<{ id: string; email: string | null }>) => {
@@ -146,6 +209,7 @@ export class MarketingService {
                     );
 
                     if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
+                        skippedCount++;
                         continue;
                     }
 
@@ -224,7 +288,143 @@ export class MarketingService {
             data: { status: finalStatus, sentCount }
         });
 
-        return { success: sentCount > 0, count: sentCount, processedCount, failedCount };
+        return { success: sentCount > 0, count: sentCount, processedCount, failedCount, skippedCount };
+    }
+
+    private getScheduledCampaignJobId(campaignId: string) {
+        return `campaign-scheduled:${campaignId}`;
+    }
+
+    private async removeScheduledCampaignJob(campaignId: string) {
+        const queue = QueueFactory.getQueue(QUEUES.CAMPAIGNS);
+        const scheduledJob = await queue.getJob(this.getScheduledCampaignJobId(campaignId));
+        if (scheduledJob) {
+            await scheduledJob.remove();
+        }
+    }
+
+    async scheduleCampaign(campaignId: string, accountId: string, scheduledAt: Date) {
+        const campaign = await this.getCampaign(campaignId, accountId);
+        if (!campaign) {
+            throw new Error('Campaign not found');
+        }
+
+        if (campaign.status === 'SENT') {
+            throw new Error('Campaign already sent');
+        }
+
+        if (!campaign.subject?.trim() || !campaign.content?.trim()) {
+            throw new Error('Campaign must have subject and content before scheduling');
+        }
+
+        const delayMs = scheduledAt.getTime() - Date.now();
+        if (!Number.isFinite(delayMs) || delayMs <= 0) {
+            throw new Error('Scheduled time must be in the future');
+        }
+
+        await this.removeScheduledCampaignJob(campaignId);
+
+        await prisma.marketingCampaign.updateMany({
+            where: {
+                id: campaignId,
+                accountId,
+                status: { in: ['DRAFT', 'FAILED', 'SCHEDULED'] }
+            },
+            data: {
+                status: 'SCHEDULED',
+                scheduledAt
+            }
+        });
+
+        const queue = QueueFactory.getQueue(QUEUES.CAMPAIGNS);
+        await queue.add(
+            QUEUES.CAMPAIGNS,
+            { accountId, campaignId },
+            {
+                jobId: this.getScheduledCampaignJobId(campaignId),
+                delay: delayMs,
+                removeOnComplete: 100,
+                removeOnFail: 500,
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 5000 }
+            }
+        );
+
+        return { scheduled: true, scheduledAt };
+    }
+
+    async unscheduleCampaign(campaignId: string, accountId: string) {
+        const campaign = await this.getCampaign(campaignId, accountId);
+        if (!campaign) {
+            throw new Error('Campaign not found');
+        }
+
+        if (campaign.status !== 'SCHEDULED') {
+            return { unscheduled: false, reason: 'not_scheduled' as const };
+        }
+
+        await this.removeScheduledCampaignJob(campaignId);
+
+        await prisma.marketingCampaign.updateMany({
+            where: { id: campaignId, accountId, status: 'SCHEDULED' },
+            data: { status: 'DRAFT', scheduledAt: null }
+        });
+
+        return { unscheduled: true };
+    }
+
+    async enqueueCampaignSend(campaignId: string, accountId: string) {
+        const campaign = await this.getCampaign(campaignId, accountId);
+        if (!campaign) {
+            throw new Error('Campaign not found');
+        }
+
+        if (campaign.status === 'SENDING') {
+            return { queued: false, reason: 'already_sending' as const };
+        }
+
+        if (campaign.status === 'SENT') {
+            return { queued: false, reason: 'already_sent' as const };
+        }
+
+        const lock = await prisma.marketingCampaign.updateMany({
+            where: {
+                id: campaignId,
+                accountId,
+                status: { in: ['DRAFT', 'FAILED', 'SCHEDULED'] }
+            },
+            data: { status: 'SENDING', scheduledAt: null }
+        });
+
+        if (lock.count === 0) {
+            return { queued: false, reason: 'invalid_status' as const };
+        }
+
+        const queue = QueueFactory.getQueue(QUEUES.CAMPAIGNS);
+        const jobId = `campaign-send:${campaignId}:${Date.now()}`;
+
+        try {
+            await this.removeScheduledCampaignJob(campaignId);
+            await queue.add(
+                QUEUES.CAMPAIGNS,
+                { accountId, campaignId },
+                {
+                    jobId,
+                    removeOnComplete: 100,
+                    removeOnFail: 500,
+                    attempts: 3,
+                    backoff: { type: 'exponential', delay: 5000 }
+                }
+            );
+        } catch (error) {
+            await prisma.marketingCampaign.updateMany({
+                where: { id: campaignId, accountId, status: 'SENDING' },
+                data: { status: campaign.status === 'FAILED' ? 'FAILED' : 'DRAFT' }
+            });
+            throw error;
+        }
+
+        return { queued: true, jobId };
     }
 
     // -------------------

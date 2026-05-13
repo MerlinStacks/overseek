@@ -27,6 +27,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     const searchRoutes = (await import('../routes/search')).default;
     const inventoryRoutes = (await import('../routes/inventory')).default;
     const aiRoutes = (await import('../routes/ai')).default;
+    const aiManagerRoutes = (await import('../routes/aiManager')).default;
     const dashboardRoutes = (await import('../routes/dashboard')).default;
 
     await fastify.register(healthRoutes, { prefix: '/health' });
@@ -48,6 +49,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(internalProductsRoutes, { prefix: '/api/inventory/internal-products' });
 
     await fastify.register(aiRoutes, { prefix: '/api/ai' });
+    await fastify.register(aiManagerRoutes, { prefix: '/api/ai-manager' });
     await fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
 
     // Marketing & Ads

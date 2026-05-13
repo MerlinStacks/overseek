@@ -42,6 +42,61 @@ export class EmailService {
         });
     }
 
+    private getMarketingPressureCapConfig() {
+        const maxPerWindow = Number.parseInt(process.env.MARKETING_PRESSURE_MAX_SENDS || '3', 10);
+        const windowHours = Number.parseInt(process.env.MARKETING_PRESSURE_WINDOW_HOURS || '24', 10);
+        return {
+            maxPerWindow: Number.isFinite(maxPerWindow) && maxPerWindow > 0 ? maxPerWindow : 3,
+            windowHours: Number.isFinite(windowHours) && windowHours > 0 ? windowHours : 24
+        };
+    }
+
+    private async enforceMarketingPressureCap(accountId: string, to: string, source?: string): Promise<{ allowed: boolean; reason?: string }> {
+        const sourceKey = String(source || '').toUpperCase();
+        const isMarketingAutomationOrCampaign = sourceKey === 'AUTOMATION' || sourceKey === 'CAMPAIGN';
+        if (!isMarketingAutomationOrCampaign) {
+            return { allowed: true };
+        }
+
+        const { maxPerWindow, windowHours } = this.getMarketingPressureCapConfig();
+        const windowStart = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+        const sentInWindow = await prisma.emailLog.count({
+            where: {
+                accountId,
+                to: { equals: to, mode: 'insensitive' },
+                status: { in: ['SUCCESS', 'RETRIED'] },
+                source: { in: ['AUTOMATION', 'CAMPAIGN'] },
+                createdAt: { gte: windowStart }
+            }
+        });
+
+        if (sentInWindow >= maxPerWindow) {
+            return {
+                allowed: false,
+                reason: `Contact pressure cap reached (${sentInWindow}/${maxPerWindow} in ${windowHours}h)`
+            };
+        }
+
+        return { allowed: true };
+    }
+
+    private buildApiBaseUrl() {
+        return (process.env.API_URL || 'http://localhost:3000').replace(/\/$/, '');
+    }
+
+    private injectClickTracking(html: string, trackingId: string): string {
+        const clickBase = `${this.buildApiBaseUrl()}/api/email/click/${trackingId}?url=`;
+        return html.replace(/<a\b([^>]*?)href=("|')(https?:\/\/[^"']+)(\2)([^>]*)>/gi, (_match, preAttrs, quote, href, _quote2, postAttrs) => {
+            const trackedHref = `${clickBase}${encodeURIComponent(href)}`;
+            return `<a${preAttrs}href=${quote}${trackedHref}${quote}${postAttrs}>`;
+        });
+    }
+
+    private buildUnsubscribeHeaderUrl(trackingId: string): string {
+        return `${this.buildApiBaseUrl()}/api/email/unsubscribe/${trackingId}`;
+    }
+
     private async enforceSendingLimits(accountId: string): Promise<{ allowed: boolean; reason?: string }> {
         const settings = await this.getEmailSettings(accountId);
 
@@ -193,6 +248,26 @@ export class EmailService {
 
         const emailCategory = options?.category || 'MARKETING';
 
+        if (emailCategory === 'MARKETING') {
+            const pressureCheck = await this.enforceMarketingPressureCap(accountId, to, options?.source);
+            if (!pressureCheck.allowed) {
+                await prisma.emailLog.create({
+                    data: {
+                        accountId,
+                        emailAccountId,
+                        to,
+                        subject,
+                        status: 'SKIPPED',
+                        errorMessage: pressureCheck.reason || 'Marketing pressure cap reached',
+                        source: options?.source,
+                        sourceId: options?.sourceId,
+                        canRetry: false
+                    }
+                });
+                return { skipped: true, reason: 'contact_pressure_cap_reached' };
+            }
+        }
+
         // Suppress sends to unsubscribed recipients for this tenant.
         const unsubscribe = await prisma.emailUnsubscribe.findFirst({
             where: {
@@ -230,17 +305,25 @@ export class EmailService {
 
         // Generate tracking ID for read receipts
         const trackingId = crypto.randomUUID();
-        const trackingPixelUrl = `${process.env.API_URL || 'http://localhost:3000'}/api/email/track/${trackingId}.png`;
+        const trackingPixelUrl = `${this.buildApiBaseUrl()}/api/email/track/${trackingId}.png`;
+        const htmlWithClickTracking = this.injectClickTracking(html, trackingId);
 
         // Inject tracking pixel
-        const htmlWithTracking = html.includes('</body>')
-            ? html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" /></body>`)
-            : `${html}<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" />`;
+        const htmlWithTracking = htmlWithClickTracking.includes('</body>')
+            ? htmlWithClickTracking.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" /></body>`)
+            : `${htmlWithClickTracking}<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" />`;
+
+        const unsubscribeUrl = emailCategory === 'MARKETING'
+            ? this.buildUnsubscribeHeaderUrl(trackingId)
+            : null;
 
         // Try HTTP relay first if configured
         if (emailAccount.relayEndpoint && emailAccount.relayApiKey) {
             try {
-                const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithTracking, attachments, options);
+                const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithTracking, attachments, {
+                    ...options,
+                    unsubscribeUrl: unsubscribeUrl || undefined
+                });
 
                 await prisma.emailLog.create({
                     data: {
@@ -300,7 +383,13 @@ export class EmailService {
                 to,
                 subject,
                 html: htmlWithTracking,
-                attachments
+                attachments,
+                headers: unsubscribeUrl
+                    ? {
+                        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+                        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+                    }
+                    : undefined
             };
 
             if (options?.inReplyTo) {
@@ -467,7 +556,12 @@ export class EmailService {
         subject: string,
         html: string,
         attachments?: any[],
-        options?: { inReplyTo?: string; references?: string }
+        options?: {
+            inReplyTo?: string;
+            references?: string;
+            category?: 'MARKETING' | 'TRANSACTIONAL';
+            unsubscribeUrl?: string;
+        }
     ): Promise<{ success: boolean; message_id: string }> {
         if (!emailAccount.relayEndpoint || !emailAccount.relayApiKey) {
             throw new Error('HTTP relay not configured');
@@ -526,6 +620,8 @@ export class EmailService {
             from_email: emailAccount.email,
             in_reply_to: options?.inReplyTo,
             references: options?.references,
+            list_unsubscribe: options?.unsubscribeUrl,
+            list_unsubscribe_post: options?.unsubscribeUrl ? 'List-Unsubscribe=One-Click' : undefined,
             attachments: base64Attachments.length > 0 ? base64Attachments : undefined
         };
 

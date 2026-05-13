@@ -161,6 +161,33 @@ export function EmailLogPanel() {
         }
     };
 
+    const retryFailedEmail = async (logId: string) => {
+        if (!currentAccount || !token) return;
+        setBusyLogId(logId);
+
+        try {
+            const res = await fetch(`/api/email/logs/${logId}/retry`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Failed to retry email');
+            }
+
+            toast.success('Retry queued');
+            await fetchLogs();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to retry email');
+        } finally {
+            setBusyLogId(null);
+        }
+    };
+
     const totalPages = Math.ceil(total / limit);
     const currentPage = Math.floor(offset / limit) + 1;
     const queuedCount = logs.filter((log) => log.status === 'PENDING_RETRY').length;
@@ -334,6 +361,17 @@ export function EmailLogPanel() {
                                                     className="rounded-lg border border-orange-300 px-3 py-1.5 text-sm text-orange-700 transition-colors hover:bg-orange-50 disabled:opacity-50"
                                                 >
                                                     Mark Complaint
+                                                </button>
+                                            </div>
+                                        )}
+                                        {log.status === 'FAILED' && (
+                                            <div className="col-span-2 flex flex-wrap gap-2 pt-2">
+                                                <button
+                                                    onClick={() => retryFailedEmail(log.id)}
+                                                    disabled={busyLogId === log.id}
+                                                    className="rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-50"
+                                                >
+                                                    Retry send
                                                 </button>
                                             </div>
                                         )}

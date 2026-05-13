@@ -2,7 +2,7 @@ import { prisma } from '../utils/prisma';
 
 export class AutomationAnalyticsService {
     async getAutomationAnalytics(accountId: string, automationId: string) {
-        const [enrollmentGroups, eventGroups, goalAggregate, recentRuns, runEventGroups] = await Promise.all([
+        const [enrollmentGroups, eventGroups, goalAggregate, recentRuns, runEventGroups, nodeEvents] = await Promise.all([
             prisma.automationEnrollment.groupBy({
                 by: ['status'],
                 where: { accountId, automationId },
@@ -27,6 +27,22 @@ export class AutomationAnalyticsService {
                 by: ['eventType', 'outcome'],
                 where: { accountId, automationId },
                 _count: true
+            }),
+            prisma.automationRunEvent.findMany({
+                where: {
+                    accountId,
+                    automationId,
+                    eventType: 'NODE_EXECUTED',
+                    nodeId: { not: null }
+                },
+                select: {
+                    nodeId: true,
+                    outcome: true,
+                    metadata: true,
+                    createdAt: true
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 5000
             })
         ]);
 
@@ -37,6 +53,70 @@ export class AutomationAnalyticsService {
             accumulator[key] = (accumulator[key] || 0) + group._count;
             return accumulator;
         }, {});
+
+        const nodePerformanceMap = new Map<string, {
+            nodeId: string;
+            total: number;
+            failed: number;
+            skipped: number;
+            durationSamples: number;
+            totalDurationMs: number;
+            lastOutcome: string | null;
+            lastSeenAt: Date;
+        }>();
+
+        for (const event of nodeEvents) {
+            const nodeId = event.nodeId;
+            if (!nodeId) continue;
+
+            const stats = nodePerformanceMap.get(nodeId) || {
+                nodeId,
+                total: 0,
+                failed: 0,
+                skipped: 0,
+                durationSamples: 0,
+                totalDurationMs: 0,
+                lastOutcome: null,
+                lastSeenAt: event.createdAt
+            };
+
+            stats.total += 1;
+            const outcome = String(event.outcome || '').toUpperCase();
+            if (outcome.includes('FAILED')) stats.failed += 1;
+            if (outcome.includes('SKIPPED')) stats.skipped += 1;
+
+            const metadata = (event.metadata as Record<string, unknown> | null) || null;
+            const executionMsRaw = metadata?.executionMs;
+            if (typeof executionMsRaw === 'number' && Number.isFinite(executionMsRaw)) {
+                stats.totalDurationMs += executionMsRaw;
+                stats.durationSamples += 1;
+            }
+
+            if (event.createdAt >= stats.lastSeenAt) {
+                stats.lastSeenAt = event.createdAt;
+                stats.lastOutcome = event.outcome || null;
+            }
+
+            nodePerformanceMap.set(nodeId, stats);
+        }
+
+        const nodePerformance = Array.from(nodePerformanceMap.values())
+            .map((stats) => ({
+                nodeId: stats.nodeId,
+                executions: stats.total,
+                failed: stats.failed,
+                skipped: stats.skipped,
+                failureRate: stats.total > 0 ? stats.failed / stats.total : 0,
+                avgExecutionMs: stats.durationSamples > 0 ? Math.round(stats.totalDurationMs / stats.durationSamples) : null,
+                lastOutcome: stats.lastOutcome,
+                lastSeenAt: stats.lastSeenAt
+            }))
+            .sort((a, b) => {
+                if (b.failureRate !== a.failureRate) return b.failureRate - a.failureRate;
+                if (b.executions !== a.executions) return b.executions - a.executions;
+                return b.lastSeenAt.getTime() - a.lastSeenAt.getTime();
+            })
+            .slice(0, 12);
 
         return {
             enrollments: {
@@ -68,6 +148,7 @@ export class AutomationAnalyticsService {
                 duplicateEnrollments: runStats.DUPLICATE_ENROLLMENT || 0,
                 recoveredOrders: runStats.PURCHASE_ATTRIBUTED || 0
             },
+            nodePerformance,
             recentRuns
         };
     }

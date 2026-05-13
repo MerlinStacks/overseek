@@ -6,10 +6,12 @@ import { useAccount } from '../../context/AccountContext';
 import { format } from 'date-fns';
 import { formatCurrency } from '../../utils/format';
 import { getStatusBadgeClasses } from '../../utils/orderStatus';
+import { Link } from 'react-router-dom';
 
 interface SaleRecord {
     orderId: number;
     orderNumber: string;
+    customerWooId: number | null;
     date: string;
     status: string;
     customerName: string;
@@ -42,6 +44,7 @@ export function ProductSalesHistory({ productWooId }: ProductSalesHistoryProps) 
     const [data, setData] = useState<SalesHistoryResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
+    const normalizedWooUrl = currentAccount?.wooUrl?.replace(/\/+$/, '');
 
     useEffect(() => {
         if (!currentAccount || !token) return;
@@ -132,10 +135,15 @@ export function ProductSalesHistory({ productWooId }: ProductSalesHistoryProps) 
                             <tr key={sale.orderId} className="hover:bg-gray-50/50 transition-colors">
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-2">
-                                        <span className="font-medium text-gray-900">{sale.orderNumber}</span>
-                                        {currentAccount?.wooUrl && (
+                                        <Link
+                                            to={`/orders/${sale.orderId}`}
+                                            className="font-medium text-gray-900 hover:text-blue-700 transition-colors"
+                                        >
+                                            {sale.orderNumber}
+                                        </Link>
+                                        {normalizedWooUrl && (
                                             <a
-                                                href={`${currentAccount.wooUrl}/wp-admin/post.php?post=${sale.orderId}&action=edit`}
+                                                href={`${normalizedWooUrl}/wp-admin/post.php?post=${sale.orderId}&action=edit`}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="text-blue-600 hover:text-blue-800 transition-colors"
@@ -153,7 +161,18 @@ export function ProductSalesHistory({ productWooId }: ProductSalesHistoryProps) 
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <div className="text-sm font-medium text-gray-900">{sale.customerName}</div>
+                                    <div className="text-sm font-medium text-gray-900">
+                                        {sale.customerWooId ? (
+                                            <Link
+                                                to={`/customers/${sale.customerWooId}`}
+                                                className="hover:text-blue-700 transition-colors"
+                                            >
+                                                {sale.customerName}
+                                            </Link>
+                                        ) : (
+                                            sale.customerName
+                                        )}
+                                    </div>
                                     {sale.customerEmail && (
                                         <div className="text-xs text-gray-500">{sale.customerEmail}</div>
                                     )}
