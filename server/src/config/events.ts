@@ -29,6 +29,26 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
         });
     });
 
+    EventBus.on(EVENTS.SHIPMENT.IN_TRANSIT, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'SHIPMENT_IN_TRANSIT', data.shipment);
+    });
+
+    EventBus.on(EVENTS.SHIPMENT.OUT_FOR_DELIVERY, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'SHIPMENT_OUT_FOR_DELIVERY', data.shipment);
+    });
+
+    EventBus.on(EVENTS.SHIPMENT.DELIVERY_ATTEMPTED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'SHIPMENT_DELIVERY_ATTEMPTED', data.shipment);
+    });
+
+    EventBus.on(EVENTS.SHIPMENT.DELIVERED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'SHIPMENT_DELIVERED', data.shipment);
+    });
+
+    EventBus.on(EVENTS.SHIPMENT.EXCEPTION, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'SHIPMENT_EXCEPTION', data.shipment);
+    });
+
     EventBus.on(EVENTS.CUSTOMER.CREATED, async (data) => {
         await automationEngine.processTrigger(data.accountId, 'CUSTOMER_CREATED', data.customer);
     });

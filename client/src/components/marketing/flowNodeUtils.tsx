@@ -47,6 +47,11 @@ export function getTriggerIcon(config: unknown) {
         case 'ORDER_STATUS_CHANGED': return <ArrowUpDown size={16} className="text-white" />;
         case 'FIRST_ORDER': return <Star size={16} className="text-white" />;
         case 'REVIEW_LEFT': return <Star size={16} className="text-white" />;
+        case 'SHIPMENT_IN_TRANSIT': return <ShoppingCart size={16} className="text-white" />;
+        case 'SHIPMENT_OUT_FOR_DELIVERY': return <ShoppingCart size={16} className="text-white" />;
+        case 'SHIPMENT_DELIVERY_ATTEMPTED': return <ShoppingCart size={16} className="text-white" />;
+        case 'SHIPMENT_DELIVERED': return <CheckCircle size={16} className="text-white" />;
+        case 'SHIPMENT_EXCEPTION': return <XCircle size={16} className="text-white" />;
         case 'ABANDONED_CART': return <ShoppingCart size={16} className="text-white" />;
         case 'CART_VIEWED': return <Eye size={16} className="text-white" />;
         case 'CUSTOMER_CREATED': return <UserPlus size={16} className="text-white" />;
@@ -75,6 +80,11 @@ export function getTriggerLabel(config: unknown): string {
         'ORDER_STATUS_CHANGED': 'Order Status Changed',
         'FIRST_ORDER': 'First Order',
         'REVIEW_LEFT': 'Review Left',
+        'SHIPMENT_IN_TRANSIT': 'Shipment In Transit',
+        'SHIPMENT_OUT_FOR_DELIVERY': 'Shipment Out For Delivery',
+        'SHIPMENT_DELIVERY_ATTEMPTED': 'Shipment Delivery Attempted',
+        'SHIPMENT_DELIVERED': 'Shipment Delivered',
+        'SHIPMENT_EXCEPTION': 'Shipment Exception',
         'ABANDONED_CART': 'Cart Abandoned',
         'CART_VIEWED': 'Cart Viewed',
         'CUSTOMER_CREATED': 'Customer Created',

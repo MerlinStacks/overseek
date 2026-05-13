@@ -93,6 +93,17 @@ export function GeneralSettings() {
         }
     };
 
+    const handleCopyAccountId = async () => {
+        if (!currentAccount?.id) return;
+
+        try {
+            await navigator.clipboard.writeText(currentAccount.id);
+            toast.success('Account ID copied.');
+        } catch {
+            toast.error('Failed to copy Account ID.');
+        }
+    };
+
     const handleSyncSettings = async () => {
         if (!currentAccount || !token) return;
 
@@ -149,6 +160,20 @@ export function GeneralSettings() {
                             onChange={handleChange}
                         />
                     </div>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div>
+                        <p className="text-sm font-medium text-gray-700">Account ID</p>
+                        <p className="text-sm font-mono text-gray-900 break-all">{currentAccount.id}</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleCopyAccountId}
+                        className="text-sm text-blue-600 hover:text-blue-700 font-medium self-start md:self-center"
+                    >
+                        Copy ID
+                    </button>
                 </div>
 
                 <div>

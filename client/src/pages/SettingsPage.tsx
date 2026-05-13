@@ -74,6 +74,7 @@ export function SettingsPage() {
     const isGoldPriceEnabled = useAccountFeature('GOLD_PRICE_CALCULATOR');
     const isAdTrackingEnabled = useAccountFeature('AD_TRACKING');
     const isAIEnabled = useAccountFeature('AI_WRITER');
+    const isEmailEnabled = useAccountFeature('EMAIL');
     const [activeTab, setActiveTab] = useTabFromUrl();
 
     // Grouped categories for sidebar navigation
@@ -98,7 +99,7 @@ export function SettingsPage() {
         {
             name: 'Integrations',
             tabs: [
-                { id: 'email', label: 'Email', icon: Mail },
+                { id: 'email', label: 'Email', icon: Mail, hidden: !isEmailEnabled },
                 { id: 'channels', label: 'Channels', icon: Share2 },
                 { id: 'ads', label: 'Ad Accounts', icon: Megaphone },
                 { id: 'conversions', label: 'Tracking & CAPI Health', icon: Zap, hidden: !isAdTrackingEnabled },
@@ -116,7 +117,7 @@ export function SettingsPage() {
                 { id: 'notifications', label: 'Notifications', icon: Bell },
             ]
         }
-    ], [isAIEnabled, isGoldPriceEnabled, isAdTrackingEnabled]);
+    ], [isAIEnabled, isGoldPriceEnabled, isAdTrackingEnabled, isEmailEnabled]);
 
     // Flat list for mobile tabs
     const allTabs = useMemo(

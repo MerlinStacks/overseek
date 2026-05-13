@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'rea
 import { lazy, Suspense } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { AccountProvider, useAccount } from './context/AccountContext';
+import { useAccountFeature } from './hooks/useAccountFeature';
 import { SocketProvider } from './context/SocketContext';
 import { SyncStatusProvider } from './context/SyncStatusContext';
 import { ToastProvider } from './context/ToastContext';
@@ -122,6 +123,12 @@ function AccountGuard({ children }: { children: React.ReactNode }) {
         return <Navigate to="/wizard" replace />;
     }
 
+    return <>{children}</>;
+}
+
+function FeatureGuard({ featureKey, children }: { featureKey: string; children: React.ReactNode }) {
+    const isEnabled = useAccountFeature(featureKey);
+    if (!isEnabled) return <Navigate to="/dashboard" replace />;
     return <>{children}</>;
 }
 
@@ -250,12 +257,12 @@ function App() {
                                                 <Route path="/conversions/health" element={<AccountGuard><CAPIHealthPage /></AccountGuard>} />
                                                 <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path="/seo/content" element={<AccountGuard><SeoContentPage /></AccountGuard>} />
-                                                <Route path="/broadcasts" element={<AccountGuard><BroadcastsPage /></AccountGuard>} />
-                                                <Route path="/emails/lists" element={<AccountGuard><EmailListsPage /></AccountGuard>} />
-                                                <Route path="/emails" element={<AccountGuard><EmailDashboardPage /></AccountGuard>} />
-                                                <Route path="/emails/settings" element={<AccountGuard><EmailSettingsPage /></AccountGuard>} />
-                                                <Route path="/emails/logs" element={<AccountGuard><EmailLogsPage /></AccountGuard>} />
-                                                <Route path="/flows" element={<AccountGuard><FlowsPage /></AccountGuard>} />
+                                                <Route path="/broadcasts" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BroadcastsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/emails/lists" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailListsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/emails" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailDashboardPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/emails/settings" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailSettingsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/emails/logs" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailLogsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/flows" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><FlowsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/inbox" element={<AccountGuard><InboxPage /></AccountGuard>} />
                                                 <Route path="/live" element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />
                                                 <Route path="/analytics" element={<AccountGuard><AnalyticsOverviewPage /></AccountGuard>} />
@@ -278,7 +285,7 @@ function App() {
                                                 <Route path="/invoices/design" element={<AccountGuard><InvoiceDesigner /></AccountGuard>} />
                                                 <Route path="/invoices/design/:id" element={<AccountGuard><InvoiceDesigner /></AccountGuard>} />
                                                 <Route path="/policies" element={<AccountGuard><PoliciesPage /></AccountGuard>} />
-                                                <Route path="/crawlers" element={<AccountGuard><CrawlersPage /></AccountGuard>} />
+                                                <Route path="/crawlers" element={<AccountGuard><FeatureGuard featureKey="BOT_SHIELD"><CrawlersPage /></FeatureGuard></AccountGuard>} />
                                             </Route>
                                         </Route>
 

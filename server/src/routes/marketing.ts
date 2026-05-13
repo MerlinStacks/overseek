@@ -8,6 +8,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { cartRecoveryService } from '../services/CartRecoveryService';
+import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 
 const service = new MarketingService();
 
@@ -35,6 +36,17 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.addHook('preHandler', requireAuthFastify);
+    fastify.addHook('preHandler', async (request, reply) => {
+        const accountId = request.accountId || request.user?.accountId;
+        if (!accountId) {
+            return reply.code(400).send({ error: 'Account context required' });
+        }
+
+        const enabled = await isAccountFeatureEnabled(accountId, 'EMAIL', true);
+        if (!enabled) {
+            return reply.code(403).send({ error: 'Email feature is disabled for this account' });
+        }
+    });
 
     // Campaigns
     fastify.get('/campaigns', async (request, reply) => {

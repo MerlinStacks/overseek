@@ -20,6 +20,7 @@ import { EmailService } from '../services/EmailService';
 import { InboxAIService } from '../services/InboxAIService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
+import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 import path from 'path';
 import fs from 'fs';
 import { pipeline } from 'stream/promises';
@@ -46,6 +47,16 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
     return async (fastify) => {
         fastify.addHook('preHandler', requireAuthFastify);
 
+        const ensureEmailFeatureEnabled = async (accountId: string, reply: any): Promise<boolean> => {
+            const enabled = await isAccountFeatureEnabled(accountId, 'EMAIL', true);
+            if (!enabled) {
+                reply.code(403).send({ error: 'Email feature is disabled for this account' });
+                return false;
+            }
+
+            return true;
+        };
+
         // Register modular sub-routes
         await fastify.register(cannedResponseRoutes);
         await fastify.register(macroRoutes);
@@ -69,6 +80,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 };
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await ensureEmailFeatureEnabled(accountId, reply))) return;
 
                 const limit = Math.min(parseInt(query.limit || '50', 10), 100);
                 // Fetch one extra to determine if there are more results
@@ -282,6 +294,8 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             try {
                 const accountId = request.accountId;
                 const userId = request.user?.id;
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await ensureEmailFeatureEnabled(accountId, reply))) return;
 
                 let to, cc, subject, body, emailAccountId;
                 const attachments: any[] = [];
@@ -336,7 +350,6 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     ({ to, cc, subject, body, emailAccountId } = request.body as any);
                 }
 
-                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
                 if (!to || !subject || !body || !emailAccountId) {
                     return reply.code(400).send({ error: 'Missing required fields: to, subject, body, emailAccountId' });
                 }
@@ -414,6 +427,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 };
 
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await ensureEmailFeatureEnabled(accountId, reply))) return;
                 if (!recipient || !subject) {
                     return reply.code(400).send({ error: 'Recipient and subject are required for AI assistance' });
                 }

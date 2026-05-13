@@ -2,14 +2,8 @@
 /**
  * Invoice PDF Generator
  *
- * Renders the InvoiceRenderer React component into a hidden off-screen container,
- * captures it with html2canvas, and paginates into an A4 PDF via jsPDF.
- *
- * Why: This guarantees pixel-perfect match between the designer preview and
- * the generated PDF — both use the exact same InvoiceRenderer component.
- * Previously, this file had ~460 lines of duplicated rendering logic
- * (column widths, currency formatting, metadata extraction, page breaks)
- * that constantly drifted out of sync with the HTML preview.
+ * Primary path: vector/text PDF generation (crisp print output).
+ * Fallback path: legacy html2canvas raster capture when vector generation fails.
  */
 
 import jsPDF from 'jspdf';
@@ -19,6 +13,7 @@ import type { ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Logger } from './logger';
 import { InvoiceRenderer } from '../components/invoicing/InvoiceRenderer';
+import { generateVectorInvoicePDF } from './InvoiceGeneratorVector';
 
 /** A4 dimensions in mm */
 const A4_WIDTH_MM = 210;
@@ -49,6 +44,14 @@ export const generateInvoicePDF = async (
     templateName: string = 'Invoice',
     settings?: InvoiceRendererProps['settings']
 ): Promise<void> => {
+    try {
+        generateVectorInvoicePDF(order, items as Array<{ type: string; content?: string; businessDetails?: string }>, templateName, settings as Record<string, unknown> | undefined);
+        return;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        Logger.warn('Vector invoice PDF failed, falling back to raster export', { error: message });
+    }
+
     // 1. Create hidden container — must stay within viewport for html2canvas
     //    to capture correctly. We use opacity:0 + overflow:hidden instead of
     //    left:-9999px which html2canvas cannot capture.
@@ -432,29 +435,37 @@ function collectBreakPoints(container: HTMLElement): number[] {
     if (!innerDiv) return [];
 
     // All block-level child boundaries (each represents a section: header, customer, table, etc.)
-    const scanChildren = (parent: HTMLElement, depth: number) => {
+    const scanChildren = (parent: HTMLElement, depth: number, inTableFooter = false) => {
         if (depth > 3) return; // Don't recurse too deep
         for (const child of Array.from(parent.children) as HTMLElement[]) {
             const rect = child.getBoundingClientRect();
             const bottomY = rect.bottom - containerRect.top;
-            points.add(Math.round(bottomY));
+            const isTableFooter = child.tagName === 'TFOOT';
+            const insideFooter = inTableFooter || isTableFooter;
+
+            // Avoid page breaks inside totals/footer sections.
+            // We keep whole tfoot blocks together by only allowing break points
+            // above them or after the entire table block.
+            if (!insideFooter) {
+                points.add(Math.round(bottomY));
+            }
 
             // Recurse into tables to get row-level break points
-            if (child.tagName === 'TABLE' || child.tagName === 'TBODY' || child.tagName === 'TFOOT') {
-                scanChildren(child, depth + 1);
+            if (child.tagName === 'TABLE' || child.tagName === 'TBODY') {
+                scanChildren(child, depth + 1, insideFooter);
             }
             // Recurse into table rows to break between them
-            if (child.tagName === 'TR') {
+            if (child.tagName === 'TR' && !insideFooter) {
                 points.add(Math.round(bottomY));
             }
             // Recurse into div containers (order_table wrapper, totals, etc.)
             if (child.tagName === 'DIV' && child.children.length > 0 && depth < 2) {
-                scanChildren(child, depth + 1);
+                scanChildren(child, depth + 1, insideFooter);
             }
         }
     };
 
-    scanChildren(innerDiv, 0);
+    scanChildren(innerDiv, 0, false);
 
     return Array.from(points).sort((a, b) => a - b);
 }
@@ -478,8 +489,8 @@ function createPaginatedPdf(
 
     if (totalHeightMM <= A4_HEIGHT_MM) {
         // Single page — content fits on one A4
-        const imgData = canvas.toDataURL('image/jpeg', 0.92);
-        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, totalHeightMM);
+        const imgData = canvas.toDataURL('image/png');
+        pdf.addImage(imgData, 'PNG', 0, 0, A4_WIDTH_MM, totalHeightMM);
         return pdf;
     }
 
@@ -541,8 +552,8 @@ function createPaginatedPdf(
         }
 
         const sliceHeightMM = (sliceHeight / CAPTURE_SCALE) * mmPerPx;
-        const imgData = slice.toDataURL('image/jpeg', 0.92);
-        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, sliceHeightMM);
+        const imgData = slice.toDataURL('image/png');
+        pdf.addImage(imgData, 'PNG', 0, 0, A4_WIDTH_MM, sliceHeightMM);
 
         // Guard against infinite loops — ensure forward progress
         yOffset = Math.max(actualCut, yOffset + 1);

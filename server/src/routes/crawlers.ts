@@ -43,6 +43,17 @@ const BLOCKED_AGENTS_IP_WINDOW_MS = 60 * 1000;
 const BLOCKED_AGENTS_IP_MAX_REQUESTS = 120;
 const blockedAgentsIpHits = new Map<string, { count: number; startedAt: number }>();
 
+async function isBotShieldEnabled(accountId: string): Promise<boolean> {
+    const feature = await prisma.accountFeature.findUnique({
+        where: { accountId_featureKey: { accountId, featureKey: 'BOT_SHIELD' } },
+        select: { isEnabled: true }
+    });
+
+    // Backward compatibility: existing accounts without explicit row keep access.
+    if (!feature) return true;
+    return feature.isEnabled;
+}
+
 function isBlockedAgentsIpRateLimited(ip: string): boolean {
     const now = Date.now();
 
@@ -106,10 +117,16 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(404).send({ error: 'Account not found' });
             }
 
-            const [patterns, blockPageHtml] = await Promise.all([
+            const [enabled, patterns, blockPageHtml] = await Promise.all([
+                isBotShieldEnabled(accountIdParsed.data),
                 CrawlerService.getBlockedPatterns(accountIdParsed.data),
                 CrawlerService.getBlockPageHtml(accountIdParsed.data),
             ]);
+
+            if (!enabled) {
+                incrementBotShieldMetric('blockedAgentsSuccess');
+                return { patterns: [], blockPageHtml: null };
+            }
 
             incrementBotShieldMetric('blockedAgentsSuccess');
             return { patterns, blockPageHtml };
@@ -124,6 +141,15 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
     // =========================================================================
     fastify.register(async (authScope) => {
         authScope.addHook('preHandler', requireAuthFastify);
+        authScope.addHook('preHandler', async (request, reply) => {
+            const accountId = request.accountId;
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+            const enabled = await isBotShieldEnabled(accountId);
+            if (!enabled) {
+                return reply.code(403).send({ error: 'Bot Shield feature is disabled for this account' });
+            }
+        });
 
         const getAccountId = (request: any): string | null => request.accountId || null;
 

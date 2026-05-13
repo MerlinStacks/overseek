@@ -11,6 +11,13 @@ export const EVENTS = {
         FIRST: 'order:first',
         STATUS_CHANGED: 'order:status_changed',
     },
+    SHIPMENT: {
+        IN_TRANSIT: 'shipment:in_transit',
+        OUT_FOR_DELIVERY: 'shipment:out_for_delivery',
+        DELIVERY_ATTEMPTED: 'shipment:delivery_attempted',
+        DELIVERED: 'shipment:delivered',
+        EXCEPTION: 'shipment:exception',
+    },
     CUSTOMER: {
         CREATED: 'customer:created',
         UPDATED: 'customer:updated',

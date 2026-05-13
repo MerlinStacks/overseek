@@ -7,6 +7,7 @@ import { CreditCard, Mail, Search, ShoppingCart, Users, Webhook, X } from 'lucid
 
 const EVENT_CATEGORIES = [
     { id: 'woocommerce', label: 'WooCommerce', icon: ShoppingCart },
+    { id: 'shipping', label: 'Shipping', icon: ShoppingCart },
     { id: 'customer', label: 'Customer', icon: Users },
     { id: 'subscription', label: 'Subscription', icon: CreditCard },
     { id: 'email', label: 'Email Engagement', icon: Mail },
@@ -65,6 +66,17 @@ const EVENTS_BY_CATEGORY: Record<string, { subcategory?: string; events: EventIt
             subcategory: 'Reviews',
             events: [
                 { id: 'REVIEW_LEFT', label: 'Review Left', icon: 'Star' },
+            ]
+        },
+    ],
+    shipping: [
+        {
+            events: [
+                { id: 'SHIPMENT_IN_TRANSIT', label: 'Shipment In Transit', icon: 'Refresh' },
+                { id: 'SHIPMENT_OUT_FOR_DELIVERY', label: 'Shipment Out For Delivery', icon: 'Cart' },
+                { id: 'SHIPMENT_DELIVERY_ATTEMPTED', label: 'Shipment Delivery Attempted', icon: 'Alert' },
+                { id: 'SHIPMENT_DELIVERED', label: 'Shipment Delivered', icon: 'Check' },
+                { id: 'SHIPMENT_EXCEPTION', label: 'Shipment Exception', icon: 'Ban' },
             ]
         },
     ],

@@ -8,6 +8,7 @@ const featureFlags: Record<string, boolean> = {
     GOLD_PRICE_CALCULATOR: true,
     AD_TRACKING: true,
     AI_WRITER: true,
+    EMAIL: true,
 };
 
 vi.mock('../context/AccountContext', () => ({
@@ -73,6 +74,7 @@ describe('SettingsPage tab behavior', () => {
         featureFlags.GOLD_PRICE_CALCULATOR = true;
         featureFlags.AD_TRACKING = true;
         featureFlags.AI_WRITER = true;
+        featureFlags.EMAIL = true;
     });
 
     it('loads the tab from URL query string', async () => {

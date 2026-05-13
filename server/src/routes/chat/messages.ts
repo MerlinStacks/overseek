@@ -14,6 +14,7 @@ import { routeMessageToChannel, sendEmailWithAttachments } from '../../utils/Cha
 import path from 'path';
 import fs from 'fs';
 import { getRouteAccountIdOrReply } from '../routeHelpers';
+import { isAccountFeatureEnabled } from '../../utils/accountFeatures';
 
 const attachmentsDir = path.join(__dirname, '../../../uploads/attachments');
 const MAX_RELAY_ATTACHMENTS = 10;
@@ -56,6 +57,16 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
             });
         };
 
+        const ensureEmailFeatureEnabled = async (accountId: string, reply: any): Promise<boolean> => {
+            const enabled = await isAccountFeatureEnabled(accountId, 'EMAIL', true);
+            if (!enabled) {
+                reply.code(403).send({ error: 'Email feature is disabled for this account' });
+                return false;
+            }
+
+            return true;
+        };
+
         // POST /:id/messages
         fastify.post<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
             try {
@@ -82,6 +93,9 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
 
                 // Route to external channel if specified
                 if (channel) {
+                    if (channel === 'EMAIL' && !(await ensureEmailFeatureEnabled(accountId, reply))) {
+                        return;
+                    }
                     try {
                         await routeMessageToChannel(request.params.id, content, channel, accountId, emailAccountId);
                     } catch (routingError: any) {
@@ -266,8 +280,12 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 if (!isInternal) {
                     try {
                         if (attachments.length > 0) {
+                            if (!(await ensureEmailFeatureEnabled(accountId, reply))) return;
                             await sendEmailWithAttachments(conversationId, content, attachments, accountId, emailAccountId);
                         } else if (channel) {
+                            if (channel === 'EMAIL' && !(await ensureEmailFeatureEnabled(accountId, reply))) {
+                                return;
+                            }
                             await routeMessageToChannel(conversationId, content, channel, accountId, emailAccountId);
                         }
                     } catch (routingError: any) {

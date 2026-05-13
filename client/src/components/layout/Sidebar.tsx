@@ -39,6 +39,7 @@ import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { SidebarSyncStatus } from './SidebarSyncStatus';
+import { useAccountFeature } from '../../hooks/useAccountFeature';
 
 interface SidebarProps {
     /** Mobile drawer mode - whether sidebar is open */
@@ -127,6 +128,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     const { token } = useAuth();
     const { socket } = useSocket();
     const { hasPermission } = usePermissions(); // Permission hook
+    const isEmailEnabled = useAccountFeature('EMAIL');
+    const isBotShieldEnabled = useAccountFeature('BOT_SHIELD');
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
 
@@ -178,6 +181,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 return hasChild;
             }
             if (item.label === 'Emails') {
+                if (!isEmailEnabled) return false;
                 const hasChild = item.children?.some(child => {
                     if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
                     if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/lists' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
@@ -194,10 +198,13 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 return {
                     ...item,
                     children: item.children.filter(child => {
+                        if (child.path === '/crawlers') return isBotShieldEnabled;
                         if (child.path === '/orders') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
-                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/lists' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
+                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/lists' || child.path === '/emails/settings' || child.path === '/emails/logs') {
+                            return isEmailEnabled && hasPermission('view_marketing');
+                        }
                         if (item.label === 'Analytics') return hasPermission('view_finance');
                         if (item.label === 'Growth') return hasPermission('view_marketing');
                         return true;
@@ -206,7 +213,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             }
             return item;
         });
-    }, [hasPermission]);
+    }, [hasPermission, isBotShieldEnabled, isEmailEnabled]);
 
     // State for expanded groups
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
