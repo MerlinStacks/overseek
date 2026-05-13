@@ -45,7 +45,13 @@ export const generateInvoicePDF = async (
     settings?: InvoiceRendererProps['settings']
 ): Promise<void> => {
     try {
-        generateVectorInvoicePDF(order, items as Array<{ type: string; content?: string; businessDetails?: string }>, templateName, settings as Record<string, unknown> | undefined);
+        await generateVectorInvoicePDF(
+            order,
+            grid as Array<{ i: string; x: number; y: number; w: number; h: number }>,
+            items as Array<{ id?: string; type: string; content?: string; logo?: string; businessDetails?: string; style?: { fontSize?: string; fontWeight?: string; textAlign?: 'left' | 'center' | 'right' } }>,
+            templateName,
+            settings as Record<string, unknown> | undefined
+        );
         return;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

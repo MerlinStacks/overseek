@@ -43,9 +43,8 @@ export class EmailListService {
     }
 
     async deleteList(accountId: string, listId: string) {
-        return prisma.emailList.updateMany({
-            where: { id: listId, accountId },
-            data: { isActive: false }
+        return prisma.emailList.deleteMany({
+            where: { id: listId, accountId }
         });
     }
 
