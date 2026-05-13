@@ -89,6 +89,9 @@ const GRID_ROW_HEIGHT_PX = 30;
 const GRID_MARGIN_X_PX = 16;
 const GRID_MARGIN_Y_PX = 8;
 const PAGE_PADDING_MM = 8;
+const FULL_WIDTH_THRESHOLD_COLS = 11;
+const FOOTER_RESERVED_MM = 30;
+const PDF_DEBUG_LAYOUT = false;
 
 interface BoxMm {
     x: number;
@@ -170,6 +173,27 @@ export async function generateVectorInvoicePDF(
 
     const sortedLayout = [...layout].sort((a, b) => (a.y - b.y) || (a.x - b.x));
 
+    const normalizeLayoutItem = (entry: InvoiceLayoutItem, itemType?: string): InvoiceLayoutItem => {
+        let x = Math.max(0, Math.min(GRID_COLS - 1, entry.x));
+        let w = Math.max(1, Math.min(GRID_COLS, entry.w));
+        if (x + w > GRID_COLS) {
+            w = GRID_COLS - x;
+        }
+
+        if (itemType === 'order_table' && w >= FULL_WIDTH_THRESHOLD_COLS) {
+            x = 0;
+            w = GRID_COLS;
+        }
+
+        return {
+            ...entry,
+            x,
+            w,
+            y: Math.max(0, entry.y),
+            h: Math.max(1, entry.h),
+        };
+    };
+
     const logoCache = new Map<string, string>();
 
     const billing = order.billing || {};
@@ -192,11 +216,30 @@ export async function generateVectorInvoicePDF(
         return { page, y: yMm - pageStart + margin };
     };
 
+    const getPageTopGlobalY = (page: number): number => margin + ((page - 1) * usablePageHeight);
+
+    const getPageBottomY = (): number => pageHeight - PAGE_PADDING_MM;
+
     const getWrappedTextHeight = (text: string, width: number, fontSize: number): number => {
         const lines = text
             .split('\n')
             .flatMap((line) => doc.splitTextToSize(line || ' ', Math.max(5, width - 1.5)));
         return lines.length * (fontSize * 0.36);
+    };
+
+    const drawDebugBox = (box: BoxMm, page: number, label: string): void => {
+        if (!PDF_DEBUG_LAYOUT) return;
+        const pageTop = getPageTopGlobalY(page);
+        const yOnPage = box.y - pageTop + margin;
+        doc.setPage(page);
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.1);
+        doc.rect(box.x, yOnPage, box.w, box.h);
+        doc.setFontSize(7);
+        doc.setTextColor(120, 120, 120);
+        doc.text(label, box.x + 1, yOnPage + 2.5);
+        doc.setTextColor(0, 0, 0);
+        doc.setDrawColor(0, 0, 0);
     };
 
     const renderTextBlock = (rawText: string, box: BoxMm, style?: InvoiceItemStyle, align: 'left' | 'center' | 'right' = 'left') => {
@@ -246,12 +289,24 @@ export async function generateVectorInvoicePDF(
     let footerItem: InvoiceItem | null = null;
     let footerBox: BoxMm | null = null;
 
-    for (const layoutItem of sortedLayout) {
+    for (const layoutItemRaw of sortedLayout) {
+        const baseItem = itemById.get(layoutItemRaw.i);
+        const layoutItem = normalizeLayoutItem(layoutItemRaw, baseItem?.type);
         const item = itemById.get(layoutItem.i);
         if (!item) continue;
         const box = toBoxMm(layoutItem);
         const pageInfo = ensurePageForY(box.y);
         doc.setPage(pageInfo.page);
+        drawDebugBox(box, pageInfo.page, item.type);
+
+        if (PDF_DEBUG_LAYOUT) {
+            // eslint-disable-next-line no-console
+            console.log('[InvoiceVectorLayout]', {
+                type: item.type,
+                grid: { x: layoutItem.x, y: layoutItem.y, w: layoutItem.w, h: layoutItem.h },
+                mm: { x: Number(box.x.toFixed(2)), y: Number(box.y.toFixed(2)), w: Number(box.w.toFixed(2)), h: Number(box.h.toFixed(2)) },
+            });
+        }
 
         if (item.type === 'header') {
             const logoDataUrl = item.logo ? (logoCache.get(item.logo) || await toDataUrl(item.logo)) : null;
@@ -307,10 +362,13 @@ export async function generateVectorInvoicePDF(
         }
 
         if (item.type === 'order_table') {
+            const reservedBottomY = getPageBottomY() - FOOTER_RESERVED_MM;
+            const startY = Math.min(pageInfo.y, reservedBottomY);
             autoTable(doc, {
-                startY: pageInfo.y,
+                startY,
                 margin: { left: box.x, right: pageWidth - (box.x + box.w) },
-                theme: 'grid',
+                tableWidth: box.w,
+                theme: 'plain',
                 head: [['Description', 'Qty', 'Unit Price', 'Total']],
                 body: itemRows.length > 0 ? itemRows : [['No line items', '', '', '']],
                 styles: {
@@ -318,15 +376,15 @@ export async function generateVectorInvoicePDF(
                     fontSize: 9.2,
                     cellPadding: 1.5,
                     textColor: [0, 0, 0],
-                    lineColor: [0, 0, 0],
-                    lineWidth: 0.08,
+                    lineColor: [255, 255, 255],
+                    lineWidth: 0,
                     valign: 'middle',
                 },
                 headStyles: {
                     fillColor: [255, 255, 255],
                     textColor: [0, 0, 0],
-                    lineColor: [0, 0, 0],
-                    lineWidth: 0.15,
+                    lineColor: [255, 255, 255],
+                    lineWidth: 0,
                     fontStyle: 'bold',
                 },
                 columnStyles: {
@@ -381,10 +439,12 @@ export async function generateVectorInvoicePDF(
     ];
 
     const totalsItem = items.find((entry) => entry.type === 'totals' && entry.id && layoutById.has(entry.id));
-    const totalsLayout = totalsItem?.id ? layoutById.get(totalsItem.id) : undefined;
+    const totalsLayoutBase = totalsItem?.id ? layoutById.get(totalsItem.id) : undefined;
+    const totalsLayout = totalsLayoutBase && totalsItem ? normalizeLayoutItem(totalsLayoutBase, totalsItem.type) : undefined;
     const totalsBox = totalsLayout ? toBoxMm(totalsLayout) : { x: pageWidth - 70, y: afterTableY + 3, w: 66, h: 36 };
     const totalsPageInfo = ensurePageForY(Math.max(afterTableY + 3, totalsBox.y));
     doc.setPage(totalsPageInfo.page);
+    drawDebugBox(totalsBox, totalsPageInfo.page, 'totals');
 
     autoTable(doc, {
         startY: totalsPageInfo.y,
@@ -429,6 +489,7 @@ export async function generateVectorInvoicePDF(
         const footerHeight = getWrappedTextHeight(footerText, footerBox.w, footerFontSize);
         const maxFooterTop = pageHeight - FOOTER_BOTTOM_MARGIN_MM - footerHeight;
         const clampedFooterY = Math.min(footerPageInfo.y, maxFooterTop);
+        drawDebugBox({ x: footerBox.x, y: ((footerPageInfo.page - 1) * pageHeight) + clampedFooterY, w: footerBox.w, h: footerBox.h }, footerPageInfo.page, 'footer');
         renderTextBlock(
             footerText,
             { x: footerBox.x, y: ((footerPageInfo.page - 1) * pageHeight) + clampedFooterY, w: footerBox.w, h: footerBox.h },
