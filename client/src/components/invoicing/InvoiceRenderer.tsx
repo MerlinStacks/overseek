@@ -538,10 +538,50 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
     const pages = getPagedLayout();
 
+    const getAutoExpandedReadOnlyLayout = (): InvoiceLayoutItem[] => {
+        const lineItems = data?.line_items || [];
+        if (lineItems.length === 0) return layout;
+
+        const orderTableItem = items.find((item) => item.type === 'order_table');
+        if (!orderTableItem) return layout;
+
+        const orderTableLayout = layout.find((l) => l.i === orderTableItem.id);
+        if (!orderTableLayout) return layout;
+
+        const hasOrderData = data?.total !== undefined;
+
+        // Approximate content height for the table block so export can span pages.
+        // This is intentionally conservative: only order_table is allowed to grow.
+        const headerPx = 56;
+        const baseRowPx = 52;
+        const metaRowPx = 18;
+        const totalsPx = hasOrderData ? 170 : 0;
+        const verticalPaddingPx = 24;
+
+        const rowsPx = lineItems.reduce((sum, item) => {
+            const metaCount = getInvoiceItemMeta(item).length;
+            return sum + baseRowPx + (metaCount * metaRowPx);
+        }, 0);
+
+        const estimatedPx = headerPx + rowsPx + totalsPx + verticalPaddingPx;
+
+        // Keep in sync with grid rowHeight (30) and add a small margin for borders/rounding.
+        const estimatedRows = Math.max(orderTableLayout.h, Math.ceil((estimatedPx + 12) / 30));
+
+        return layout.map((item) => {
+            if (item.i !== orderTableLayout.i) return item;
+            return {
+                ...item,
+                h: estimatedRows,
+            };
+        });
+    };
+
     // Read-only mode should preserve the designer's exact placement/size.
     // Use react-grid-layout in static mode so PDF export matches editor geometry.
     if (readOnly) {
-        const sortedLayout = [...layout].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+        const expandedLayout = getAutoExpandedReadOnlyLayout();
+        const sortedLayout = [...expandedLayout].sort((a, b) => (a.y - b.y) || (a.x - b.x));
         const maxRowBottom = sortedLayout.reduce((max, item) => Math.max(max, item.y + item.h), 0);
         const pageHeightPx = Math.max(1, maxRowBottom) * 30;
 

@@ -52,6 +52,9 @@ interface CustomerDetails {
         lastActiveAt: string;
         referrer?: string;
         deviceType?: string;
+        currentPath?: string;
+        city?: string;
+        country?: string;
         events: Array<{
             createdAt: string;
             type: string;
@@ -104,6 +107,60 @@ function getContactStatusBadge(status: CustomerDetails['customer']['contactStatu
     }
 }
 
+function CustomerDetailsSkeleton() {
+    return (
+        <div className="space-y-6 max-w-7xl mx-auto pb-10 animate-pulse">
+            <div className="space-y-4">
+                <div className="h-4 w-40 rounded bg-gray-200" />
+                <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-gray-200" />
+                        <div className="space-y-2">
+                            <div className="h-8 w-64 rounded bg-gray-200" />
+                            <div className="h-5 w-24 rounded-full bg-gray-200" />
+                            <div className="h-4 w-80 rounded bg-gray-200" />
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <div className="h-10 w-36 rounded-lg bg-gray-200" />
+                        <div className="h-10 w-28 rounded-lg bg-gray-200" />
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="bg-white p-6 rounded-xl border border-gray-200 space-y-3">
+                        <div className="h-4 w-24 rounded bg-gray-200" />
+                        <div className="h-8 w-28 rounded bg-gray-200" />
+                    </div>
+                ))}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 min-h-[500px]">
+                <div className="border-b border-gray-200 px-6 py-4 flex gap-6">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="h-4 w-20 rounded bg-gray-200" />
+                    ))}
+                </div>
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {Array.from({ length: 2 }).map((_, i) => (
+                        <div key={i} className="space-y-4">
+                            <div className="h-6 w-40 rounded bg-gray-200" />
+                            {Array.from({ length: 4 }).map((__, idx) => (
+                                <div key={idx} className="space-y-2">
+                                    <div className="h-3 w-20 rounded bg-gray-200" />
+                                    <div className="h-5 w-full rounded bg-gray-200" />
+                                </div>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function CustomerDetailsPage() {
     const navigate = useNavigate();
     const { id } = useParams();
@@ -114,10 +171,15 @@ export function CustomerDetailsPage() {
     const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'automations' | 'activity' | 'inbox'>('overview');
     const [showMergeModal, setShowMergeModal] = useState(false);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+    const [statusFeedback, setStatusFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     const fetchCustomerDetails = useCallback(async () => {
         if (!id) return;
-        setIsLoading(true);
+        const shouldShowBlockingLoader = !hasLoadedOnce;
+        if (shouldShowBlockingLoader) {
+            setIsLoading(true);
+        }
         try {
             const res = await fetch(`/api/customers/${id}`, {
                 headers: {
@@ -132,9 +194,12 @@ export function CustomerDetailsPage() {
         } catch (err) {
             Logger.error('An error occurred', { error: err });
         } finally {
-            setIsLoading(false);
+            setHasLoadedOnce(true);
+            if (shouldShowBlockingLoader) {
+                setIsLoading(false);
+            }
         }
-    }, [id, token, currentAccount?.id]);
+    }, [id, token, currentAccount?.id, hasLoadedOnce]);
 
     useEffect(() => {
         if (id && currentAccount && token) {
@@ -190,14 +255,22 @@ export function CustomerDetailsPage() {
                 },
                 sendingMethods: json.sendingMethods
             });
+            setStatusFeedback({ type: 'success', message: 'Contact status updated.' });
         } catch (err) {
             Logger.error('Failed to update contact status', { error: err });
+            setStatusFeedback({ type: 'error', message: 'Could not update contact status. Please try again.' });
         } finally {
             setIsUpdatingStatus(false);
         }
     }, [id, token, currentAccount?.id, data]);
 
-    if (isLoading) return <div className="p-8 text-center text-gray-500">Loading customer profile...</div>;
+    useEffect(() => {
+        if (!statusFeedback) return;
+        const timer = window.setTimeout(() => setStatusFeedback(null), 3000);
+        return () => window.clearTimeout(timer);
+    }, [statusFeedback]);
+
+    if (isLoading) return <CustomerDetailsSkeleton />;
     if (!data) return <div className="p-8 text-center text-red-500">Customer not found</div>;
 
     const { customer, orders, automations, activity, sendingMethods, inboxConversations = [] } = data;
@@ -216,31 +289,49 @@ export function CustomerDetailsPage() {
                     { label: 'Customers', href: '/customers' },
                     { label: `${customer.firstName} ${customer.lastName}` }
                 ]} />
-                <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-2xl">
+                <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-start">
+                    <div className="flex items-start gap-3 sm:gap-4">
+                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xl sm:text-2xl shrink-0">
                             {initials}
                         </div>
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">{customer.firstName} {customer.lastName}</h1>
+                        <div className="min-w-0">
+                            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 break-words">{customer.firstName} {customer.lastName}</h1>
                             <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
                                 {statusBadge.label}
                             </span>
-                            <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
-                                <span className="flex items-center gap-1"><Mail size={14} /> {customer.email}</span>
+                            <div className="mt-1 flex flex-col gap-1 text-sm text-gray-500 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+                                <span className="flex items-center gap-1 break-all"><Mail size={14} /> {customer.email}</span>
                                 <span className="flex items-center gap-1"><Calendar size={14} /> Joined {formatDateSafe(customer.dateCreated, '-')}</span>
                             </div>
                         </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-end lg:w-auto lg:max-w-[420px]">
+                        <div className="w-full rounded-lg border border-gray-200 bg-white p-3 sm:w-auto">
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Contact Status</p>
+                            <select
+                                value={customer.contactStatus || 'SUBSCRIBED'}
+                                onChange={(event) => updateContactStatus(event.target.value as (typeof CONTACT_STATUS_OPTIONS)[number]['value'])}
+                                disabled={isUpdatingStatus}
+                                className="w-full min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 focus:border-blue-500 focus:outline-none sm:w-auto"
+                            >
+                                {CONTACT_STATUS_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
+                            {statusFeedback && (
+                                <p className={`mt-2 text-xs ${statusFeedback.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                    {statusFeedback.message}
+                                </p>
+                            )}
+                        </div>
                         <button
                             onClick={() => setShowMergeModal(true)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
+                            className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center justify-center gap-2"
                         >
                             <Users size={16} />
                             Merge Duplicates
                         </button>
-                        <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">Edit Profile</button>
+                        <button className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">Edit Profile</button>
                     </div>
                 </div>
             </div>
@@ -267,22 +358,24 @@ export function CustomerDetailsPage() {
 
             {/* Content Tabs */}
             <div className="bg-white rounded-xl shadow-xs border border-gray-200 min-h-[500px]">
-                <div className="border-b border-gray-200 px-6 flex gap-6">
+                <div className="border-b border-gray-200 px-3 sm:px-6 overflow-x-auto">
+                    <div className="flex gap-2 sm:gap-6 min-w-max">
                     {(['overview', 'orders', 'automations', 'activity', 'inbox'] as const).map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`py-4 text-sm font-medium border-b-2 transition-colors capitalize ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                            className={`py-3 sm:py-4 px-3 sm:px-0 text-sm font-medium border-b-2 transition-colors capitalize whitespace-nowrap ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
                             {tab}
                         </button>
                     ))}
+                    </div>
                 </div>
 
-                <div className="p-6">
+                <div className="p-4 sm:p-6">
                     {activeTab === 'overview' && (
-                        <div className="grid grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
                             <div>
                                 <h3 className="text-lg font-semibold mb-4 text-gray-900">Contact Information</h3>
                                 <dl className="space-y-4">
@@ -296,18 +389,7 @@ export function CustomerDetailsPage() {
                                     </div>
                                     <div>
                                         <dt className="text-sm text-gray-500 mb-1">Contact Status</dt>
-                                        <dd>
-                                            <select
-                                                value={customer.contactStatus || 'SUBSCRIBED'}
-                                                onChange={(event) => updateContactStatus(event.target.value as (typeof CONTACT_STATUS_OPTIONS)[number]['value'])}
-                                                disabled={isUpdatingStatus}
-                                                className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 focus:border-blue-500 focus:outline-none"
-                                            >
-                                                {CONTACT_STATUS_OPTIONS.map((option) => (
-                                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                                ))}
-                                            </select>
-                                        </dd>
+                                        <dd className="font-medium">{statusBadge.label}</dd>
                                     </div>
                                     <div>
                                         <dt className="text-sm text-gray-500 mb-1">Sending Methods</dt>
@@ -407,6 +489,9 @@ export function CustomerDetailsPage() {
 
                     {activeTab === 'activity' && (
                         <div>
+                            <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                                Showing {activity.length} recent {activity.length === 1 ? 'session' : 'sessions'} and up to 5 events per session.
+                            </div>
                             <div className="space-y-6">
                                 {activity.map(session => (
                                     <div key={session.id} className="flex gap-4">
@@ -422,6 +507,9 @@ export function CustomerDetailsPage() {
                                             <p className="text-sm text-gray-500 mb-2">
                                                 Referrer: {session.referrer || 'Direct'} • Device: {session.deviceType || 'Unknown'}
                                             </p>
+                                            <p className="text-sm text-gray-500 mb-2">
+                                                Last path: {session.currentPath || 'Unknown'} • Location: {session.city || 'Unknown'}{session.country ? `, ${session.country}` : ''}
+                                            </p>
                                             <div className="bg-gray-50 rounded-lg p-3 space-y-2">
                                                 {session.events.map((event, idx: number) => (
                                                     <div key={idx} className="text-sm flex gap-2 items-start">
@@ -431,10 +519,13 @@ export function CustomerDetailsPage() {
                                                                 event.type === 'add_to_cart' ? 'text-blue-600 font-medium' :
                                                                     'text-gray-700'
                                                         }>
-                                                            {event.type.replace(/_/g, ' ')}: {event.url}
+                                                            {event.type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}{event.url ? `: ${event.url}` : ''}
                                                         </span>
                                                     </div>
                                                 ))}
+                                                {session.events.length === 0 && (
+                                                    <div className="text-sm text-gray-500">No event details were captured for this session yet.</div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

@@ -22,6 +22,31 @@ export class AutomationEngine {
         return node?.data?.config || node?.data || {};
     }
 
+    private getDurationHours(
+        config: Record<string, unknown>,
+        valueKey: string,
+        unitKey: string,
+        legacyHoursKey: string
+    ): number | undefined {
+        const unitToHours: Record<string, number> = {
+            hours: 1,
+            days: 24,
+            weeks: 24 * 7,
+            months: 24 * 30
+        };
+
+        const valueRaw = Number(config[valueKey]);
+        const unitRaw = String(config[unitKey] || 'hours').toLowerCase();
+
+        if (Number.isFinite(valueRaw) && valueRaw > 0) {
+            const multiplier = unitToHours[unitRaw] || unitToHours.hours;
+            return valueRaw * multiplier;
+        }
+
+        const legacyHours = Number(config[legacyHoursKey] || 0);
+        return Number.isFinite(legacyHours) && legacyHours > 0 ? legacyHours : undefined;
+    }
+
     /**
      * Called when an event happens (e.g. Order Created)
      */
@@ -441,8 +466,7 @@ export class AutomationEngine {
 
     private getFrequencyCapHours(automation: MarketingAutomation): number | undefined {
         const config = (automation.triggerConfig as Record<string, unknown> | null) || {};
-        const hours = Number(config.frequencyCapHours || 0);
-        return Number.isFinite(hours) && hours > 0 ? hours : undefined;
+        return this.getDurationHours(config, 'frequencyCapValue', 'frequencyCapUnit', 'frequencyCapHours');
     }
 
     private async getQuietHoursDelay(
@@ -489,8 +513,13 @@ export class AutomationEngine {
         }
 
         const config = (triggerConfig as Record<string, unknown> | null) || {};
-        const cooldownHours = Number(config.accountWideEmailCapHours || 0);
-        if (!Number.isFinite(cooldownHours) || cooldownHours <= 0) {
+        const cooldownHours = this.getDurationHours(
+            config,
+            'accountWideEmailCapValue',
+            'accountWideEmailCapUnit',
+            'accountWideEmailCapHours'
+        );
+        if (!cooldownHours) {
             return null;
         }
 

@@ -153,6 +153,58 @@ export function isBot(userAgent: string): boolean {
     return botPatterns.some(pattern => ua.includes(pattern));
 }
 
+export interface LiveVisitorFilterContext {
+    userAgent?: string | null;
+    createdAt?: Date | null;
+    lastActiveAt?: Date | null;
+    eventCount?: number;
+    cartValue?: number;
+    email?: string | null;
+    wooCustomerId?: number | null;
+    referrer?: string | null;
+    utmSource?: string | null;
+    fpScore?: number | null;
+}
+
+/**
+ * Returns true when a session should be hidden from live visitor widgets.
+ * This combines explicit bot user-agent checks with lightweight behavior heuristics.
+ */
+export function shouldExcludeFromLiveVisitors(session: LiveVisitorFilterContext): boolean {
+    const userAgent = session.userAgent?.trim();
+    if (!userAgent) return true;
+    if (isBot(userAgent)) return true;
+
+    if (typeof session.fpScore === 'number' && session.fpScore >= 75) {
+        return true;
+    }
+
+    const eventCount = session.eventCount ?? 0;
+    const hasIdentity = Boolean(session.email) || Boolean(session.wooCustomerId);
+    const hasAcquisitionSignals = Boolean(session.referrer) || Boolean(session.utmSource);
+    const hasCommercialIntent = (session.cartValue ?? 0) > 0;
+
+    // Heuristic: very short, single-page, no-intent sessions are typically crawlers/link checkers.
+    if (session.createdAt && session.lastActiveAt) {
+        const durationSeconds = Math.max(
+            0,
+            (session.lastActiveAt.getTime() - session.createdAt.getTime()) / 1000
+        );
+
+        if (
+            durationSeconds <= 6 &&
+            eventCount <= 1 &&
+            !hasIdentity &&
+            !hasAcquisitionSignals &&
+            !hasCommercialIntent
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /**
  * Mask IP address for privacy - hide last octet for IPv4, last 80 bits for IPv6.
  *

@@ -18,11 +18,22 @@ interface TriggerNodeConfig {
     daysWithoutPurchase?: number;
     targetOrderStatus?: string;
     frequencyCapHours?: number;
+    frequencyCapValue?: number;
+    frequencyCapUnit?: 'hours' | 'days' | 'weeks' | 'months';
     accountWideEmailCapHours?: number;
+    accountWideEmailCapValue?: number;
+    accountWideEmailCapUnit?: 'hours' | 'days' | 'weeks' | 'months';
     quietHoursEnabled?: boolean;
     quietHoursStart?: number;
     quietHoursEnd?: number;
 }
+
+const DURATION_UNITS = [
+    { value: 'hours', label: 'hours' },
+    { value: 'days', label: 'days' },
+    { value: 'weeks', label: 'weeks' },
+    { value: 'months', label: 'months' }
+] as const;
 
 export interface TriggerConfigProps {
     config: TriggerNodeConfig;
@@ -81,6 +92,11 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
         'FIRST_ORDER',
         'ORDER_STATUS_CHANGED'
     ].includes(selectedTrigger);
+
+    const frequencyCapUnit = config.frequencyCapUnit || 'hours';
+    const frequencyCapValue = config.frequencyCapValue ?? config.frequencyCapHours ?? 0;
+    const accountWideEmailCapUnit = config.accountWideEmailCapUnit || 'hours';
+    const accountWideEmailCapValue = config.accountWideEmailCapValue ?? config.accountWideEmailCapHours ?? 0;
 
     useEffect(() => {
         const loadFilterOptions = async () => {
@@ -308,11 +324,19 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                     <input
                         type="number"
                         min={0}
-                        value={config.frequencyCapHours || 0}
-                        onChange={(e) => onUpdate('frequencyCapHours', Number(e.target.value) || 0)}
+                        value={frequencyCapValue}
+                        onChange={(e) => onUpdate('frequencyCapValue', Number(e.target.value) || 0)}
                         className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
-                    <span className="text-sm text-gray-600">hours</span>
+                    <select
+                        value={frequencyCapUnit}
+                        onChange={(e) => onUpdate('frequencyCapUnit', e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                    >
+                        {DURATION_UNITS.map((unit) => (
+                            <option key={unit.value} value={unit.value}>{unit.label}</option>
+                        ))}
+                    </select>
                 </div>
                 <p className="text-xs text-gray-500">Use `0` to allow immediate re-entry when other dedupe rules permit it.</p>
             </div>
@@ -324,11 +348,20 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                     <input
                         type="number"
                         min={0}
-                        value={config.accountWideEmailCapHours || 0}
-                        onChange={(e) => onUpdate('accountWideEmailCapHours', Number(e.target.value) || 0)}
+                        value={accountWideEmailCapValue}
+                        onChange={(e) => onUpdate('accountWideEmailCapValue', Number(e.target.value) || 0)}
                         className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
-                    <span className="text-sm text-gray-600">hours across all flows</span>
+                    <select
+                        value={accountWideEmailCapUnit}
+                        onChange={(e) => onUpdate('accountWideEmailCapUnit', e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                    >
+                        {DURATION_UNITS.map((unit) => (
+                            <option key={unit.value} value={unit.value}>{unit.label}</option>
+                        ))}
+                    </select>
+                    <span className="text-sm text-gray-600">across all flows</span>
                 </div>
                 <p className="text-xs text-gray-500">Uses actual automation email send history for this account and delays the next email step until the cooldown expires.</p>
             </div>

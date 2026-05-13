@@ -284,6 +284,7 @@ export class CustomersService {
                     id: true,
                     visitorId: true,
                     currentPath: true,
+                    referrer: true,
                     lastActiveAt: true,
                     country: true,
                     city: true,
@@ -292,6 +293,7 @@ export class CustomersService {
                         select: {
                             id: true,
                             type: true,
+                            url: true,
                             createdAt: true
                         },
                         orderBy: { createdAt: 'desc' },

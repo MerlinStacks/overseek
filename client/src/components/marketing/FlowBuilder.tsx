@@ -122,6 +122,13 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
         }
     }, [initialFlow, setNodes, setEdges]);
 
+    // Clear stale pending parent when step selection is fully dismissed
+    useEffect(() => {
+        if (!showStepPopup && !showActionSelector) {
+            setPendingNodeParent(null);
+        }
+    }, [showStepPopup, showActionSelector]);
+
     const onConnect = useCallback(
         (params: Connection) => setEdges((eds) => addEdge(params, eds)),
         [setEdges],
@@ -441,7 +448,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 position={stepPopupPosition}
                 onClose={() => {
                     setShowStepPopup(false);
-                    setPendingNodeParent(null);
                 }}
                 onSelect={handleStepSelect}
             />

@@ -7,7 +7,7 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
-import { isBot } from './TrafficAnalyzer';
+import { shouldExcludeFromLiveVisitors } from './TrafficAnalyzer';
 import { calculatePurchaseIntent } from './CohortLTVService';
 import { cacheAside, CacheTTL } from '../../utils/cache';
 
@@ -88,7 +88,15 @@ export async function getLiveVisitors(accountId: string) {
                     utmSource: true,
                     utmCampaign: true,
                     email: true,
-                    wooCustomerId: true
+                    wooCustomerId: true,
+                    fpScore: true,
+                    cartValue: true,
+                    createdAt: true,
+                    _count: {
+                        select: {
+                            events: true
+                        }
+                    }
                 },
                 orderBy: {
                     lastActiveAt: 'desc'
@@ -98,10 +106,18 @@ export async function getLiveVisitors(accountId: string) {
 
             // Post-filter to catch any bots that slipped through ingestion
             // Also filter out empty userAgent strings
-            const filteredSessions = sessions.filter(session => {
-                if (!session.userAgent || session.userAgent.trim() === '') return false;
-                return !isBot(session.userAgent);
-            });
+            const filteredSessions = sessions.filter(session => !shouldExcludeFromLiveVisitors({
+                userAgent: session.userAgent,
+                createdAt: session.createdAt,
+                lastActiveAt: session.lastActiveAt,
+                eventCount: session._count.events,
+                cartValue: Number(session.cartValue),
+                email: session.email,
+                wooCustomerId: session.wooCustomerId,
+                referrer: session.referrer,
+                utmSource: session.utmSource,
+                fpScore: session.fpScore
+            }));
 
             return filteredSessions.slice(0, 50); // Cap at 50 for live view
         },
@@ -256,16 +272,48 @@ export async function getVisitorCount24h(accountId: string): Promise<number> {
             );
             const botFilter = Prisma.join(botConditions, ' OR ');
 
-            // Use raw query for efficient bot filtering
-            // This avoids loading all sessions into memory
+            // Use raw query for efficient bot + behavior filtering.
             const result = await prisma.$queryRaw<[{ count: bigint }]>`
+                WITH recent_sessions AS (
+                    SELECT
+                        s."id",
+                        s."userAgent",
+                        s."createdAt",
+                        s."lastActiveAt",
+                        s."cartValue",
+                        s."email",
+                        s."wooCustomerId",
+                        s."referrer",
+                        s."utmSource",
+                        s."fpScore"
+                    FROM "AnalyticsSession" s
+                    WHERE s."accountId" = ${accountId}
+                    AND s."lastActiveAt" >= ${twentyFourHoursAgo}
+                ),
+                event_counts AS (
+                    SELECT e."sessionId", COUNT(*)::int as "eventCount"
+                    FROM "AnalyticsEvent" e
+                    INNER JOIN recent_sessions rs ON rs."id" = e."sessionId"
+                    GROUP BY e."sessionId"
+                )
                 SELECT COUNT(*) as count
-                FROM "AnalyticsSession"
-                WHERE "accountId" = ${accountId}
-                AND "lastActiveAt" >= ${twentyFourHoursAgo}
-                AND "userAgent" IS NOT NULL
-                AND "userAgent" != ''
+                FROM recent_sessions rs
+                LEFT JOIN event_counts ec ON ec."sessionId" = rs."id"
+                WHERE rs."userAgent" IS NOT NULL
+                AND rs."userAgent" != ''
                 AND NOT (${botFilter})
+                AND NOT (
+                    rs."fpScore" >= 75
+                    OR (
+                        EXTRACT(EPOCH FROM (rs."lastActiveAt" - rs."createdAt")) <= 6
+                        AND COALESCE(ec."eventCount", 0) <= 1
+                        AND (rs."cartValue" IS NULL OR rs."cartValue" <= 0)
+                        AND rs."email" IS NULL
+                        AND rs."wooCustomerId" IS NULL
+                        AND rs."referrer" IS NULL
+                        AND rs."utmSource" IS NULL
+                    )
+                )
             `;
 
             return Number(result[0]?.count ?? 0);

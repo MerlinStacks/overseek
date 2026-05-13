@@ -9,8 +9,6 @@ import {
     Users,
     BarChart3,
     Settings,
-    ChevronLeft,
-    ChevronRight,
     Megaphone,
     MessageSquare,
     Store,
@@ -507,15 +505,6 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
 
                 <SidebarSyncStatus collapsed={isCollapsedView} />
 
-                {/* Collapse button (desktop only) */}
-                {!isMobile && (
-                    <button
-                        onClick={() => setCollapsed(!collapsed)}
-                        className="w-full flex items-center justify-center gap-2 p-2 text-slate-400 hover:bg-slate-100/80 hover:text-slate-600 rounded-xl transition-all duration-200 text-sm dark:hover:bg-slate-700/50 dark:hover:text-slate-300"
-                    >
-                        {collapsed ? <ChevronRight size={18} /> : <><ChevronLeft size={18} /><span>Collapse</span></>}
-                    </button>
-                )}
             </div>
         </>
     );

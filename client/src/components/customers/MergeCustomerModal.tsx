@@ -57,9 +57,19 @@ export function MergeCustomerModal({ isOpen, onClose, customerId, onMergeComplet
 
     useEffect(() => {
         if (isOpen && customerId) {
+            setSelectedSource(null);
+            setError('');
             fetchDuplicates();
         }
     }, [customerId, fetchDuplicates, isOpen]);
+
+    useEffect(() => {
+        if (isOpen) return;
+        setSelectedSource(null);
+        setError('');
+        setTarget(null);
+        setDuplicates([]);
+    }, [isOpen]);
 
     const handleMerge = async () => {
         if (!selectedSource || !target) return;

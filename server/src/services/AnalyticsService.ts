@@ -8,7 +8,7 @@
 import { prisma } from '../utils/prisma';
 import { cacheAside, CacheTTL, CacheNamespace } from '../utils/cache';
 import { getProfitabilityReport as getProfitReport } from './ProfitabilityReportService';
-import { isBot } from './tracking/TrafficAnalyzer';
+import { shouldExcludeFromLiveVisitors } from './tracking/TrafficAnalyzer';
 
 export class AnalyticsService {
     /**
@@ -57,6 +57,8 @@ export class AnalyticsService {
                     cartItems: true,
                     currency: true,
                     userAgent: true,
+                    fpScore: true,
+                    createdAt: true,
                     _count: { select: { events: true } },
                     events: {
                         orderBy: { createdAt: 'desc' },
@@ -66,10 +68,18 @@ export class AnalyticsService {
                 }
             });
 
-            const filteredLiveSessions = sessions.filter((session) => {
-                if (!session.userAgent || session.userAgent.trim() === '') return false;
-                return !isBot(session.userAgent);
-            });
+            const filteredLiveSessions = sessions.filter((session) => !shouldExcludeFromLiveVisitors({
+                userAgent: session.userAgent,
+                createdAt: session.createdAt,
+                lastActiveAt: session.lastActiveAt,
+                eventCount: session._count.events,
+                cartValue: Number(session.cartValue),
+                email: session.email,
+                wooCustomerId: session.wooCustomerId,
+                referrer: session.referrer,
+                utmSource: session.utmSource,
+                fpScore: session.fpScore
+            }));
 
             const pagedSessions = filteredLiveSessions.slice(skip, skip + limit);
 
@@ -86,7 +96,7 @@ export class AnalyticsService {
                 }
             }
 
-            const data = pagedSessions.map(({ userAgent: _userAgent, ...session }) => ({
+            const data = pagedSessions.map(({ userAgent: _userAgent, fpScore: _fpScore, createdAt: _createdAt, ...session }) => ({
                 ...session,
                 customer: session.wooCustomerId ? customerMap.get(session.wooCustomerId) || null : null
             }));

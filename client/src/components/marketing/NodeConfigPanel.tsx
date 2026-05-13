@@ -41,6 +41,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
 
     const handleSave = () => {
         onUpdate(node.id, localData);
+        onClose();
     };
 
     const handleDelete = () => {

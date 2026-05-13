@@ -159,22 +159,6 @@ export function CustomersPage() {
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    <select
-                        value={statusFilter}
-                        onChange={(e) => {
-                            setStatusFilter(e.target.value as typeof statusFilter);
-                            setPage(1);
-                        }}
-                        className="w-full sm:w-44 px-3 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 bg-white text-sm"
-                    >
-                        <option value="ALL">All statuses</option>
-                        <option value="SUBSCRIBED">Subscribed</option>
-                        <option value="UNVERIFIED">Unverified</option>
-                        <option value="UNSUBSCRIBED">Unsubscribed</option>
-                        <option value="SOFT_BOUNCED">Soft Bounced</option>
-                        <option value="BOUNCED">Bounced</option>
-                        <option value="COMPLAINT">Complaint</option>
-                    </select>
                 </div>
             </div>
 
@@ -233,9 +217,22 @@ export function CustomersPage() {
                             ) : (
                                 customers.map((customer) => {
                                     const statusBadge = getContactStatusBadge(customer.contactStatus);
-                                    return <tr key={customer.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => {
-                                        navigate(`/customers/${encodeURIComponent(customer.id)}`)
-                                    }}>
+                                    return <tr
+                                        key={customer.id}
+                                        className="hover:bg-gray-50 transition-colors cursor-pointer focus-within:bg-blue-50"
+                                        onClick={() => {
+                                            navigate(`/customers/${encodeURIComponent(customer.id)}`);
+                                        }}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                event.preventDefault();
+                                                navigate(`/customers/${encodeURIComponent(customer.id)}`);
+                                            }
+                                        }}
+                                        role="link"
+                                        tabIndex={0}
+                                        aria-label={`Open ${customer.firstName} ${customer.lastName} profile`}
+                                    >
 
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3" title={customer.email}>
