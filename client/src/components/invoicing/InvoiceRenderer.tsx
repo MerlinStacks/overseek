@@ -105,6 +105,55 @@ const toNumber = (val: unknown) => {
     return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const dedupeMetaEntries = (item: InvoiceLineItemData) => {
+    const truncateMetaValue = (value: string) => {
+        const compact = value.replace(/\s+/g, ' ').trim();
+        if (compact.length <= 140) return compact;
+
+        if (/^https?:\/\//i.test(compact)) {
+            try {
+                const url = new URL(compact);
+                const shortenedPath = url.pathname.length > 28
+                    ? `${url.pathname.slice(0, 18)}...${url.pathname.slice(-8)}`
+                    : url.pathname;
+                return `${url.origin}${shortenedPath}`;
+            } catch {
+                // Fall through to generic truncation
+            }
+        }
+
+        return `${compact.slice(0, 110)}...${compact.slice(-24)}`;
+    };
+
+    const seen = new Set<string>();
+    return getInvoiceItemMeta(item)
+        .map((meta) => {
+            const label = String(meta.label || '').trim();
+            const rawValue = String(meta.value || '').trim();
+            if (!label || !rawValue) return null;
+
+            const valueParts = rawValue
+                .split('|')
+                .map((part) => part.trim())
+                .filter(Boolean);
+            const uniqueParts: string[] = [];
+            const localSeen = new Set<string>();
+            for (const part of valueParts) {
+                const key = part.toLowerCase();
+                if (localSeen.has(key)) continue;
+                localSeen.add(key);
+                uniqueParts.push(part);
+            }
+
+            const normalizedValue = truncateMetaValue(uniqueParts.length > 0 ? uniqueParts.join(' | ') : rawValue);
+            const globalKey = `${label.toLowerCase()}::${normalizedValue.toLowerCase()}`;
+            if (seen.has(globalKey)) return null;
+            seen.add(globalKey);
+            return { label, value: normalizedValue };
+        })
+        .filter((meta): meta is { label: string; value: string } => Boolean(meta));
+};
+
 interface InvoiceRendererProps {
     layout: InvoiceLayoutItem[];
     items: InvoiceItem[];
@@ -175,31 +224,31 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                             <tbody>
                                 <tr>
                                     <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Invoice Number:</td>
-                                    <td className="font-medium text-slate-800">{invoiceNumber}</td>
+                                    <td className="font-semibold text-black">{invoiceNumber}</td>
                                 </tr>
                                 <tr>
                                     <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Invoice Date:</td>
-                                    <td className="font-medium text-slate-800">{formatInvoiceDate(invoiceIssueDate, mergedSettings)}</td>
+                                    <td className="font-semibold text-black">{formatInvoiceDate(invoiceIssueDate, mergedSettings)}</td>
                                 </tr>
                                 <tr>
                                     <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Due Date:</td>
-                                    <td className="font-medium text-slate-800">{formatInvoiceDate(invoiceDueDate, mergedSettings)}</td>
+                                    <td className="font-semibold text-black">{formatInvoiceDate(invoiceDueDate, mergedSettings)}</td>
                                 </tr>
                                 <tr>
                                     <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Order Number:</td>
-                                    <td className="font-medium text-slate-800">{orderNumber}</td>
+                                    <td className="font-semibold text-black">{orderNumber}</td>
                                 </tr>
                                 <tr>
                                     <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Order Date:</td>
-                                    <td className="font-medium text-slate-800">{orderDate}</td>
+                                    <td className="font-semibold text-black">{orderDate}</td>
                                 </tr>
                                 <tr>
                                     <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Payment Method:</td>
-                                    <td className="font-medium text-slate-800 break-words">{paymentMethod}</td>
+                                    <td className="font-semibold text-black break-words">{paymentMethod}</td>
                                 </tr>
                                 <tr>
                                     <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Shipping Method:</td>
-                                    <td className="font-medium text-slate-800 break-words">{shippingMethod}</td>
+                                    <td className="font-semibold text-black break-words">{shippingMethod}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -262,7 +311,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                     <div className="py-2">
                         <div className="text-xs uppercase tracking-wider text-slate-400 mb-2 font-semibold">Bill To</div>
                         {hasCustomerData ? (
-                            <div className="space-y-0.5 text-sm text-slate-700">
+                            <div className="space-y-0.5 text-sm text-black">
                                 {(billing.first_name || billing.last_name) && (
                                     <div className="font-semibold">{billing.first_name} {billing.last_name}</div>
                                 )}
@@ -273,7 +322,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                                     <div>{billing.city}{billing.city && billing.state ? ', ' : ''}{billing.state} {billing.postcode}</div>
                                 )}
                                 {billing.country && <div>{billing.country}</div>}
-                                {billing.email && <div className="text-indigo-600 mt-1">{billing.email}</div>}
+                                {billing.email && <div className="text-blue-700 mt-1">{billing.email}</div>}
                                 {billing.phone && <div>{billing.phone}</div>}
                             </div>
                         ) : (
@@ -306,15 +355,15 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                             <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr className="border-b-2 border-slate-200">
-                                        <th className="text-left py-3 font-semibold text-slate-700">Description</th>
-                                        <th className="text-center py-3 w-20 font-semibold text-slate-700">Qty</th>
-                                        <th className="text-right py-3 w-24 font-semibold text-slate-700">Unit Price</th>
-                                        <th className="text-right py-3 w-24 font-semibold text-slate-700">Total</th>
+                                        <th className="text-left py-3 font-semibold text-black">Description</th>
+                                        <th className="text-center py-3 w-20 font-semibold text-black">Qty</th>
+                                        <th className="text-right py-3 w-24 font-semibold text-black">Unit Price</th>
+                                        <th className="text-right py-3 w-24 font-semibold text-black">Total</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {lineItems.map((item, i: number) => {
-                                        const itemMeta = getInvoiceItemMeta(item);
+                                        const itemMeta = dedupeMetaEntries(item);
                                         const quantity = toNumber(item.quantity);
                                         const lineTotal = toNumber(item.total);
                                         const unitPrice = quantity > 0
@@ -328,20 +377,20 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                                                 style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
                                             >
                                                 <td className="py-3">
-                                                    <div className="font-medium text-slate-800">{item.name}</div>
+                                                    <div className="font-semibold text-black">{item.name}</div>
                                                     {itemMeta.length > 0 && (
                                                         <div className="mt-1 space-y-0.5">
                                                             {itemMeta.map((meta, j) => (
-                                                                <div key={j} className="text-xs text-slate-500">
+                                                                <div key={j} className="text-xs text-slate-600">
                                                                     <span className="font-medium">{meta.label}:</span> {meta.value}
                                                                 </div>
                                                             ))}
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="py-3 text-center text-slate-600">{quantity}</td>
-                                                <td className="py-3 text-right text-slate-600">${unitPrice}</td>
-                                                <td className="py-3 text-right font-medium text-slate-700">${lineTotal.toFixed(2)}</td>
+                                                <td className="py-3 text-center text-black">{quantity}</td>
+                                                <td className="py-3 text-right text-black">${unitPrice}</td>
+                                                <td className="py-3 text-right font-semibold text-black">${lineTotal.toFixed(2)}</td>
                                             </tr>
                                         );
                                     })}
@@ -354,14 +403,14 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                                         </tr>
                                         <tr>
                                             <td colSpan={2}></td>
-                                            <td className="py-1.5 text-right text-slate-600">Subtotal</td>
-                                            <td className="py-1.5 text-right text-slate-700">{formatMoney(orderSubtotal)}</td>
+                                            <td className="py-1.5 text-right text-black">Subtotal</td>
+                                            <td className="py-1.5 text-right text-black">{formatMoney(orderSubtotal)}</td>
                                         </tr>
                                         {toNumber(data.shipping_total) > 0 && (
                                             <tr>
                                                 <td colSpan={2}></td>
-                                                <td className="py-1.5 text-right text-slate-600">Shipping</td>
-                                                <td className="py-1.5 text-right text-slate-700">{formatMoney(data.shipping_total)}</td>
+                                                <td className="py-1.5 text-right text-black">Shipping</td>
+                                                <td className="py-1.5 text-right text-black">{formatMoney(data.shipping_total)}</td>
                                             </tr>
                                         )}
                                         {toNumber(data.discount_total) > 0 && (
@@ -373,13 +422,13 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                                         )}
                                         <tr>
                                             <td colSpan={2}></td>
-                                            <td className="py-1.5 text-right text-slate-600">Tax</td>
-                                            <td className="py-1.5 text-right text-slate-700">{formatMoney(data.total_tax)}</td>
+                                            <td className="py-1.5 text-right text-black">Tax</td>
+                                            <td className="py-1.5 text-right text-black">{formatMoney(data.total_tax)}</td>
                                         </tr>
                                         <tr className="border-t-2 border-slate-300">
                                             <td colSpan={2}></td>
-                                            <td className="py-2 text-right font-bold text-slate-800 text-base">Total</td>
-                                            <td className="py-2 text-right font-bold text-slate-800 text-base">{formatMoney(data.total)}</td>
+                                            <td className="py-2 text-right font-bold text-black text-base">Total</td>
+                                            <td className="py-2 text-right font-bold text-black text-base">{formatMoney(data.total)}</td>
                                         </tr>
                                     </tfoot>
                                 )}
@@ -466,7 +515,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
             case 'footer':
                 return (
-                    <div className="py-3 text-center text-sm text-slate-500 bg-white relative z-20">
+                    <div className="py-3 text-center text-sm text-slate-500 bg-white">
                         <div>{itemConfig.content || 'Thank you for your business!'}</div>
                         {mergedSettings.compliance.legalFooter && (
                             <div className="mt-1 text-xs text-slate-400 whitespace-pre-wrap">{mergedSettings.compliance.legalFooter}</div>
@@ -568,11 +617,34 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
         // Keep in sync with grid rowHeight (30) and add a small margin for borders/rounding.
         const estimatedRows = Math.max(orderTableLayout.h, Math.ceil((estimatedPx + 12) / 30));
 
-        return layout.map((item) => {
-            if (item.i !== orderTableLayout.i) return item;
+        const growthRows = Math.max(0, estimatedRows - orderTableLayout.h);
+        const shiftedLayout = layout.map((entry) => {
+            if (entry.i === orderTableLayout.i) {
+                return { ...entry, h: estimatedRows };
+            }
+
+            if (growthRows > 0 && entry.y > orderTableLayout.y) {
+                return { ...entry, y: entry.y + growthRows };
+            }
+
+            return entry;
+        });
+
+        const footerItem = items.find((item) => item.type === 'footer');
+        if (!footerItem?.id) return shiftedLayout;
+
+        const footerLayout = shiftedLayout.find((entry) => entry.i === footerItem.id);
+        if (!footerLayout) return shiftedLayout;
+
+        const maxBottomWithoutFooter = shiftedLayout
+            .filter((entry) => entry.i !== footerLayout.i)
+            .reduce((max, entry) => Math.max(max, entry.y + entry.h), 0);
+
+        return shiftedLayout.map((entry) => {
+            if (entry.i !== footerLayout.i) return entry;
             return {
-                ...item,
-                h: estimatedRows,
+                ...entry,
+                y: Math.max(entry.y, maxBottomWithoutFooter + 1),
             };
         });
     };
