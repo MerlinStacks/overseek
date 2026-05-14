@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import EmailEditor, { EditorRef } from 'react-email-editor';
 import {
     AlertTriangle,
+    Bookmark,
     ClipboardList,
     History,
     Loader2,
@@ -11,6 +12,7 @@ import {
     Send,
     Smartphone,
     Tablet,
+    Trash2,
     Undo2,
     X,
 } from 'lucide-react';
@@ -33,129 +35,22 @@ interface DesignSnapshot {
     design: unknown;
 }
 
+interface SavedRowPreset {
+    id: string;
+    name: string;
+    row: Record<string, unknown>;
+    createdAt: string;
+}
+
 const DRAFT_STORAGE_KEY = 'overseek-email-builder-draft';
 const HISTORY_STORAGE_KEY = 'overseek-email-builder-history';
 const RECENT_TEST_RECIPIENTS_KEY = 'overseek-email-builder-recent-recipients';
+const SAVED_HEADERS_KEY = 'overseek-email-builder-saved-headers';
+const SAVED_FOOTERS_KEY = 'overseek-email-builder-saved-footers';
 const MAX_HISTORY_SNAPSHOTS = 8;
 const MAX_TEST_RECIPIENTS = 6;
+const MAX_SAVED_SECTION_PRESETS = 12;
 
-const PRESET_ROWS: Record<string, { label: string; row: Record<string, unknown> }> = {
-    productSpotlight: {
-        label: 'Product Spotlight',
-        row: {
-            id: 'preset-product-spotlight',
-            cells: [1],
-            columns: [{
-                id: 'preset-product-spotlight-col',
-                contents: [{
-                    id: 'preset-product-spotlight-title',
-                    type: 'text',
-                    values: {
-                        text: '<h2 style="margin:0;text-align:center;line-height:1.3;">Featured Product This Week</h2>',
-                        padding: '26px 24px 8px',
-                    }
-                }, {
-                    id: 'preset-product-spotlight-copy',
-                    type: 'text',
-                    values: {
-                        text: '<p style="margin:0;text-align:center;line-height:1.6;">Insert a WooCommerce product block below and highlight what makes it a must-have.</p>',
-                        padding: '0px 24px 20px',
-                    }
-                }]
-            }],
-            values: { backgroundColor: '#ffffff', padding: '0px' }
-        }
-    },
-    couponStrip: {
-        label: 'Coupon Strip',
-        row: {
-            id: 'preset-coupon-strip',
-            cells: [1],
-            columns: [{
-                id: 'preset-coupon-strip-col',
-                contents: [{
-                    id: 'preset-coupon-title',
-                    type: 'text',
-                    values: {
-                        text: '<p style="margin:0;text-align:center;font-size:18px;"><strong>Use code SAVE15 for 15% off this week</strong></p>',
-                        padding: '16px 20px 6px',
-                    }
-                }, {
-                    id: 'preset-coupon-sub',
-                    type: 'text',
-                    values: {
-                        text: '<p style="margin:0;text-align:center;line-height:1.55;">Replace this text with your coupon details and expiry date.</p>',
-                        padding: '0px 20px 16px',
-                    }
-                }]
-            }],
-            values: { backgroundColor: '#eff6ff', padding: '0px' }
-        }
-    },
-    reviewRequest: {
-        label: 'Review Request',
-        row: {
-            id: 'preset-review-request',
-            cells: [1],
-            columns: [{
-                id: 'preset-review-request-col',
-                contents: [{
-                    id: 'preset-review-title',
-                    type: 'text',
-                    values: {
-                        text: '<h3 style="margin:0;text-align:center;line-height:1.35;">How did we do?</h3>',
-                        padding: '22px 24px 8px',
-                    }
-                }, {
-                    id: 'preset-review-copy',
-                    type: 'text',
-                    values: {
-                        text: '<p style="margin:0;text-align:center;line-height:1.6;">Your feedback helps others shop with confidence. Drop in your review link below.</p>',
-                        padding: '0px 24px 12px',
-                    }
-                }, {
-                    id: 'preset-review-button',
-                    type: 'button',
-                    values: {
-                        text: 'Leave a Review',
-                        href: '{{store_url}}',
-                        align: 'center',
-                        backgroundColor: '#1d4ed8',
-                        borderRadius: '8px',
-                        padding: '0px 24px 24px'
-                    }
-                }]
-            }],
-            values: { backgroundColor: '#ffffff', padding: '0px' }
-        }
-    },
-    shippingUpdate: {
-        label: 'Shipping Update',
-        row: {
-            id: 'preset-shipping-update',
-            cells: [1],
-            columns: [{
-                id: 'preset-shipping-update-col',
-                contents: [{
-                    id: 'preset-shipping-title',
-                    type: 'text',
-                    values: {
-                        text: '<h3 style="margin:0;line-height:1.35;">Shipping Update for Order {{order_id}}</h3>',
-                        padding: '20px 24px 6px',
-                    }
-                }, {
-                    id: 'preset-shipping-copy',
-                    type: 'text',
-                    values: {
-                        text: '<p style="margin:0;line-height:1.6;">Your package is on the move. Add tracking details and delivery estimates here.</p>',
-                        padding: '0px 24px 20px',
-                    }
-                }]
-            }],
-            values: { backgroundColor: '#f8fafc', padding: '0px' }
-        }
-    },
-};
 
 export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCancel }) => {
     const emailEditorRef = useRef<EditorRef>(null);
@@ -180,10 +75,8 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     const [testStatus, setTestStatus] = useState<string | null>(null);
     const [recentRecipients, setRecentRecipients] = useState<string[]>([]);
 
-    const [showPreviewPanel, setShowPreviewPanel] = useState(false);
-    const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop');
-    const [previewHtml, setPreviewHtml] = useState('');
-    const [previewLoading, setPreviewLoading] = useState(false);
+    const [editorDevice, setEditorDevice] = useState<PreviewDevice>('desktop');
+    const [deviceSwitchUnsupported, setDeviceSwitchUnsupported] = useState(false);
 
     const [showChecklistPanel, setShowChecklistPanel] = useState(false);
     const [checklistItems, setChecklistItems] = useState<PreflightIssue[]>([]);
@@ -192,13 +85,129 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
 
     const [showHistoryPanel, setShowHistoryPanel] = useState(false);
     const [snapshots, setSnapshots] = useState<DesignSnapshot[]>([]);
+    const [savedHeaders, setSavedHeaders] = useState<SavedRowPreset[]>([]);
+    const [savedFooters, setSavedFooters] = useState<SavedRowPreset[]>([]);
+
+    const defaultHeaderPresets = useMemo((): SavedRowPreset[] => ([
+        {
+            id: 'default-header-brand',
+            name: 'Brand Header',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'default-header-brand-row',
+                cells: [1],
+                columns: [{
+                    id: 'default-header-brand-col',
+                    contents: logoUrl ? [{
+                        id: 'default-header-brand-logo',
+                        type: 'image',
+                        values: {
+                            src: { url: logoUrl },
+                            altText: `${appName} Logo`,
+                            align: 'center',
+                            width: '140px',
+                            padding: '20px 20px 8px'
+                        }
+                    }, {
+                        id: 'default-header-brand-tagline',
+                        type: 'text',
+                        values: {
+                            text: `<p style="text-align:center;margin:0;font-size:13px;color:#64748b;">${appName}</p>`,
+                            padding: '0px 20px 16px'
+                        }
+                    }] : [{
+                        id: 'default-header-brand-fallback',
+                        type: 'text',
+                        values: {
+                            text: `<h2 style="text-align:center;margin:0;line-height:1.3;color:#0f172a;">${appName}</h2>`,
+                            padding: '20px 20px 16px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: '#ffffff', padding: '0px' }
+            }
+        },
+        {
+            id: 'default-header-banner',
+            name: 'Promo Banner Header',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'default-header-banner-row',
+                cells: [1],
+                columns: [{
+                    id: 'default-header-banner-col',
+                    contents: [{
+                        id: 'default-header-banner-copy',
+                        type: 'text',
+                        values: {
+                            text: '<p style="text-align:center;margin:0;font-size:13px;color:#ffffff;"><strong>Free shipping over $50</strong> &nbsp;|&nbsp; New arrivals every week</p>',
+                            padding: '12px 16px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: primaryColor, padding: '0px' }
+            }
+        },
+    ]), [appName, logoUrl, primaryColor]);
+
+    const defaultFooterPresets = useMemo((): SavedRowPreset[] => ([
+        {
+            id: 'default-footer-simple',
+            name: 'Simple Footer',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'default-footer-simple-row',
+                cells: [1],
+                columns: [{
+                    id: 'default-footer-simple-col',
+                    contents: [{
+                        id: 'default-footer-simple-copy',
+                        type: 'text',
+                        values: {
+                            text: `<p style="text-align:center;margin:0;font-size:12px;line-height:1.6;color:#64748b;">You are receiving this email from ${appName}.<br />{{store_url}}</p>`,
+                            padding: '18px 20px 8px'
+                        }
+                    }, {
+                        id: 'default-footer-simple-unsubscribe',
+                        type: 'text',
+                        values: {
+                            text: '<p style="text-align:center;margin:0;font-size:12px;"><a href="{{unsubscribe_url}}" style="color:#64748b;">Unsubscribe</a></p>',
+                            padding: '0px 20px 18px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: '#f8fafc', padding: '0px' }
+            }
+        },
+        {
+            id: 'default-footer-support',
+            name: 'Support Footer',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'default-footer-support-row',
+                cells: [1],
+                columns: [{
+                    id: 'default-footer-support-col',
+                    contents: [{
+                        id: 'default-footer-support-copy',
+                        type: 'text',
+                        values: {
+                            text: '<p style="text-align:center;margin:0;font-size:12px;line-height:1.65;color:#475569;">Need help? Reply to this email and our team will assist you.<br />{{store_url}}</p>',
+                            padding: '18px 20px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: '#e2e8f0', padding: '0px' }
+            }
+        },
+    ]), [appName]);
 
     const starterLayouts = useMemo((): Array<{ id: string; label: string; design: unknown }> => ([
         {
             id: 'promo',
             label: 'Promo Hero',
             design: {
-                counters: { u_row: 4, u_column: 4, u_content_text: 4, u_content_button: 1, u_content_image: 1 },
+                counters: { u_row: 5, u_column: 5, u_content_text: 5, u_content_button: 1, u_content_image: 1 },
                 body: {
                     id: 'promo-body',
                     rows: [
@@ -261,6 +270,29 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                 }]
                             }],
                             values: { backgroundColor: '#eff6ff', padding: '0px' }
+                        },
+                        {
+                            id: 'promo-footer-row',
+                            cells: [1],
+                            columns: [{
+                                id: 'promo-footer-col',
+                                contents: [{
+                                    id: 'promo-footer-copy',
+                                    type: 'text',
+                                    values: {
+                                        text: `<p style="text-align:center;margin:0;font-size:12px;line-height:1.6;color:#64748b;">You are receiving this email from ${appName}.<br />{{store_url}}</p>`,
+                                        padding: '18px 20px 8px'
+                                    }
+                                }, {
+                                    id: 'promo-footer-unsubscribe',
+                                    type: 'text',
+                                    values: {
+                                        text: '<p style="text-align:center;margin:0;font-size:12px;"><a href="{{unsubscribe_url}}" style="color:#64748b;">Unsubscribe</a></p>',
+                                        padding: '0px 20px 18px'
+                                    }
+                                }]
+                            }],
+                            values: { backgroundColor: '#f8fafc', padding: '0px' }
                         }
                     ],
                     values: {
@@ -276,10 +308,35 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
             id: 'announcement',
             label: 'Clean Announcement',
             design: {
-                counters: { u_row: 3, u_column: 3, u_content_text: 3, u_content_button: 1 },
+                counters: { u_row: 5, u_column: 5, u_content_text: 5, u_content_button: 1, u_content_image: 1 },
                 body: {
                     id: 'announce-body',
                     rows: [{
+                        id: 'announce-header',
+                        cells: [1],
+                        columns: [{
+                            id: 'announce-header-col',
+                            contents: logoUrl ? [{
+                                id: 'announce-logo-image',
+                                type: 'image',
+                                values: {
+                                    src: { url: logoUrl },
+                                    altText: `${appName} Logo`,
+                                    align: 'left',
+                                    width: '120px',
+                                    padding: '20px 20px 8px'
+                                }
+                            }] : [{
+                                id: 'announce-logo-fallback',
+                                type: 'text',
+                                values: {
+                                    text: `<p style="margin:0;font-size:18px;"><strong>${appName}</strong></p>`,
+                                    padding: '22px 20px 10px',
+                                }
+                            }]
+                        }],
+                        values: { backgroundColor: '#ffffff', padding: '0px' }
+                    }, {
                         id: 'announce-top',
                         cells: [1],
                         columns: [{
@@ -289,7 +346,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                 type: 'text',
                                 values: {
                                     text: '<h2 style="text-align:left;margin:0;line-height:1.3;">A quick update for {{contact_first_name}}</h2>',
-                                    padding: '28px 20px 8px'
+                                    padding: '16px 20px 8px'
                                 }
                             }, {
                                 id: 'announce-copy',
@@ -312,6 +369,28 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                             }]
                         }],
                         values: { backgroundColor: '#ffffff', padding: '0px' }
+                    }, {
+                        id: 'announce-footer',
+                        cells: [1],
+                        columns: [{
+                            id: 'announce-footer-col',
+                            contents: [{
+                                id: 'announce-footer-copy',
+                                type: 'text',
+                                values: {
+                                    text: `<p style="text-align:left;margin:0;font-size:12px;line-height:1.6;color:#64748b;">You are receiving this email from ${appName}.<br />{{store_url}}</p>`,
+                                    padding: '18px 20px 8px'
+                                }
+                            }, {
+                                id: 'announce-footer-unsubscribe',
+                                type: 'text',
+                                values: {
+                                    text: '<p style="margin:0;font-size:12px;"><a href="{{unsubscribe_url}}" style="color:#64748b;">Unsubscribe</a></p>',
+                                    padding: '0px 20px 18px'
+                                }
+                            }]
+                        }],
+                        values: { backgroundColor: '#f8fafc', padding: '0px' }
                     }],
                     values: {
                         backgroundColor: '#f1f5f9',
@@ -422,44 +501,21 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         });
     }, []);
 
-    const refreshPreview = useCallback(() => {
+    const handleEditorDeviceChange = useCallback((device: PreviewDevice) => {
         const editor = emailEditorRef.current?.editor;
         if (!editor) return;
 
-        setPreviewLoading(true);
-        editor.exportHtml((data) => {
-            setPreviewHtml(data.html || '');
-            setPreviewLoading(false);
-        });
+        const unlayerEditor = editor as unknown as { setDevice?: (nextDevice: PreviewDevice) => void };
+        if (typeof unlayerEditor.setDevice === 'function') {
+            unlayerEditor.setDevice(device);
+            setEditorDevice(device);
+            setDeviceSwitchUnsupported(false);
+            return;
+        }
+
+        setDeviceSwitchUnsupported(true);
     }, []);
 
-    const appendPresetRow = (presetKey: keyof typeof PRESET_ROWS) => {
-        const editor = emailEditorRef.current?.editor;
-        if (!editor) return;
-
-        editor.saveDesign((design: unknown) => {
-            const mutable = typeof structuredClone === 'function'
-                ? structuredClone(design)
-                : JSON.parse(JSON.stringify(design));
-
-            const body = (mutable as { body?: { rows?: unknown[] } }).body;
-            if (!body) return;
-            if (!Array.isArray(body.rows)) {
-                body.rows = [];
-            }
-
-            const preset = PRESET_ROWS[presetKey];
-            const row = typeof structuredClone === 'function'
-                ? structuredClone(preset.row)
-                : JSON.parse(JSON.stringify(preset.row));
-            body.rows.push(row);
-
-            type LoadDesignArg = Parameters<typeof editor.loadDesign>[0];
-            editor.loadDesign(mutable as LoadDesignArg);
-            setHasUnsavedChanges(true);
-            setTimeout(() => saveDraftToLocalStorage(), 200);
-        });
-    };
 
     const onReady = () => {
         setLoading(false);
@@ -468,6 +524,8 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         if (editor) {
             registerWooCommerceTools(editor);
             editor.setMergeTags(getWooCommerceMergeTags());
+            const unlayerEditor = editor as unknown as { setDevice?: (nextDevice: PreviewDevice) => void };
+            setDeviceSwitchUnsupported(typeof unlayerEditor.setDevice !== 'function');
             editor.addEventListener('design:updated', () => {
                 setHasUnsavedChanges(true);
                 queueDraftSave();
@@ -539,6 +597,104 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         localStorage.setItem(RECENT_TEST_RECIPIENTS_KEY, JSON.stringify(next));
     };
 
+    const loadSavedRows = useCallback((key: string): SavedRowPreset[] => {
+        const raw = localStorage.getItem(key);
+        if (!raw) return [];
+        try {
+            const parsed = JSON.parse(raw) as SavedRowPreset[];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }, []);
+
+    const persistSavedRows = useCallback((key: string, rows: SavedRowPreset[]) => {
+        localStorage.setItem(key, JSON.stringify(rows.slice(0, MAX_SAVED_SECTION_PRESETS)));
+    }, []);
+
+    const saveCurrentSection = (type: 'header' | 'footer') => {
+        const editor = emailEditorRef.current?.editor;
+        if (!editor) return;
+
+        editor.saveDesign((design: unknown) => {
+            const bodyRows = (design as { body?: { rows?: unknown[] } }).body?.rows;
+            if (!Array.isArray(bodyRows) || bodyRows.length === 0) {
+                window.alert('Add at least one row before saving a reusable section.');
+                return;
+            }
+
+            const targetRow = type === 'header' ? bodyRows[0] : bodyRows[bodyRows.length - 1];
+            const name = window.prompt(
+                type === 'header' ? 'Name this reusable header:' : 'Name this reusable footer:',
+                type === 'header' ? `Header ${savedHeaders.length + 1}` : `Footer ${savedFooters.length + 1}`
+            );
+            if (!name || !name.trim()) return;
+
+            const rowCopy = typeof structuredClone === 'function'
+                ? structuredClone(targetRow)
+                : JSON.parse(JSON.stringify(targetRow));
+            const nextItem: SavedRowPreset = {
+                id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                name: name.trim(),
+                row: rowCopy as Record<string, unknown>,
+                createdAt: new Date().toISOString(),
+            };
+
+            if (type === 'header') {
+                const next = [nextItem, ...savedHeaders].slice(0, MAX_SAVED_SECTION_PRESETS);
+                setSavedHeaders(next);
+                persistSavedRows(SAVED_HEADERS_KEY, next);
+            } else {
+                const next = [nextItem, ...savedFooters].slice(0, MAX_SAVED_SECTION_PRESETS);
+                setSavedFooters(next);
+                persistSavedRows(SAVED_FOOTERS_KEY, next);
+            }
+        });
+    };
+
+    const insertReusableSection = (preset: SavedRowPreset, type: 'header' | 'footer') => {
+        const editor = emailEditorRef.current?.editor;
+        if (!editor) return;
+
+        editor.saveDesign((design: unknown) => {
+            const mutable = typeof structuredClone === 'function'
+                ? structuredClone(design)
+                : JSON.parse(JSON.stringify(design));
+            const body = (mutable as { body?: { rows?: unknown[] } }).body;
+            if (!body) return;
+            if (!Array.isArray(body.rows)) {
+                body.rows = [];
+            }
+
+            const rowCopy = typeof structuredClone === 'function'
+                ? structuredClone(preset.row)
+                : JSON.parse(JSON.stringify(preset.row));
+
+            if (type === 'header') {
+                body.rows.unshift(rowCopy);
+            } else {
+                body.rows.push(rowCopy);
+            }
+
+            type LoadDesignArg = Parameters<typeof editor.loadDesign>[0];
+            editor.loadDesign(mutable as LoadDesignArg);
+            setHasUnsavedChanges(true);
+            setTimeout(() => saveDraftToLocalStorage(), 200);
+        });
+    };
+
+    const deleteSavedSection = (id: string, type: 'header' | 'footer') => {
+        if (type === 'header') {
+            const next = savedHeaders.filter((item) => item.id !== id);
+            setSavedHeaders(next);
+            persistSavedRows(SAVED_HEADERS_KEY, next);
+            return;
+        }
+        const next = savedFooters.filter((item) => item.id !== id);
+        setSavedFooters(next);
+        persistSavedRows(SAVED_FOOTERS_KEY, next);
+    };
+
     const sendTestEmail = async (targetEmail?: string) => {
         const recipient = (targetEmail || testEmail).trim();
         if (!recipient || !recipient.includes('@')) {
@@ -606,6 +762,8 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                 setRecentRecipients([]);
             }
         }
+        setSavedHeaders(loadSavedRows(SAVED_HEADERS_KEY));
+        setSavedFooters(loadSavedRows(SAVED_FOOTERS_KEY));
         if (user?.email) {
             setTestEmail(user.email);
         }
@@ -614,7 +772,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         return () => {
             clearAutosaveTimeout();
         };
-    }, [updateSnapshotsState, user?.email]);
+    }, [loadSavedRows, updateSnapshotsState, user?.email]);
 
     useEffect(() => {
         const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -638,12 +796,6 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [exportHtml, loading, saving]);
-
-    const previewWidthClass = previewDevice === 'desktop'
-        ? 'w-full max-w-[920px]'
-        : previewDevice === 'tablet'
-            ? 'w-full max-w-[768px]'
-            : 'w-full max-w-[390px]';
 
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-gray-900/50 backdrop-blur-xs">
@@ -680,17 +832,36 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => {
-                                setShowPreviewPanel((value) => !value);
-                                if (!showPreviewPanel) {
-                                    refreshPreview();
-                                }
-                            }}
-                            className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
-                        >
-                            Preview
-                        </button>
+                        <div className="flex flex-col items-start gap-1">
+                            <div className="inline-flex items-center gap-1 rounded-lg border border-white/20 bg-white/10 p-1">
+                            <button
+                                onClick={() => handleEditorDeviceChange('desktop')}
+                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${editorDevice === 'desktop' ? 'bg-white text-blue-700' : 'text-white hover:bg-white/20'}`}
+                            >
+                                <Monitor size={12} />
+                                <span className="hidden sm:inline">Desktop</span>
+                            </button>
+                            <button
+                                onClick={() => handleEditorDeviceChange('tablet')}
+                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${editorDevice === 'tablet' ? 'bg-white text-blue-700' : 'text-white hover:bg-white/20'}`}
+                            >
+                                <Tablet size={12} />
+                                <span className="hidden sm:inline">Tablet</span>
+                            </button>
+                            <button
+                                onClick={() => handleEditorDeviceChange('mobile')}
+                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${editorDevice === 'mobile' ? 'bg-white text-blue-700' : 'text-white hover:bg-white/20'}`}
+                            >
+                                <Smartphone size={12} />
+                                <span className="hidden sm:inline">Mobile</span>
+                            </button>
+                            </div>
+                            {deviceSwitchUnsupported && (
+                                <span className="px-1 text-[11px] text-blue-100/90">
+                                    Device preview is unavailable in this editor build.
+                                </span>
+                            )}
+                        </div>
                         <button
                             onClick={runPreflightChecklist}
                             className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
@@ -778,36 +949,6 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </div>
                     )}
 
-                    {showPreviewPanel && (
-                        <div className="absolute left-4 top-4 z-30 w-[min(92vw,980px)] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
-                            <div className="mb-3 flex items-center justify-between gap-3">
-                                <p className="text-sm font-semibold text-slate-900">Device Preview</p>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => setPreviewDevice('desktop')} className={`rounded-md px-2 py-1 text-xs ${previewDevice === 'desktop' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}><Monitor size={12} className="inline mr-1" />Desktop</button>
-                                    <button onClick={() => setPreviewDevice('tablet')} className={`rounded-md px-2 py-1 text-xs ${previewDevice === 'tablet' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}><Tablet size={12} className="inline mr-1" />Tablet</button>
-                                    <button onClick={() => setPreviewDevice('mobile')} className={`rounded-md px-2 py-1 text-xs ${previewDevice === 'mobile' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}><Smartphone size={12} className="inline mr-1" />Mobile</button>
-                                    <button onClick={refreshPreview} className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700 hover:bg-slate-200">Refresh</button>
-                                </div>
-                            </div>
-                            <div className="max-h-[62vh] overflow-auto rounded-lg border bg-slate-50 p-3">
-                                {previewLoading ? (
-                                    <div className="flex h-[300px] items-center justify-center text-sm text-slate-500">Rendering preview...</div>
-                                ) : (
-                                    <div className="mx-auto overflow-hidden rounded-lg border bg-white shadow-sm">
-                                        <div className={`mx-auto ${previewWidthClass}`}>
-                                            <iframe
-                                                srcDoc={previewHtml}
-                                                title="Device Preview"
-                                                className="h-[540px] w-full"
-                                                sandbox="allow-same-origin"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
                     {showChecklistPanel && (
                         <div className="absolute left-4 top-4 z-30 w-[380px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
                             <div className="mb-3 flex items-center justify-between">
@@ -882,18 +1023,72 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </div>
                     )}
 
-                    <div className="absolute bottom-4 left-4 z-30 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
-                        <p className="mb-2 text-xs font-semibold text-slate-800">Quick Ecommerce Blocks</p>
-                        <div className="flex flex-wrap gap-2">
-                            {Object.entries(PRESET_ROWS).map(([key, value]) => (
+                    <div className="absolute bottom-4 right-4 z-30 w-[360px] rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                        <div className="mb-2 flex items-center gap-2">
+                            <Bookmark size={14} className="text-slate-600" />
+                            <p className="text-xs font-semibold text-slate-800">Reusable Headers and Footers</p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Headers</p>
+                            <div className="flex flex-wrap gap-2">
+                                {defaultHeaderPresets.map((preset) => (
+                                    <button
+                                        key={preset.id}
+                                        onClick={() => insertReusableSection(preset, 'header')}
+                                        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                                    >
+                                        + {preset.name}
+                                    </button>
+                                ))}
                                 <button
-                                    key={key}
-                                    onClick={() => appendPresetRow(key as keyof typeof PRESET_ROWS)}
-                                    className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                                    onClick={() => saveCurrentSection('header')}
+                                    className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
                                 >
-                                    {value.label}
+                                    Save Top Row as Header
                                 </button>
-                            ))}
+                            </div>
+                            {savedHeaders.length > 0 && (
+                                <div className="max-h-20 space-y-1 overflow-auto">
+                                    {savedHeaders.map((preset) => (
+                                        <div key={preset.id} className="flex items-center justify-between rounded-md border border-slate-200 px-2 py-1">
+                                            <button onClick={() => insertReusableSection(preset, 'header')} className="truncate text-xs text-slate-700 hover:text-blue-700">Use {preset.name}</button>
+                                            <button onClick={() => deleteSavedSection(preset.id, 'header')} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 size={12} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Footers</p>
+                            <div className="flex flex-wrap gap-2">
+                                {defaultFooterPresets.map((preset) => (
+                                    <button
+                                        key={preset.id}
+                                        onClick={() => insertReusableSection(preset, 'footer')}
+                                        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                                    >
+                                        + {preset.name}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => saveCurrentSection('footer')}
+                                    className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
+                                >
+                                    Save Bottom Row as Footer
+                                </button>
+                            </div>
+                            {savedFooters.length > 0 && (
+                                <div className="max-h-20 space-y-1 overflow-auto">
+                                    {savedFooters.map((preset) => (
+                                        <div key={preset.id} className="flex items-center justify-between rounded-md border border-slate-200 px-2 py-1">
+                                            <button onClick={() => insertReusableSection(preset, 'footer')} className="truncate text-xs text-slate-700 hover:text-blue-700">Use {preset.name}</button>
+                                            <button onClick={() => deleteSavedSection(preset.id, 'footer')} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 size={12} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -945,6 +1140,10 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                 'custom#woo_order_summary': { position: 4 },
                                 'custom#woo_customer_notes': { position: 5 },
                                 'custom#woo_order_downloads': { position: 6 },
+                                'custom#woo_section_product_spotlight': { position: 7 },
+                                'custom#woo_section_coupon_strip': { position: 8 },
+                                'custom#woo_section_review_request': { position: 9 },
+                                'custom#woo_section_shipping_update': { position: 10 },
                             },
                         }}
                     />

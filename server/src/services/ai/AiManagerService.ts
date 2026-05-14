@@ -173,7 +173,48 @@ export class AiManagerService {
         }
 
         if (suggestions.length === 0) {
-            return { created: 0 };
+            try {
+                const [productCount, pageCount, postCount, adAccountCount, scAccountCount] = await Promise.all([
+                    prisma.wooProduct.count({ where: { accountId } }),
+                    prisma.wooPage.count({ where: { accountId } }),
+                    prisma.wooBlogPost.count({ where: { accountId } }),
+                    prisma.adAccount.count({ where: { accountId } }),
+                    prisma.searchConsoleAccount.count({ where: { accountId } }),
+                ]);
+
+                suggestions.push({
+                    recommendationId: `ai_manager_content_plan_${now}`,
+                    title: 'Build a weekly content optimization plan',
+                    text: 'Prioritize the lowest-converting product and landing pages for SEO rewrites first, then schedule one blog refresh per week to expand long-tail coverage.',
+                    type: 'CONTENT_STRATEGY',
+                    source: 'COMBINED',
+                    priority: 2,
+                    confidence: 66,
+                    dataPoints: [
+                        `Products: ${productCount}`,
+                        `Pages: ${pageCount}`,
+                        `Blog posts: ${postCount}`,
+                    ],
+                    tags: ['strategy', 'content', 'baseline'],
+                });
+
+                suggestions.push({
+                    recommendationId: `ai_manager_integration_plan_${now}`,
+                    title: 'Strengthen signal quality for AI suggestions',
+                    text: 'Ensure Search Console and ad accounts stay connected, then run weekly refreshes so recommendations can prioritize terms with clear opportunity and spend impact.',
+                    type: 'DATA_QUALITY',
+                    source: 'COMBINED',
+                    priority: 3,
+                    confidence: 64,
+                    dataPoints: [
+                        `Search Console accounts: ${scAccountCount}`,
+                        `Ad accounts: ${adAccountCount}`,
+                    ],
+                    tags: ['integrations', 'baseline'],
+                });
+            } catch (error) {
+                Logger.warn('[AiManagerService] Failed baseline fallback generation', { accountId, error });
+            }
         }
 
         const existingRecent = await prisma.recommendationLog.findMany({

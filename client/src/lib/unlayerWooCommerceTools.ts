@@ -14,6 +14,39 @@ interface UnlayerEditor {
     createViewer: (config: { render: (values: ToolValues) => string }) => unknown;
 }
 
+function registerStaticSectionTool(
+    unlayer: UnlayerEditor,
+    name: string,
+    label: string,
+    icon: string,
+    html: string
+) {
+    unlayer.registerTool({
+        name,
+        label,
+        icon,
+        supportedDisplayModes: ['email'],
+        options: {},
+        values: {},
+        renderer: {
+            Viewer: unlayer.createViewer({
+                render() {
+                    return html;
+                },
+            }),
+            exporters: {
+                email() {
+                    return html;
+                },
+            },
+            head: {
+                css() { return ''; },
+                js() { return ''; },
+            },
+        },
+    });
+}
+
 /**
  * Get merge tags configuration for Unlayer editor
  * Enables merge tag autocomplete in the editor
@@ -140,6 +173,38 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
             },
         },
     });
+
+    // ============================================
+    // SECTION PRESET BLOCKS (inside content blocks)
+    // ============================================
+    registerStaticSectionTool(
+        unlayer,
+        'woo_section_product_spotlight',
+        'Product Spotlight Section',
+        'fa-star',
+        '<div style="background:#ffffff;padding:26px 24px 20px;font-family:Arial,sans-serif;text-align:center;"><h2 style="margin:0 0 8px 0;line-height:1.3;color:#0f172a;">Featured Product This Week</h2><p style="margin:0;line-height:1.6;color:#475569;">Insert a WooCommerce product block below and highlight what makes it a must-have.</p></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_section_coupon_strip',
+        'Coupon Strip Section',
+        'fa-tag',
+        '<div style="background:#eff6ff;padding:16px 20px;font-family:Arial,sans-serif;text-align:center;"><p style="margin:0 0 6px 0;font-size:18px;color:#0f172a;"><strong>Use code SAVE15 for 15% off this week</strong></p><p style="margin:0;line-height:1.55;color:#334155;">Replace this text with your coupon details and expiry date.</p></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_section_review_request',
+        'Review Request Section',
+        'fa-comment-dots',
+        '<div style="background:#ffffff;padding:22px 24px 24px;font-family:Arial,sans-serif;text-align:center;"><h3 style="margin:0 0 8px 0;line-height:1.35;color:#0f172a;">How did we do?</h3><p style="margin:0 0 14px 0;line-height:1.6;color:#475569;">Your feedback helps others shop with confidence. Drop in your review link below.</p><a href="{{store_url}}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;border-radius:8px;padding:10px 16px;font-weight:600;">Leave a Review</a></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_section_shipping_update',
+        'Shipping Update Section',
+        'fa-shipping-fast',
+        '<div style="background:#f8fafc;padding:20px 24px;font-family:Arial,sans-serif;"><h3 style="margin:0 0 6px 0;line-height:1.35;color:#0f172a;">Shipping Update for Order {{order_id}}</h3><p style="margin:0;line-height:1.6;color:#475569;">Your package is on the move. Add tracking details and delivery estimates here.</p></div>'
+    );
 
     // ============================================
     // 2. COUPON BLOCK

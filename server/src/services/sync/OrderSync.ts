@@ -357,15 +357,20 @@ export class OrderSync extends BaseSync {
 
         try {
             // Step 1: Read counts (no locks held)
-            const counts = await prisma.$queryRaw<Array<{ woo_id: number; count: number; total_spent: number }>>`
+            const counts = await prisma.$queryRaw<Array<{ customer_id: string; count: number; total_spent: number }>>`
                 SELECT
-                    "wooCustomerId" as woo_id,
+                    c."id" as customer_id,
                     COUNT(*)::int as count,
                     COALESCE(SUM("total"), 0)::float8 as total_spent
-                FROM "WooOrder"
-                WHERE "accountId" = ${accountId}
-                  AND "wooCustomerId" IS NOT NULL
-                GROUP BY "wooCustomerId"
+                FROM "WooOrder" o
+                INNER JOIN "WooCustomer" c
+                    ON c."accountId" = o."accountId"
+                    AND (
+                        (o."wooCustomerId" IS NOT NULL AND c."wooId" = o."wooCustomerId")
+                        OR (o."wooCustomerId" IS NULL AND o."billingEmail" IS NOT NULL AND c."email" = o."billingEmail")
+                    )
+                WHERE o."accountId" = ${accountId}
+                GROUP BY c."id"
             `;
 
             await prisma.wooCustomer.updateMany({
@@ -386,11 +391,11 @@ export class OrderSync extends BaseSync {
                 const batch = counts.slice(i, i + BATCH_SIZE);
                 await Promise.all(batch.map(c =>
                     prisma.wooCustomer.updateMany({
-                        where: { accountId, wooId: c.woo_id },
+                        where: { accountId, id: c.customer_id },
                         data: { ordersCount: c.count, totalSpent: c.total_spent }
                     }).catch(err => {
                         Logger.warn('Failed to update order count for customer', {
-                            accountId, syncId, wooId: c.woo_id, error: err.message
+                            accountId, syncId, customerId: c.customer_id, error: err.message
                         });
                     })
                 ));
@@ -402,7 +407,7 @@ export class OrderSync extends BaseSync {
             const updatedCustomers = await prisma.wooCustomer.findMany({
                 where: {
                     accountId,
-                    wooId: { in: counts.map(c => c.woo_id) }
+                    id: { in: counts.map(c => c.customer_id) }
                 },
                 select: {
                     wooId: true,

@@ -54,6 +54,8 @@ const nodeTypes = {
     condition: ConditionNode,
 } as NodeTypes;
 
+const INVALID_NODE_CLASS = 'overseek-node-invalid';
+
 let id = 0;
 const getId = () => `node_${Date.now()}_${id++}`;
 
@@ -594,7 +596,14 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
         return nodes.map((node) => {
             const hasError = invalidSet.has(node.id);
-            const className = `${node.className || ''} ${hasError ? 'ring-2 ring-red-400 ring-offset-2 rounded-xl' : ''}`.trim();
+            const existingClassNames = (node.className || '')
+                .split(' ')
+                .filter((className) => className && className !== INVALID_NODE_CLASS)
+                .join(' ');
+
+            const className = hasError
+                ? `${existingClassNames} ${INVALID_NODE_CLASS}`.trim()
+                : existingClassNames;
 
             return {
                 ...node,
@@ -610,7 +619,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     }, [nodes, invalidNodeIds, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
 
     return (
-        <div className="h-full w-full relative">
+            <div className="h-full w-full relative">
+            <style>{`.${INVALID_NODE_CLASS}{outline:2px solid #f87171;outline-offset:2px;border-radius:0.75rem;}`}</style>
             {/* Canvas */}
             <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
                 <ReactFlow

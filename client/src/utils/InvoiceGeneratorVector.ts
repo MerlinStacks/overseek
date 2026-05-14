@@ -9,6 +9,13 @@ import {
 } from '../../../packages/overseek-core/src/invoiceRenderModel';
 import { getInvoiceItemMeta } from '../../../packages/overseek-core/src/invoiceItemUtils';
 
+/**
+ * Legacy fallback invoice renderer.
+ *
+ * Canonical path is designer-capture in InvoiceGenerator.ts.
+ * Keep this file for emergency fallback only.
+ */
+
 interface BillingData {
     first_name?: string;
     last_name?: string;

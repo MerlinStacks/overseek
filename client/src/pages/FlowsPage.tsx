@@ -2,9 +2,10 @@
  * FlowsPage - Dedicated page for automation flows (formerly "Automations" tab).
  * Part of the Growth menu in the sidebar.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Redo2, Undo2 } from 'lucide-react';
 import type { Edge, Node } from '@xyflow/react';
+import { useSearchParams } from 'react-router-dom';
 import { AutomationsList } from '../components/marketing/AutomationsList';
 import { FlowBuilder } from '../components/marketing/FlowBuilder';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
@@ -238,6 +239,7 @@ function getExecutionSummaryBadges(analytics: AutomationAnalytics): Array<{ labe
 export function FlowsPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [isEditing, setIsEditing] = useState(false);
     const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
@@ -266,18 +268,22 @@ export function FlowsPage() {
         setToastVisible(true);
     };
 
-    const getDraftKey = (flowId: string) => {
+    const getDraftKey = useCallback((flowId: string) => {
         if (!currentAccount?.id) return null;
         return `overseek-flow-draft:${currentAccount.id}:${flowId}`;
-    };
+    }, [currentAccount?.id]);
 
     const serializeFlow = (flow: FlowDefinition | null | undefined) => {
         if (!flow) return JSON.stringify({ nodes: [], edges: [] });
         return JSON.stringify({ nodes: flow.nodes || [], edges: flow.edges || [] });
     };
 
-    const handleEditFlow = async (id: string, name: string) => {
-        setEditingItem({ id, name });
+    const handleEditFlow = useCallback(async (id: string, requestedName?: string) => {
+        if (searchParams.get('flowId') !== id) {
+            setSearchParams({ flowId: id }, { replace: true });
+        }
+
+        setEditingItem({ id, name: requestedName || 'Loading flow...' });
 
         try {
             const res = await fetch(`/api/marketing/automations/${id}`, {
@@ -293,6 +299,7 @@ export function FlowsPage() {
             }
 
             const data: FlowRecord = await res.json();
+            const resolvedName = requestedName || data.name || 'Untitled flow';
 
             const draftKey = getDraftKey(id);
             if (draftKey) {
@@ -303,7 +310,7 @@ export function FlowsPage() {
                         if (parsedDraft?.flowDefinition?.nodes && Array.isArray(parsedDraft.flowDefinition.nodes)) {
                             setRecoveryPrompt({
                                 flowId: id,
-                                flowName: name,
+                                flowName: resolvedName,
                                 draftSavedAt: parsedDraft.savedAt,
                             });
                         }
@@ -314,6 +321,7 @@ export function FlowsPage() {
             }
 
             setEditingFlowData(data);
+            setEditingItem({ id, name: resolvedName });
             setIsEditing(true);
             baselineFlowRef.current = serializeFlow(data.flowDefinition as FlowDefinition | undefined);
             setIsDirty(false);
@@ -323,7 +331,7 @@ export function FlowsPage() {
             Logger.error('An error occurred', { error });
             showToast('Failed to load flow details');
         }
-    };
+    }, [searchParams, setSearchParams, token, currentAccount, getDraftKey]);
 
     const handleCloseEditor = () => {
         if (autosaveTimerRef.current) {
@@ -338,7 +346,16 @@ export function FlowsPage() {
         setRecentRunEvents([]);
         setRecoveryPrompt(null);
         setInvalidNodeIds([]);
+        if (searchParams.get('flowId')) {
+            setSearchParams({}, { replace: true });
+        }
     };
+
+    useEffect(() => {
+        const flowId = searchParams.get('flowId');
+        if (!flowId || isEditing || !token || !currentAccount) return;
+        void handleEditFlow(flowId);
+    }, [searchParams, isEditing, token, currentAccount, handleEditFlow]);
 
     const handleFlowChange = (flow: FlowDefinition) => {
         if (!editingItem) return;

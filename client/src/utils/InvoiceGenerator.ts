@@ -2,8 +2,8 @@
 /**
  * Invoice PDF Generator
  *
- * Primary path: vector/text PDF generation (crisp print output).
- * Fallback path: legacy html2canvas raster capture when vector generation fails.
+ * Primary path: HTML renderer capture (designer-accurate output).
+ * Fallback path: vector/text generation when capture fails.
  */
 
 import jsPDF from 'jspdf';
@@ -14,6 +14,8 @@ import { createRoot } from 'react-dom/client';
 import { Logger } from './logger';
 import { InvoiceRenderer } from '../components/invoicing/InvoiceRenderer';
 import { generateVectorInvoicePDF } from './InvoiceGeneratorVector';
+
+const ALLOW_VECTOR_FALLBACK = import.meta.env.VITE_INVOICE_ALLOW_VECTOR_FALLBACK === 'true';
 
 /** A4 dimensions in mm */
 const A4_WIDTH_MM = 210;
@@ -44,20 +46,6 @@ export const generateInvoicePDF = async (
     templateName: string = 'Invoice',
     settings?: InvoiceRendererProps['settings']
 ): Promise<void> => {
-    try {
-        await generateVectorInvoicePDF(
-            order,
-            grid as Array<{ i: string; x: number; y: number; w: number; h: number }>,
-            items as Array<{ id?: string; type: string; content?: string; logo?: string; businessDetails?: string; style?: { fontSize?: string; fontWeight?: string; textAlign?: 'left' | 'center' | 'right' } }>,
-            templateName,
-            settings as Record<string, unknown> | undefined
-        );
-        return;
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        Logger.warn('Vector invoice PDF failed, falling back to raster export', { error: message });
-    }
-
     // 1. Create hidden container — must stay within viewport for html2canvas
     //    to capture correctly. We use opacity:0 + overflow:hidden instead of
     //    left:-9999px which html2canvas cannot capture.
@@ -146,11 +134,41 @@ export const generateInvoicePDF = async (
             .replace(/[^a-zA-Z0-9_-]+/g, '_')
             .replace(/^_+|_+$/g, '') || 'Invoice';
         pdf.save(`${safeTemplateName}_${orderNumber}.pdf`);
+        Logger.info('Invoice PDF renderer used', { renderer: 'designer-capture' });
     } catch (err: unknown) {
         const typedError = err instanceof Error ? err : new Error(String(err));
         const msg = typedError.message || String(err);
-        Logger.error('Failed to generate invoice PDF', { error: msg, stack: typedError.stack });
-        throw new Error(`Invoice generation failed: ${msg}`);
+        Logger.warn('Designer invoice capture failed', {
+            error: msg,
+            stack: typedError.stack,
+            vectorFallbackEnabled: ALLOW_VECTOR_FALLBACK
+        });
+
+        if (!ALLOW_VECTOR_FALLBACK) {
+            throw new Error(`Invoice generation failed in canonical renderer: ${msg}`);
+        }
+
+        Logger.warn('Using non-canonical vector fallback for invoice PDF');
+
+        try {
+            await generateVectorInvoicePDF(
+                order,
+                grid as Array<{ i: string; x: number; y: number; w: number; h: number }>,
+                items as Array<{ id?: string; type: string; content?: string; logo?: string; businessDetails?: string; style?: { fontSize?: string; fontWeight?: string; textAlign?: 'left' | 'center' | 'right' } }>,
+                templateName,
+                settings as Record<string, unknown> | undefined
+            );
+            Logger.warn('Invoice PDF renderer used', { renderer: 'vector-fallback' });
+        } catch (vectorError: unknown) {
+            const typedVectorError = vectorError instanceof Error ? vectorError : new Error(String(vectorError));
+            const vectorMsg = typedVectorError.message || String(vectorError);
+            Logger.error('Failed to generate invoice PDF (capture + vector fallback)', {
+                captureError: msg,
+                vectorError: vectorMsg,
+                vectorStack: typedVectorError.stack
+            });
+            throw new Error(`Invoice generation failed: ${vectorMsg}`);
+        }
     } finally {
         // Always cleanup: unmount React tree + remove container from DOM
         try { root?.unmount(); } catch { /* already unmounted or never mounted */ }

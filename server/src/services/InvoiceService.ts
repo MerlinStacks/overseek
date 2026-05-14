@@ -280,6 +280,12 @@ export class InvoiceService {
      * Uses pdfkit to generate a professional PDF invoice.
      */
     async generateInvoicePdf(accountId: string, orderId: string, templateId: string): Promise<{ relativeUrl: string, absolutePath: string }> {
+        Logger.warn('[InvoiceService] Using non-canonical server PDF renderer (PDFKit)', {
+            accountId,
+            orderId,
+            templateId
+        });
+
         // 1. Fetch Order Data with account scoping.
         // Allow either internal WooOrder.id (uuid) or WooCommerce wooId (numeric).
         const parsedWooId = Number(orderId);
