@@ -77,6 +77,12 @@ async function rematchReviewsToOrders() {
             const reviewerEmail = review.reviewerEmail;
             const wooCustomerId = review.wooCustomerId;
             const productId = review.productId;
+            const linkedCustomer = wooCustomerId
+                ? await prisma.wooCustomer.findUnique({
+                    where: { id: wooCustomerId },
+                    select: { wooId: true, email: true }
+                })
+                : null;
 
             // Calculate date range
             const reviewDate = review.dateCreated;
@@ -121,11 +127,10 @@ async function rematchReviewsToOrders() {
                 const billingLast = data.billing?.last_name;
 
                 // Priority 1: Exact WooCommerce customer ID match (score 100)
-                if (wooCustomerId) {
-                    const customer = await prisma.wooCustomer.findUnique({ where: { id: wooCustomerId } });
-                    if (customer && orderCustomerId === customer.wooId) {
+                if (linkedCustomer) {
+                    if (orderCustomerId === linkedCustomer.wooId) {
                         matchScore = 100;
-                    } else if (customer && normalizedOrderEmail === normalizeEmail(customer.email)) {
+                    } else if (normalizedOrderEmail === normalizeEmail(linkedCustomer.email)) {
                         matchScore = 90;
                     }
                 }

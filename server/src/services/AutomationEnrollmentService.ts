@@ -207,25 +207,30 @@ export class AutomationEnrollmentService {
             }
         });
 
-        for (const enrollment of activeEnrollments) {
-            await prisma.automationEnrollment.update({
-                where: { id: enrollment.id },
+        if (activeEnrollments.length > 0) {
+            const now = new Date();
+            const enrollmentIds = activeEnrollments.map((e) => e.id);
+
+            await prisma.automationEnrollment.updateMany({
+                where: { id: { in: enrollmentIds } },
                 data: {
                     status: 'CANCELLED',
                     statusReason: 'PURCHASED_AFTER_ABANDONMENT',
                     nextRunAt: null,
-                    cancelledAt: new Date()
+                    cancelledAt: now
                 }
             });
 
-            await this.recordRunEvent({
-                accountId,
-                automationId: enrollment.automationId,
-                enrollmentId: enrollment.id,
-                nodeId: enrollment.currentNodeId,
-                eventType: 'CANCELLED',
-                outcome: 'PURCHASED_AFTER_ABANDONMENT',
-                metadata: (orderContext ?? {}) as Prisma.InputJsonValue
+            await prisma.automationRunEvent.createMany({
+                data: activeEnrollments.map((enrollment) => ({
+                    accountId,
+                    automationId: enrollment.automationId,
+                    enrollmentId: enrollment.id,
+                    nodeId: enrollment.currentNodeId,
+                    eventType: 'CANCELLED',
+                    outcome: 'PURCHASED_AFTER_ABANDONMENT',
+                    metadata: (orderContext ?? {}) as Prisma.InputJsonValue
+                }))
             });
         }
 

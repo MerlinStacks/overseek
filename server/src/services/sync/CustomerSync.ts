@@ -1,6 +1,7 @@
 import { BaseSync, SyncResult } from './BaseSync';
 import { WooService } from '../woo';
 import { prisma } from '../../utils/prisma';
+import { Prisma } from '@prisma/client';
 import { IndexingService } from '../search/IndexingService';
 import { Logger } from '../../utils/logger';
 import { WooCustomerSchema, WooCustomer } from './wooSchemas';
@@ -255,22 +256,34 @@ export class CustomerSync extends BaseSync {
             select: { id: true, email: true }
         });
 
-        let linkedCount = 0;
+        const updates: Array<{ conversationId: string; customerId: string }> = [];
         for (const customer of matchingCustomers) {
             const convIds = emailToConvs.get(customer.email.toLowerCase());
             if (!convIds || convIds.length === 0) continue;
-
-            // Update all matching conversations
-            await prisma.conversation.updateMany({
-                where: { id: { in: convIds } },
-                data: {
-                    wooCustomerId: customer.id,
-                    guestEmail: null,
-                    guestName: null
-                }
-            });
-            linkedCount += convIds.length;
+            for (const conversationId of convIds) {
+                updates.push({ conversationId, customerId: customer.id });
+            }
         }
+
+        if (updates.length === 0) return 0;
+
+        const UPDATE_CHUNK = 500;
+        for (let i = 0; i < updates.length; i += UPDATE_CHUNK) {
+            const chunk = updates.slice(i, i + UPDATE_CHUNK);
+            const values = Prisma.join(
+                chunk.map((u) => Prisma.sql`(${u.conversationId}::uuid, ${u.customerId}::uuid)`)
+            );
+            await prisma.$executeRaw`
+                UPDATE "Conversation" c
+                SET "wooCustomerId" = v.customer_id,
+                    "guestEmail" = NULL,
+                    "guestName" = NULL
+                FROM (VALUES ${values}) AS v(conversation_id, customer_id)
+                WHERE c.id = v.conversation_id
+            `;
+        }
+
+        const linkedCount = updates.length;
 
         return linkedCount;
     }

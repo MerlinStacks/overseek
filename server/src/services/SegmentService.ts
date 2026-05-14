@@ -140,6 +140,19 @@ export class SegmentService {
     }
 
     async getMatchingSegmentIdsForCustomer(accountId: string, customerId: string): Promise<string[]> {
+        const customer = await prisma.wooCustomer.findFirst({
+            where: { id: customerId, accountId },
+            select: {
+                id: true,
+                totalSpent: true,
+                ordersCount: true,
+                email: true,
+                firstName: true,
+                lastName: true
+            }
+        });
+        if (!customer) return [];
+
         const segments = await prisma.customerSegment.findMany({
             where: { accountId },
             select: { id: true, criteria: true }
@@ -149,17 +162,7 @@ export class SegmentService {
 
         for (const segment of segments) {
             const criteria = segment.criteria as unknown as SegmentCriteria;
-            const whereClause = this.buildWhereClause(accountId, criteria);
-            const matchCount = await prisma.wooCustomer.count({
-                where: {
-                    AND: [
-                        whereClause,
-                        { id: customerId }
-                    ]
-                }
-            });
-
-            if (matchCount > 0) {
+            if (this.matchesCriteria(customer, criteria)) {
                 matchingSegmentIds.push(segment.id);
             }
         }
@@ -332,6 +335,59 @@ export class SegmentService {
         }
 
         return {};
+    }
+
+    private matchesCriteria(customer: {
+        totalSpent: any;
+        ordersCount: any;
+        email: string | null;
+        firstName: string | null;
+        lastName: string | null;
+    }, criteria: SegmentCriteria): boolean {
+        if (!criteria || !criteria.rules || criteria.rules.length === 0) return true;
+
+        const ruleResults = criteria.rules.map((rule) => this.matchesRule(customer, rule));
+        if (criteria.type === 'OR') {
+            return ruleResults.some(Boolean);
+        }
+        return ruleResults.every(Boolean);
+    }
+
+    private matchesRule(customer: {
+        totalSpent: any;
+        ordersCount: any;
+        email: string | null;
+        firstName: string | null;
+        lastName: string | null;
+    }, rule: SegmentRule): boolean {
+        const { field, operator, value } = rule;
+
+        if (field === 'totalSpent' || field === 'ordersCount') {
+            const customerValue = Number((customer as any)[field] ?? 0);
+            const compareValue = Number(value);
+            if (!Number.isFinite(compareValue)) return false;
+            switch (operator) {
+                case 'gt': return customerValue > compareValue;
+                case 'lt': return customerValue < compareValue;
+                case 'gte': return customerValue >= compareValue;
+                case 'lte': return customerValue <= compareValue;
+                case 'eq': return customerValue === compareValue;
+                default: return false;
+            }
+        }
+
+        if (field === 'email' || field === 'firstName' || field === 'lastName') {
+            const customerValue = String((customer as any)[field] ?? '').toLowerCase();
+            const compareValue = String(value ?? '').toLowerCase();
+            switch (operator) {
+                case 'contains': return customerValue.includes(compareValue);
+                case 'equals': return customerValue === compareValue;
+                case 'startsWith': return customerValue.startsWith(compareValue);
+                default: return false;
+            }
+        }
+
+        return false;
     }
 }
 

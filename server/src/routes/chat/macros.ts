@@ -12,25 +12,6 @@ import { requireAuthFastify } from '../../middleware/auth';
 export const macroRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
-    async function ensureConversationLabel(accountId: string, labelId: string) {
-        return prisma.conversationLabel.findFirst({
-            where: { id: labelId, accountId },
-            select: { id: true }
-        });
-    }
-
-    async function ensureAccountUser(accountId: string, userId: string) {
-        return prisma.accountUser.findUnique({
-            where: {
-                userId_accountId: {
-                    userId,
-                    accountId
-                }
-            },
-            select: { userId: true }
-        });
-    }
-
     // GET /macros - List all macros for account
     fastify.get('/macros', async (request, _reply) => {
         const accountId = request.accountId;
@@ -100,43 +81,75 @@ export const macroRoutes: FastifyPluginAsync = async (fastify) => {
         const conv = await prisma.conversation.findFirst({ where: { id: conversationId, accountId } });
         if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
 
+        let finalAssignee: string | undefined;
+        let finalStatus: 'OPEN' | 'CLOSED' | undefined;
+        const labelIds = new Set<string>();
+        const assigneeIds = new Set<string>();
+
         for (const action of actions) {
             if (action.type === 'ASSIGN' && action.userId) {
-                const assignee = await ensureAccountUser(accountId, action.userId);
-                if (!assignee) {
-                    return reply.code(400).send({ error: `Invalid assignee for macro action: ${action.userId}` });
-                }
-
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { assignedTo: action.userId }
-                });
+                finalAssignee = action.userId;
+                assigneeIds.add(action.userId);
             }
             if (action.type === 'ADD_TAG' && action.labelId) {
-                const label = await ensureConversationLabel(accountId, action.labelId);
-                if (!label) {
-                    return reply.code(400).send({ error: `Invalid label for macro action: ${action.labelId}` });
-                }
-
-                await prisma.conversationLabelAssignment.upsert({
-                    where: { conversationId_labelId: { conversationId, labelId: action.labelId } },
-                    create: { conversationId, labelId: action.labelId },
-                    update: {}
-                });
+                labelIds.add(action.labelId);
             }
             if (action.type === 'CLOSE') {
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { status: 'CLOSED' }
-                });
+                finalStatus = 'CLOSED';
             }
             if (action.type === 'REOPEN') {
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { status: 'OPEN' }
-                });
+                finalStatus = 'OPEN';
             }
         }
+
+        if (assigneeIds.size > 0) {
+            const validAssignees = await prisma.accountUser.findMany({
+                where: {
+                    accountId,
+                    userId: { in: Array.from(assigneeIds) }
+                },
+                select: { userId: true }
+            });
+            const validAssigneeIds = new Set(validAssignees.map((u) => u.userId));
+            const invalidAssigneeId = Array.from(assigneeIds).find((id) => !validAssigneeIds.has(id));
+            if (invalidAssigneeId) {
+                return reply.code(400).send({ error: `Invalid assignee for macro action: ${invalidAssigneeId}` });
+            }
+        }
+
+        if (labelIds.size > 0) {
+            const validLabels = await prisma.conversationLabel.findMany({
+                where: {
+                    accountId,
+                    id: { in: Array.from(labelIds) }
+                },
+                select: { id: true }
+            });
+            const validLabelIds = new Set(validLabels.map((l) => l.id));
+            const invalidLabelId = Array.from(labelIds).find((id) => !validLabelIds.has(id));
+            if (invalidLabelId) {
+                return reply.code(400).send({ error: `Invalid label for macro action: ${invalidLabelId}` });
+            }
+        }
+
+        await prisma.$transaction(async (tx) => {
+            if (finalAssignee !== undefined || finalStatus !== undefined) {
+                await tx.conversation.update({
+                    where: { id: conversationId },
+                    data: {
+                        ...(finalAssignee !== undefined ? { assignedTo: finalAssignee } : {}),
+                        ...(finalStatus !== undefined ? { status: finalStatus } : {})
+                    }
+                });
+            }
+
+            if (labelIds.size > 0) {
+                await tx.conversationLabelAssignment.createMany({
+                    data: Array.from(labelIds).map((labelId) => ({ conversationId, labelId })),
+                    skipDuplicates: true
+                });
+            }
+        });
 
         return { success: true, actionsExecuted: actions.length };
     });

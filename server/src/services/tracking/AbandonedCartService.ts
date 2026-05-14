@@ -119,28 +119,42 @@ export async function triggerAbandonedCartAutomations() {
 
             stats.cartsFound += abandonedCarts.length;
 
+            const completedOrderCutoff = new Date(Date.now() - 60 * 60 * 1000); // 1 hour
+            const cartEmails = Array.from(new Set(
+                abandonedCarts
+                    .map((c) => c.email?.toLowerCase().trim())
+                    .filter((email): email is string => Boolean(email))
+            ));
+            const recentOrders = cartEmails.length > 0
+                ? await prisma.wooOrder.findMany({
+                    where: {
+                        accountId,
+                        billingEmail: { in: cartEmails },
+                        status: { in: ['processing', 'completed', 'on-hold'] },
+                        dateCreated: { gte: completedOrderCutoff }
+                    },
+                    select: { wooId: true, billingEmail: true }
+                })
+                : [];
+            const recentOrderEmailToOrderId = new Map<string, number>();
+            for (const order of recentOrders) {
+                if (!order.billingEmail) continue;
+                recentOrderEmailToOrderId.set(order.billingEmail.toLowerCase().trim(), order.wooId);
+            }
+
             // Enroll each cart in the automation
             for (const cart of abandonedCarts) {
                 if (!cart.email) continue; // Safety check
 
                 // EDGE CASE: Check if customer completed a recent order to prevent embarrassing recovery emails
-                const completedOrderCutoff = new Date(Date.now() - 60 * 60 * 1000); // 1 hour
-                const recentOrder = await prisma.wooOrder.findFirst({
-                    where: {
-                        accountId,
-                        billingEmail: cart.email,
-                        status: { in: ['processing', 'completed', 'on-hold'] },
-                        dateCreated: { gte: completedOrderCutoff }
-                    },
-                    select: { id: true, wooId: true, dateCreated: true }
-                });
+                const recentOrderId = recentOrderEmailToOrderId.get(cart.email.toLowerCase().trim());
 
-                if (recentOrder) {
+                if (recentOrderId) {
                     Logger.debug('[AbandonedCart] Skipping - customer completed an order', {
                         accountId,
                         sessionId: cart.id,
                         email: cart.email,
-                        orderId: recentOrder.wooId
+                        orderId: recentOrderId
                     });
                     // Still mark as notified to prevent repeated checks
                     await markAbandonedNotificationSent(cart.id);

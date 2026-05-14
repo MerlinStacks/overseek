@@ -245,20 +245,25 @@ export class LearningService {
             }
         });
 
+        const existingDerivedLearnings = await prisma.marketingLearning.findMany({
+            where: {
+                accountId,
+                source: 'ai_derived'
+            },
+            select: {
+                category: true,
+                platform: true
+            }
+        });
+        const existingDerivedKeys = new Set(
+            existingDerivedLearnings.map((l) => `${l.category}:${l.platform}`)
+        );
+
         const derivedLearnings: LearningWithStats[] = [];
 
         for (const pattern of successfulPatterns) {
-            // Check if we already have a learning for this pattern
-            const existing = await prisma.marketingLearning.findFirst({
-                where: {
-                    accountId,
-                    category: pattern.category,
-                    platform: pattern.platform || 'both',
-                    source: 'ai_derived'
-                }
-            });
-
-            if (existing) continue;
+            const patternKey = `${pattern.category}:${pattern.platform || 'both'}`;
+            if (existingDerivedKeys.has(patternKey)) continue;
 
             // Get sample recommendations to build the learning
             const samples = await prisma.recommendationLog.findMany({
@@ -286,6 +291,7 @@ export class LearningService {
             });
 
             derivedLearnings.push(learning);
+            existingDerivedKeys.add(patternKey);
         }
 
         if (derivedLearnings.length > 0) {
