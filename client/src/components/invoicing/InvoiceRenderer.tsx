@@ -618,12 +618,15 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
         const estimatedRows = Math.max(orderTableLayout.h, Math.ceil((estimatedPx + 12) / 30));
 
         const growthRows = Math.max(0, estimatedRows - orderTableLayout.h);
+        const originalTableBottom = orderTableLayout.y + orderTableLayout.h;
         const shiftedLayout = layout.map((entry) => {
             if (entry.i === orderTableLayout.i) {
                 return { ...entry, h: estimatedRows };
             }
 
-            if (growthRows > 0 && entry.y > orderTableLayout.y) {
+            // Only shift blocks that are below the original table bottom.
+            // This avoids creating large artificial gaps/page overflows.
+            if (growthRows > 0 && entry.y >= originalTableBottom) {
                 return { ...entry, y: entry.y + growthRows };
             }
 
