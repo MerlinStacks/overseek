@@ -4,6 +4,8 @@
  */
 /* eslint-disable react-refresh/only-export-components */
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../../context/AuthContext';
+import { useAccount } from '../../../context/AccountContext';
 
 type MatchType = 'all' | 'any';
 
@@ -36,6 +38,106 @@ interface ConditionGroup {
     icon: string;
     conditions: ConditionOption[];
 }
+
+interface ProductOption {
+    id: string;
+    name: string;
+}
+
+interface CategoryOption {
+    id: string;
+    name: string;
+}
+
+interface SegmentOption {
+    id: string;
+    name: string;
+}
+
+interface EmailListOption {
+    id: string;
+    name: string;
+}
+
+interface WooOrderStatusesResponse {
+    data?: Array<{ slug?: string }> | Record<string, { slug?: string }>;
+}
+
+const DEFAULT_ORDER_STATUSES = ['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed'];
+
+const formatStatusLabel = (status: string) => status
+    .split('-')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+
+const normalizeStatusSlug = (status: string) => status.replace(/^wc-/, '').toLowerCase();
+
+const DAY_OF_WEEK_OPTIONS = [
+    { value: 'monday', label: 'Monday' },
+    { value: 'tuesday', label: 'Tuesday' },
+    { value: 'wednesday', label: 'Wednesday' },
+    { value: 'thursday', label: 'Thursday' },
+    { value: 'friday', label: 'Friday' },
+    { value: 'saturday', label: 'Saturday' },
+    { value: 'sunday', label: 'Sunday' },
+];
+
+const MONTH_OPTIONS = [
+    { value: '1', label: 'January' },
+    { value: '2', label: 'February' },
+    { value: '3', label: 'March' },
+    { value: '4', label: 'April' },
+    { value: '5', label: 'May' },
+    { value: '6', label: 'June' },
+    { value: '7', label: 'July' },
+    { value: '8', label: 'August' },
+    { value: '9', label: 'September' },
+    { value: '10', label: 'October' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'December' },
+];
+
+const COUNTRY_OPTIONS = [
+    'United States',
+    'United Kingdom',
+    'Canada',
+    'Australia',
+    'New Zealand',
+    'Ireland',
+    'Germany',
+    'France',
+    'Italy',
+    'Spain',
+    'Netherlands',
+    'Sweden',
+    'Norway',
+    'Denmark',
+    'Switzerland',
+    'Belgium',
+    'Austria',
+    'Portugal',
+    'Poland',
+    'Czech Republic',
+    'Japan',
+    'South Korea',
+    'Singapore',
+    'India',
+    'Brazil',
+    'Mexico',
+    'South Africa',
+];
+
+const NUMERIC_FIELDS = new Set([
+    'order.total',
+    'order.itemCount',
+    'customer.totalSpent',
+    'customer.ordersCount',
+    'customer.daysSinceLastOrder',
+    'user.registeredDays',
+]);
+
+const escapePreviewValue = (value: string) => value.replace(/"/g, '\\"');
 
 /** Condition group definitions matching FunnelKit pattern */
 export const CONDITION_GROUPS: ConditionGroup[] = [
@@ -138,8 +240,16 @@ export const OPERATOR_LABELS: Record<string, string> = {
 };
 
 export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpdate }) => {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const [activeGroup, setActiveGroup] = useState(config.group || 'woocommerce');
     const [conditions, setConditions] = useState<ConditionRule[]>(config.conditions || [{ field: '', operator: '', value: '' }]);
+    const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+    const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
+    const [segmentOptions, setSegmentOptions] = useState<SegmentOption[]>([]);
+    const [emailListOptions, setEmailListOptions] = useState<EmailListOption[]>([]);
+    const [orderStatusOptions, setOrderStatusOptions] = useState<string[]>(DEFAULT_ORDER_STATUSES);
+    const [isLoadingFilterOptions, setIsLoadingFilterOptions] = useState(false);
 
     const activeGroupData = CONDITION_GROUPS.find(g => g.id === activeGroup);
     const availableConditions = activeGroupData?.conditions || [];
@@ -177,6 +287,354 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
     useEffect(() => {
         onUpdate('group', activeGroup);
     }, [activeGroup, onUpdate]);
+
+    useEffect(() => {
+        const loadFilterOptions = async () => {
+            if (!token || !currentAccount?.id) return;
+
+            setIsLoadingFilterOptions(true);
+            try {
+                const [productsRes, categoriesRes, wooStatusesRes, segmentsRes, listsRes] = await Promise.all([
+                    fetch('/api/products?limit=100', {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'X-Account-ID': currentAccount.id,
+                        }
+                    }),
+                    fetch('/api/products/categories?limit=100', {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'X-Account-ID': currentAccount.id,
+                        }
+                    }),
+                    fetch('/api/woocommerce/order-statuses', {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'X-Account-ID': currentAccount.id,
+                        }
+                    }),
+                    fetch('/api/segments', {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'X-Account-ID': currentAccount.id,
+                        }
+                    }),
+                    fetch('/api/email/lists', {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'X-Account-ID': currentAccount.id,
+                        }
+                    }),
+                ]);
+
+                if (productsRes.ok) {
+                    const productsData = await productsRes.json();
+                    const rawProducts = Array.isArray(productsData.products)
+                        ? productsData.products
+                        : Array.isArray(productsData.items)
+                            ? productsData.items
+                            : [];
+
+                    const mappedProducts = rawProducts
+                        .map((product: { id?: string; wooId?: number | string; name?: string }) => ({
+                            id: String(product.wooId ?? product.id ?? ''),
+                            name: product.name || 'Unnamed Product'
+                        }))
+                        .filter((product: ProductOption) => product.id)
+                        .sort((a: ProductOption, b: ProductOption) => a.name.localeCompare(b.name));
+
+                    setProductOptions(mappedProducts);
+                }
+
+                if (categoriesRes.ok) {
+                    const categoriesData = await categoriesRes.json();
+                    const rawCategories = Array.isArray(categoriesData.items) ? categoriesData.items : [];
+
+                    const mappedCategories = rawCategories
+                        .map((category: { id?: number | string; name?: string }) => ({
+                            id: String(category.id ?? ''),
+                            name: category.name || 'Unnamed Category'
+                        }))
+                        .filter((category: CategoryOption) => category.id)
+                        .sort((a: CategoryOption, b: CategoryOption) => a.name.localeCompare(b.name));
+
+                    setCategoryOptions(mappedCategories);
+                }
+
+                if (wooStatusesRes.ok) {
+                    const wooStatusesData = await wooStatusesRes.json() as WooOrderStatusesResponse;
+                    const source = wooStatusesData.data;
+                    const dynamicFromWoo = Array.isArray(source)
+                        ? source
+                            .map((item) => item.slug)
+                            .filter((status): status is string => Boolean(status))
+                            .map(normalizeStatusSlug)
+                        : Object.keys(source || {}).filter(Boolean).map(normalizeStatusSlug);
+
+                    const merged = Array.from(new Set([...DEFAULT_ORDER_STATUSES, ...dynamicFromWoo])).sort((a, b) => a.localeCompare(b));
+                    setOrderStatusOptions(merged);
+                }
+
+                if (segmentsRes.ok) {
+                    const segmentsData = await segmentsRes.json();
+                    const rawSegments = Array.isArray(segmentsData) ? segmentsData : [];
+                    const mappedSegments = rawSegments
+                        .map((segment: { id?: string; name?: string }) => ({
+                            id: String(segment.id ?? ''),
+                            name: segment.name || 'Unnamed Segment',
+                        }))
+                        .filter((segment: SegmentOption) => segment.id)
+                        .sort((a: SegmentOption, b: SegmentOption) => a.name.localeCompare(b.name));
+
+                    setSegmentOptions(mappedSegments);
+                }
+
+                if (listsRes.ok) {
+                    const listsData = await listsRes.json();
+                    const rawLists = Array.isArray(listsData) ? listsData : [];
+                    const mappedLists = rawLists
+                        .map((list: { id?: string; name?: string }) => ({
+                            id: String(list.id ?? ''),
+                            name: list.name || 'Unnamed List',
+                        }))
+                        .filter((list: EmailListOption) => list.id)
+                        .sort((a: EmailListOption, b: EmailListOption) => a.name.localeCompare(b.name));
+
+                    setEmailListOptions(mappedLists);
+                }
+            } finally {
+                setIsLoadingFilterOptions(false);
+            }
+        };
+
+        void loadFilterOptions();
+    }, [token, currentAccount?.id]);
+
+    const renderConditionValueInput = (cond: ConditionRule, idx: number) => {
+        if (cond.field === 'order.productId') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                    disabled={isLoadingFilterOptions}
+                >
+                    <option value="">Select product...</option>
+                    {productOptions.map((product) => (
+                        <option key={product.id} value={product.id}>{product.name}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (cond.field === 'order.categoryId') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                    disabled={isLoadingFilterOptions}
+                >
+                    <option value="">Select category...</option>
+                    {categoryOptions.map((category) => (
+                        <option key={category.id} value={category.id}>{category.name}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (cond.field === 'order.status') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                >
+                    <option value="">Select status...</option>
+                    {orderStatusOptions.map((status) => (
+                        <option key={status} value={status}>{formatStatusLabel(status)}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (cond.field === 'segment.id') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                    disabled={isLoadingFilterOptions}
+                >
+                    <option value="">Select segment...</option>
+                    {segmentOptions.map((segment) => (
+                        <option key={segment.id} value={segment.id}>{segment.name}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (cond.field === 'list.id') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                    disabled={isLoadingFilterOptions}
+                >
+                    <option value="">Select list...</option>
+                    {emailListOptions.map((list) => (
+                        <option key={list.id} value={list.id}>{list.name}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (cond.field === 'user.isLoggedIn') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                >
+                    <option value="">Select value...</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            );
+        }
+
+        if (cond.field === 'date.dayOfWeek') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                >
+                    <option value="">Select day...</option>
+                    {DAY_OF_WEEK_OPTIONS.map((day) => (
+                        <option key={day.value} value={day.value}>{day.label}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (cond.field === 'date.month') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                >
+                    <option value="">Select month...</option>
+                    {MONTH_OPTIONS.map((month) => (
+                        <option key={month.value} value={month.value}>{month.label}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (cond.field === 'date.hour') {
+            return (
+                <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    placeholder="0-23"
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                />
+            );
+        }
+
+        if (cond.field === 'customer.lastOrderDate') {
+            return (
+                <input
+                    type="date"
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                />
+            );
+        }
+
+        if (cond.field === 'customer.country') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                >
+                    <option value="">Select country...</option>
+                    {COUNTRY_OPTIONS.map((country) => (
+                        <option key={country} value={country}>{country}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        if (NUMERIC_FIELDS.has(cond.field)) {
+            return (
+                <input
+                    type="number"
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    placeholder="Value..."
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                />
+            );
+        }
+
+        return (
+            <input
+                type="text"
+                value={cond.value || ''}
+                onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                placeholder="Value..."
+                className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+            />
+        );
+    };
+
+    const getConditionValueLabel = (cond: ConditionRule) => {
+        if (!cond.value) return '';
+
+        if (cond.field === 'order.productId') {
+            return productOptions.find((product) => product.id === cond.value)?.name || cond.value;
+        }
+
+        if (cond.field === 'order.categoryId') {
+            return categoryOptions.find((category) => category.id === cond.value)?.name || cond.value;
+        }
+
+        if (cond.field === 'segment.id') {
+            return segmentOptions.find((segment) => segment.id === cond.value)?.name || cond.value;
+        }
+
+        if (cond.field === 'list.id') {
+            return emailListOptions.find((list) => list.id === cond.value)?.name || cond.value;
+        }
+
+        if (cond.field === 'order.status') {
+            return formatStatusLabel(cond.value);
+        }
+
+        if (cond.field === 'user.isLoggedIn') {
+            if (cond.value === 'true') return 'Yes';
+            if (cond.value === 'false') return 'No';
+        }
+
+        if (cond.field === 'date.dayOfWeek') {
+            return DAY_OF_WEEK_OPTIONS.find((day) => day.value === cond.value)?.label || cond.value;
+        }
+
+        if (cond.field === 'date.month') {
+            return MONTH_OPTIONS.find((month) => month.value === cond.value)?.label || cond.value;
+        }
+
+        return cond.value;
+    };
 
     return (
         <div className="space-y-4">
@@ -276,13 +734,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                                         <option key={op} value={op}>{OPERATOR_LABELS[op] || op}</option>
                                     ))}
                                 </select>
-                                <input
-                                    type="text"
-                                    value={cond.value || ''}
-                                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
-                                    placeholder="Value..."
-                                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
-                                />
+                                {renderConditionValueInput(cond, idx)}
                             </div>
                             <button
                                 type="button"
@@ -302,7 +754,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                     If {conditions.filter(c => c.field && c.value).map((c, i) => (
                         <span key={i}>
                             {i > 0 && <span className="font-medium"> {config.matchType === 'any' ? 'OR' : 'AND'} </span>}
-                            {CONDITION_GROUPS.flatMap(g => g.conditions).find(cond => cond.field === c.field)?.label || c.field} {OPERATOR_LABELS[c.operator] || c.operator} "{c.value}"
+                            {CONDITION_GROUPS.flatMap(g => g.conditions).find(cond => cond.field === c.field)?.label || c.field} {OPERATOR_LABELS[c.operator] || c.operator} "{escapePreviewValue(getConditionValueLabel(c))}"
                         </span>
                     ))} {'->'} <span className="text-green-600 font-medium">YES</span><br />
                     Otherwise {'->'} <span className="text-red-600 font-medium">NO</span>

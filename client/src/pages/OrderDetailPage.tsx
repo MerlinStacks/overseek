@@ -275,17 +275,17 @@ export function OrderDetailPage() {
         }
     };
 
-    const normalizeStatusSlug = (status: string) => status.replace(/^wc-/, '').toLowerCase();
+    const normalizeStatusSlug = useCallback((status: string) => status.replace(/^wc-/, '').toLowerCase(), []);
     const formatStatusLabel = (status: string) => status
         .split('-')
         .filter(Boolean)
         .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
         .join(' ');
 
-    const shouldExcludeStatus = (status: string) => {
+    const shouldExcludeStatus = useCallback((status: string) => {
         const normalized = normalizeStatusSlug(status);
         return normalized.includes('cancel') || normalized.includes('refund');
-    };
+    }, [normalizeStatusSlug]);
 
     const loadOrderStatuses = useCallback(async () => {
         if (!token || !currentAccount?.id) return;
@@ -317,7 +317,7 @@ export function OrderDetailPage() {
             Logger.error('Failed to load WooCommerce order statuses', { error: err });
             setOrderStatusOptions(['pending', 'processing', 'on-hold', 'completed', 'failed']);
         }
-    }, [currentAccount?.id, token]);
+    }, [currentAccount?.id, normalizeStatusSlug, shouldExcludeStatus, token]);
 
     useEffect(() => {
         if (currentAccount?.id && token) {

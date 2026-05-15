@@ -30,6 +30,7 @@ interface FlowNodeData {
     stats?: NodeStats;
     stepNumber?: number;
     onAddStep?: OnAddStepCallback;
+    onAddConditionBranch?: (nodeId: string, sourceHandle: 'true' | 'false', position: { x: number; y: number }) => void;
     onCopy?: OnCopyNodeCallback;
     onDelete?: OnDeleteNodeCallback;
     onSettingsClick?: () => void;
@@ -184,6 +185,7 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
     const stats = data.stats as NodeStats | undefined;
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
+    const onAddConditionBranch = data.onAddConditionBranch as ((nodeId: string, sourceHandle: 'true' | 'false', position: { x: number; y: number }) => void) | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
@@ -220,12 +222,34 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
                 <div className="font-semibold text-slate-900 mb-1">{data.label as string}</div>
                 <div className="text-xs text-slate-600 mb-3 truncate">{conditionPreview}</div>
                 <div className="flex justify-between items-center text-xs font-semibold pt-2.5 border-t border-orange-200">
-                    <div className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">YES</div>
-                    <div className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">NO</div>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (!onAddConditionBranch) return;
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            onAddConditionBranch(id, 'true', { x: rect.left + rect.width / 2, y: rect.bottom });
+                        }}
+                        className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                    >
+                        YES
+                    </button>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (!onAddConditionBranch) return;
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            onAddConditionBranch(id, 'false', { x: rect.left + rect.width / 2, y: rect.bottom });
+                        }}
+                        className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-rose-700 hover:bg-rose-100 transition-colors"
+                    >
+                        NO
+                    </button>
                 </div>
             </NodeWrapper>
-            <Handle type="source" position={Position.Bottom} id="true" className="!bg-emerald-500 !w-2.5 !h-2.5 !border-2 !border-white !shadow-md !shadow-emerald-300/60" style={{ left: '25%' }} />
-            <Handle type="source" position={Position.Bottom} id="false" className="!bg-rose-500 !w-2.5 !h-2.5 !border-2 !border-white !shadow-md !shadow-rose-300/60" style={{ left: '75%' }} />
+            <Handle type="source" position={Position.Bottom} id="true" className="!bg-emerald-500 !w-3.5 !h-3.5 !border-2 !border-white !shadow-md !shadow-emerald-300/60 !z-10" style={{ left: '25%' }} />
+            <Handle type="source" position={Position.Bottom} id="false" className="!bg-rose-500 !w-3.5 !h-3.5 !border-2 !border-white !shadow-md !shadow-rose-300/60 !z-10" style={{ left: '75%' }} />
         </>
     );
 });

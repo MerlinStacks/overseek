@@ -1,6 +1,7 @@
 
 import { useState } from 'react';
 import { Plus, Trash2, Save } from 'lucide-react';
+import { getSegmentFieldType } from '../../utils/conditionFieldRules';
 
 export interface SegmentRule {
     field: string;
@@ -57,17 +58,12 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
         const newRules = [...criteria.rules];
         newRules[index] = { ...newRules[index], ...updates };
 
-        // Reset operator if field changes and type mismatch
         if (updates.field) {
-            const fieldType = FIELDS.find(f => f.value === updates.field)?.type;
-            const currentOp = newRules[index].operator;
-            // Basic check, could be smarter
-            if (fieldType === 'number' && ['contains', 'startsWith'].includes(currentOp)) {
-                newRules[index].operator = 'gt';
+            const allowedOperators = getOperators(updates.field).map((operator) => operator.value);
+            if (!allowedOperators.includes(newRules[index].operator)) {
+                newRules[index].operator = allowedOperators[0] || '';
             }
-            if (fieldType === 'text' && ['gt', 'lt'].includes(currentOp)) {
-                newRules[index].operator = 'contains';
-            }
+            newRules[index].value = '';
         }
 
         setCriteria({ ...criteria, rules: newRules });
@@ -79,7 +75,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
     };
 
     const getOperators = (fieldValue: string) => {
-        const type = FIELDS.find(f => f.value === fieldValue)?.type || 'text';
+        const type = getSegmentFieldType(fieldValue);
         return OPERATORS[type as keyof typeof OPERATORS];
     };
 
@@ -125,7 +121,8 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                         </select>
 
                         <input
-                            type="text"
+                            type={getSegmentFieldType(rule.field) === 'number' ? 'number' : 'text'}
+                            inputMode={getSegmentFieldType(rule.field) === 'number' ? 'decimal' : 'text'}
                             className="flex-1 bg-white border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             placeholder="Value"
                             value={rule.value}

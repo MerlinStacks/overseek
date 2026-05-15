@@ -509,6 +509,13 @@ class OverSeek_Order_Invoices
         $generated_at = (string) $order->get_meta(self::META_INVOICE_GENERATED_AT);
         $invoice_ref = (string) $order->get_meta(self::META_INVOICE_REF);
         $error_message = (string) $order->get_meta(self::META_INVOICE_ERROR);
+        $download_url = add_query_arg(
+            [
+                'order_id' => (int) $order->get_id(),
+                'key' => (string) $order->get_order_key(),
+            ],
+            rest_url('overseek/v1/invoices/download')
+        );
 
         if ($status === '' && $renderer === '' && $diagnostic_reason === '' && $generated_at === '' && $invoice_ref === '' && $error_message === '') {
             return;
@@ -545,6 +552,7 @@ class OverSeek_Order_Invoices
         if ($error_message !== '') {
             echo '<tr><td><strong>' . esc_html__('Last error', 'overseek-wc') . '</strong></td><td>' . esc_html($error_message) . '</td></tr>';
         }
+        echo '<tr><td><strong>' . esc_html__('Actions', 'overseek-wc') . '</strong></td><td><a class="button button-secondary" href="' . esc_url($download_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('View latest invoice', 'overseek-wc') . '</a></td></tr>';
         echo '</tbody>';
         echo '</table>';
         echo '</div>';

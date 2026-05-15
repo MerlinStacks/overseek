@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { Logger } from '../../utils/logger';
+import { getBroadcastOperators, getDefaultBroadcastOperator, isBroadcastContactStatusField } from '../../utils/conditionFieldRules';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useToast } from '../../context/ToastContext';
@@ -100,6 +101,14 @@ interface FilterGroup {
 }
 
 const STEP_LABELS = ['Information', 'Contacts', 'Content', 'Review'] as const;
+const CONTACT_STATUS_OPTIONS = [
+    { value: 'SUBSCRIBED', label: 'Subscribed' },
+    { value: 'UNVERIFIED', label: 'Unverified' },
+    { value: 'UNSUBSCRIBED', label: 'Unsubscribed' },
+    { value: 'SOFT_BOUNCED', label: 'Soft Bounced' },
+    { value: 'BOUNCED', label: 'Bounced' },
+    { value: 'COMPLAINT', label: 'Complaint' }
+] as const;
 
 export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, subject?: string) => void }) {
     const { token } = useAuth();
@@ -385,7 +394,7 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         } finally {
             setContactsLoading(false);
         }
-    }, [activeContactFilter.q, activeContactFilter.status, activeFilterGroups, appliedFilterGroups, audienceType, contactPage, contactPageSize, currentAccount, hasAdvancedStatusCondition, includeSoftBounceContacts, includeUnverifiedContacts, newItem.listId, newItem.segmentId, showCreate, token, wizardStep]);
+    }, [activeContactFilter.q, activeContactFilter.status, activeFilterGroups, audienceType, contactPage, contactPageSize, currentAccount, hasAdvancedStatusCondition, includeSoftBounceContacts, includeUnverifiedContacts, newItem.listId, newItem.segmentId, showCreate, token, wizardStep]);
 
     useEffect(() => {
         void fetchContactPreview();
@@ -476,6 +485,14 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                 ...group,
                 conditions: group.conditions.map((condition) => {
                     if (condition.id !== conditionId) return condition;
+                    if (key === 'field') {
+                        return {
+                            ...condition,
+                            field: value,
+                            operator: getDefaultBroadcastOperator(value),
+                            value: ''
+                        };
+                    }
                     return { ...condition, [key]: value };
                 })
             };
@@ -987,18 +1004,29 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                                     onChange={(event) => updateCondition(group.id, condition.id, 'operator', event.target.value)}
                                                     className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
                                                 >
-                                                    <option>is</option>
-                                                    <option>is not</option>
-                                                    <option>contains</option>
-                                                    <option>greater than</option>
-                                                    <option>less than</option>
+                                                    {getBroadcastOperators(condition.field).map((operator) => (
+                                                        <option key={operator} value={operator}>{operator}</option>
+                                                    ))}
                                                 </select>
-                                                <input
-                                                    value={condition.value}
-                                                    onChange={(event) => updateCondition(group.id, condition.id, 'value', event.target.value)}
-                                                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                                    placeholder="Value (ex. SUBSCRIBED or john@shop.com)"
-                                                />
+                                                {isBroadcastContactStatusField(condition.field) ? (
+                                                    <select
+                                                        value={condition.value}
+                                                        onChange={(event) => updateCondition(group.id, condition.id, 'value', event.target.value)}
+                                                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                                    >
+                                                        <option value="">Select status</option>
+                                                        {CONTACT_STATUS_OPTIONS.map((statusOption) => (
+                                                            <option key={statusOption.value} value={statusOption.value}>{statusOption.label}</option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <input
+                                                        value={condition.value}
+                                                        onChange={(event) => updateCondition(group.id, condition.id, 'value', event.target.value)}
+                                                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                                        placeholder="Value (ex. SUBSCRIBED or john@shop.com)"
+                                                    />
+                                                )}
                                             </div>
                                         ))}
                                     </div>

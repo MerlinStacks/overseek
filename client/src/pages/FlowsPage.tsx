@@ -334,6 +334,7 @@ export function FlowsPage() {
     const [recentEnrollments, setRecentEnrollments] = useState<EnrollmentRow[]>([]);
     const [recentRunEvents, setRecentRunEvents] = useState<RunEventRow[]>([]);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [isSavingFlow, setIsSavingFlow] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
     const [toastType, setToastType] = useState<ToastType>('error');
@@ -341,6 +342,7 @@ export function FlowsPage() {
     const [saveState, setSaveState] = useState<SaveIndicatorState>('saved');
     const [isDirty, setIsDirty] = useState(false);
     const [pendingClose, setPendingClose] = useState(false);
+    const [isClosingEditor, setIsClosingEditor] = useState(false);
     const [undoRedoState, setUndoRedoState] = useState({ canUndo: false, canRedo: false });
     const [invalidNodeIds, setInvalidNodeIds] = useState<string[]>([]);
 
@@ -426,7 +428,8 @@ export function FlowsPage() {
         }
     }, [searchParams, setSearchParams, token, currentAccount, getDraftKey]);
 
-    const handleCloseEditor = () => {
+    const handleCloseEditor = useCallback(() => {
+        setIsClosingEditor(true);
         if (autosaveTimerRef.current) {
             window.clearTimeout(autosaveTimerRef.current);
             autosaveTimerRef.current = null;
@@ -439,16 +442,18 @@ export function FlowsPage() {
         setRecentRunEvents([]);
         setRecoveryPrompt(null);
         setInvalidNodeIds([]);
-        if (searchParams.get('flowId')) {
-            setSearchParams({}, { replace: true });
-        }
-    };
+        setSearchParams({}, { replace: true });
+    }, [setSearchParams]);
 
     useEffect(() => {
         const flowId = searchParams.get('flowId');
+        if (isClosingEditor) {
+            if (!flowId) setIsClosingEditor(false);
+            return;
+        }
         if (!flowId || isEditing || !token || !currentAccount) return;
         void handleEditFlow(flowId);
-    }, [searchParams, isEditing, token, currentAccount, handleEditFlow]);
+    }, [searchParams, isEditing, token, currentAccount, handleEditFlow, isClosingEditor]);
 
     const handleFlowChange = useCallback((flow: FlowDefinition) => {
         if (!editingItem || !editingFlowData) return;
@@ -497,13 +502,13 @@ export function FlowsPage() {
         }
     }, [editingItem, editingFlowData, getDraftKey]);
 
-    const handleRequestCloseEditor = () => {
+    const handleRequestCloseEditor = useCallback(() => {
         if (isDirty) {
             setPendingClose(true);
             return;
         }
         handleCloseEditor();
-    };
+    }, [isDirty, handleCloseEditor]);
 
     useEffect(() => {
         if (!isEditing) return;
@@ -574,16 +579,24 @@ export function FlowsPage() {
     }, [currentAccount, editingItem, isEditing, token]);
 
     const handleSaveFlow = async (flow: FlowDefinition) => {
-        if (!editingItem || !currentAccount) return;
+        if (!editingItem || !currentAccount || !token) {
+            showToast('Missing account or session context. Refresh and try again.');
+            return;
+        }
 
-        const validationError = validateFlowDefinition(flow);
+        const normalizedFlow = JSON.parse(JSON.stringify(flow, (_key, value) => (
+            typeof value === 'function' ? undefined : value
+        ))) as FlowDefinition;
+
+        const validationError = validateFlowDefinition(normalizedFlow);
         if (validationError) {
             showToast(validationError);
             return;
         }
 
+        setIsSavingFlow(true);
         try {
-            const triggerNode = flow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
+            const triggerNode = normalizedFlow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
             const triggerConfig =
                 (triggerNode?.data as Record<string, unknown> | undefined)?.config as Record<string, unknown> | undefined;
             const triggerType =
@@ -595,7 +608,7 @@ export function FlowsPage() {
                 ...(editingFlowData || {}),
                 id: editingItem.id,
                 name: editingItem.name,
-                flowDefinition: flow,
+                flowDefinition: normalizedFlow,
                 triggerType,
                 triggerConfig: triggerConfig || editingFlowData?.triggerConfig || {},
                 isActive: editingFlowData?.isActive ?? true
@@ -624,7 +637,7 @@ export function FlowsPage() {
                 window.localStorage.removeItem(draftKey);
             }
 
-            baselineFlowRef.current = serializeFlow((updated.flowDefinition as FlowDefinition | undefined) || flow);
+            baselineFlowRef.current = serializeFlow((updated.flowDefinition as FlowDefinition | undefined) || normalizedFlow);
             setIsDirty(false);
             setSaveState('saved');
 
@@ -632,6 +645,8 @@ export function FlowsPage() {
         } catch (error) {
             Logger.error('An error occurred', { error });
             showToast('Failed to save flow');
+        } finally {
+            setIsSavingFlow(false);
         }
     };
 
@@ -915,7 +930,8 @@ export function FlowsPage() {
                                 initialFlow={editingFlowData?.flowDefinition}
                                 onSave={handleSaveFlow}
                                 onCancel={handleRequestCloseEditor}
-                                isSaveDisabled={isUpdatingStatus}
+                                isSaveDisabled={isUpdatingStatus || isSavingFlow}
+                                isSaving={isSavingFlow}
                                 onFlowChange={handleFlowChange}
                                 onUndoRedoStateChange={setUndoRedoState}
                                 onUndoRedoHandlersChange={(handlers) => {
