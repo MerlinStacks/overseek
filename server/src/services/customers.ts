@@ -4,6 +4,19 @@ import { Logger } from '../utils/logger';
 
 type ContactStatus = 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
 
+type FilterOperator = 'is' | 'is not' | 'contains' | 'greater than' | 'less than';
+
+interface AdvancedFilterCondition {
+    field: string;
+    operator: FilterOperator | string;
+    value: string;
+}
+
+interface AdvancedFilterGroup {
+    combinator: 'AND' | 'OR';
+    conditions: AdvancedFilterCondition[];
+}
+
 const CONTACT_STATUS_METHODS: Record<ContactStatus, { marketing: boolean; transactional: boolean }> = {
     UNVERIFIED: { marketing: false, transactional: true },
     SUBSCRIBED: { marketing: true, transactional: true },
@@ -22,12 +35,143 @@ function normalizeContactStatus(rawStatus: unknown): ContactStatus {
 }
 
 export class CustomersService {
+    private static buildConditionClause(condition: AdvancedFilterCondition): any | null {
+        const field = String(condition.field || '').trim();
+        const operator = String(condition.operator || '').trim().toLowerCase() as FilterOperator;
+        const value = String(condition.value || '').trim();
+
+        if (!field || field === 'Select' || !value) return null;
+
+        if (field === 'Name') {
+            if (operator === 'contains') {
+                return {
+                    multi_match: {
+                        query: value,
+                        fields: ['firstName', 'lastName'],
+                        fuzziness: 'AUTO'
+                    }
+                };
+            }
+            if (operator === 'is not') {
+                return {
+                    bool: {
+                        must_not: [{
+                            multi_match: {
+                                query: value,
+                                fields: ['firstName', 'lastName'],
+                                operator: 'and'
+                            }
+                        }]
+                    }
+                };
+            }
+            return {
+                multi_match: {
+                    query: value,
+                    fields: ['firstName', 'lastName'],
+                    operator: 'and'
+                }
+            };
+        }
+
+        if (field === 'Email') {
+            if (operator === 'contains') {
+                return { wildcard: { 'email.keyword': `*${value.toLowerCase()}*` } };
+            }
+            if (operator === 'is not') {
+                return { bool: { must_not: [{ term: { 'email.keyword': value.toLowerCase() } }] } };
+            }
+            return { term: { 'email.keyword': value.toLowerCase() } };
+        }
+
+        if (field === 'Contact Status') {
+            const status = value.toUpperCase();
+            if (operator === 'is not') {
+                return {
+                    bool: {
+                        must_not: [
+                            {
+                                bool: {
+                                    should: [
+                                        { term: { 'rawData.contactStatus.keyword': status } },
+                                        { term: { 'rawData.contactStatus': status } }
+                                    ],
+                                    minimum_should_match: 1
+                                }
+                            }
+                        ]
+                    }
+                };
+            }
+            return {
+                bool: {
+                    should: [
+                        { term: { 'rawData.contactStatus.keyword': status } },
+                        { term: { 'rawData.contactStatus': status } }
+                    ],
+                    minimum_should_match: 1
+                }
+            };
+        }
+
+        if (field === 'Total Spent' || field === 'Orders') {
+            const numeric = Number(value);
+            if (Number.isNaN(numeric)) return null;
+            const numericField = field === 'Total Spent' ? 'totalSpent' : 'ordersCount';
+            if (operator === 'greater than') return { range: { [numericField]: { gt: numeric } } };
+            if (operator === 'less than') return { range: { [numericField]: { lt: numeric } } };
+            if (operator === 'is not') return { bool: { must_not: [{ term: { [numericField]: numeric } }] } };
+            return { term: { [numericField]: numeric } };
+        }
+
+        return null;
+    }
+
+    private static buildGroupClause(group: AdvancedFilterGroup): any | null {
+        const clauses = (group.conditions || [])
+            .map((condition) => this.buildConditionClause(condition))
+            .filter(Boolean);
+        if (clauses.length === 0) return null;
+        return { bool: { must: clauses } };
+    }
+
+    private static buildAdvancedFilterClause(groups: AdvancedFilterGroup[]): any | null {
+        const normalizedGroups = (groups || [])
+            .map((group) => ({ combinator: group.combinator === 'OR' ? 'OR' : 'AND', conditions: group.conditions || [] }))
+            .map((group) => ({ combinator: group.combinator, clause: this.buildGroupClause(group as AdvancedFilterGroup) }))
+            .filter((item) => !!item.clause) as Array<{ combinator: 'AND' | 'OR'; clause: any }>;
+
+        if (normalizedGroups.length === 0) return null;
+
+        let expression = normalizedGroups[0].clause;
+        for (let index = 1; index < normalizedGroups.length; index += 1) {
+            const current = normalizedGroups[index];
+            if (current.combinator === 'OR') {
+                expression = {
+                    bool: {
+                        should: [expression, current.clause],
+                        minimum_should_match: 1
+                    }
+                };
+            } else {
+                expression = {
+                    bool: {
+                        must: [expression, current.clause]
+                    }
+                };
+            }
+        }
+
+        return expression;
+    }
+
     static async searchCustomers(
         accountId: string,
         query: string = '',
         page: number = 1,
         limit: number = 20,
-        status: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' | 'ALL' = 'ALL'
+        status: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' | 'ALL' = 'ALL',
+        advancedFilters: AdvancedFilterGroup[] = []
     ) {
         const from = (page - 1) * limit;
 
@@ -77,6 +221,11 @@ export class CustomersService {
                     }
                 });
             }
+        }
+
+        const advancedFilterClause = this.buildAdvancedFilterClause(advancedFilters);
+        if (advancedFilterClause) {
+            statusMust.push(advancedFilterClause);
         }
 
         try {

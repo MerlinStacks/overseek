@@ -14,6 +14,17 @@ interface SegmentCriteria {
     rules: SegmentRule[];
 }
 
+interface PreviewFilterCondition {
+    field: string;
+    operator: string;
+    value: string;
+}
+
+interface PreviewFilterGroup {
+    combinator: 'AND' | 'OR';
+    conditions: PreviewFilterCondition[];
+}
+
 /**
  * Result type for exportable customer data.
  * Contains both raw and SHA256-hashed identifiers for ad platform uploads.
@@ -27,6 +38,93 @@ export interface ExportableCustomerData {
 }
 
 export class SegmentService {
+
+    private buildAdvancedCondition(condition: PreviewFilterCondition): Prisma.WooCustomerWhereInput | null {
+        const field = String(condition.field || '').trim();
+        const operator = String(condition.operator || '').trim().toLowerCase();
+        const value = String(condition.value || '').trim();
+        if (!field || field === 'Select' || !value) return null;
+
+        if (field === 'Name') {
+            if (operator === 'is not') {
+                return {
+                    NOT: {
+                        OR: [
+                            { firstName: { equals: value, mode: 'insensitive' } },
+                            { lastName: { equals: value, mode: 'insensitive' } }
+                        ]
+                    }
+                };
+            }
+            if (operator === 'contains') {
+                return {
+                    OR: [
+                        { firstName: { contains: value, mode: 'insensitive' } },
+                        { lastName: { contains: value, mode: 'insensitive' } }
+                    ]
+                };
+            }
+            return {
+                OR: [
+                    { firstName: { equals: value, mode: 'insensitive' } },
+                    { lastName: { equals: value, mode: 'insensitive' } }
+                ]
+            };
+        }
+
+        if (field === 'Email') {
+            if (operator === 'is not') return { NOT: { email: { equals: value, mode: 'insensitive' } } };
+            if (operator === 'contains') return { email: { contains: value, mode: 'insensitive' } };
+            return { email: { equals: value, mode: 'insensitive' } };
+        }
+
+        if (field === 'Contact Status') {
+            if (operator === 'is not') return { NOT: { rawData: { path: ['contactStatus'], equals: value.toUpperCase() } } };
+            if (operator === 'contains') return { rawData: { path: ['contactStatus'], string_contains: value.toUpperCase() } };
+            return { rawData: { path: ['contactStatus'], equals: value.toUpperCase() } };
+        }
+
+        if (field === 'Total Spent') {
+            const numeric = Number(value);
+            if (Number.isNaN(numeric)) return null;
+            if (operator === 'greater than') return { totalSpent: { gt: numeric } };
+            if (operator === 'less than') return { totalSpent: { lt: numeric } };
+            if (operator === 'is not') return { NOT: { totalSpent: numeric } };
+            return { totalSpent: numeric };
+        }
+
+        if (field === 'Orders') {
+            const numeric = Number(value);
+            if (Number.isNaN(numeric)) return null;
+            if (operator === 'greater than') return { ordersCount: { gt: numeric } };
+            if (operator === 'less than') return { ordersCount: { lt: numeric } };
+            if (operator === 'is not') return { NOT: { ordersCount: numeric } };
+            return { ordersCount: numeric };
+        }
+
+        return null;
+    }
+
+    private buildAdvancedFilterWhere(filters: PreviewFilterGroup[]): Prisma.WooCustomerWhereInput | null {
+        const groups = (filters || []).map((group) => ({
+            combinator: group.combinator === 'OR' ? 'OR' : 'AND',
+            conditions: (group.conditions || [])
+                .map((condition) => this.buildAdvancedCondition(condition))
+                .filter(Boolean) as Prisma.WooCustomerWhereInput[]
+        })).filter((group) => group.conditions.length > 0);
+
+        if (groups.length === 0) return null;
+
+        let expression: Prisma.WooCustomerWhereInput = { AND: groups[0].conditions };
+        for (let index = 1; index < groups.length; index += 1) {
+            const groupExpr: Prisma.WooCustomerWhereInput = { AND: groups[index].conditions };
+            expression = groups[index].combinator === 'OR'
+                ? { OR: [expression, groupExpr] }
+                : { AND: [expression, groupExpr] };
+        }
+
+        return expression;
+    }
 
     async createSegment(accountId: string, data: { name: string; description?: string; criteria: any }) {
         return prisma.customerSegment.create({
@@ -76,12 +174,16 @@ export class SegmentService {
     /**
      * previewCustomers - Returns a list of customers matching the segment criteria
      */
-    async previewCustomers(accountId: string, segmentId: string, page = 1, pageSize = 25) {
+    async previewCustomers(accountId: string, segmentId: string, page = 1, pageSize = 25, filters: PreviewFilterGroup[] = []) {
         const segment = await this.getSegment(segmentId, accountId);
         if (!segment) throw new Error('Segment not found');
 
         const criteria = segment.criteria as unknown as SegmentCriteria;
-        const whereClause = this.buildWhereClause(accountId, criteria);
+        const baseWhereClause = this.buildWhereClause(accountId, criteria);
+        const advancedWhereClause = this.buildAdvancedFilterWhere(filters);
+        const whereClause = advancedWhereClause
+            ? { AND: [baseWhereClause, advancedWhereClause] }
+            : baseWhereClause;
 
         const safePage = Math.max(1, page);
         const safePageSize = Math.min(100, Math.max(1, pageSize));

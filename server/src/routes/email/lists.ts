@@ -5,6 +5,7 @@ import { requireAuthFastify } from '../../middleware/auth';
 import { emailListService } from '../../services/EmailListService';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { parseAdvancedFilters } from '../routeHelpers';
 
 const MAX_BULK_UNSUBSCRIBE_PAYLOAD_CHARS = 2_000_000;
 const MAX_BULK_UNSUBSCRIBE_EMAILS = 25_000;
@@ -119,10 +120,20 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
         return { success: true };
     });
 
-    fastify.get<{ Params: { id: string } }>('/lists/:id/members', async (request, reply) => {
+    fastify.get<{ Params: { id: string }; Querystring: { page?: string; pageSize?: string; filters?: string } }>('/lists/:id/members', async (request, reply) => {
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account context required' });
-        return emailListService.listMembers(accountId, request.params.id);
+
+        const hasPagination = Boolean(request.query.page || request.query.pageSize || request.query.filters);
+        if (!hasPagination) {
+            return emailListService.listMembers(accountId, request.params.id);
+        }
+
+        const page = Number(request.query.page || 1);
+        const pageSize = Number(request.query.pageSize || 25);
+        const filters = parseAdvancedFilters(request.query.filters);
+
+        return emailListService.listMembersPaginated(accountId, request.params.id, page, pageSize, filters);
     });
 
     fastify.post<{ Params: { id: string } }>('/lists/:id/members', async (request, reply) => {

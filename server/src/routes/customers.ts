@@ -8,6 +8,7 @@ import { CustomersService } from '../services/customers';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { handleRouteError } from '../utils/errors';
+import { parseAdvancedFilters } from './routeHelpers';
 
 const customersRoutes: FastifyPluginAsync = async (fastify) => {
     const ContactStatusSchema = z.object({
@@ -26,13 +27,15 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
                 limit?: string;
                 q?: string;
                 status?: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' | 'ALL';
+                filters?: string;
             };
             const page = parseInt(query.page || '1', 10);
             const limit = parseInt(query.limit || '20', 10);
             const q = query.q || '';
             const status = query.status || 'ALL';
+            const parsedFilters = parseAdvancedFilters(query.filters);
 
-            const result = await CustomersService.searchCustomers(accountId, q, page, limit, status);
+            const result = await CustomersService.searchCustomers(accountId, q, page, limit, status, parsedFilters);
             return result;
         } catch (error) {
             Logger.error('Failed to fetch customers', { error });

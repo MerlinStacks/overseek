@@ -6,6 +6,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { requireAuthFastify } from '../middleware/auth';
 import { segmentService } from '../services/SegmentService';
 import { Logger } from '../utils/logger';
+import { parseAdvancedFilters } from './routeHelpers';
 
 const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
     // Apply auth to all routes
@@ -73,12 +74,14 @@ const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Preview Customers in Segment
-    fastify.get<{ Params: { id: string }; Querystring: { page?: string; pageSize?: string } }>('/:id/preview', async (request, reply) => {
+    fastify.get<{ Params: { id: string }; Querystring: { page?: string; pageSize?: string; filters?: string } }>('/:id/preview', async (request, reply) => {
         try {
             const accountId = request.accountId!;
             const page = Number(request.query.page || 1);
             const pageSize = Number(request.query.pageSize || 25);
-            const customers = await segmentService.previewCustomers(accountId, request.params.id, page, pageSize);
+            const filters = parseAdvancedFilters(request.query.filters);
+
+            const customers = await segmentService.previewCustomers(accountId, request.params.id, page, pageSize, filters);
             return customers;
         } catch (error) {
             Logger.error('Error', { error });

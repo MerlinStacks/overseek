@@ -5,6 +5,90 @@ function normalizeEmail(email: string): string {
 }
 
 export class EmailListService {
+    private buildMemberCondition(condition: { field: string; operator: string; value: string }) {
+        const field = String(condition.field || '').trim();
+        const operator = String(condition.operator || '').trim().toLowerCase();
+        const value = String(condition.value || '').trim();
+        if (!field || field === 'Select' || !value) return null;
+
+        if (field === 'Email') {
+            if (operator === 'is not') return { NOT: { email: { equals: value, mode: 'insensitive' as const } } };
+            if (operator === 'contains') return { email: { contains: value, mode: 'insensitive' as const } };
+            return { email: { equals: value, mode: 'insensitive' as const } };
+        }
+
+        if (field === 'Name') {
+            if (operator === 'is not') {
+                return {
+                    NOT: {
+                        OR: [
+                            { wooCustomer: { firstName: { equals: value, mode: 'insensitive' as const } } },
+                            { wooCustomer: { lastName: { equals: value, mode: 'insensitive' as const } } }
+                        ]
+                    }
+                };
+            }
+            if (operator === 'contains') {
+                return {
+                    OR: [
+                        { wooCustomer: { firstName: { contains: value, mode: 'insensitive' as const } } },
+                        { wooCustomer: { lastName: { contains: value, mode: 'insensitive' as const } } }
+                    ]
+                };
+            }
+            return {
+                OR: [
+                    { wooCustomer: { firstName: { equals: value, mode: 'insensitive' as const } } },
+                    { wooCustomer: { lastName: { equals: value, mode: 'insensitive' as const } } }
+                ]
+            };
+        }
+
+        if (field === 'Contact Status') {
+            if (operator === 'is not') return { NOT: { wooCustomer: { rawData: { path: ['contactStatus'], equals: value.toUpperCase() } } } };
+            if (operator === 'contains') return { wooCustomer: { rawData: { path: ['contactStatus'], string_contains: value.toUpperCase() } } };
+            return { wooCustomer: { rawData: { path: ['contactStatus'], equals: value.toUpperCase() } } };
+        }
+
+        if (field === 'Total Spent') {
+            const numeric = Number(value);
+            if (Number.isNaN(numeric)) return null;
+            if (operator === 'greater than') return { wooCustomer: { totalSpent: { gt: numeric } } };
+            if (operator === 'less than') return { wooCustomer: { totalSpent: { lt: numeric } } };
+            if (operator === 'is not') return { NOT: { wooCustomer: { totalSpent: numeric } } };
+            return { wooCustomer: { totalSpent: numeric } };
+        }
+
+        if (field === 'Orders') {
+            const numeric = Number(value);
+            if (Number.isNaN(numeric)) return null;
+            if (operator === 'greater than') return { wooCustomer: { ordersCount: { gt: numeric } } };
+            if (operator === 'less than') return { wooCustomer: { ordersCount: { lt: numeric } } };
+            if (operator === 'is not') return { NOT: { wooCustomer: { ordersCount: numeric } } };
+            return { wooCustomer: { ordersCount: numeric } };
+        }
+
+        return null;
+    }
+
+    private buildMembersAdvancedWhere(filters: Array<{ combinator: 'AND' | 'OR'; conditions: Array<{ field: string; operator: string; value: string }> }>) {
+        const groups = (filters || []).map((group) => ({
+            combinator: group.combinator === 'OR' ? 'OR' : 'AND',
+            conditions: group.conditions.map((condition) => this.buildMemberCondition(condition)).filter(Boolean) as any[]
+        })).filter((group) => group.conditions.length > 0);
+
+        if (groups.length === 0) return null;
+
+        let expression: any = { AND: groups[0].conditions };
+        for (let index = 1; index < groups.length; index += 1) {
+            const groupExpression = { AND: groups[index].conditions };
+            expression = groups[index].combinator === 'OR'
+                ? { OR: [expression, groupExpression] }
+                : { AND: [expression, groupExpression] };
+        }
+
+        return expression;
+    }
     async listLists(accountId: string) {
         return prisma.emailList.findMany({
             where: { accountId, isActive: true },
@@ -53,6 +137,64 @@ export class EmailListService {
             where: { accountId, listId },
             orderBy: { updatedAt: 'desc' }
         });
+    }
+
+    async listMembersPaginated(
+        accountId: string,
+        listId: string,
+        page = 1,
+        pageSize = 25,
+        filters: Array<{ combinator: 'AND' | 'OR'; conditions: Array<{ field: string; operator: string; value: string }> }> = []
+    ) {
+        const safePage = Math.max(1, page);
+        const safePageSize = Math.min(100, Math.max(1, pageSize));
+        const skip = (safePage - 1) * safePageSize;
+
+        const advancedWhere = this.buildMembersAdvancedWhere(filters);
+        const baseWhere: any = { accountId, listId, isSubscribed: true };
+        const where = advancedWhere ? { AND: [baseWhere, advancedWhere] } : baseWhere;
+
+        const [members, total] = await Promise.all([
+            prisma.emailListMember.findMany({
+                where,
+                include: {
+                    wooCustomer: {
+                        select: {
+                            firstName: true,
+                            lastName: true,
+                            email: true,
+                            totalSpent: true,
+                            ordersCount: true,
+                            rawData: true
+                        }
+                    }
+                },
+                orderBy: { updatedAt: 'desc' },
+                skip,
+                take: safePageSize
+            }),
+            prisma.emailListMember.count({ where })
+        ]);
+
+        const customers = members.map((member) => ({
+            id: member.wooCustomerId || member.id,
+            firstName: member.wooCustomer?.firstName || '',
+            lastName: member.wooCustomer?.lastName || '',
+            email: member.wooCustomer?.email || member.email,
+            totalSpent: Number(member.wooCustomer?.totalSpent || 0),
+            ordersCount: Number(member.wooCustomer?.ordersCount || 0),
+            contactStatus: String((member.wooCustomer?.rawData as any)?.contactStatus || 'SUBSCRIBED').toUpperCase()
+        }));
+
+        return {
+            customers,
+            pagination: {
+                page: safePage,
+                pageSize: safePageSize,
+                total,
+                totalPages: Math.max(1, Math.ceil(total / safePageSize))
+            }
+        };
     }
 
     async setMemberSubscription(accountId: string, listId: string, email: string, subscribed: boolean, source = 'ADMIN') {
