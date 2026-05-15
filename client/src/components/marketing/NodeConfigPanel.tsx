@@ -27,12 +27,15 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     onDelete
 }) => {
     const [localData, setLocalData] = useState<NodeDataState>({});
+    const [originalData, setOriginalData] = useState<NodeDataState>({});
 
     // Sync local state when node changes
     useEffect(() => {
         if (node) {
             queueMicrotask(() => {
-                setLocalData({ ...(node.data as Record<string, unknown>) });
+                const snapshot = { ...(node.data as Record<string, unknown>) };
+                setLocalData(snapshot);
+                setOriginalData(snapshot);
             });
         }
     }, [node]);
@@ -40,7 +43,13 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     if (!node) return null;
 
     const handleSave = () => {
-        onUpdate(node.id, localData);
+        onClose();
+    };
+
+    const handleCancel = () => {
+        if (JSON.stringify(localData) !== JSON.stringify(originalData)) {
+            onUpdate(node.id, originalData);
+        }
         onClose();
     };
 
@@ -51,14 +60,22 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     };
 
     const updateConfig = (key: string, value: unknown) => {
-        setLocalData((prev) => ({
-            ...prev,
-            config: { ...(prev.config || {}), [key]: value }
-        }));
+        setLocalData((prev) => {
+            const next = {
+                ...prev,
+                config: { ...(prev.config || {}), [key]: value }
+            };
+            onUpdate(node.id, next);
+            return next;
+        });
     };
 
     const updateLabel = (label: string) => {
-        setLocalData((prev) => ({ ...prev, label }));
+        setLocalData((prev) => {
+            const next = { ...prev, label };
+            onUpdate(node.id, next);
+            return next;
+        });
     };
 
     // Get panel title and icon based on node type
@@ -94,7 +111,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                         </div>
                     </div>
                     <button
-                        onClick={onClose}
+                        onClick={handleCancel}
                         className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                         <X size={18} className="text-gray-500" />
@@ -158,7 +175,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                     </button>
                     <div className="flex items-center gap-3">
                         <button
-                            onClick={onClose}
+                            onClick={handleCancel}
                             className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
                         >
                             Cancel

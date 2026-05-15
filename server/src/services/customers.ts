@@ -174,11 +174,51 @@ export class CustomersService {
         advancedFilters: AdvancedFilterGroup[] = []
     ) {
         const from = (page - 1) * limit;
+        const requiresSuppressionScope = status === 'UNSUBSCRIBED';
+
+        const unsubscribedEmails = requiresSuppressionScope
+            ? await prisma.emailUnsubscribe.findMany({
+                where: {
+                    accountId,
+                    scope: { in: ['MARKETING', 'ALL'] }
+                },
+                select: { email: true },
+                distinct: ['email']
+            })
+            : [];
+
+        const unsubscribedEmailList = unsubscribedEmails.map((row) => row.email.toLowerCase());
 
         const must: any[] = [
             { term: { accountId } },
             { range: { ordersCount: { gt: 0 } } }
         ];
+
+        if (requiresSuppressionScope) {
+            if (unsubscribedEmailList.length === 0) {
+                return {
+                    customers: [],
+                    total: 0,
+                    page,
+                    totalPages: 0,
+                    statusCounts: {
+                        ALL: 0,
+                        UNVERIFIED: 0,
+                        SUBSCRIBED: 0,
+                        BOUNCED: 0,
+                        UNSUBSCRIBED: 0,
+                        SOFT_BOUNCED: 0,
+                        COMPLAINT: 0
+                    }
+                };
+            }
+
+            must.push({
+                terms: {
+                    'email.keyword': unsubscribedEmailList
+                }
+            });
+        }
 
         if (query) {
             must.push({
@@ -192,7 +232,7 @@ export class CustomersService {
 
         const statusMust = [...must];
 
-        if (status !== 'ALL') {
+        if (status !== 'ALL' && status !== 'UNSUBSCRIBED') {
             if (status === 'SUBSCRIBED') {
                 statusMust.push({
                     bool: {
@@ -257,6 +297,38 @@ export class CustomersService {
                 contactStatus: normalizeContactStatus((hit._source as any)?.rawData?.contactStatus)
             }));
 
+            const pageEmails = Array.from(new Set(
+                hits
+                    .map((hit) => String((hit as any).email || '').trim().toLowerCase())
+                    .filter(Boolean)
+            ));
+
+            const pageSuppressions = pageEmails.length > 0
+                ? await prisma.emailUnsubscribe.findMany({
+                    where: {
+                        accountId,
+                        email: { in: pageEmails }
+                    },
+                    select: { email: true, scope: true }
+                })
+                : [];
+
+            const suppressionByEmail = new Map(
+                pageSuppressions.map((row) => [row.email.toLowerCase(), row.scope])
+            );
+
+            const normalizedHits = hits.map((hit: any) => {
+                const normalizedEmail = String(hit.email || '').trim().toLowerCase();
+                const suppressionScope = suppressionByEmail.get(normalizedEmail);
+                if (suppressionScope === 'ALL') {
+                    return { ...hit, contactStatus: 'COMPLAINT' as ContactStatus };
+                }
+                if (suppressionScope === 'MARKETING') {
+                    return { ...hit, contactStatus: 'UNSUBSCRIBED' as ContactStatus };
+                }
+                return hit;
+            });
+
             const total = (response.hits.total as any).value || 0;
             const buckets = (response.aggregations as any)?.contact_statuses?.buckets || [];
             const rawCounts = buckets.reduce((acc: Record<string, number>, bucket: { key: string; doc_count: number }) => {
@@ -270,19 +342,26 @@ export class CustomersService {
                 + (rawCounts.SOFT_BOUNCED || 0)
                 + (rawCounts.COMPLAINT || 0);
             const missingStatusCount = Math.max(total - knownStatusesTotal, 0);
+            const unsubscribedCount = await prisma.emailUnsubscribe.count({
+                where: {
+                    accountId,
+                    scope: { in: ['MARKETING', 'ALL'] }
+                }
+            });
+
             const statusCounts = {
                 ALL: total,
                 UNVERIFIED: rawCounts.UNVERIFIED || 0,
-                SUBSCRIBED: (rawCounts.SUBSCRIBED || 0) + missingStatusCount,
+                SUBSCRIBED: Math.max(((rawCounts.SUBSCRIBED || 0) + missingStatusCount) - unsubscribedCount, 0),
                 BOUNCED: rawCounts.BOUNCED || 0,
-                UNSUBSCRIBED: rawCounts.UNSUBSCRIBED || 0,
+                UNSUBSCRIBED: Math.max(rawCounts.UNSUBSCRIBED || 0, unsubscribedCount),
                 SOFT_BOUNCED: rawCounts.SOFT_BOUNCED || 0,
                 COMPLAINT: rawCounts.COMPLAINT || 0
             };
             Logger.debug(`CustomerSearch`, { query, page, total, status });
 
             return {
-                customers: hits,
+                customers: normalizedHits,
                 total,
                 page,
                 totalPages: Math.ceil(total / limit),

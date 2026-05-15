@@ -7,11 +7,8 @@ import {
     History,
     Loader2,
     Mail,
-    Monitor,
     Save,
     Send,
-    Smartphone,
-    Tablet,
     Trash2,
     Undo2,
     X,
@@ -26,8 +23,6 @@ interface Props {
     onSave: (html: string, design: unknown) => void;
     onCancel: () => void;
 }
-
-type PreviewDevice = 'desktop' | 'tablet' | 'mobile';
 
 interface DesignSnapshot {
     id: string;
@@ -75,9 +70,6 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     const [testStatus, setTestStatus] = useState<string | null>(null);
     const [recentRecipients, setRecentRecipients] = useState<string[]>([]);
 
-    const [editorDevice, setEditorDevice] = useState<PreviewDevice>('desktop');
-    const [deviceSwitchUnsupported, setDeviceSwitchUnsupported] = useState(false);
-
     const [showChecklistPanel, setShowChecklistPanel] = useState(false);
     const [checklistItems, setChecklistItems] = useState<PreflightIssue[]>([]);
     const [checklistLoading, setChecklistLoading] = useState(false);
@@ -87,6 +79,30 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     const [snapshots, setSnapshots] = useState<DesignSnapshot[]>([]);
     const [savedHeaders, setSavedHeaders] = useState<SavedRowPreset[]>([]);
     const [savedFooters, setSavedFooters] = useState<SavedRowPreset[]>([]);
+
+    const closeTransientPanels = useCallback(() => {
+        setShowTestEmailPanel(false);
+        setShowChecklistPanel(false);
+        setShowHistoryPanel(false);
+    }, []);
+
+    const toggleTestPanel = useCallback(() => {
+        setShowChecklistPanel(false);
+        setShowHistoryPanel(false);
+        setShowTestEmailPanel((value) => !value);
+    }, []);
+
+    const toggleChecklistPanel = useCallback(() => {
+        setShowTestEmailPanel(false);
+        setShowHistoryPanel(false);
+        setShowChecklistPanel((value) => !value);
+    }, []);
+
+    const toggleHistoryPanel = useCallback(() => {
+        setShowTestEmailPanel(false);
+        setShowChecklistPanel(false);
+        setShowHistoryPanel((value) => !value);
+    }, []);
 
     const defaultHeaderPresets = useMemo((): SavedRowPreset[] => ([
         {
@@ -201,6 +217,114 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
             }
         },
     ]), [appName]);
+
+    const textStylePresets = useMemo((): SavedRowPreset[] => ([
+        {
+            id: 'text-style-heading',
+            name: 'Heading',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'text-style-heading-row',
+                cells: [1],
+                columns: [{
+                    id: 'text-style-heading-col',
+                    contents: [{
+                        id: 'text-style-heading-content',
+                        type: 'text',
+                        values: {
+                            text: '<h1 style="margin:0;line-height:1.25;text-align:left;">Add your main heading</h1>',
+                            padding: '20px 20px 8px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: '#ffffff', padding: '0px' }
+            }
+        },
+        {
+            id: 'text-style-subheading',
+            name: 'Subheading',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'text-style-subheading-row',
+                cells: [1],
+                columns: [{
+                    id: 'text-style-subheading-col',
+                    contents: [{
+                        id: 'text-style-subheading-content',
+                        type: 'text',
+                        values: {
+                            text: '<h2 style="margin:0;line-height:1.35;text-align:left;">Add a section heading</h2>',
+                            padding: '16px 20px 8px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: '#ffffff', padding: '0px' }
+            }
+        },
+        {
+            id: 'text-style-body',
+            name: 'Body Copy',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'text-style-body-row',
+                cells: [1],
+                columns: [{
+                    id: 'text-style-body-col',
+                    contents: [{
+                        id: 'text-style-body-content',
+                        type: 'text',
+                        values: {
+                            text: '<p style="margin:0;line-height:1.7;text-align:left;">Add your paragraph text here. Keep it concise and easy to scan on mobile.</p>',
+                            padding: '0px 20px 12px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: '#ffffff', padding: '0px' }
+            }
+        },
+        {
+            id: 'text-style-bullet-list',
+            name: 'Bullet List',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'text-style-list-row',
+                cells: [1],
+                columns: [{
+                    id: 'text-style-list-col',
+                    contents: [{
+                        id: 'text-style-list-content',
+                        type: 'text',
+                        values: {
+                            text: '<ul style="margin:0;padding-left:20px;line-height:1.7;"><li>First point</li><li>Second point</li><li>Third point</li></ul>',
+                            padding: '0px 20px 16px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: '#ffffff', padding: '0px' }
+            }
+        },
+        {
+            id: 'text-style-highlight',
+            name: 'Highlight Box',
+            createdAt: new Date(0).toISOString(),
+            row: {
+                id: 'text-style-highlight-row',
+                cells: [1],
+                columns: [{
+                    id: 'text-style-highlight-col',
+                    contents: [{
+                        id: 'text-style-highlight-content',
+                        type: 'text',
+                        values: {
+                            text: '<p style="margin:0;line-height:1.6;text-align:left;"><strong>Tip:</strong> Add an important detail, warning, or deadline here.</p>',
+                            padding: '14px 16px'
+                        }
+                    }]
+                }],
+                values: { backgroundColor: '#eff6ff', padding: '0px' }
+            }
+        }
+    ]), []);
 
     const starterLayouts = useMemo((): Array<{ id: string; label: string; design: unknown }> => ([
         {
@@ -489,6 +613,8 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         const editor = emailEditorRef.current?.editor;
         if (!editor) return;
 
+        setShowTestEmailPanel(false);
+        setShowHistoryPanel(false);
         setChecklistLoading(true);
         setShowChecklistPanel(true);
         editor.exportHtml((data) => {
@@ -501,31 +627,13 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         });
     }, []);
 
-    const handleEditorDeviceChange = useCallback((device: PreviewDevice) => {
-        const editor = emailEditorRef.current?.editor;
-        if (!editor) return;
-
-        const unlayerEditor = editor as unknown as { setDevice?: (nextDevice: PreviewDevice) => void };
-        if (typeof unlayerEditor.setDevice === 'function') {
-            unlayerEditor.setDevice(device);
-            setEditorDevice(device);
-            setDeviceSwitchUnsupported(false);
-            return;
-        }
-
-        setDeviceSwitchUnsupported(true);
-    }, []);
-
-
     const onReady = () => {
         setLoading(false);
 
         const editor = emailEditorRef.current?.editor;
         if (editor) {
-            registerWooCommerceTools(editor);
+            registerWooCommerceTools(editor as unknown as Parameters<typeof registerWooCommerceTools>[0]);
             editor.setMergeTags(getWooCommerceMergeTags());
-            const unlayerEditor = editor as unknown as { setDevice?: (nextDevice: PreviewDevice) => void };
-            setDeviceSwitchUnsupported(typeof unlayerEditor.setDevice !== 'function');
             editor.addEventListener('design:updated', () => {
                 setHasUnsavedChanges(true);
                 queueDraftSave();
@@ -652,7 +760,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         });
     };
 
-    const insertReusableSection = (preset: SavedRowPreset, type: 'header' | 'footer') => {
+    const insertReusableSection = (preset: SavedRowPreset, type: 'header' | 'footer' | 'append') => {
         const editor = emailEditorRef.current?.editor;
         if (!editor) return;
 
@@ -743,6 +851,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         if (hasUnsavedChanges && !window.confirm('You have unsaved changes. Close without saving?')) {
             return;
         }
+        closeTransientPanels();
         onCancel();
     };
 
@@ -798,97 +907,58 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     }, [exportHtml, loading, saving]);
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-gray-900/50 backdrop-blur-xs">
-            <div className="flex h-full w-full flex-col overflow-hidden bg-white">
-                <div className="flex items-center justify-between bg-linear-to-r from-blue-600 to-indigo-600 px-4 py-3 text-white md:px-6 md:py-4">
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/45 backdrop-blur-sm">
+            <div className="flex h-full w-full flex-col overflow-hidden rounded-none bg-slate-50">
+                <div className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 text-slate-900 md:px-6 md:py-4">
                     <div className="flex items-center gap-3">
-                        <div className="rounded-lg bg-white/20 p-2">
+                        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-2 text-indigo-600">
                             <Mail size={20} />
                         </div>
                         <div>
                             <h2 className="text-lg font-bold">Email Designer</h2>
-                            <p className="hidden text-xs text-blue-100 sm:block">Drag and drop, run checklist, preview by device, then test send.</p>
+                            <p className="hidden text-xs text-slate-500 sm:block">Drag, style, run checks, then send a safe test.</p>
                         </div>
                     </div>
 
-                    <div className="hidden items-center gap-2 lg:flex">
-                        {starterLayouts.map((layout) => (
-                            <button
-                                key={layout.id}
-                                onClick={() => applyStarterLayout(layout.id)}
-                                className="rounded-md border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-                            >
-                                {layout.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="hidden items-center gap-2 text-xs text-blue-100 md:flex">
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${hasUnsavedChanges ? 'bg-amber-500/20 text-amber-50' : 'bg-emerald-500/20 text-emerald-100'}`}>
+                    <div className="hidden items-center gap-2 text-xs text-slate-500 md:flex">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${hasUnsavedChanges ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
                             {hasUnsavedChanges ? <AlertTriangle size={12} /> : <Save size={12} />}
                             {hasUnsavedChanges ? 'Unsaved changes' : 'All changes saved'}
                         </span>
                         {lastSavedAt && <span>Last saved {lastSavedAt.toLocaleTimeString()}</span>}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <div className="flex flex-col items-start gap-1">
-                            <div className="inline-flex items-center gap-1 rounded-lg border border-white/20 bg-white/10 p-1">
-                            <button
-                                onClick={() => handleEditorDeviceChange('desktop')}
-                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${editorDevice === 'desktop' ? 'bg-white text-blue-700' : 'text-white hover:bg-white/20'}`}
-                            >
-                                <Monitor size={12} />
-                                <span className="hidden sm:inline">Desktop</span>
-                            </button>
-                            <button
-                                onClick={() => handleEditorDeviceChange('tablet')}
-                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${editorDevice === 'tablet' ? 'bg-white text-blue-700' : 'text-white hover:bg-white/20'}`}
-                            >
-                                <Tablet size={12} />
-                                <span className="hidden sm:inline">Tablet</span>
-                            </button>
-                            <button
-                                onClick={() => handleEditorDeviceChange('mobile')}
-                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${editorDevice === 'mobile' ? 'bg-white text-blue-700' : 'text-white hover:bg-white/20'}`}
-                            >
-                                <Smartphone size={12} />
-                                <span className="hidden sm:inline">Mobile</span>
-                            </button>
-                            </div>
-                            {deviceSwitchUnsupported && (
-                                <span className="px-1 text-[11px] text-blue-100/90">
-                                    Device preview is unavailable in this editor build.
-                                </span>
-                            )}
-                        </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
-                            onClick={runPreflightChecklist}
-                            className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
+                            onClick={() => {
+                                toggleChecklistPanel();
+                                runPreflightChecklist();
+                            }}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
                             <ClipboardList size={16} />
                             <span className="hidden sm:inline">Checklist</span>
                         </button>
                         <button
                             onClick={() => {
-                                setShowHistoryPanel((value) => !value);
+                                toggleHistoryPanel();
                                 updateSnapshotsState();
                             }}
-                            className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
                             <History size={16} />
                             <span className="hidden sm:inline">History</span>
                         </button>
                         <button
-                            onClick={() => setShowTestEmailPanel((value) => !value)}
-                            className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
+                            onClick={toggleTestPanel}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
                             <Send size={16} />
                             <span className="hidden sm:inline">Send Test</span>
                         </button>
                         <button
                             onClick={handleCancel}
-                            className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
                             <X size={16} />
                             <span className="hidden sm:inline">Cancel</span>
@@ -896,17 +966,27 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         <button
                             onClick={exportHtml}
                             disabled={loading || saving}
-                            className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                             <span className="hidden sm:inline">Save Design</span>
                         </button>
                     </div>
+
+                    <div className="w-full border-t border-slate-200 pt-2 text-xs text-slate-500 md:hidden">
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1">
+                                {hasUnsavedChanges ? <AlertTriangle size={12} className="text-amber-600" /> : <Save size={12} className="text-emerald-600" />}
+                                {hasUnsavedChanges ? 'Unsaved' : 'Saved'}
+                            </span>
+                            <span className="text-right">Tip: <kbd className="rounded border border-slate-300 bg-slate-50 px-1 py-0.5 font-mono">Ctrl/Cmd+S</kbd> to save</span>
+                        </div>
+                    </div>
                 </div>
 
-                <div className="relative bg-gray-100" style={{ height: 'calc(100vh - 60px)' }}>
+                <div className="relative bg-slate-100" style={{ height: 'calc(100vh - 82px)' }}>
                     {showTestEmailPanel && (
-                        <div className="absolute right-4 top-4 z-30 w-[340px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[340px]">
                             <p className="text-sm font-semibold text-slate-900">Send a quick test</p>
                             <p className="mt-1 text-xs text-slate-500">Use "send to me" or a recent recipient.</p>
                             <input
@@ -950,10 +1030,10 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     )}
 
                     {showChecklistPanel && (
-                        <div className="absolute left-4 top-4 z-30 w-[380px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-[380px] md:right-auto md:top-4 md:w-[380px]">
                             <div className="mb-3 flex items-center justify-between">
                                 <p className="text-sm font-semibold text-slate-900">Preflight Checklist</p>
-                                <button onClick={() => setShowChecklistPanel(false)} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
+                                <button onClick={closeTransientPanels} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
                             </div>
                             {checklistLoading ? (
                                 <div className="flex items-center gap-2 text-sm text-slate-600"><Loader2 size={14} className="animate-spin" /> Running checks...</div>
@@ -990,10 +1070,10 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     )}
 
                     {showHistoryPanel && (
-                        <div className="absolute left-4 top-4 z-30 w-[360px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-[380px] md:right-auto md:top-4 md:w-[360px]">
                             <div className="mb-3 flex items-center justify-between">
                                 <p className="text-sm font-semibold text-slate-900">Version History</p>
-                                <button onClick={() => setShowHistoryPanel(false)} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
+                                <button onClick={closeTransientPanels} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
                             </div>
                             <div className="max-h-[360px] space-y-2 overflow-auto">
                                 {snapshots.length === 0 ? (
@@ -1013,7 +1093,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     )}
 
                     {showRestoreDraft && (
-                        <div className="absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 shadow-lg">
+                        <div className="absolute left-2 right-2 top-2 z-30 rounded-lg border border-amber-200 bg-amber-50/95 px-4 py-3 shadow-lg backdrop-blur-sm md:left-1/2 md:right-auto md:top-4 md:-translate-x-1/2">
                             <div className="flex items-center gap-4 text-sm text-amber-900">
                                 <span>Recovered unsaved draft found.</span>
                                 <button onClick={restoreDraft} className="font-semibold hover:underline">Restore</button>
@@ -1023,10 +1103,50 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </div>
                     )}
 
-                    <div className="absolute bottom-4 right-4 z-30 w-[360px] rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
-                        <div className="mb-2 flex items-center gap-2">
-                            <Bookmark size={14} className="text-slate-600" />
-                            <p className="text-xs font-semibold text-slate-800">Reusable Headers and Footers</p>
+                    <div className="absolute left-2 right-2 bottom-2 z-30 max-h-[46vh] overflow-auto rounded-xl border border-slate-200/80 bg-white/95 p-3 shadow-lg backdrop-blur-sm md:left-4 md:right-auto md:top-4 md:bottom-auto md:max-h-none md:w-[360px] md:overflow-visible">
+                        <div className="mb-3">
+                            <div className="mb-2 flex items-center gap-2">
+                                <Bookmark size={14} className="text-slate-600" />
+                                <p className="text-xs font-semibold text-slate-800">Text Block Styles</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {textStylePresets.map((preset) => (
+                                    <button
+                                        key={preset.id}
+                                        onClick={() => insertReusableSection(preset, 'append')}
+                                        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                                    >
+                                        + {preset.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mb-2 border-t border-slate-200 pt-3" />
+
+                        <div className="mb-3">
+                            <div className="mb-2 flex items-center gap-2">
+                                <Bookmark size={14} className="text-slate-600" />
+                                <p className="text-xs font-semibold text-slate-800">Starter Layouts</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {starterLayouts.map((layout) => (
+                                    <button
+                                        key={layout.id}
+                                        onClick={() => applyStarterLayout(layout.id)}
+                                        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                                    >
+                                        + {layout.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mb-2 border-t border-slate-200 pt-3">
+                            <div className="mb-2 flex items-center gap-2">
+                                <Bookmark size={14} className="text-slate-600" />
+                                <p className="text-xs font-semibold text-slate-800">Reusable Headers and Footers</p>
+                            </div>
                         </div>
 
                         <div className="space-y-2">
@@ -1111,9 +1231,9 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         ref={emailEditorRef}
                         onLoad={() => {}}
                         onReady={onReady}
-                        minHeight={'calc(100vh - 60px)'}
+                        minHeight={'calc(100vh - 82px)'}
                         style={{
-                            height: 'calc(100vh - 60px)',
+                            height: 'calc(100vh - 82px)',
                             width: '100%',
                             display: 'flex'
                         }}
@@ -1134,16 +1254,19 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                             mergeTags: getWooCommerceMergeTags(),
                             displayMode: 'email',
                             tools: {
-                                'custom#woo_product': { position: 1 },
-                                'custom#woo_coupon': { position: 2 },
-                                'custom#woo_address': { position: 3 },
-                                'custom#woo_order_summary': { position: 4 },
-                                'custom#woo_customer_notes': { position: 5 },
-                                'custom#woo_order_downloads': { position: 6 },
-                                'custom#woo_section_product_spotlight': { position: 7 },
-                                'custom#woo_section_coupon_strip': { position: 8 },
-                                'custom#woo_section_review_request': { position: 9 },
-                                'custom#woo_section_shipping_update': { position: 10 },
+                                heading: { enabled: false },
+                                paragraph: { enabled: false },
+                                text: { position: 1 },
+                                'custom#woo_product': { position: 2 },
+                                'custom#woo_coupon': { position: 3 },
+                                'custom#woo_address': { position: 4 },
+                                'custom#woo_order_summary': { position: 5 },
+                                'custom#woo_customer_notes': { position: 6 },
+                                'custom#woo_order_downloads': { position: 7 },
+                                'custom#woo_section_product_spotlight': { position: 8 },
+                                'custom#woo_section_coupon_strip': { position: 9 },
+                                'custom#woo_section_review_request': { position: 10 },
+                                'custom#woo_section_shipping_update': { position: 11 },
                             },
                         }}
                     />

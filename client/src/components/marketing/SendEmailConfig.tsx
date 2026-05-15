@@ -223,10 +223,10 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
             </div>
 
             {templateType === 'visual' && (
-                <div className="rounded-lg border-2 border-dashed border-purple-200 bg-purple-50 p-8 text-center">
+                <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
                     <div className="mb-3 flex justify-center">
-                        <div className="rounded-lg border border-purple-100 bg-white p-3 shadow-sm">
-                            <svg className="h-8 w-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 shadow-sm">
+                            <svg className="h-8 w-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.5" />
                                 <path d="M3 9h18M9 21V9" strokeWidth="1.5" />
                             </svg>

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { Modal } from '../ui/Modal';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useModalDraftState } from '../../hooks/useModalDraftState';
 
 interface CreateSupplierModalProps {
     isOpen: boolean;
@@ -20,7 +21,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [formData, setFormData] = useState({
+    const emptyForm = useMemo(() => ({
         name: '',
         contactName: '',
         email: '',
@@ -28,7 +29,8 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
         leadTimeMin: '',
         leadTimeMax: '',
         paymentTerms: ''
-    });
+    }), []);
+    const { draft: formData, setDraft: setFormData, resetDraft } = useModalDraftState(emptyForm, isOpen);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -51,16 +53,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
             }
 
             const newSupplier = await res.json();
-            // Reset form state
-            setFormData({
-                name: '',
-                contactName: '',
-                email: '',
-                currency: 'USD',
-                leadTimeMin: '',
-                leadTimeMax: '',
-                paymentTerms: ''
-            });
+            resetDraft();
             onSuccess(newSupplier);
         } catch (error) {
             Logger.error('Error creating supplier:', { error: error });
@@ -72,6 +65,7 @@ export function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSuppli
 
     const handleClose = () => {
         if (!isSubmitting) {
+            resetDraft();
             onClose();
         }
     };

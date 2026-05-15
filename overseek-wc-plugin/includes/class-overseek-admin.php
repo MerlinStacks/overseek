@@ -395,7 +395,7 @@ class OverSeek_Admin
 						</div>
 
 						<?php $this->render_toggle_field('overseek_enable_processing_invoice_sync', 'Enable processing-order invoice sync', 'Calls OverSeek when an order enters processing, stores PDF in private uploads, and attaches it to processing emails.', '1'); ?>
-						<?php $this->render_toggle_field('overseek_show_invoice_diagnostics', 'Show invoice diagnostics in order admin', 'Displays renderer, diagnostic reason, and invoice status in WooCommerce order admin pages.', '1'); ?>
+		<?php $this->render_toggle_field('overseek_show_invoice_diagnostics', 'Show invoice diagnostics in order admin', 'Displays renderer, diagnostic reason, and invoice status in WooCommerce order admin pages.', '1'); ?>
 
 						<label class="overseek-admin__field" for="overseek_invoice_retention_days">
 							<span class="overseek-admin__label">Private invoice retention</span>

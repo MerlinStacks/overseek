@@ -5,6 +5,9 @@ import { CustomersService } from '../customers';
 const mockFindFirst = vi.fn();
 const mockFindMany = vi.fn();
 const mockUpdate = vi.fn();
+const mockEmailUnsubscribeFindFirst = vi.fn();
+const mockEmailUnsubscribeFindMany = vi.fn();
+const mockEmailUnsubscribeCount = vi.fn();
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
@@ -27,7 +30,9 @@ vi.mock('../../utils/prisma', () => ({
             findMany: vi.fn().mockResolvedValue([]),
         },
         emailUnsubscribe: {
-            findFirst: vi.fn().mockResolvedValue(null),
+            findFirst: (...args: any[]) => mockEmailUnsubscribeFindFirst(...args),
+            findMany: (...args: any[]) => mockEmailUnsubscribeFindMany(...args),
+            count: (...args: any[]) => mockEmailUnsubscribeCount(...args),
         },
         conversation: {
             findMany: vi.fn().mockResolvedValue([]),
@@ -57,6 +62,9 @@ describe('CustomersService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockEmailUnsubscribeFindFirst.mockResolvedValue(null);
+        mockEmailUnsubscribeFindMany.mockResolvedValue([]);
+        mockEmailUnsubscribeCount.mockResolvedValue(0);
     });
 
     describe('getCustomerDetails', () => {
@@ -102,6 +110,108 @@ describe('CustomersService', () => {
             // We expect mockFindFirst to be called ONLY ONCE (the scoped lookup).
             // The second global lookup (which was the vulnerability) should not happen.
             expect(mockFindFirst).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('searchCustomers', () => {
+        it('applies suppression status overlays and unsubscribed counts', async () => {
+            mockSearch.mockResolvedValueOnce({
+                hits: {
+                    hits: [
+                        {
+                            _id: 'account-123_customer-1',
+                            _source: {
+                                id: 'customer-1',
+                                email: 'alice@example.com',
+                                firstName: 'Alice',
+                                lastName: 'A',
+                                ordersCount: 1,
+                                totalSpent: 10,
+                                rawData: {}
+                            }
+                        },
+                        {
+                            _id: 'account-123_customer-2',
+                            _source: {
+                                id: 'customer-2',
+                                email: 'bob@example.com',
+                                firstName: 'Bob',
+                                lastName: 'B',
+                                ordersCount: 1,
+                                totalSpent: 20,
+                                rawData: { contactStatus: 'SUBSCRIBED' }
+                            }
+                        }
+                    ],
+                    total: { value: 2 }
+                },
+                aggregations: {
+                    contact_statuses: {
+                        buckets: [{ key: 'SUBSCRIBED', doc_count: 2 }]
+                    }
+                }
+            });
+
+            mockEmailUnsubscribeFindMany.mockResolvedValueOnce([
+                { email: 'alice@example.com', scope: 'MARKETING' }
+            ]);
+            mockEmailUnsubscribeCount.mockResolvedValueOnce(1);
+
+            const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'ALL', []);
+
+            expect(result.customers).toHaveLength(2);
+            expect(result.customers[0].contactStatus).toBe('UNSUBSCRIBED');
+            expect(result.statusCounts.UNSUBSCRIBED).toBe(1);
+            expect(result.statusCounts.SUBSCRIBED).toBe(1);
+        });
+
+        it('filters UNSUBSCRIBED status by suppression list emails', async () => {
+            mockEmailUnsubscribeFindMany.mockImplementation(async (args: any) => {
+                if (args?.where?.scope) {
+                    return [{ email: 'alice@example.com' }];
+                }
+
+                if (args?.where?.email?.in) {
+                    return [{ email: 'alice@example.com', scope: 'MARKETING' }];
+                }
+
+                return [];
+            });
+
+            mockSearch.mockResolvedValueOnce({
+                hits: {
+                    hits: [
+                        {
+                            _id: 'account-123_customer-1',
+                            _source: {
+                                id: 'customer-1',
+                                email: 'alice@example.com',
+                                firstName: 'Alice',
+                                lastName: 'A',
+                                ordersCount: 1,
+                                totalSpent: 10,
+                                rawData: {}
+                            }
+                        }
+                    ],
+                    total: { value: 1 }
+                },
+                aggregations: {
+                    contact_statuses: {
+                        buckets: []
+                    }
+                }
+            });
+
+            mockEmailUnsubscribeCount.mockResolvedValueOnce(1);
+
+            const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'UNSUBSCRIBED', []);
+            const searchPayload = mockSearch.mock.calls[0][0];
+            const mustClauses = searchPayload.query.bool.must as Array<any>;
+
+            expect(mustClauses.some((clause) => clause.terms?.['email.keyword']?.includes('alice@example.com'))).toBe(true);
+            expect(result.customers).toHaveLength(1);
+            expect(result.customers[0].contactStatus).toBe('UNSUBSCRIBED');
         });
     });
 });

@@ -60,7 +60,7 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
             const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
                 forceRegenerate: forceRegenerate === true,
             });
-            const settled: any = await canonicalInvoiceService.waitForReady(artifact.id, 2200, 250);
+            const settled: any = await canonicalInvoiceService.waitForReady(artifact.id, 15000, 300);
             const diagnosticReason = computeRelayDiagnostic(settled, forceRegenerate === true);
 
             if (canonicalInvoiceService.isReadableReady(settled)) {

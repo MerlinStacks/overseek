@@ -251,6 +251,24 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
                 : [])
         ]);
 
+        const updatedCustomerProfiles = await prisma.$executeRaw`
+            UPDATE "WooCustomer"
+            SET "rawData" = jsonb_set(
+                COALESCE("rawData", '{}'::jsonb),
+                '{contactStatus}',
+                to_jsonb('UNSUBSCRIBED'::text),
+                true
+            )
+            WHERE "accountId" = ${accountId}
+              AND lower("email") = ANY(${validEmails}::text[])
+        `;
+
+        Logger.info('Bulk unsubscribe applied', {
+            accountId,
+            processed: validEmails.length,
+            customerProfilesUpdated: Number(updatedCustomerProfiles || 0)
+        });
+
         return {
             success: true,
             processed: validEmails.length,

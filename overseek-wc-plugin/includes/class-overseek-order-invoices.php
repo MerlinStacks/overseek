@@ -43,7 +43,9 @@ class OverSeek_Order_Invoices
         add_action('woocommerce_new_order', [$this, 'handle_new_order'], 20, 1);
         add_action(self::PROCESSING_HOOK, [$this, 'process_processing_order'], 10, 1);
         add_filter('woocommerce_email_attachments', [$this, 'attach_invoice_to_processing_email'], 10, 3);
-        add_action('woocommerce_admin_order_data_after_order_details', [$this, 'render_invoice_diagnostics_panel'], 20, 1);
+        if ((string) get_option('overseek_show_invoice_diagnostics', '1') === '1') {
+            add_action('woocommerce_admin_order_data_after_order_details', [$this, 'render_invoice_diagnostics_panel'], 20, 1);
+        }
         add_action(self::CLEANUP_HOOK, [$this, 'cleanup_private_invoices']);
 
         if (!wp_next_scheduled(self::CLEANUP_HOOK)) {
@@ -499,7 +501,7 @@ class OverSeek_Order_Invoices
 
     public function render_invoice_diagnostics_panel($order): void
     {
-        if (!get_option('overseek_show_invoice_diagnostics', '1')) {
+        if ((string) get_option('overseek_show_invoice_diagnostics', '1') !== '1') {
             return;
         }
 
