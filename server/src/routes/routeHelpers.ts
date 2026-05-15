@@ -44,14 +44,14 @@ export function parseAdvancedFilters(rawFilters?: string): ParsedFilterGroup[] {
         if (!Array.isArray(raw)) return [];
 
         return raw
-            .map((group) => {
+            .map<ParsedFilterGroup>((group) => {
                 const g = group as { combinator?: string; conditions?: unknown };
                 const conditions = Array.isArray(g.conditions) ? g.conditions : [];
                 return {
                     combinator: g.combinator === 'OR' ? 'OR' : 'AND',
                     conditions: conditions
                         .map((condition) => condition as { field?: unknown; operator?: unknown; value?: unknown })
-                        .map((condition) => ({
+                        .map<ParsedFilterCondition>((condition) => ({
                             field: String(condition.field || ''),
                             operator: String(condition.operator || ''),
                             value: String(condition.value || '')
