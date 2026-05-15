@@ -15,6 +15,7 @@ if (!defined('ABSPATH')) {
 class OverSeek_Pixel_Config_Provider
 {
     private const FRESH_TTL = 1800;
+    private const STALE_TTL = DAY_IN_SECONDS;
     private const REFRESH_HOOK = 'overseek_refresh_pixel_config';
 
     /**
@@ -37,7 +38,9 @@ class OverSeek_Pixel_Config_Provider
             return $stale;
         }
 
-        return self::refresh_config($api_url, $account_id);
+        self::schedule_background_refresh($account_id);
+
+        return array();
     }
 
     /**
@@ -67,7 +70,7 @@ class OverSeek_Pixel_Config_Provider
         }
 
         set_transient(self::get_fresh_key($account_id), $data, self::FRESH_TTL);
-        set_transient(self::get_stale_key($account_id), $data, DAY_IN_SECONDS);
+        set_transient(self::get_stale_key($account_id), $data, self::STALE_TTL);
 
         return $data;
     }

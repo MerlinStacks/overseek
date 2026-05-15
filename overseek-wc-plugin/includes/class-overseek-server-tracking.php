@@ -724,10 +724,33 @@ class OverSeek_Server_Tracking
 
             bindKnownInputs(document);
 
-            const observer = new MutationObserver(function() {
-                bindKnownInputs(document);
+            let scanScheduled = false;
+            const scheduleRescan = function() {
+                if (scanScheduled) {
+                    return;
+                }
+                scanScheduled = true;
+                setTimeout(function() {
+                    scanScheduled = false;
+                    bindKnownInputs(document);
+                }, 400);
+            };
+
+            const checkoutRoot = document.querySelector('form.checkout, .wc-block-checkout, .wp-block-woocommerce-checkout') || document.body;
+            const observer = new MutationObserver(function(mutations) {
+                for (let i = 0; i < mutations.length; i++) {
+                    const mutation = mutations[i];
+                    if (mutation.type === 'childList' && mutation.addedNodes && mutation.addedNodes.length > 0) {
+                        scheduleRescan();
+                        break;
+                    }
+                }
             });
-            observer.observe(document.body, { childList: true, subtree: true });
+            observer.observe(checkoutRoot, { childList: true, subtree: true });
+
+            setTimeout(function() {
+                observer.disconnect();
+            }, 30000);
         })();
         </script>
         <?php

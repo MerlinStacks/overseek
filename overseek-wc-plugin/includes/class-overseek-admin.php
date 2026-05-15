@@ -30,7 +30,7 @@ class OverSeek_Admin
 	 */
 	public function enqueue_assets($hook_suffix)
 	{
-		if ($hook_suffix !== 'woocommerce_page_overseek') {
+		if ($hook_suffix !== 'toplevel_page_overseek') {
 			return;
 		}
 
@@ -51,17 +51,18 @@ class OverSeek_Admin
 	}
 
 	/**
-	 * Register the OverSeek submenu under WooCommerce.
+	 * Register the OverSeek top-level admin page.
 	 */
 	public function add_menu_page()
 	{
-		add_submenu_page(
-			'woocommerce',           // Parent slug
+		add_menu_page(
 			'OverSeek Settings',     // Page title
 			'OverSeek',              // Menu title
 			'manage_options',        // Capability
 			'overseek',              // Menu slug
-			array($this, 'render_settings_page') // Callback
+			array($this, 'render_settings_page'), // Callback
+			'dashicons-chart-area',
+			56
 		);
 	}
 
@@ -100,6 +101,15 @@ class OverSeek_Admin
 		register_setting('overseek_options_group', 'overseek_relay_api_key', array(
 			'type' => 'string',
 			'sanitize_callback' => 'sanitize_text_field',
+		));
+		register_setting('overseek_options_group', 'overseek_enable_processing_invoice_sync', array(
+			'type' => 'string',
+			'sanitize_callback' => array($this, 'sanitize_checkbox'),
+		));
+		register_setting('overseek_options_group', 'overseek_invoice_retention_days', array(
+			'type' => 'integer',
+			'default' => 30,
+			'sanitize_callback' => 'absint',
 		));
 
 		// Web Vitals settings
@@ -160,6 +170,7 @@ class OverSeek_Admin
 		$connection_config  = (string) get_option('overseek_connection_config', '');
 		$relay_api_key      = (string) get_option('overseek_relay_api_key', '');
 		$retention          = (int) get_option('overseek_cookie_retention_days', 365);
+		$invoice_retention  = (int) get_option('overseek_invoice_retention_days', 30);
 		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 25);
 		$relay_endpoint     = home_url('/wp-json/overseek/v1/email-relay');
 		$is_configured      = !empty($api_url) && !empty($account_id);
@@ -167,6 +178,7 @@ class OverSeek_Admin
 			get_option('overseek_enable_tracking'),
 			get_option('overseek_enable_chat'),
 			get_option('overseek_enable_vitals', '1'),
+			get_option('overseek_enable_processing_invoice_sync', '1'),
 		));
 		$status_label       = $is_configured ? 'Connected' : 'Needs setup';
 		$status_description = $is_configured
@@ -203,8 +215,8 @@ class OverSeek_Admin
 				</div>
 				<div class="overseek-admin__stat-card">
 					<span class="overseek-admin__stat-label">Enabled features</span>
-					<strong><?php echo esc_html((string) count($enabled_features)); ?>/3</strong>
-					<p>Tracking, chat, and vitals can be toggled independently.</p>
+					<strong><?php echo esc_html((string) count($enabled_features)); ?>/4</strong>
+					<p>Tracking, chat, vitals, and invoice sync can be toggled independently.</p>
 				</div>
 				<div class="overseek-admin__stat-card">
 					<span class="overseek-admin__stat-label">Privacy retention</span>
@@ -233,6 +245,7 @@ class OverSeek_Admin
 					<button type="button" class="overseek-admin__tab is-active" role="tab" aria-selected="true" data-tab-target="connection">Connection</button>
 					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="bot-shield">Bot Shield</button>
 					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="storefront">Storefront</button>
+					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="invoices">Invoices</button>
 					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="email-relay">Email Relay</button>
 					<button type="button" class="overseek-admin__tab" role="tab" aria-selected="false" data-tab-target="privacy">Privacy</button>
 				</div>
@@ -359,6 +372,29 @@ class OverSeek_Admin
 								<option value="10" <?php selected($sample_rate, 10); ?>>10% - High-traffic stores</option>
 							</select>
 							<span class="overseek-admin__hint">Use 100% for lower-traffic stores. Reduce the rate if you want to limit data volume on very busy storefronts.</span>
+						</label>
+					</section>
+
+					<section class="overseek-admin__card overseek-admin__tab-panel" data-tab-panel="invoices" hidden>
+						<div class="overseek-admin__card-header">
+							<div>
+								<h2>Order Invoices</h2>
+								<p>Generate and attach private invoice PDFs when WooCommerce orders enter processing.</p>
+							</div>
+						</div>
+
+						<?php $this->render_toggle_field('overseek_enable_processing_invoice_sync', 'Enable processing-order invoice sync', 'Calls OverSeek when an order enters processing, stores PDF in private uploads, and attaches it to processing emails.', '1'); ?>
+
+						<label class="overseek-admin__field" for="overseek_invoice_retention_days">
+							<span class="overseek-admin__label">Private invoice retention</span>
+							<select id="overseek_invoice_retention_days" name="overseek_invoice_retention_days">
+								<option value="7" <?php selected($invoice_retention, 7); ?>>7 days</option>
+								<option value="14" <?php selected($invoice_retention, 14); ?>>14 days</option>
+								<option value="30" <?php selected($invoice_retention, 30); ?>>30 days</option>
+								<option value="60" <?php selected($invoice_retention, 60); ?>>60 days</option>
+								<option value="90" <?php selected($invoice_retention, 90); ?>>90 days</option>
+							</select>
+							<span class="overseek-admin__hint">Files older than this are deleted daily from <code>uploads/overseek-private/invoices</code>.</span>
 						</label>
 					</section>
 

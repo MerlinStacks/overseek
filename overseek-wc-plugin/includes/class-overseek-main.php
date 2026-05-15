@@ -46,6 +46,7 @@ class OverSeek_Main
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-matching-utils.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-ecommerce-events.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-cart-recovery.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-order-invoices.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center-state.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center-request.php';
@@ -87,6 +88,7 @@ class OverSeek_Main
 		add_action('rest_api_init', [$api, 'register_routes']);
 
 		new OverSeek_Cart_Recovery();
+		new OverSeek_Order_Invoices();
 		new OverSeek_Preference_Center();
 
 		// Initialize Server-Side Tracking (runs on WooCommerce hooks).
@@ -95,7 +97,9 @@ class OverSeek_Main
 		}
 
 		// Initialize Client-Side Pixel Tracking (fetches config from API).
-		new OverSeek_Pixels();
+		if (get_option('overseek_enable_tracking')) {
+			new OverSeek_Pixels();
+		}
 
 		// Initialize Crawler Guard (blocks blacklisted bots at application level).
 		// Not gated by tracking toggle — admins may want bot blocking without analytics.

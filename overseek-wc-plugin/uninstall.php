@@ -30,6 +30,8 @@ $options = array(
     'overseek_require_consent',
     'overseek_cookie_retention_days',
     'overseek_relay_api_key',
+    'overseek_enable_processing_invoice_sync',
+    'overseek_invoice_retention_days',
 );
 
 foreach ($options as $option) {
@@ -64,13 +66,13 @@ if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil')
     if ($wpdb->get_var("SHOW TABLES LIKE '{$orders_meta_table}'") === $orders_meta_table) {
         $wpdb->query(
             "DELETE FROM {$orders_meta_table}
-             WHERE meta_key IN ('_overseek_tracked', '_overseek_pixel_tracked', '_overseek_event_id')"
+             WHERE meta_key IN ('_overseek_tracked', '_overseek_pixel_tracked', '_overseek_event_id', '_overseek_invoice_private_path', '_overseek_invoice_file_name', '_overseek_invoice_ref', '_overseek_invoice_generated_at', '_overseek_invoice_status')"
         );
     }
 } else {
     // Legacy: meta stored in postmeta
     $wpdb->query(
         "DELETE FROM {$wpdb->postmeta}
-         WHERE meta_key IN ('_overseek_tracked', '_overseek_pixel_tracked', '_overseek_event_id')"
+         WHERE meta_key IN ('_overseek_tracked', '_overseek_pixel_tracked', '_overseek_event_id', '_overseek_invoice_private_path', '_overseek_invoice_file_name', '_overseek_invoice_ref', '_overseek_invoice_generated_at', '_overseek_invoice_status')"
     );
 }

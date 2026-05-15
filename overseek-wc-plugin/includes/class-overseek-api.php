@@ -73,6 +73,148 @@ class OverSeek_API {
 			'callback'            => [ $this, 'email_relay_callback' ],
 			'permission_callback' => [ $this, 'check_relay_permission' ],
 		] );
+
+		register_rest_route( 'overseek/v1', '/invoices/(?P<order_id>\d+)', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'invoice_details_callback' ],
+			'permission_callback' => '__return_true',
+		] );
+
+		register_rest_route( 'overseek/v1', '/invoices/download', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'invoice_download_callback' ],
+			'permission_callback' => '__return_true',
+		] );
+	}
+
+	/**
+	 * Return a canonical integration error body.
+	 *
+	 * @param string $code Error code.
+	 * @param string $message Human-readable error message.
+	 * @param int    $status HTTP status.
+	 * @return WP_REST_Response
+	 */
+	private function integration_error( string $code, string $message, int $status ): WP_REST_Response {
+		return new WP_REST_Response( [
+			'success' => false,
+			'error'   => [
+				'code'    => $code,
+				'message' => $message,
+				'status'  => $status,
+			],
+		], $status );
+	}
+
+	/**
+	 * Resolve invoice service instance.
+	 *
+	 * @return OverSeek_Order_Invoices|null
+	 */
+	private function get_invoice_service(): ?OverSeek_Order_Invoices {
+		if ( ! class_exists( 'OverSeek_Order_Invoices' ) ) {
+			return null;
+		}
+
+		$service = OverSeek_Order_Invoices::get_instance();
+		return $service instanceof OverSeek_Order_Invoices ? $service : null;
+	}
+
+	/**
+	 * Return invoice payload for a WooCommerce order.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function invoice_details_callback( WP_REST_Request $request ): WP_REST_Response {
+		$order_id = absint( (int) $request->get_param( 'order_id' ) );
+		if ( $order_id <= 0 ) {
+			return $this->integration_error( 'invalid_order_id', 'Order ID must be a positive integer.', 400 );
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return $this->integration_error( 'invoice_not_found', 'Invoice not found for this order.', 404 );
+		}
+
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 ) {
+			return $this->integration_error( 'invoice_unauthenticated', 'Authentication required.', 401 );
+		}
+
+		$service = $this->get_invoice_service();
+		if ( ! $service ) {
+			return $this->integration_error( 'invoice_service_unavailable', 'Invoice service unavailable.', 503 );
+		}
+
+		if ( ! $service->user_can_access_invoice( $order, $user_id ) ) {
+			return $this->integration_error( 'invoice_forbidden', 'You are not allowed to access this invoice.', 403 );
+		}
+
+		$payload = $service->get_invoice_for_order( $order_id, $user_id );
+		if ( ! is_array( $payload ) ) {
+			return $this->integration_error( 'invoice_not_found', 'Invoice not found for this order.', 404 );
+		}
+
+		if ( isset( $payload['status'] ) && $payload['status'] === 'pending' ) {
+			return $this->integration_error( 'invoice_pending', 'Invoice is not ready yet.', 409 );
+		}
+
+		if ( isset( $payload['status'] ) && $payload['status'] === 'failed' ) {
+			return $this->integration_error( 'invoice_failed', 'Invoice generation failed.', 409 );
+		}
+
+		return new WP_REST_Response( [
+			'success' => true,
+			'data'    => $payload,
+		], 200 );
+	}
+
+	/**
+	 * Stream invoice PDF for authorized viewers.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function invoice_download_callback( WP_REST_Request $request ): WP_REST_Response {
+		$order_id = absint( (int) $request->get_param( 'order_id' ) );
+		if ( $order_id <= 0 ) {
+			return $this->integration_error( 'invalid_order_id', 'Order ID must be a positive integer.', 400 );
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return $this->integration_error( 'invoice_not_found', 'Invoice not found for this order.', 404 );
+		}
+
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 ) {
+			return $this->integration_error( 'invoice_unauthenticated', 'Authentication required.', 401 );
+		}
+
+		$service = $this->get_invoice_service();
+		if ( ! $service ) {
+			return $this->integration_error( 'invoice_service_unavailable', 'Invoice service unavailable.', 503 );
+		}
+
+		if ( ! $service->user_can_access_invoice( $order, $user_id ) ) {
+			return $this->integration_error( 'invoice_forbidden', 'You are not allowed to access this invoice.', 403 );
+		}
+
+		$file_path = $service->get_invoice_file_path( $order_id );
+		if ( $file_path === '' || ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
+			return $this->integration_error( 'invoice_not_found', 'Invoice PDF not found for this order.', 404 );
+		}
+
+		nocache_headers();
+		header( 'Content-Type: application/pdf' );
+		header( 'Content-Disposition: inline; filename="' . basename( $file_path ) . '"' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0' );
+		header( 'Pragma: no-cache' );
+		header( 'Expires: 0' );
+		readfile( $file_path );
+		exit;
 	}
 
 	/**

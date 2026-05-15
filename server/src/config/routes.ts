@@ -22,6 +22,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     const auditsRoutes = (await import('../routes/audits')).default;
     const sessionsRoutes = (await import('../routes/sessions')).default;
     const invoicesRoutes = (await import('../routes/invoices')).default;
+    const invoiceRelayRoutes = (await import('../routes/invoiceRelay')).default;
     const notificationsRoutes = (await import('../routes/notifications')).default;
     const helpRoutes = (await import('../routes/help')).default;
     const searchRoutes = (await import('../routes/search')).default;
@@ -39,6 +40,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(auditsRoutes, { prefix: '/api/audits' });
     await fastify.register(sessionsRoutes, { prefix: '/api/sessions' });
     await fastify.register(invoicesRoutes, { prefix: '/api/invoices' });
+    await fastify.register(invoiceRelayRoutes, { prefix: '/api/invoices/relay' });
     await fastify.register(notificationsRoutes, { prefix: '/api/notifications' });
     await fastify.register(helpRoutes, { prefix: '/api/help' });
     await fastify.register(searchRoutes, { prefix: '/api/search' });

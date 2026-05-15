@@ -52,6 +52,9 @@ class OverSeek_Pixels {
 		$this->api_url    = untrailingslashit( get_option( 'overseek_api_url', '' ) );
 		$this->account_id = get_option( 'overseek_account_id', '' );
 
+		// Always register the cron callback, even when frontend hooks are skipped.
+		add_action( 'overseek_refresh_pixel_config', array( $this, 'handle_background_refresh' ) );
+
 		if ( empty( $this->account_id ) || empty( $this->api_url ) ) {
 			return;
 		}
@@ -62,9 +65,6 @@ class OverSeek_Pixels {
 
 		add_action( 'wp_head', array( $this, 'inject_base_codes' ), 1 );
 		add_action( 'wp_footer', array( $this, 'inject_page_events' ), 50 );
-
-		// Background refresh handler for stale-while-revalidate caching.
-		add_action( 'overseek_refresh_pixel_config', array( $this, 'handle_background_refresh' ) );
 	}
 
 	/**

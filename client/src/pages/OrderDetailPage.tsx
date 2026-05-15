@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { Logger } from '../utils/logger';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -103,7 +103,9 @@ export function OrderDetailPage() {
     const [sidebarPanelOrder, setSidebarPanelOrder] = useState<SidebarPanelId[]>(DEFAULT_SIDEBAR_PANEL_ORDER);
     const [draggedPanelId, setDraggedPanelId] = useState<SidebarPanelId | null>(null);
     const [dragOverPanelId, setDragOverPanelId] = useState<SidebarPanelId | null>(null);
+    const [draggedPanelHeight, setDraggedPanelHeight] = useState<number>(0);
     const [isReorderMode, setIsReorderMode] = useState(false);
+    const panelRefs = useRef<Partial<Record<SidebarPanelId, HTMLDivElement | null>>>({});
 
 
 
@@ -664,11 +666,15 @@ export function OrderDetailPage() {
                     {visiblePanelOrder.map((panelId) => (
                         <div
                             key={panelId}
+                            ref={(node) => {
+                                panelRefs.current[panelId] = node;
+                            }}
                             draggable={isReorderMode}
-                            onDragStart={() => {
+                            onDragStart={(event) => {
                                 if (!isReorderMode) return;
                                 setDraggedPanelId(panelId);
                                 setDragOverPanelId(panelId);
+                                setDraggedPanelHeight(event.currentTarget.getBoundingClientRect().height);
                             }}
                             onDragOver={(event) => {
                                 if (!isReorderMode) return;
@@ -683,29 +689,36 @@ export function OrderDetailPage() {
                                 movePanel(draggedPanelId, panelId);
                                 setDraggedPanelId(null);
                                 setDragOverPanelId(null);
+                                setDraggedPanelHeight(0);
                             }}
                             onDragEnd={() => {
                                 setDraggedPanelId(null);
                                 setDragOverPanelId(null);
+                                setDraggedPanelHeight(0);
                             }}
                             className={draggedPanelId === panelId ? 'opacity-40' : ''}
                         >
                             {isReorderMode && draggedPanelId && dragOverPanelId === panelId && draggedPanelId !== panelId && (
-                                <div className="mb-2 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/60 p-4">
+                                <div
+                                    className="mb-2 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/60 p-4"
+                                    style={{ height: draggedPanelHeight || panelRefs.current[draggedPanelId]?.getBoundingClientRect().height || undefined }}
+                                >
                                     <div className="h-3 w-32 animate-pulse rounded bg-indigo-200/70" />
                                     <div className="mt-3 h-2 w-full animate-pulse rounded bg-indigo-100" />
                                     <div className="mt-2 h-2 w-4/5 animate-pulse rounded bg-indigo-100" />
                                 </div>
                             )}
-                            {isReorderMode && (
-                                <div className="mb-2 flex justify-end">
-                                    <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 cursor-move">
-                                        <GripVertical size={12} />
-                                        Move
+                            <div className="relative">
+                                {isReorderMode && (
+                                    <div className="absolute right-3 top-3 z-10">
+                                        <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-xs text-gray-500 cursor-move shadow-sm">
+                                            <GripVertical size={12} />
+                                            Move
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                            {sidebarPanels[panelId]}
+                                )}
+                                {sidebarPanels[panelId]}
+                            </div>
                         </div>
                     ))}
                 </div>

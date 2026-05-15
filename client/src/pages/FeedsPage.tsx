@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Modal } from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -38,6 +38,8 @@ interface FeedRowsResponse {
 const CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
 const BULK_WARN_THRESHOLD = 1000;
 const BULK_HIGH_WARN_THRESHOLD = 10000;
+const FEEDS_UI_STATE_KEY = 'overseek:feeds:ui-state:v1';
+const FEEDS_EDIT_DRAFT_KEY = 'overseek:feeds:edit-draft:v1';
 const VARIATION_MODES: { value: VariationMode; label: string }[] = [
     { value: 'all_variations', label: 'All Variations' },
     { value: 'variable_parent', label: 'Variable Products (Parent)' },
@@ -214,10 +216,87 @@ export function FeedsPage() {
     const options = optionsData?.options || ['manual', 'auto_on_sync', '1h', '3h', '12h', '24h'];
     const selectedMode = refreshModeData?.refreshMode || 'manual';
     const maxBulkOptimizeRows = bulkLimitData?.maxBulkOptimizeRows || 5000;
-    const rows = rowsData?.rows || [];
-    const mappings = rowsData?.mappings || [];
+    const rows = useMemo(() => rowsData?.rows || [], [rowsData?.rows]);
+    const mappings = useMemo(() => rowsData?.mappings || [], [rowsData?.mappings]);
     const total = rowsData?.total || 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(FEEDS_UI_STATE_KEY);
+            if (!raw) return;
+            const saved = JSON.parse(raw) as Partial<{
+                activeTab: FeedsViewTab;
+                activeChannel: FeedChannel;
+                variationMode: VariationMode;
+                query: string;
+                page: number;
+                limit: number;
+            }>;
+            if (saved.activeTab === 'spreadsheet' || saved.activeTab === 'settings') setActiveTab(saved.activeTab);
+            if (saved.activeChannel && CHANNELS.includes(saved.activeChannel)) setActiveChannel(saved.activeChannel);
+            if (saved.variationMode && VARIATION_MODES.some((m) => m.value === saved.variationMode)) setVariationMode(saved.variationMode);
+            if (typeof saved.query === 'string') setQuery(saved.query);
+            if (typeof saved.limit === 'number' && [25, 50, 100, 200].includes(saved.limit)) setLimit(saved.limit);
+            if (typeof saved.page === 'number' && Number.isFinite(saved.page) && saved.page >= 1) {
+                setPage(Math.floor(saved.page));
+                setPageInput(String(Math.floor(saved.page)));
+            }
+        } catch {
+            // no-op: invalid persisted state
+        }
+    }, []);
+
+    useEffect(() => {
+        const state = {
+            activeTab,
+            activeChannel,
+            variationMode,
+            query,
+            page,
+            limit,
+        };
+        localStorage.setItem(FEEDS_UI_STATE_KEY, JSON.stringify(state));
+    }, [activeTab, activeChannel, variationMode, query, page, limit]);
+
+    useEffect(() => {
+        if (!editingCell) {
+            localStorage.removeItem(FEEDS_EDIT_DRAFT_KEY);
+            return;
+        }
+
+        const draft = {
+            channel: editingCell.channel,
+            rowId: editingCell.rowId,
+            field: editingCell.field,
+            value: editingValue,
+        };
+        localStorage.setItem(FEEDS_EDIT_DRAFT_KEY, JSON.stringify(draft));
+    }, [editingCell, editingValue]);
+
+    useEffect(() => {
+        if (rows.length === 0 || editingCell) return;
+        try {
+            const raw = localStorage.getItem(FEEDS_EDIT_DRAFT_KEY);
+            if (!raw) return;
+            const draft = JSON.parse(raw) as Partial<{
+                channel: FeedChannel;
+                rowId: string;
+                field: string;
+                value: string;
+            }>;
+            if (!draft.channel || !draft.rowId || !draft.field) return;
+            if (draft.channel !== activeChannel) return;
+
+            const rowExists = rows.some((row) => row.rowId === draft.rowId);
+            if (!rowExists) return;
+
+            setEditingCell({ channel: draft.channel, rowId: draft.rowId, field: draft.field });
+            setEditingValue(typeof draft.value === 'string' ? draft.value : '');
+        } catch {
+            // no-op: invalid persisted draft
+        }
+    }, [rows, activeChannel, editingCell]);
 
     useEffect(() => {
         setPage(1);
@@ -243,12 +322,37 @@ export function FeedsPage() {
     const cancelEditing = () => {
         setEditingCell(null);
         setEditingValue('');
+        localStorage.removeItem(FEEDS_EDIT_DRAFT_KEY);
     };
 
     const saveEditing = async (row: FeedRow, field: string) => {
         await saveCellValue({ row, field, value: editingValue });
         cancelEditing();
         await refetchRows();
+    };
+
+    const handleEditorKeyDown = async (
+        event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+        row: FeedRow,
+        field: string,
+        isTextArea: boolean,
+    ) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelEditing();
+            return;
+        }
+
+        if (event.key === 'Enter') {
+            if (isTextArea && event.shiftKey) return;
+            event.preventDefault();
+            try {
+                await saveEditing(row, field);
+                toast.success(`${field} saved.`);
+            } catch (error: any) {
+                toast.error(error?.message || `Failed to save ${field}`);
+            }
+        }
     };
 
     const toggleRowSelected = (row: FeedRow, checked: boolean) => {
@@ -487,6 +591,34 @@ export function FeedsPage() {
                         >
                             Refresh
                         </button>
+                        {editingCell && (
+                            <button
+                                type="button"
+                                className="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600"
+                                onClick={cancelEditing}
+                            >
+                                Cancel
+                            </button>
+                        )}
+                        {editingCell && (
+                            <button
+                                type="button"
+                                disabled={isSavingCell}
+                                className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
+                                onClick={async () => {
+                                    const row = rows.find((r) => r.rowId === editingCell.rowId);
+                                    if (!row) return;
+                                    try {
+                                        await saveEditing(row, editingCell.field);
+                                        toast.success(`${editingCell.field} saved.`);
+                                    } catch (error: any) {
+                                        toast.error(error?.message || `Failed to save ${editingCell.field}`);
+                                    }
+                                }}
+                            >
+                                Save Changes
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -614,7 +746,6 @@ export function FeedsPage() {
                                             }}
                                         />
                                     </th>
-                                    <th className="text-left py-2 pr-3">Product</th>
                                     <th className="text-left py-2 pr-3">SKU</th>
                                     {mappings.map((mapping) => (
                                         <th key={mapping.targetField} className="text-left py-2 pr-3 whitespace-nowrap">
@@ -638,10 +769,6 @@ export function FeedsPage() {
                                                     }}
                                                 />
                                             </td>
-                                            <td className="py-2 pr-3">
-                                                <div className="font-medium text-slate-900 dark:text-white">{row.name}</div>
-                                                <div className="text-xs text-slate-500 dark:text-slate-400">{row.rowType}</div>
-                                            </td>
                                             <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">{row.sku || '-'}</td>
                                             {mappings.map((mapping) => {
                                                 const field = mapping.targetField;
@@ -655,7 +782,7 @@ export function FeedsPage() {
                                                 const displayValue = value || '-';
 
                                                 return (
-                                                    <td key={`${row.rowId}-${field}`} className="py-2 pr-3 max-w-sm align-top">
+                                                    <td key={`${row.rowId}-${field}`} className="py-2 pr-3 align-top min-w-[220px] max-w-[460px]">
                                                         {isEditing ? (
                                                             <div className="space-y-1">
                                                                 {field === 'description' || value.length > 90 ? (
@@ -663,81 +790,53 @@ export function FeedsPage() {
                                                                         className="w-full min-h-20 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                                                                         value={editingValue}
                                                                         onChange={(e) => setEditingValue(e.target.value)}
+                                                                        onKeyDown={(e) => {
+                                                                            void handleEditorKeyDown(e, row, field, true);
+                                                                        }}
                                                                     />
                                                                 ) : (
                                                                     <input
                                                                         className="w-full px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                                                                         value={editingValue}
                                                                         onChange={(e) => setEditingValue(e.target.value)}
+                                                                        onKeyDown={(e) => {
+                                                                            void handleEditorKeyDown(e, row, field, false);
+                                                                        }}
                                                                     />
                                                                 )}
-                                                                <div className="flex gap-1 flex-wrap">
+                                                                {canAiOptimizeField(field) ? (
                                                                     <button
                                                                         type="button"
-                                                                        disabled={isSavingCell}
-                                                                        className="px-2 py-1 text-xs rounded bg-indigo-600 text-white disabled:opacity-50"
+                                                                        disabled={isOptimizingRow}
+                                                                        className="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
                                                                         onClick={async () => {
                                                                             try {
-                                                                                await saveEditing(row, field);
-                                                                                toast.success(`${field} saved.`);
+                                                                                await optimizeRow({ row, fields: [field] });
+                                                                                await refetchRows();
+                                                                                toast.success(`AI suggestion updated for ${field}.`);
                                                                             } catch (error: any) {
-                                                                                toast.error(error?.message || `Failed to save ${field}`);
+                                                                                toast.error(error?.message || `Failed to optimize ${field}`);
                                                                             }
                                                                         }}
                                                                     >
-                                                                        Save
+                                                                        AI Optimize
                                                                     </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        className="px-2 py-1 text-xs rounded bg-slate-100 dark:bg-slate-700"
-                                                                        onClick={cancelEditing}
-                                                                    >
-                                                                        Cancel
-                                                                    </button>
-                                                                    {canAiOptimizeField(field) ? (
-                                                                        <button
-                                                                            type="button"
-                                                                            disabled={isOptimizingRow}
-                                                                            className="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
-                                                                            onClick={async () => {
-                                                                                try {
-                                                                                    await optimizeRow({ row, fields: [field] });
-                                                                                    await refetchRows();
-                                                                                    toast.success(`AI suggestion updated for ${field}.`);
-                                                                                } catch (error: any) {
-                                                                                    toast.error(error?.message || `Failed to optimize ${field}`);
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            AI Optimize
-                                                                        </button>
-                                                                    ) : null}
-                                                                </div>
+                                                                ) : null}
                                                             </div>
                                                         ) : (
-                                                            <div className="flex items-start gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    className={`text-left ${isLongText ? 'line-clamp-2' : ''} ${column?.isMissingRequired ? 'text-rose-600 dark:text-rose-400' : 'hover:underline'}`}
-                                                                    onClick={() => {
-                                                                        if (field === 'description') {
-                                                                            setExpandedDescription({ rowName: row.name, value: value || '-' });
-                                                                            return;
-                                                                        }
-                                                                        startEditing(row, field, value);
-                                                                    }}
-                                                                    title={displayValue}
-                                                                >
-                                                                    {displayValue}
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600"
-                                                                    onClick={() => startEditing(row, field, value)}
-                                                                >
-                                                                    Edit
-                                                                </button>
-                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                className={`text-left w-full ${isLongText ? 'truncate' : 'truncate'} ${column?.isMissingRequired ? 'text-rose-600 dark:text-rose-400' : 'hover:underline'}`}
+                                                                onClick={() => startEditing(row, field, value)}
+                                                                onDoubleClick={() => {
+                                                                    if (field === 'description') {
+                                                                        setExpandedDescription({ rowName: row.name, value: value || '-' });
+                                                                    }
+                                                                }}
+                                                                title={displayValue}
+                                                            >
+                                                                {displayValue}
+                                                            </button>
                                                         )}
                                                     </td>
                                                 );
