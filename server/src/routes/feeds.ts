@@ -302,6 +302,22 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get('/settings/urls', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const forwardedProto = request.headers['x-forwarded-proto'];
+            const forwardedHost = request.headers['x-forwarded-host'];
+            const proto = Array.isArray(forwardedProto) ? forwardedProto[0] : (forwardedProto || request.protocol);
+            const host = Array.isArray(forwardedHost) ? forwardedHost[0] : (forwardedHost || request.headers.host || 'localhost:3000');
+            const baseUrl = `${proto}://${host}`;
+            const urls = await FeedMappingService.getFeedExportUrls(accountId, baseUrl);
+            return { urls };
+        } catch (error: any) {
+            Logger.error('Failed to fetch feed export urls', { error: error?.message || error });
+            return reply.code(500).send({ error: 'Failed to fetch feed export URLs' });
+        }
+    });
+
     fastify.put<{ Body: { maxBulkOptimizeRows: number } }>('/settings/bulk-limit', async (request, reply) => {
         try {
             const accountId = request.accountId!;

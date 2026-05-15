@@ -35,6 +35,10 @@ interface FeedRowsResponse {
     mappings: Array<{ targetField: string; required?: boolean }>;
 }
 
+interface FeedExportUrlsResponse {
+    urls: Record<FeedChannel, string>;
+}
+
 const CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
 const BULK_WARN_THRESHOLD = 1000;
 const BULK_HIGH_WARN_THRESHOLD = 10000;
@@ -116,6 +120,16 @@ export function FeedsPage() {
         queryFn: async () => {
             const res = await fetch('/api/feeds/settings/bulk-limit', { headers });
             if (!res.ok) throw new Error('Failed to fetch bulk limit');
+            return res.json();
+        },
+    });
+
+    const { data: feedUrlData, isLoading: feedUrlLoading } = useApiQuery<FeedExportUrlsResponse>({
+        queryKey: ['feed-export-urls', currentAccount?.id],
+        enabled: !!token && !!currentAccount?.id,
+        queryFn: async () => {
+            const res = await fetch('/api/feeds/settings/urls', { headers });
+            if (!res.ok) throw new Error('Failed to fetch feed URLs');
             return res.json();
         },
     });
@@ -373,6 +387,21 @@ export function FeedsPage() {
         return `Every ${mode}`;
     };
 
+    const copyFeedUrl = async () => {
+        const url = feedUrlData?.urls?.[activeChannel];
+        if (!url) {
+            toast.error('Feed URL not available yet.');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(url);
+            toast.success('Feed URL copied to clipboard.');
+        } catch (_error) {
+            toast.error('Could not copy feed URL.');
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div>
@@ -445,6 +474,33 @@ export function FeedsPage() {
                                 <option key={mode.value} value={mode.value}>{mode.label}</option>
                             ))}
                         </select>
+                    </div>
+
+                    <div className="space-y-2">
+                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Feed URL ({activeChannel})</h2>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                            Copy and paste this URL into your ad platform catalog feed source.
+                        </p>
+                        {feedUrlLoading ? (
+                            <p className="text-sm text-slate-600 dark:text-slate-400">Loading feed URL...</p>
+                        ) : (
+                            <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                                <input
+                                    type="text"
+                                    readOnly
+                                    value={feedUrlData?.urls?.[activeChannel] || ''}
+                                    className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm"
+                                />
+                                <button
+                                    type="button"
+                                    className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
+                                    onClick={copyFeedUrl}
+                                    disabled={!feedUrlData?.urls?.[activeChannel]}
+                                >
+                                    Copy URL
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-3">
