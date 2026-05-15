@@ -147,7 +147,7 @@ export class AiManagerService {
                     source: 'SEARCH_CONSOLE',
                     priority: 2,
                     confidence: 70,
-                    dataPoints: item.reason ? [item.reason] : [],
+                    dataPoints: item.expectedImpact ? [item.expectedImpact] : [],
                     tags: ['seo', 'ai'],
                 });
             });
