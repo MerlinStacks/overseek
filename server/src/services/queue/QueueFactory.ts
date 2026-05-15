@@ -19,6 +19,7 @@ export const QUEUES = {
     AUTOMATIONS: 'automation-execution',
     CAMPAIGNS: 'campaign-send',
     FEED_OPTIMIZE: 'feed-optimize',
+    INVOICE_CANONICAL_GENERATE: 'invoice-canonical-generate',
 };
 
 // Global Store for Queues to adapter

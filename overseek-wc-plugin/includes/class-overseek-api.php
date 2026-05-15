@@ -207,6 +207,22 @@ class OverSeek_API {
 			return $authorization;
 		}
 
+		$status = (string) $order->get_meta( '_overseek_invoice_status' );
+		$available = $service->invoice_is_available( $order_id );
+		if ( $status === '' ) {
+			$status = $available ? 'ready' : 'pending';
+		}
+
+		if ( ! $available ) {
+			if ( $status === 'pending' ) {
+				return $this->integration_error( 'invoice_pending', 'Invoice is not ready yet.', 409 );
+			}
+
+			if ( $status === 'failed' ) {
+				return $this->integration_error( 'invoice_failed', 'Invoice generation failed.', 409 );
+			}
+		}
+
 		$file_path = $service->get_invoice_file_path( $order_id );
 		if ( $file_path === '' || ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
 			return $this->integration_error( 'invoice_not_found', 'Invoice PDF not found for this order.', 404 );

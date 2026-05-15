@@ -3,12 +3,7 @@ import fs from 'fs';
 import { z } from 'zod';
 import { Logger } from '../utils/logger';
 import { authenticateRelayEmailAccount } from './email/helpers';
-import { prisma } from '../utils/prisma';
-import { InvoiceService } from '../services/InvoiceService';
-import path from 'path';
-
-const invoiceService = new InvoiceService();
-const invoiceDir = path.join(__dirname, '../../uploads/invoices');
+import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 
 const InvoiceRelayBodySchema = z.object({
     account_id: z.string().min(1),
@@ -38,77 +33,41 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
-            const cachedInvoice = await prisma.wooOrder.findFirst({
-                where: {
-                    accountId,
-                    OR: [
-                        { id: orderId },
-                        ...(Number.isFinite(Number(orderId)) ? [{ wooId: Number(orderId) }] : []),
-                    ],
-                },
-                select: { number: true },
-            });
+            const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId);
+            const settled: any = await canonicalInvoiceService.waitForReady(artifact.id, 2200, 250);
 
-            const orderNumber = cachedInvoice?.number || orderId;
-            const cachePrefix = `invoice-${orderNumber}-`;
-            const cachePath = findMostRecentInvoicePath(cachePrefix, 24 * 60 * 60 * 1000);
-
-            if (cachePath) {
-                const cachedFileBuffer = fs.readFileSync(cachePath);
+            if (canonicalInvoiceService.isReadableReady(settled)) {
+                const fileBuffer = fs.readFileSync(settled.storagePath);
                 return {
                     success: true,
-                    invoice_ref: `${accountId}:${orderId}:cached`,
-                    pdf_base64: cachedFileBuffer.toString('base64'),
-                    filename: path.basename(cachePath),
+                    invoice_ref: settled.id,
+                    pdf_base64: fileBuffer.toString('base64'),
+                    filename: settled.storagePath.split('/').pop() || 'invoice.pdf',
+                    renderer_used: settled.renderer,
                 };
             }
 
-            const template = await prisma.invoiceTemplate.findFirst({
-                where: { accountId },
-                orderBy: { updatedAt: 'desc' },
-                select: { id: true },
-            });
-
-            if (!template) {
-                return reply.code(404).send({ success: false, error: 'No invoice template found for account' });
+            if (settled?.status === 'failed') {
+                return reply.code(409).send({
+                    success: false,
+                    status: 'failed',
+                    invoice_ref: settled.id,
+                    error: settled.errorMessage || 'Invoice generation failed',
+                    renderer_used: settled.renderer,
+                });
             }
 
-            const generated = await invoiceService.generateInvoicePdf(accountId, orderId, template.id);
-            const fileBuffer = fs.readFileSync(generated.absolutePath);
-
-            return {
-                success: true,
-                invoice_ref: `${accountId}:${orderId}:${Date.now()}`,
-                pdf_base64: fileBuffer.toString('base64'),
-                filename: generated.absolutePath.split('/').pop() || 'invoice.pdf',
-            };
+            return reply.code(202).send({
+                success: false,
+                status: 'pending',
+                invoice_ref: settled?.id ?? artifact.id,
+                error: 'Invoice generation is pending',
+            });
         } catch (error) {
             Logger.error('Failed to generate relay invoice PDF', { error, accountId, orderId });
             return reply.code(500).send({ success: false, error: 'Failed to generate invoice' });
         }
     });
 };
-
-function findMostRecentInvoicePath(prefix: string, maxAgeMs: number): string | null {
-    if (!fs.existsSync(invoiceDir)) {
-        return null;
-    }
-
-    const files = fs.readdirSync(invoiceDir)
-        .filter((fileName) => fileName.startsWith(prefix) && fileName.endsWith('.pdf'))
-        .map((fileName) => path.join(invoiceDir, fileName));
-
-    if (files.length === 0) {
-        return null;
-    }
-
-    const now = Date.now();
-    const recent = files
-        .map((filePath) => ({ filePath, stat: fs.statSync(filePath) }))
-        .filter(({ stat }) => now - stat.mtimeMs <= maxAgeMs)
-        .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
-
-    return recent[0]?.filePath ?? null;
-}
 
 export default invoiceRelayRoutes;

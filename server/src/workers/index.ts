@@ -12,6 +12,7 @@ import { automationEngine } from '../services/AutomationEngine';
 import { MarketingService } from '../services/MarketingService';
 import { normalizeOrderStatus } from '../constants/orderStatus';
 import { FeedMappingService } from '../services/feedMapping';
+import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 
 /** Track all workers for graceful shutdown */
 const activeWorkers: Worker[] = [];
@@ -105,6 +106,22 @@ export async function startWorkers() {
     activeWorkers.push(QueueFactory.createWorker(QUEUES.FEED_OPTIMIZE, async (job) => {
         const result = await FeedMappingService.processOptimizeBulkJob(job.data, job as any);
         return result as any;
+    }));
+
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.INVOICE_CANONICAL_GENERATE, async (job) => {
+        const { artifactId, accountId, orderId, templateId } = job.data as {
+            artifactId?: string;
+            accountId?: string;
+            orderId?: string;
+            templateId?: string;
+        };
+
+        if (!artifactId || !accountId || !orderId || !templateId) {
+            Logger.warn('[Invoice Canonical Worker] Missing required job payload', { jobId: job.id });
+            return;
+        }
+
+        await canonicalInvoiceService.processGenerationJob({ artifactId, accountId, orderId, templateId });
     }));
 
 

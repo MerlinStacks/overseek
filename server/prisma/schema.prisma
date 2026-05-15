@@ -153,6 +153,7 @@ model Account {
   reportTemplates ReportTemplate[]
   reportSchedules ReportSchedule[]
   invoiceTemplates InvoiceTemplate[]
+  invoiceArtifacts InvoiceArtifact[]
 
   purchaseOrders PurchaseOrder[]
 
@@ -2389,6 +2390,30 @@ model InvoiceTemplate {
   updatedAt DateTime @updatedAt
   
   @@unique([accountId, name])
+}
+
+model InvoiceArtifact {
+  id              String   @id @default(uuid())
+  accountId       String
+  orderId         String
+  templateId      String
+  templateVersion String
+  layoutHash      String
+  renderer        String
+  status          String   @default("pending")
+  storagePath     String?
+  mimeType        String?  @default("application/pdf")
+  fileSize        Int?
+  errorMessage    String?  @db.Text
+  generatedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, orderId, templateVersion, layoutHash])
+  @@index([accountId, orderId, status])
+  @@index([accountId, generatedAt])
 }
 
 // --------------------------------------

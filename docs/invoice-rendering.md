@@ -24,6 +24,26 @@ If the flag is not enabled, capture failures return an explicit error and do not
 
 Important: this is **non-canonical** for designer fidelity. Use client canonical output when exact visual match is required.
 
+## WooCommerce relay behavior
+
+WooCommerce processing-order relay now uses a canonical artifact workflow:
+
+- Route: `server/src/routes/invoiceRelay.ts`
+- Service: `server/src/services/CanonicalInvoiceService.ts`
+- Queue: `invoice-canonical-generate`
+
+Current behavior:
+
+- Relay first checks/reuses `InvoiceArtifact` for the account/order/template snapshot.
+- If ready, it returns the exact stored PDF artifact.
+- If still generating, it returns `202` (`status: pending`) so the plugin can retry asynchronously.
+- If generation fails, it returns `409` (`status: failed`).
+
+Fallback renderer control:
+
+- `INVOICE_CANONICAL_FALLBACK_PDFKIT=true` (default): allow server PDFKit fallback generation.
+- `INVOICE_CANONICAL_FALLBACK_PDFKIT=false`: fail when canonical renderer is unavailable.
+
 ## Maintenance rules
 
 - Do not add new invoice styling logic to vector/PDFKit renderers unless required for fallback/automation.

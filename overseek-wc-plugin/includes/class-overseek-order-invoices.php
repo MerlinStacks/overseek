@@ -92,6 +92,14 @@ class OverSeek_Order_Invoices
         $this->generate_invoice_for_order($order, 8);
     }
 
+    private function schedule_processing_retry(int $order_id, int $delay_seconds = 60): void
+    {
+        $delay = max(15, $delay_seconds);
+        if (!wp_next_scheduled(self::PROCESSING_HOOK, [$order_id])) {
+            wp_schedule_single_event(time() + $delay, self::PROCESSING_HOOK, [$order_id]);
+        }
+    }
+
     private function generate_invoice_for_order(WC_Order $order, int $timeout_seconds = 8): bool
     {
         $order_id = (int) $order->get_id();
@@ -136,7 +144,30 @@ class OverSeek_Order_Invoices
             return false;
         }
 
-        if ((int) wp_remote_retrieve_response_code($response) >= 300) {
+        $response_code = (int) wp_remote_retrieve_response_code($response);
+        if ($response_code === 202) {
+            $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
+            $order->save();
+            $this->schedule_processing_retry($order_id, 45);
+            return false;
+        }
+
+        if ($response_code === 409) {
+            $body = OverSeek_HTTP_Utils::decode_json_response($response);
+            $status = isset($body['status']) ? (string) $body['status'] : '';
+            if ($status === 'pending') {
+                $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
+                $order->save();
+                $this->schedule_processing_retry($order_id, 45);
+                return false;
+            }
+
+            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
+            $order->save();
+            return false;
+        }
+
+        if ($response_code >= 300) {
             $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
             $order->save();
             return false;
@@ -151,6 +182,13 @@ class OverSeek_Order_Invoices
 
         $base64_pdf = isset($body['pdf_base64']) ? (string) $body['pdf_base64'] : '';
         if ($base64_pdf === '') {
+            $status = isset($body['status']) ? (string) $body['status'] : '';
+            if ($status === 'pending') {
+                $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
+                $order->save();
+                $this->schedule_processing_retry($order_id, 45);
+                return false;
+            }
             $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
             $order->save();
             return false;
@@ -210,6 +248,10 @@ class OverSeek_Order_Invoices
         }
 
         if ((string) $order->get_meta(self::META_INVOICE_PATH) === '') {
+            if ((string) $order->get_meta(self::META_INVOICE_STATUS) === 'pending') {
+                $this->schedule_processing_retry((int) $order->get_id(), 30);
+                return $attachments;
+            }
             $this->generate_invoice_for_order($order, 6);
         }
 
