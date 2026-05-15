@@ -82,15 +82,13 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install client deps
+      - name: Install deps
         run: npm ci
-        working-directory: client
 
       - name: Run client lint
-        run: npm run lint
-        working-directory: client
+        run: npm run lint -w client
 
   # ── Step 2a: Build & push API image ──────────────────────────────────────────
   build-api:
