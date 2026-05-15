@@ -171,7 +171,10 @@ class OverSeek_API {
 		}
 
 		if ( isset( $payload['status'] ) && $payload['status'] === 'failed' ) {
-			return $this->integration_error( 'invoice_failed', 'Invoice generation failed.', 409 );
+			$failure_message = isset( $payload['error_message'] ) && is_string( $payload['error_message'] ) && $payload['error_message'] !== ''
+				? $payload['error_message']
+				: 'Invoice generation failed.';
+			return $this->integration_error( 'invoice_failed', $failure_message, 409 );
 		}
 
 		return new WP_REST_Response( [
@@ -219,7 +222,11 @@ class OverSeek_API {
 			}
 
 			if ( $status === 'failed' ) {
-				return $this->integration_error( 'invoice_failed', 'Invoice generation failed.', 409 );
+				$payload = $service->get_invoice_for_order( $order_id, get_current_user_id() );
+				$failure_message = is_array( $payload ) && isset( $payload['error_message'] ) && is_string( $payload['error_message'] ) && $payload['error_message'] !== ''
+					? $payload['error_message']
+					: 'Invoice generation failed.';
+				return $this->integration_error( 'invoice_failed', $failure_message, 409 );
 			}
 		}
 

@@ -241,8 +241,40 @@ export class NodeExecutor {
         };
 
         const recipientTemplate = config.to || enrollment.email;
-        const recipientEmail = renderTemplate(String(recipientTemplate || ''), context).trim() || enrollment.email;
-        Logger.info(`Sending Email: ${config.templateId || 'inline'} to ${recipientEmail}`);
+        const resolvedRecipients = resolveMergeTags(
+            renderTemplate(String(recipientTemplate || ''), context),
+            context
+        );
+
+        const recipientCandidates = String(resolvedRecipients || '')
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+
+        const isEmailLike = (value: string) => /^\S+@\S+\.\S+$/.test(value);
+        const recipientList = recipientCandidates.filter((email) => isEmailLike(email));
+
+        if (recipientList.length === 0 && typeof enrollment.email === 'string' && isEmailLike(enrollment.email)) {
+            recipientList.push(enrollment.email);
+        }
+
+        if (recipientList.length === 0) {
+            Logger.warn('Cannot send email: No valid recipient resolved', {
+                accountId: enrollment.automation.accountId,
+                automationId: enrollment.automationId,
+                configuredRecipient: config.to,
+                enrollmentEmail: enrollment.email
+            });
+            return {
+                action: 'NEXT',
+                outcome: 'EMAIL_FAILED',
+                metadata: {
+                    error: 'No valid email recipient resolved'
+                }
+            };
+        }
+
+        Logger.info(`Sending Email: ${config.templateId || 'inline'} to ${recipientList.join(', ')}`);
 
         try {
             let emailAccountId = config.emailAccountId;
@@ -263,51 +295,60 @@ export class NodeExecutor {
                     context
                 );
 
-                const sendResult = await this.emailService.sendEmail(
-                    enrollment.automation.accountId,
-                    emailAccountId,
-                    recipientEmail,
-                    subject,
-                    body || `<p>Email Template: ${config.templateId}</p>`,
-                    enrollment.contextData?.attachments,
-                    {
-                        source: 'AUTOMATION',
-                        sourceId: enrollment.automationId,
-                        category: config.emailCategory === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING'
-                    }
-                );
+                let skippedCount = 0;
+                let sentCount = 0;
+                const skippedReasons = new Set<string>();
 
-                if (sendResult && typeof sendResult === 'object' && 'skipped' in sendResult && sendResult.skipped) {
-                    const reason = 'reason' in sendResult ? sendResult.reason : undefined;
-                    Logger.info('Automation email skipped', {
-                        accountId: enrollment.automation.accountId,
-                        automationId: enrollment.automationId,
-                        recipient: recipientEmail,
-                        reason
-                    });
+                for (const recipientEmail of recipientList) {
+                    const sendResult = await this.emailService.sendEmail(
+                        enrollment.automation.accountId,
+                        emailAccountId,
+                        recipientEmail,
+                        subject,
+                        body || `<p>Email Template: ${config.templateId}</p>`,
+                        enrollment.contextData?.attachments,
+                        {
+                            source: 'AUTOMATION',
+                            sourceId: enrollment.automationId,
+                            category: config.emailCategory === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING'
+                        }
+                    );
+
+                    if (sendResult && typeof sendResult === 'object' && 'skipped' in sendResult && sendResult.skipped) {
+                        skippedCount += 1;
+                        const reason = 'reason' in sendResult ? sendResult.reason : undefined;
+                        if (reason) skippedReasons.add(String(reason));
+                        continue;
+                    }
+
+                    sentCount += 1;
+                    await campaignTrackingService.trackSend(
+                        enrollment.automation.accountId,
+                        enrollment.automationId,
+                        'automation',
+                        recipientEmail
+                    );
+                }
+
+                if (sentCount === 0 && skippedCount > 0) {
                     return {
                         action: 'NEXT',
                         outcome: 'EMAIL_SKIPPED',
                         metadata: {
-                            recipientEmail,
-                            reason: reason || 'unknown'
+                            recipientEmail: recipientList.join(', '),
+                            reason: Array.from(skippedReasons).join(', ') || 'unknown'
                         }
                     };
                 }
 
-                // Track send event for ROI
-                await campaignTrackingService.trackSend(
-                    enrollment.automation.accountId,
-                    enrollment.automationId,
-                    'automation',
-                    recipientEmail
-                );
                 return {
                     action: 'NEXT',
-                    outcome: 'EMAIL_SENT',
+                    outcome: sentCount > 0 ? 'EMAIL_SENT' : 'EMAIL_SKIPPED',
                     metadata: {
-                        recipientEmail,
-                        emailAccountId
+                        recipientEmail: recipientList.join(', '),
+                        emailAccountId,
+                        sentCount,
+                        skippedCount
                     }
                 };
             } else {
@@ -318,7 +359,7 @@ export class NodeExecutor {
                     action: 'NEXT',
                     outcome: 'EMAIL_NOT_CONFIGURED',
                     metadata: {
-                        recipientEmail
+                        recipientEmail: recipientList.join(', ')
                     }
                 };
             }
@@ -328,7 +369,7 @@ export class NodeExecutor {
                 action: 'NEXT',
                 outcome: 'EMAIL_FAILED',
                 metadata: {
-                    recipientEmail,
+                    recipientEmail: recipientList.join(', '),
                     error: err instanceof Error ? err.message : String(err)
                 }
             };

@@ -82,13 +82,43 @@ function validateFlowDefinition(flow: FlowDefinition): string | null {
             return `Action node "${(node.data as { label?: string } | undefined)?.label || node.id}" is missing action type.`;
         }
         if (node.type === 'condition') {
-            if (!config.field || !config.operator || !config.value) {
+            const conditions = Array.isArray(config.conditions)
+                ? config.conditions.filter((rule) => (
+                    rule
+                    && typeof rule === 'object'
+                    && (rule as { field?: unknown }).field
+                    && (rule as { operator?: unknown }).operator
+                    && (rule as { value?: unknown }).value !== undefined
+                    && (rule as { value?: unknown }).value !== null
+                    && String((rule as { value?: unknown }).value).trim() !== ''
+                ))
+                : [];
+            const hasLegacyCondition = Boolean(config.field && config.operator && String(config.value ?? '').trim() !== '');
+            if (conditions.length === 0 && !hasLegacyCondition) {
                 return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" is incomplete.`;
             }
             const trueBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'true');
             const falseBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'false');
             if (!trueBranch || !falseBranch) {
                 return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" requires both YES and NO branches.`;
+            }
+
+            const outgoing = edges.filter((edge) => edge.source === node.id);
+            if (outgoing.length > 2) {
+                return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" can only have YES and NO branches.`;
+            }
+
+            const duplicateTrue = outgoing.filter((edge) => edge.sourceHandle === 'true').length > 1;
+            const duplicateFalse = outgoing.filter((edge) => edge.sourceHandle === 'false').length > 1;
+            if (duplicateTrue || duplicateFalse) {
+                return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" has duplicate branch connections.`;
+            }
+        }
+
+        if (node.type !== 'condition') {
+            const outgoing = edges.filter((edge) => edge.source === node.id).length;
+            if (outgoing > 1) {
+                return `Node "${(node.data as { label?: string } | undefined)?.label || node.id}" cannot branch to multiple paths.`;
             }
         }
     }
@@ -121,10 +151,32 @@ function getInvalidNodeIds(flow: FlowDefinition): string[] {
         if (node.type === 'delay' && typeof config.duration !== 'number' && !config.delayUntilTime) invalid.add(node.id);
         if (node.type === 'action' && typeof config.actionType !== 'string') invalid.add(node.id);
         if (node.type === 'condition') {
-            if (!config.field || !config.operator || !config.value) invalid.add(node.id);
+            const conditions = Array.isArray(config.conditions)
+                ? config.conditions.filter((rule) => (
+                    rule
+                    && typeof rule === 'object'
+                    && (rule as { field?: unknown }).field
+                    && (rule as { operator?: unknown }).operator
+                    && (rule as { value?: unknown }).value !== undefined
+                    && (rule as { value?: unknown }).value !== null
+                    && String((rule as { value?: unknown }).value).trim() !== ''
+                ))
+                : [];
+            const hasLegacyCondition = Boolean(config.field && config.operator && String(config.value ?? '').trim() !== '');
+            if (conditions.length === 0 && !hasLegacyCondition) invalid.add(node.id);
             const trueBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'true');
             const falseBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'false');
             if (!trueBranch || !falseBranch) invalid.add(node.id);
+
+            const outgoing = edges.filter((edge) => edge.source === node.id);
+            const duplicateTrue = outgoing.filter((edge) => edge.sourceHandle === 'true').length > 1;
+            const duplicateFalse = outgoing.filter((edge) => edge.sourceHandle === 'false').length > 1;
+            if (outgoing.length > 2 || duplicateTrue || duplicateFalse) invalid.add(node.id);
+        }
+
+        if (node.type !== 'condition') {
+            const outgoing = edges.filter((edge) => edge.source === node.id).length;
+            if (outgoing > 1) invalid.add(node.id);
         }
     }
 
@@ -366,7 +418,7 @@ export function FlowsPage() {
     }, [searchParams, isEditing, token, currentAccount, handleEditFlow]);
 
     const handleFlowChange = useCallback((flow: FlowDefinition) => {
-        if (!editingItem) return;
+        if (!editingItem || !editingFlowData) return;
         const draftKey = getDraftKey(editingItem.id);
         if (!draftKey) return;
 
@@ -384,8 +436,17 @@ export function FlowsPage() {
             autosaveTimerRef.current = null;
         }
 
+        if (!dirty) {
+            try {
+                window.localStorage.removeItem(draftKey);
+            } catch (error) {
+                Logger.warn('Failed to clear flow draft from localStorage', { error, flowId: editingItem.id });
+            }
+            return;
+        }
+
         try {
-            setSaveState(dirty ? 'saving' : 'saved');
+            setSaveState('saving');
             autosaveTimerRef.current = window.setTimeout(() => {
                 try {
                     const payload: FlowDraftPayload = {
@@ -393,7 +454,7 @@ export function FlowsPage() {
                         savedAt: new Date().toISOString()
                     };
                     window.localStorage.setItem(draftKey, JSON.stringify(payload));
-                    setSaveState(dirty ? 'unsaved' : 'saved');
+                    setSaveState('unsaved');
                 } catch (error) {
                     Logger.warn('Failed to persist flow draft to localStorage', { error, flowId: editingItem.id });
                 }
@@ -401,7 +462,7 @@ export function FlowsPage() {
         } catch (error) {
             Logger.warn('Failed to persist flow draft to localStorage', { error, flowId: editingItem.id });
         }
-    }, [editingItem, getDraftKey]);
+    }, [editingItem, editingFlowData, getDraftKey]);
 
     const handleRequestCloseEditor = () => {
         if (isDirty) {

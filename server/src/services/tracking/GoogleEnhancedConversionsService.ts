@@ -24,6 +24,8 @@ import type { TrackingEventPayload } from './EventProcessor';
 
 const MAX_RETRIES = 3;
 const MAX_CART_ITEMS = 20;
+const NON_RETRYABLE_PREFIX = 'NON_RETRYABLE:';
+const QUOTA_COOLDOWN_FALLBACK_MS = 60 * 60 * 1000;
 
 type NormalizedBasketItem = {
     productId: string;
@@ -43,6 +45,7 @@ const GOOGLE_ADS_API_VERSION = 'v24';
 
 export class GoogleEnhancedConversionsService implements ConversionPlatformService {
     readonly platform = 'GOOGLE';
+    private static quotaCooldownUntilMsByCustomer = new Map<string, number>();
 
     /**
      * Send a conversion to Google Ads Enhanced Conversions.
@@ -100,6 +103,15 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         const payload = isPurchase
             ? this.buildEnhancementPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid)
             : this.buildConversionPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid);
+
+        if (this.isQuotaCooldownActive(customerId)) {
+            Logger.warn('[GoogleEnhanced] Upload skipped due to active quota cooldown', {
+                accountId,
+                customerId,
+                retryAt: new Date(this.getQuotaCooldownUntil(customerId)).toISOString(),
+            });
+            return;
+        }
 
         const googleEventName = mapEventName(data.type, 'GOOGLE')!;
         const deliveryId = await this.logDelivery(accountId, googleEventName, eventId, payload);
@@ -331,7 +343,13 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         // for all deliveries before the partialFailureError check was added.
         const [failedDeliveries, falseSentDeliveries] = await Promise.all([
             prisma.conversionDelivery.findMany({
-                where: { accountId, platform: 'GOOGLE', status: 'FAILED', createdAt: { gte: since } },
+                where: {
+                    accountId,
+                    platform: 'GOOGLE',
+                    status: 'FAILED',
+                    createdAt: { gte: since },
+                    lastError: { not: { startsWith: NON_RETRYABLE_PREFIX } },
+                },
             }),
             prisma.conversionDelivery.findMany({
                 where: {
@@ -369,6 +387,15 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         }
 
         Logger.warn(`[GoogleEnhanced] Retrying ${allToRetry.length} conversions`, { accountId });
+
+        if (this.isQuotaCooldownActive(adAccount.externalId)) {
+            Logger.warn('[GoogleEnhanced] Retry skipped due to active quota cooldown', {
+                accountId,
+                customerId: adAccount.externalId,
+                retryAt: new Date(this.getQuotaCooldownUntil(adAccount.externalId)).toISOString(),
+            });
+            return { attempted: 0, recovered: 0 };
+        }
 
         let recovered = 0;
         for (const delivery of allToRetry) {
@@ -463,7 +490,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                     try { parsed = JSON.parse(responseBody); } catch { parsed = null; }
 
                     if (parsed?.partialFailureError) {
-                        const errMsg = parsed.partialFailureError.message || JSON.stringify(parsed.partialFailureError);
+                        const errMsg = this.normalizeGoogleErrorMessage(parsed.partialFailureError);
                         await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, errMsg);
                         Logger.error('[GoogleEnhanced] Partial failure — conversion rejected by Google', {
                             customerId,
@@ -502,6 +529,10 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                 }
 
                 if (response.status === 429 || response.status >= 500) {
+                    if (response.status === 429) {
+                        const retryAfterMs = this.extractRetryAfterMs(response, responseBody);
+                        this.setQuotaCooldown(customerId, retryAfterMs);
+                    }
                     if (attempt < MAX_RETRIES) {
                         await this.backoff(attempt);
                         continue;
@@ -575,6 +606,71 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
     private backoff(attempt: number): Promise<void> {
         return new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+    }
+
+    private normalizeGoogleErrorMessage(error: any): string {
+        const rawMessage = error?.message || JSON.stringify(error);
+        const serialized = JSON.stringify(error);
+        const isInvalidConversionActionType = serialized.includes('INVALID_CONVERSION_ACTION_TYPE');
+        if (isInvalidConversionActionType) {
+            return `${NON_RETRYABLE_PREFIX} ${rawMessage}`;
+        }
+        return rawMessage;
+    }
+
+    private extractRetryAfterMs(response: Response, responseBody: string): number {
+        const retryAfterHeader = response.headers.get('retry-after');
+        if (retryAfterHeader) {
+            const asSeconds = Number(retryAfterHeader);
+            if (Number.isFinite(asSeconds) && asSeconds > 0) {
+                return asSeconds * 1000;
+            }
+            const headerDate = Date.parse(retryAfterHeader);
+            if (Number.isFinite(headerDate)) {
+                const delta = headerDate - Date.now();
+                if (delta > 0) return delta;
+            }
+        }
+
+        const match = responseBody.match(/Retry in\s+(\d+)\s+seconds/i);
+        if (match?.[1]) {
+            const seconds = Number(match[1]);
+            if (Number.isFinite(seconds) && seconds > 0) {
+                return seconds * 1000;
+            }
+        }
+
+        return QUOTA_COOLDOWN_FALLBACK_MS;
+    }
+
+    private setQuotaCooldown(customerId: string, durationMs: number): void {
+        const key = customerId.replace(/-/g, '');
+        const cooldownUntil = Date.now() + Math.max(durationMs, 1000);
+        const current = GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.get(key) || 0;
+        if (cooldownUntil > current) {
+            GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.set(key, cooldownUntil);
+            Logger.warn('[GoogleEnhanced] Quota cooldown activated', {
+                customerId,
+                retryAt: new Date(cooldownUntil).toISOString(),
+                durationSec: Math.round(durationMs / 1000),
+            });
+        }
+    }
+
+    private getQuotaCooldownUntil(customerId: string): number {
+        const key = customerId.replace(/-/g, '');
+        return GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.get(key) || 0;
+    }
+
+    private isQuotaCooldownActive(customerId: string): boolean {
+        const cooldownUntil = this.getQuotaCooldownUntil(customerId);
+        if (!cooldownUntil) return false;
+        if (Date.now() >= cooldownUntil) {
+            const key = customerId.replace(/-/g, '');
+            GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.delete(key);
+            return false;
+        }
+        return true;
     }
 
     private async logDelivery(accountId: string, eventName: string, eventId: string, payload: Record<string, any>): Promise<string> {

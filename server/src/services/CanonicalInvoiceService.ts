@@ -81,13 +81,14 @@ export class CanonicalInvoiceService {
 
     async enqueueGeneration(artifactId: string, accountId: string, orderId: string, templateId: string): Promise<void> {
         const queue = QueueFactory.getQueue(QUEUES.INVOICE_CANONICAL_GENERATE);
+        const safeArtifactId = artifactId.replace(/[^a-zA-Z0-9_-]/g, '_');
         await queue.add('generate-canonical-invoice', {
             artifactId,
             accountId,
             orderId,
             templateId
         }, {
-            jobId: `invoice-canonical:${artifactId}`
+            jobId: `invoice-canonical_${safeArtifactId}`
         });
     }
 

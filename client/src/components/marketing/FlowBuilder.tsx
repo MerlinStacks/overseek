@@ -208,6 +208,31 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
     const onConnect = useCallback(
         (params: Connection) => {
+            if (!params.source) return;
+            if (!params.target) return;
+            if (params.source === params.target) return;
+
+            const sourceNode = nodes.find((node) => node.id === params.source);
+            if (!sourceNode) return;
+            const targetNode = nodes.find((node) => node.id === params.target);
+            if (!targetNode) return;
+            if (targetNode.type === 'trigger') return;
+
+            const existingFromSource = edges.filter((edge) => edge.source === params.source);
+            const isConditionSource = sourceNode.type === 'condition';
+
+            if (isConditionSource) {
+                if (params.sourceHandle !== 'true' && params.sourceHandle !== 'false') {
+                    return;
+                }
+                const handleAlreadyUsed = existingFromSource.some((edge) => edge.sourceHandle === params.sourceHandle);
+                if (handleAlreadyUsed) {
+                    return;
+                }
+            } else if (existingFromSource.length > 0) {
+                return;
+            }
+
             const conditionBranch = params.sourceHandle === 'true' ? 'YES' : params.sourceHandle === 'false' ? 'NO' : undefined;
             if (conditionBranch && params.source && params.target) {
                 setEdges((eds) => ([
@@ -226,7 +251,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
             }
             setEdges((eds) => addEdge(params, eds));
         },
-        [setEdges],
+        [nodes, edges, setEdges],
     );
 
     // Handle node click to open config panel
@@ -545,6 +570,20 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
     // Helper to add a node and connect it to parent
     const addNodeAndConnect = useCallback((newNode: Node, parentId: string) => {
+        const parentNode = nodes.find((node) => node.id === parentId);
+        if (!parentNode) {
+            setPendingNodeParent(null);
+            return;
+        }
+
+        if (parentNode.type !== 'condition') {
+            const existingFromParent = edges.some((edge) => edge.source === parentId);
+            if (existingFromParent) {
+                setPendingNodeParent(null);
+                return;
+            }
+        }
+
         setNodes((nds) => [...nds, newNode]);
         setEdges((eds) => [
             ...eds,
@@ -556,7 +595,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
             },
         ]);
         setPendingNodeParent(null);
-    }, [setNodes, setEdges]);
+    }, [nodes, edges, setNodes, setEdges]);
 
     // Check if canvas is empty
     const isEmptyCanvas = nodes.length === 0;
@@ -595,6 +634,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
         const invalidSet = new Set(invalidNodeIds);
 
         return nodes.map((node) => {
+            const hasOutgoing = edges.some((edge) => edge.source === node.id);
+            const canAddFromNode = node.type === 'condition' ? false : !hasOutgoing;
             const hasError = invalidSet.has(node.id);
             const existingClassNames = (node.className || '')
                 .split(' ')
@@ -610,13 +651,13 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 className,
                 data: {
                     ...(node.data as Record<string, unknown>),
-                    onAddStep: handleOpenStepPopup,
+                    onAddStep: canAddFromNode ? handleOpenStepPopup : undefined,
                     onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
                 },
             };
         });
-    }, [nodes, invalidNodeIds, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
+    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
 
     return (
             <div className="h-full w-full relative">

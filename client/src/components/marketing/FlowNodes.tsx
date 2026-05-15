@@ -21,6 +21,7 @@ interface FlowNodeConfig {
     field?: string;
     operator?: string;
     value?: string;
+    conditions?: Array<{ field?: string; operator?: string; value?: string }>;
 }
 
 interface FlowNodeData {
@@ -176,9 +177,14 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
 
-    const conditionPreview = config?.field && config?.operator && config?.value
-        ? `${config.field} ${config.operator} ${config.value}`
-        : 'Configure condition...';
+    const conditionRules = Array.isArray(config?.conditions)
+        ? config.conditions.filter((rule: { field?: string; operator?: string; value?: string }) => rule?.field && rule?.operator && String(rule?.value ?? '').trim() !== '')
+        : [];
+    const conditionPreview = conditionRules.length > 0
+        ? `${conditionRules[0].field} ${conditionRules[0].operator} ${conditionRules[0].value}${conditionRules.length > 1 ? ` (+${conditionRules.length - 1})` : ''}`
+        : (config?.field && config?.operator && String(config?.value ?? '').trim() !== ''
+            ? `${config.field} ${config.operator} ${config.value}`
+            : 'Configure condition...');
 
     return (
         <>

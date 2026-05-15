@@ -99,16 +99,16 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                 <div className="relative">
                     <input
                         type="text"
-                        value={config.to || '{{contact_email}}'}
+                        value={config.to || '{{customer.email}}'}
                         onChange={(e) => onUpdate('to', e.target.value)}
-                        placeholder="{{contact_email}}"
+                        placeholder="{{customer.email}}"
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                     />
                     <button
                         type="button"
                         onClick={() => {
                             const current = config.to || '';
-                            onUpdate('to', current + '{{contact_email}}');
+                            onUpdate('to', current + '{{customer.email}}');
                         }}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                         title="Insert merge tag"

@@ -23,6 +23,7 @@ class OverSeek_Order_Invoices
     private const META_INVOICE_REF = '_overseek_invoice_ref';
     private const META_INVOICE_GENERATED_AT = '_overseek_invoice_generated_at';
     private const META_INVOICE_STATUS = '_overseek_invoice_status';
+    private const META_INVOICE_ERROR = '_overseek_invoice_error';
 
     private string $api_url;
     private string $account_id;
@@ -128,6 +129,18 @@ class OverSeek_Order_Invoices
         }
     }
 
+    private function set_invoice_status(WC_Order $order, string $status, string $error_message = ''): void
+    {
+        $normalized_status = in_array($status, ['pending', 'ready', 'failed'], true) ? $status : 'pending';
+        $order->update_meta_data(self::META_INVOICE_STATUS, $normalized_status);
+        if ($error_message !== '') {
+            $order->update_meta_data(self::META_INVOICE_ERROR, sanitize_text_field($error_message));
+        } elseif ($normalized_status !== 'failed') {
+            $order->delete_meta_data(self::META_INVOICE_ERROR);
+        }
+        $order->save();
+    }
+
     private function generate_invoice_for_order(WC_Order $order, int $timeout_seconds = 8): bool
     {
         $order_id = (int) $order->get_id();
@@ -141,13 +154,11 @@ class OverSeek_Order_Invoices
         }
 
         if ($this->api_url === '' || $this->account_id === '' || $this->relay_api_key === '') {
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            $this->set_invoice_status($order, 'failed', 'Invoice relay is not configured.');
             return false;
         }
 
-        $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
-        $order->save();
+        $this->set_invoice_status($order, 'pending');
 
         $payload = [
             'account_id' => $this->account_id,
@@ -167,44 +178,50 @@ class OverSeek_Order_Invoices
         ]);
 
         if (is_wp_error($response)) {
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            $this->set_invoice_status($order, 'pending', $response->get_error_message());
+            $this->schedule_processing_retry($order_id, 60);
             return false;
         }
 
         $response_code = (int) wp_remote_retrieve_response_code($response);
         if ($response_code === 202) {
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
-            $order->save();
+            $this->set_invoice_status($order, 'pending');
             $this->schedule_processing_retry($order_id, 45);
             return false;
         }
 
+        $body = OverSeek_HTTP_Utils::decode_json_response($response);
+        $relay_error = '';
+        if (is_array($body) && isset($body['error'])) {
+            $relay_error = is_string($body['error']) ? $body['error'] : '';
+        }
+
         if ($response_code === 409) {
-            $body = OverSeek_HTTP_Utils::decode_json_response($response);
             $status = isset($body['status']) ? (string) $body['status'] : '';
             if ($status === 'pending') {
-                $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
-                $order->save();
+                $this->set_invoice_status($order, 'pending');
                 $this->schedule_processing_retry($order_id, 45);
                 return false;
             }
 
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            $this->set_invoice_status($order, 'failed', $relay_error !== '' ? $relay_error : 'Invoice generation failed at relay.');
             return false;
         }
 
         if ($response_code >= 300) {
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            if ($response_code >= 500 || $response_code === 429) {
+                $this->set_invoice_status($order, 'pending', $relay_error !== '' ? $relay_error : 'Invoice relay is temporarily unavailable.');
+                $this->schedule_processing_retry($order_id, 60);
+                return false;
+            }
+
+            $this->set_invoice_status($order, 'failed', $relay_error !== '' ? $relay_error : 'Invoice relay request was rejected.');
             return false;
         }
 
-        $body = OverSeek_HTTP_Utils::decode_json_response($response);
         if (!is_array($body)) {
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            $this->set_invoice_status($order, 'pending', 'Invalid relay response while generating invoice.');
+            $this->schedule_processing_retry($order_id, 60);
             return false;
         }
 
@@ -212,20 +229,17 @@ class OverSeek_Order_Invoices
         if ($base64_pdf === '') {
             $status = isset($body['status']) ? (string) $body['status'] : '';
             if ($status === 'pending') {
-                $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
-                $order->save();
+                $this->set_invoice_status($order, 'pending');
                 $this->schedule_processing_retry($order_id, 45);
                 return false;
             }
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            $this->set_invoice_status($order, 'failed', $relay_error !== '' ? $relay_error : 'Invoice PDF payload missing from relay response.');
             return false;
         }
 
         $private_dir = $this->ensure_private_invoice_dir();
         if ($private_dir === '') {
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            $this->set_invoice_status($order, 'failed', 'Could not prepare private invoice directory.');
             return false;
         }
 
@@ -235,15 +249,13 @@ class OverSeek_Order_Invoices
 
         $decoded = base64_decode($base64_pdf, true);
         if ($decoded === false) {
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            $this->set_invoice_status($order, 'failed', 'Received invalid invoice PDF payload.');
             return false;
         }
 
         $written = file_put_contents($file_path, $decoded);
         if ($written === false) {
-            $order->update_meta_data(self::META_INVOICE_STATUS, 'failed');
-            $order->save();
+            $this->set_invoice_status($order, 'failed', 'Could not write invoice PDF to disk.');
             return false;
         }
 
@@ -255,6 +267,7 @@ class OverSeek_Order_Invoices
             $order->update_meta_data(self::META_INVOICE_REF, $invoice_ref);
         }
         $order->update_meta_data(self::META_INVOICE_STATUS, 'ready');
+        $order->delete_meta_data(self::META_INVOICE_ERROR);
         $order->update_meta_data(self::META_INVOICE_GENERATED_AT, gmdate('c'));
         $order->save();
 
@@ -392,6 +405,7 @@ class OverSeek_Order_Invoices
 
         $invoice_ref = (string) $order->get_meta(self::META_INVOICE_REF);
         $generated_at = (string) $order->get_meta(self::META_INVOICE_GENERATED_AT);
+        $error_message = (string) $order->get_meta(self::META_INVOICE_ERROR);
         $download_url = add_query_arg(
             [
                 'order_id' => $order_id,
@@ -407,6 +421,7 @@ class OverSeek_Order_Invoices
             'pdf_url' => $this->invoice_is_available($order_id) ? $download_url : null,
             'status' => in_array($status, ['pending', 'ready', 'failed'], true) ? $status : 'pending',
             'issued_at' => $generated_at !== '' ? $generated_at : null,
+            'error_message' => $error_message !== '' ? $error_message : null,
         ];
 
         return apply_filters('overseek_invoice_payload', $payload, $order);
