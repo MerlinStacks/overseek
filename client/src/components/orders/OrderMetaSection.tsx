@@ -8,7 +8,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Palette, FileText, Image as ImageIcon, Settings } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, Image as ImageIcon, Settings } from 'lucide-react';
 import { fixMojibake } from '../../utils/format';
 
 
@@ -230,26 +230,17 @@ export function OrderMetaSection({ metaData, onImageClick }: OrderMetaSectionPro
     return (
         <div className="mt-3 space-y-2">
             {variationItems.length > 0 && (
-                <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-purple-700">
-                        <Palette size={12} />
-                        <span className="capitalize">Product Options</span>
-                        <span className="px-1.5 py-0.5 rounded-full bg-purple-50 text-[10px] font-bold border border-purple-200">
-                            {variationItems.length}
-                        </span>
-                    </div>
-                    <div className="grid gap-1.5">
-                        {variationItems.map((item, idx) => (
-                            <div key={idx} className="flex items-baseline gap-2 text-xs">
-                                <span className="font-medium text-gray-600 capitalize min-w-[80px]">
-                                    {item.key}:
-                                </span>
-                                <span className="text-gray-900 break-all whitespace-pre-line">
-                                    {normalizeMetaValue(item.value)}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
+                <div className="grid gap-1.5">
+                    {variationItems.map((item, idx) => (
+                        <div key={idx} className="flex items-baseline gap-2 text-xs">
+                            <span className="font-medium text-gray-600 capitalize min-w-[80px]">
+                                {item.key}:
+                            </span>
+                            <span className="text-red-700 break-all whitespace-pre-line font-medium">
+                                {normalizeMetaValue(item.value)}
+                            </span>
+                        </div>
+                    ))}
                 </div>
             )}
 

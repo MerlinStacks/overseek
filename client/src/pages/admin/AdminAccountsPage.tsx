@@ -31,9 +31,24 @@ const KNOWN_FEATURES = [
     'GOLD_PRICE_CALCULATOR',
     'AD_TRACKING',
     'EMAIL',
+    'FEED_EXPORTS',
     'BOT_SHIELD',
     'TRACKING_EMAIL_EVENTS'
 ];
+
+const FEATURE_LABELS: Record<string, string> = {
+    AI_MANAGER: 'AI Manager',
+    AI_WRITER: 'AI Writer',
+    META_ADS: 'Meta Ads',
+    GOOGLE_ADS: 'Google Ads',
+    ADVANCED_REPORTS: 'Advanced Reports',
+    GOLD_PRICE_CALCULATOR: 'Gold Pricing',
+    AD_TRACKING: 'Ad Tracking',
+    EMAIL: 'Email',
+    FEED_EXPORTS: 'Feeds',
+    BOT_SHIELD: 'Bot Shield',
+    TRACKING_EMAIL_EVENTS: 'Tracking Email',
+};
 
 export function AdminAccountsPage() {
     const { token, login } = useAuth();
@@ -227,9 +242,9 @@ export function AdminAccountsPage() {
                                                             ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
                                                             : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-600"
                                                     )}
-                                                    title={`Toggle ${key}`}
+                                                    title={`Toggle ${FEATURE_LABELS[key] || key}`}
                                                 >
-                                                    {key.split('_')[0]}
+                                                    {FEATURE_LABELS[key] || key}
                                                 </button>
                                             );
                                         })}

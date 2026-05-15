@@ -102,6 +102,7 @@ export function OrderDetailPage() {
     const [attribution, setAttribution] = useState<Attribution | null>(null);
     const [sidebarPanelOrder, setSidebarPanelOrder] = useState<SidebarPanelId[]>(DEFAULT_SIDEBAR_PANEL_ORDER);
     const [draggedPanelId, setDraggedPanelId] = useState<SidebarPanelId | null>(null);
+    const [isReorderMode, setIsReorderMode] = useState(false);
 
 
 
@@ -642,7 +643,13 @@ export function OrderDetailPage() {
 
                 {/* Sidebar - Customer Details */}
                 <div className="space-y-6">
-                    <div className="flex justify-end">
+                    <div className="flex justify-end items-center gap-3">
+                        <button
+                            onClick={() => setIsReorderMode((prev) => !prev)}
+                            className={`text-xs underline underline-offset-2 ${isReorderMode ? 'text-indigo-600 hover:text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            {isReorderMode ? 'Done reordering' : 'Reorder panels'}
+                        </button>
                         <button
                             onClick={() => {
                                 setSidebarPanelOrder(DEFAULT_SIDEBAR_PANEL_ORDER);
@@ -656,12 +663,17 @@ export function OrderDetailPage() {
                     {visiblePanelOrder.map((panelId) => (
                         <div
                             key={panelId}
-                            draggable
-                            onDragStart={() => setDraggedPanelId(panelId)}
+                            draggable={isReorderMode}
+                            onDragStart={() => {
+                                if (!isReorderMode) return;
+                                setDraggedPanelId(panelId);
+                            }}
                             onDragOver={(event) => {
+                                if (!isReorderMode) return;
                                 event.preventDefault();
                             }}
                             onDrop={() => {
+                                if (!isReorderMode) return;
                                 if (!draggedPanelId) return;
                                 movePanel(draggedPanelId, panelId);
                                 setDraggedPanelId(null);
@@ -669,12 +681,14 @@ export function OrderDetailPage() {
                             onDragEnd={() => setDraggedPanelId(null)}
                             className={draggedPanelId === panelId ? 'opacity-70' : ''}
                         >
-                            <div className="mb-2 flex justify-end">
-                                <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 cursor-move">
-                                    <GripVertical size={12} />
-                                    Drag to reorder
+                            {isReorderMode && (
+                                <div className="mb-2 flex justify-end">
+                                    <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 cursor-move">
+                                        <GripVertical size={12} />
+                                        Move
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                             {sidebarPanels[panelId]}
                         </div>
                     ))}

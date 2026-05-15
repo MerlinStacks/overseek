@@ -348,10 +348,9 @@ export function OrderTagSettings() {
                             const filteredAvailableForMapping = rowQuery.trim()
                                 ? availableForMapping.filter((tag) => tag.toLowerCase().includes(rowQuery.toLowerCase()))
                                 : availableForMapping;
-                            const quickAddSuggestions = filteredAvailableForMapping.slice(0, 8);
                             const activeSuggestionIndex = Math.min(
                                 rowSuggestionIndex[index] ?? 0,
-                                Math.max(quickAddSuggestions.length - 1, 0)
+                                Math.max(filteredAvailableForMapping.length - 1, 0)
                             );
                             const productTagLabel = mappingProductTags.length > 0 ? mappingProductTags.join(', ') : '-';
                             return (
@@ -404,36 +403,17 @@ export function OrderTagSettings() {
                                                         className="w-full pl-6 pr-2 py-1.5 text-xs border rounded-md bg-white border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     />
                                                 </div>
-                                                {quickAddSuggestions.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {quickAddSuggestions.map((tag) => (
-                                                            <button
-                                                                key={`${mapping.orderTag}-${tag}`}
-                                                                type="button"
-                                                                onClick={() => addProductTagToMapping(index, tag)}
-                                                                onMouseEnter={() => setRowSuggestionIndex((prev) => ({ ...prev, [index]: quickAddSuggestions.indexOf(tag) }))}
-                                                                className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${quickAddSuggestions[activeSuggestionIndex] === tag
-                                                                    ? 'bg-blue-100 border-blue-300 text-blue-800'
-                                                                    : 'bg-white border-blue-200 text-blue-700 hover:bg-blue-50'
-                                                                    }`}
-                                                                title={`Add ${tag}`}
-                                                            >
-                                                                + {tag}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                {quickAddSuggestions.length > 0 && (
+                                                {filteredAvailableForMapping.length > 0 && (
                                                     <p className="text-[11px] text-blue-700">
-                                                        Selected: + {quickAddSuggestions[activeSuggestionIndex]}
+                                                        Selected: + {filteredAvailableForMapping[activeSuggestionIndex]}
                                                     </p>
                                                 )}
                                                 {rowQuery.trim() && filteredAvailableForMapping.length === 0 && (
                                                     <p className="text-[11px] text-gray-500">No matching product tags</p>
                                                 )}
-                                                {!rowQuery.trim() && filteredAvailableForMapping.length > quickAddSuggestions.length && (
+                                                {!rowQuery.trim() && filteredAvailableForMapping.length > 0 && (
                                                     <p className="text-[11px] text-gray-500">
-                                                        Showing {quickAddSuggestions.length} of {filteredAvailableForMapping.length} tags. Type to narrow.
+                                                        Showing {filteredAvailableForMapping.length} tags. Type to narrow.
                                                     </p>
                                                 )}
                                             </div>

@@ -459,37 +459,44 @@ function collectBreakPoints(container: HTMLElement): number[] {
     if (!innerDiv) return [];
 
     // All block-level child boundaries (each represents a section: header, customer, table, etc.)
-    const scanChildren = (parent: HTMLElement, depth: number, inTableFooter = false) => {
+    const scanChildren = (parent: HTMLElement, depth: number, inTableFooter = false, inTableRow = false) => {
         if (depth > 3) return; // Don't recurse too deep
         for (const child of Array.from(parent.children) as HTMLElement[]) {
             const rect = child.getBoundingClientRect();
             const bottomY = rect.bottom - containerRect.top;
             const isTableFooter = child.tagName === 'TFOOT';
+            const isTableRow = child.tagName === 'TR';
             const insideFooter = inTableFooter || isTableFooter;
 
             // Avoid page breaks inside totals/footer sections.
             // We keep whole tfoot blocks together by only allowing break points
             // above them or after the entire table block.
-            if (!insideFooter) {
+            if (!insideFooter && !inTableRow) {
                 points.add(Math.round(bottomY));
             }
 
             // Recurse into tables to get row-level break points
             if (child.tagName === 'TABLE' || child.tagName === 'TBODY') {
-                scanChildren(child, depth + 1, insideFooter);
+                scanChildren(child, depth + 1, insideFooter, false);
             }
             // Recurse into table rows to break between them
             if (child.tagName === 'TR' && !insideFooter) {
                 points.add(Math.round(bottomY));
             }
-            // Recurse into div containers (order_table wrapper, totals, etc.)
-            if (child.tagName === 'DIV' && child.children.length > 0 && depth < 2) {
-                scanChildren(child, depth + 1, insideFooter);
+            // Recurse into div containers for section-level breaks only.
+            // Do not recurse into divs inside a table row, otherwise we create
+            // break points inside a single line item block.
+            if (child.tagName === 'DIV' && child.children.length > 0 && depth < 2 && !isTableRow && !inTableRow) {
+                scanChildren(child, depth + 1, insideFooter, false);
+            }
+
+            if (isTableRow && child.children.length > 0) {
+                scanChildren(child, depth + 1, insideFooter, true);
             }
         }
     };
 
-    scanChildren(innerDiv, 0, false);
+    scanChildren(innerDiv, 0, false, false);
 
     return Array.from(points).sort((a, b) => a - b);
 }
@@ -525,6 +532,10 @@ function createPaginatedPdf(
     const pageHeightPx = (A4_HEIGHT_MM / mmPerPx) * CAPTURE_SCALE;
     // Allow break points within 20% above the ideal cut line
     const searchThreshold = pageHeightPx * 0.2;
+    // Prefer not to split content inside a row-like block.
+    // If no break exists in the threshold window, we can fall back to the last
+    // known safe break before idealCut, as long as the page is not too underfilled.
+    const MIN_PAGE_FILL_RATIO = 0.55;
 
     let yOffset = 0;
     let pageIndex = 0;
@@ -543,17 +554,29 @@ function createPaginatedPdf(
             // Search range: [idealCut - threshold, idealCut]
             const searchMin = idealCut - searchThreshold;
             let bestBreak: number | null = null;
+            let lastSafeBreakBeforeIdeal: number | null = null;
 
             for (const bp of breakPointsCanvas) {
                 if (bp <= yOffset) continue;     // Already past this point
                 if (bp > idealCut) break;         // Beyond the ideal cut
+                lastSafeBreakBeforeIdeal = bp;
                 if (bp >= searchMin) {
                     bestBreak = bp;               // Closest safe break within range
                 }
             }
 
-            // Use the safe break or fall back to the exact page height
-            actualCut = bestBreak ?? idealCut;
+            if (bestBreak !== null) {
+                actualCut = bestBreak;
+            } else if (lastSafeBreakBeforeIdeal !== null) {
+                const fallbackSliceHeight = lastSafeBreakBeforeIdeal - yOffset;
+                if (fallbackSliceHeight >= (pageHeightPx * MIN_PAGE_FILL_RATIO)) {
+                    actualCut = lastSafeBreakBeforeIdeal;
+                } else {
+                    actualCut = idealCut;
+                }
+            } else {
+                actualCut = idealCut;
+            }
         }
 
         const sliceHeight = actualCut - yOffset;
