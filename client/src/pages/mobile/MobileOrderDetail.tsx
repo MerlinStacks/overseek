@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -285,8 +285,7 @@ export function MobileOrderDetail() {
 
     const statusConfig = STATUS_CONFIG[order.status.toLowerCase()] || STATUS_CONFIG.pending;
     const StatusIcon = statusConfig.icon;
-    const mobilePanels = useMemo(() => {
-        const panels: Record<MobilePanelId, ReactNode | null> = {
+    const mobilePanels: Record<MobilePanelId, ReactNode | null> = {
             tracking: order.trackingItems.length > 0 ? (
                 <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
                     <div className="flex items-center gap-2 mb-3">
@@ -402,9 +401,6 @@ export function MobileOrderDetail() {
                 </div>
             )
         };
-
-        return panels;
-    }, [attribution, canViewCogs, order, orderTags]);
     const visiblePanelOrder = mobilePanelOrder.filter((panelId) => mobilePanels[panelId]);
 
     return (

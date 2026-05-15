@@ -93,8 +93,8 @@ describe('OrderSync Optimization', () => {
 
         // Step 1: $queryRaw returns aggregated counts
         const mockCounts = [
-            { woo_id: 101, count: 3, total_spent: 120.5 },
-            { woo_id: 202, count: 5, total_spent: 250.0 },
+            { customer_id: 'customer-101', count: 3, total_spent: 120.5 },
+            { customer_id: 'customer-202', count: 5, total_spent: 250.0 },
         ];
         (prisma.$queryRaw as any).mockResolvedValue(mockCounts);
 
@@ -113,11 +113,11 @@ describe('OrderSync Optimization', () => {
             data: { ordersCount: 0, totalSpent: 0 }
         });
         expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
-            where: { accountId, wooId: 101 },
+            where: { accountId, id: 'customer-101' },
             data: { ordersCount: 3, totalSpent: 120.5 }
         });
         expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
-            where: { accountId, wooId: 202 },
+            where: { accountId, id: 'customer-202' },
             data: { ordersCount: 5, totalSpent: 250 }
         });
     });

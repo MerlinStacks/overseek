@@ -31,7 +31,7 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
                     Invoice Number:
                   </td>
                   <td
-                    class="font-medium text-slate-800"
+                    class="font-semibold text-black"
                   >
                     INV-01234
                   </td>
@@ -43,7 +43,7 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
                     Invoice Date:
                   </td>
                   <td
-                    class="font-medium text-slate-800"
+                    class="font-semibold text-black"
                   >
                     26/04/2026
                   </td>
@@ -55,7 +55,7 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
                     Due Date:
                   </td>
                   <td
-                    class="font-medium text-slate-800"
+                    class="font-semibold text-black"
                   >
                     03/05/2026
                   </td>
@@ -67,7 +67,7 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
                     Order Number:
                   </td>
                   <td
-                    class="font-medium text-slate-800"
+                    class="font-semibold text-black"
                   >
                     1001
                   </td>
@@ -79,7 +79,7 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
                     Order Date:
                   </td>
                   <td
-                    class="font-medium text-slate-800"
+                    class="font-semibold text-black"
                   >
                     20/04/2026
                   </td>
@@ -91,7 +91,7 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
                     Payment Method:
                   </td>
                   <td
-                    class="font-medium text-slate-800 break-words"
+                    class="font-semibold text-black break-words"
                   >
                     Card
                   </td>
@@ -103,7 +103,7 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
                     Shipping Method:
                   </td>
                   <td
-                    class="font-medium text-slate-800 break-words"
+                    class="font-semibold text-black break-words"
                   >
                     Express
                   </td>
@@ -194,7 +194,7 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
           style="top: 84px; left: 16px; width: 1248px; height: 68px; position: absolute;"
         >
           <div
-            class="py-3 text-center text-sm text-slate-500 bg-white relative z-20"
+            class="py-3 text-center text-sm text-slate-500 bg-white"
           >
             <div>
               Thanks for your order

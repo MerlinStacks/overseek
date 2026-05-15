@@ -15,6 +15,8 @@ export default tseslint.config(
         },
         rules: {
             ...reactHooks.configs.recommended.rules,
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn',
             // These React Compiler rules are useful but too strict for the current codebase.
             // Keep them visible as warnings while we migrate incrementally.
             'react-hooks/preserve-manual-memoization': 'warn',

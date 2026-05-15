@@ -271,7 +271,7 @@ export class CustomerSync extends BaseSync {
         for (let i = 0; i < updates.length; i += UPDATE_CHUNK) {
             const chunk = updates.slice(i, i + UPDATE_CHUNK);
             const values = Prisma.join(
-                chunk.map((u) => Prisma.sql`(${u.conversationId}::uuid, ${u.customerId}::uuid)`)
+                chunk.map((u) => Prisma.sql`(${u.conversationId}, ${u.customerId})`)
             );
             await prisma.$executeRaw`
                 UPDATE "Conversation" c
@@ -280,6 +280,7 @@ export class CustomerSync extends BaseSync {
                     "guestName" = NULL
                 FROM (VALUES ${values}) AS v(conversation_id, customer_id)
                 WHERE c.id = v.conversation_id
+                  AND c."accountId" = ${accountId}
             `;
         }
 

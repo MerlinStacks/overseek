@@ -89,7 +89,9 @@ describe('SettingsPage tab behavior', () => {
 
         const user = userEvent.setup();
         const emailButtons = await screen.findAllByRole('button', { name: /Email/i });
-        await user.click(emailButtons[0]);
+        for (const button of emailButtons) {
+            await user.click(button);
+        }
 
         await waitFor(() => {
             expect(screen.getByTestId('location-search')).toHaveTextContent('tab=email');

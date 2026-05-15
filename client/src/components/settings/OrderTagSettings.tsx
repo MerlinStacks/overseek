@@ -36,6 +36,7 @@ export function OrderTagSettings() {
     const [showAddDropdown, setShowAddDropdown] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [rowTagQueries, setRowTagQueries] = useState<Record<number, string>>({});
+    const [rowSuggestionIndex, setRowSuggestionIndex] = useState<Record<number, number>>({});
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown on outside click
@@ -149,6 +150,7 @@ export function OrderTagSettings() {
         }));
 
         setRowTagQueries((prev) => ({ ...prev, [index]: '' }));
+        setRowSuggestionIndex((prev) => ({ ...prev, [index]: 0 }));
     }
 
     function removeProductTagFromMapping(index: number, tagToRemove: string) {
@@ -168,15 +170,42 @@ export function OrderTagSettings() {
 
     function setRowTagQuery(index: number, value: string) {
         setRowTagQueries((prev) => ({ ...prev, [index]: value }));
+        setRowSuggestionIndex((prev) => ({ ...prev, [index]: 0 }));
     }
 
     function handleRowSearchKeyDown(index: number, event: KeyboardEvent<HTMLInputElement>, candidates: string[]) {
-        if (event.key !== 'Enter') return;
-        event.preventDefault();
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (candidates.length === 0) return;
+            const currentIndex = rowSuggestionIndex[index] ?? 0;
+            const nextIndex = (currentIndex + 1) % candidates.length;
+            setRowSuggestionIndex((prev) => ({ ...prev, [index]: nextIndex }));
+            return;
+        }
 
-        const firstMatch = candidates[0];
-        if (firstMatch) {
-            addProductTagToMapping(index, firstMatch);
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (candidates.length === 0) return;
+            const currentIndex = rowSuggestionIndex[index] ?? 0;
+            const nextIndex = (currentIndex - 1 + candidates.length) % candidates.length;
+            setRowSuggestionIndex((prev) => ({ ...prev, [index]: nextIndex }));
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            setRowTagQuery(index, '');
+            return;
+        }
+
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            if (candidates.length === 0) return;
+            const selectedIndex = rowSuggestionIndex[index] ?? 0;
+            const selectedTag = candidates[selectedIndex] || candidates[0];
+            if (selectedTag) {
+                addProductTagToMapping(index, selectedTag);
+            }
         }
     }
 
@@ -319,6 +348,11 @@ export function OrderTagSettings() {
                             const filteredAvailableForMapping = rowQuery.trim()
                                 ? availableForMapping.filter((tag) => tag.toLowerCase().includes(rowQuery.toLowerCase()))
                                 : availableForMapping;
+                            const quickAddSuggestions = filteredAvailableForMapping.slice(0, 8);
+                            const activeSuggestionIndex = Math.min(
+                                rowSuggestionIndex[index] ?? 0,
+                                Math.max(quickAddSuggestions.length - 1, 0)
+                            );
                             const productTagLabel = mappingProductTags.length > 0 ? mappingProductTags.join(', ') : '-';
                             return (
                             <div
@@ -366,26 +400,41 @@ export function OrderTagSettings() {
                                                         value={rowQuery}
                                                         onChange={(e) => setRowTagQuery(index, e.target.value)}
                                                         onKeyDown={(e) => handleRowSearchKeyDown(index, e, filteredAvailableForMapping)}
-                                                        placeholder="Search then add tag..."
-                                                        className="w-full pl-6 pr-2 py-1 text-xs border rounded-md bg-white border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                        placeholder="Search product tags and press Enter"
+                                                        className="w-full pl-6 pr-2 py-1.5 text-xs border rounded-md bg-white border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     />
                                                 </div>
-                                                <select
-                                                    value=""
-                                                    onChange={(e) => {
-                                                        if (e.target.value) {
-                                                            addProductTagToMapping(index, e.target.value);
-                                                        }
-                                                    }}
-                                                    className="w-full px-2 py-1 text-xs border rounded-md bg-white border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                >
-                                                    <option value="">Add product tag...</option>
-                                                    {filteredAvailableForMapping.map((tag) => (
-                                                        <option key={`${mapping.orderTag}-${tag}`} value={tag}>{tag}</option>
-                                                    ))}
-                                                </select>
+                                                {quickAddSuggestions.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {quickAddSuggestions.map((tag) => (
+                                                            <button
+                                                                key={`${mapping.orderTag}-${tag}`}
+                                                                type="button"
+                                                                onClick={() => addProductTagToMapping(index, tag)}
+                                                                onMouseEnter={() => setRowSuggestionIndex((prev) => ({ ...prev, [index]: quickAddSuggestions.indexOf(tag) }))}
+                                                                className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${quickAddSuggestions[activeSuggestionIndex] === tag
+                                                                    ? 'bg-blue-100 border-blue-300 text-blue-800'
+                                                                    : 'bg-white border-blue-200 text-blue-700 hover:bg-blue-50'
+                                                                    }`}
+                                                                title={`Add ${tag}`}
+                                                            >
+                                                                + {tag}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {quickAddSuggestions.length > 0 && (
+                                                    <p className="text-[11px] text-blue-700">
+                                                        Selected: + {quickAddSuggestions[activeSuggestionIndex]}
+                                                    </p>
+                                                )}
                                                 {rowQuery.trim() && filteredAvailableForMapping.length === 0 && (
                                                     <p className="text-[11px] text-gray-500">No matching product tags</p>
+                                                )}
+                                                {!rowQuery.trim() && filteredAvailableForMapping.length > quickAddSuggestions.length && (
+                                                    <p className="text-[11px] text-gray-500">
+                                                        Showing {quickAddSuggestions.length} of {filteredAvailableForMapping.length} tags. Type to narrow.
+                                                    </p>
                                                 )}
                                             </div>
                                         )}

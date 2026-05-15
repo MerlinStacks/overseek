@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { Logger } from '../utils/logger';
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -299,8 +299,7 @@ export function OrderDetailPage() {
     const shipping = order.shipping || {};
     const hasTrackingItems = (order.tracking_items || []).length > 0;
 
-    const sidebarPanels = useMemo(() => {
-        const panels: Record<SidebarPanelId, ReactNode | null> = {
+    const sidebarPanels: Record<SidebarPanelId, ReactNode | null> = {
             tags: (
                 <OrderTagPanel
                     orderId={toStringValue(order.id || order.wooId || id || '')}
@@ -510,9 +509,6 @@ export function OrderDetailPage() {
                 </div>
             )
         };
-
-        return panels;
-    }, [attribution, billing.address_1, billing.address_2, billing.city, billing.country, billing.email, billing.first_name, billing.last_name, billing.phone, billing.postcode, billing.state, fetchOrder, hasTrackingItems, id, order._customerMeta?.ordersCount, order.currency, order.customer_id, order.id, order.internal_updated_at, order.tags, order.tracking_items, order.wooId, shipping.address_1, shipping.address_2, shipping.city, shipping.country, shipping.postcode, shipping.state]);
 
     const visiblePanelOrder = sidebarPanelOrder.filter((panelId) => sidebarPanels[panelId]);
 

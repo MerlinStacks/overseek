@@ -65,6 +65,33 @@ jobs:
               - 'client/**'
               - 'packages/overseek-core/**'
 
+  # ── Step 1b: Lint client before web build ────────────────────────────────────
+  lint-client:
+    name: Lint Client
+    runs-on: ubuntu-latest
+    needs: changes
+    if: >-
+      needs.changes.outputs.web == 'true' ||
+      github.event.inputs.force_build == 'web' ||
+      github.event.inputs.force_build == 'both'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client deps
+        run: npm ci
+        working-directory: client
+
+      - name: Run client lint
+        run: npm run lint
+        working-directory: client
+
   # ── Step 2a: Build & push API image ──────────────────────────────────────────
   build-api:
     name: Build API Image
@@ -112,7 +139,7 @@ jobs:
   build-web:
     name: Build Web Image
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, lint-client]
     if: >-
       needs.changes.outputs.web == 'true' ||
       github.event.inputs.force_build == 'web' ||
