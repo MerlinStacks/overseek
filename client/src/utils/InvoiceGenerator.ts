@@ -458,45 +458,26 @@ function collectBreakPoints(container: HTMLElement): number[] {
     const innerDiv = container.querySelector(':scope > div') as HTMLElement;
     if (!innerDiv) return [];
 
-    // All block-level child boundaries (each represents a section: header, customer, table, etc.)
-    const scanChildren = (parent: HTMLElement, depth: number, inTableFooter = false, inTableRow = false) => {
-        if (depth > 3) return; // Don't recurse too deep
-        for (const child of Array.from(parent.children) as HTMLElement[]) {
-            const rect = child.getBoundingClientRect();
-            const bottomY = rect.bottom - containerRect.top;
-            const isTableFooter = child.tagName === 'TFOOT';
-            const isTableRow = child.tagName === 'TR';
-            const insideFooter = inTableFooter || isTableFooter;
+    // 1) Top-level section bottoms (grid item wrappers)
+    for (const child of Array.from(innerDiv.children) as HTMLElement[]) {
+        const rect = child.getBoundingClientRect();
+        points.add(Math.round(rect.bottom - containerRect.top));
+    }
 
-            // Avoid page breaks inside totals/footer sections.
-            // We keep whole tfoot blocks together by only allowing break points
-            // above them or after the entire table block.
-            if (!insideFooter && !inTableRow) {
-                points.add(Math.round(bottomY));
-            }
+    // 2) Order-row boundaries only at TR bottoms (safe points between line items)
+    const rowNodes = innerDiv.querySelectorAll('tbody > tr');
+    rowNodes.forEach((row) => {
+        const rect = (row as HTMLElement).getBoundingClientRect();
+        points.add(Math.round(rect.bottom - containerRect.top));
+    });
 
-            // Recurse into tables to get row-level break points
-            if (child.tagName === 'TABLE' || child.tagName === 'TBODY') {
-                scanChildren(child, depth + 1, insideFooter, false);
-            }
-            // Recurse into table rows to break between them
-            if (child.tagName === 'TR' && !insideFooter) {
-                points.add(Math.round(bottomY));
-            }
-            // Recurse into div containers for section-level breaks only.
-            // Do not recurse into divs inside a table row, otherwise we create
-            // break points inside a single line item block.
-            if (child.tagName === 'DIV' && child.children.length > 0 && depth < 2 && !isTableRow && !inTableRow) {
-                scanChildren(child, depth + 1, insideFooter, false);
-            }
-
-            if (isTableRow && child.children.length > 0) {
-                scanChildren(child, depth + 1, insideFooter, true);
-            }
-        }
-    };
-
-    scanChildren(innerDiv, 0, false, false);
+    // 3) Explicitly allow cut before totals/footer table blocks
+    const tfootNodes = innerDiv.querySelectorAll('tfoot');
+    tfootNodes.forEach((tfoot) => {
+        const rect = (tfoot as HTMLElement).getBoundingClientRect();
+        points.add(Math.round(rect.top - containerRect.top));
+        points.add(Math.round(rect.bottom - containerRect.top));
+    });
 
     return Array.from(points).sort((a, b) => a - b);
 }
@@ -530,12 +511,8 @@ function createPaginatedPdf(
 
     // Multi-page — slice at safe break points
     const pageHeightPx = (A4_HEIGHT_MM / mmPerPx) * CAPTURE_SCALE;
-    // Allow break points within 20% above the ideal cut line
-    const searchThreshold = pageHeightPx * 0.2;
     // Prefer not to split content inside a row-like block.
-    // If no break exists in the threshold window, we can fall back to the last
-    // known safe break before idealCut, as long as the page is not too underfilled.
-    const MIN_PAGE_FILL_RATIO = 0.55;
+    const MIN_PAGE_FILL_RATIO = 0.6;
 
     let yOffset = 0;
     let pageIndex = 0;
@@ -550,9 +527,7 @@ function createPaginatedPdf(
             // Last page — take whatever remains
             actualCut = canvas.height;
         } else {
-            // Find the best safe break point: closest to idealCut but not past it
-            // Search range: [idealCut - threshold, idealCut]
-            const searchMin = idealCut - searchThreshold;
+            // Find the best safe break point: nearest <= idealCut.
             let bestBreak: number | null = null;
             let lastSafeBreakBeforeIdeal: number | null = null;
 
@@ -560,9 +535,7 @@ function createPaginatedPdf(
                 if (bp <= yOffset) continue;     // Already past this point
                 if (bp > idealCut) break;         // Beyond the ideal cut
                 lastSafeBreakBeforeIdeal = bp;
-                if (bp >= searchMin) {
-                    bestBreak = bp;               // Closest safe break within range
-                }
+                bestBreak = bp;
             }
 
             if (bestBreak !== null) {

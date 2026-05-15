@@ -102,6 +102,7 @@ export function OrderDetailPage() {
     const [attribution, setAttribution] = useState<Attribution | null>(null);
     const [sidebarPanelOrder, setSidebarPanelOrder] = useState<SidebarPanelId[]>(DEFAULT_SIDEBAR_PANEL_ORDER);
     const [draggedPanelId, setDraggedPanelId] = useState<SidebarPanelId | null>(null);
+    const [dragOverPanelId, setDragOverPanelId] = useState<SidebarPanelId | null>(null);
     const [isReorderMode, setIsReorderMode] = useState(false);
 
 
@@ -667,20 +668,35 @@ export function OrderDetailPage() {
                             onDragStart={() => {
                                 if (!isReorderMode) return;
                                 setDraggedPanelId(panelId);
+                                setDragOverPanelId(panelId);
                             }}
                             onDragOver={(event) => {
                                 if (!isReorderMode) return;
                                 event.preventDefault();
+                                if (dragOverPanelId !== panelId) {
+                                    setDragOverPanelId(panelId);
+                                }
                             }}
                             onDrop={() => {
                                 if (!isReorderMode) return;
                                 if (!draggedPanelId) return;
                                 movePanel(draggedPanelId, panelId);
                                 setDraggedPanelId(null);
+                                setDragOverPanelId(null);
                             }}
-                            onDragEnd={() => setDraggedPanelId(null)}
-                            className={draggedPanelId === panelId ? 'opacity-70' : ''}
+                            onDragEnd={() => {
+                                setDraggedPanelId(null);
+                                setDragOverPanelId(null);
+                            }}
+                            className={draggedPanelId === panelId ? 'opacity-40' : ''}
                         >
+                            {isReorderMode && draggedPanelId && dragOverPanelId === panelId && draggedPanelId !== panelId && (
+                                <div className="mb-2 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/60 p-4">
+                                    <div className="h-3 w-32 animate-pulse rounded bg-indigo-200/70" />
+                                    <div className="mt-3 h-2 w-full animate-pulse rounded bg-indigo-100" />
+                                    <div className="mt-2 h-2 w-4/5 animate-pulse rounded bg-indigo-100" />
+                                </div>
+                            )}
                             {isReorderMode && (
                                 <div className="mb-2 flex justify-end">
                                     <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 cursor-move">

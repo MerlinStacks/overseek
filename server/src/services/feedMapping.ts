@@ -40,7 +40,15 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'description', sourceField: 'description', fallbackSourceField: 'short_description', required: true },
         { targetField: 'link', sourceField: 'permalink', required: true },
         { targetField: 'image_link', sourceField: 'mainImage', required: true },
+        { targetField: 'additional_image_link', sourceField: 'additionalImages' },
+        { targetField: 'condition', sourceField: 'condition', required: true },
+        { targetField: 'google_product_category', sourceField: 'googleProductCategory' },
+        { targetField: 'product_type', sourceField: 'productType' },
+        { targetField: 'gtin', sourceField: 'gtin' },
+        { targetField: 'mpn', sourceField: 'mpn' },
         { targetField: 'price', sourceField: 'price', required: true },
+        { targetField: 'sale_price', sourceField: 'salePrice' },
+        { targetField: 'sale_price_effective_date', sourceField: 'salePriceEffectiveDate' },
         { targetField: 'availability', sourceField: 'stockStatus', required: true },
         { targetField: 'brand', sourceField: 'brand' },
     ],
@@ -50,9 +58,16 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'description', sourceField: 'description', fallbackSourceField: 'short_description' },
         { targetField: 'link', sourceField: 'permalink', required: true },
         { targetField: 'image_link', sourceField: 'mainImage', required: true },
+        { targetField: 'additional_image_link', sourceField: 'additionalImages' },
         { targetField: 'price', sourceField: 'price', required: true },
+        { targetField: 'sale_price', sourceField: 'salePrice' },
         { targetField: 'availability', sourceField: 'stockStatus' },
         { targetField: 'brand', sourceField: 'brand' },
+        { targetField: 'condition', sourceField: 'condition' },
+        { targetField: 'google_product_category', sourceField: 'googleProductCategory' },
+        { targetField: 'product_type', sourceField: 'productType' },
+        { targetField: 'gtin', sourceField: 'gtin' },
+        { targetField: 'mpn', sourceField: 'mpn' },
     ],
     pinterest: [
         { targetField: 'id', sourceField: 'wooId', required: true },
@@ -60,8 +75,15 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'description', sourceField: 'description', fallbackSourceField: 'short_description' },
         { targetField: 'link', sourceField: 'permalink', required: true },
         { targetField: 'image_link', sourceField: 'mainImage', required: true },
+        { targetField: 'additional_image_link', sourceField: 'additionalImages' },
         { targetField: 'price', sourceField: 'price', required: true },
+        { targetField: 'sale_price', sourceField: 'salePrice' },
         { targetField: 'availability', sourceField: 'stockStatus' },
+        { targetField: 'condition', sourceField: 'condition' },
+        { targetField: 'product_type', sourceField: 'productType' },
+        { targetField: 'google_product_category', sourceField: 'googleProductCategory' },
+        { targetField: 'gtin', sourceField: 'gtin' },
+        { targetField: 'mpn', sourceField: 'mpn' },
     ],
     similar: [
         { targetField: 'id', sourceField: 'wooId', required: true },
@@ -98,6 +120,18 @@ function getSourceValue(sourceField: string, product: any): string | null {
             return String(status);
         }
         case 'brand': return product.rawData?.brands?.[0]?.name || product.rawData?.brand || null;
+        case 'additionalImages': {
+            const images = Array.isArray(product.rawData?.images) ? product.rawData.images.slice(1) : [];
+            const urls = images.map((img: any) => img?.src).filter(Boolean);
+            return urls.length > 0 ? urls.join(',') : null;
+        }
+        case 'condition': return product.rawData?.condition || 'new';
+        case 'googleProductCategory': return product.rawData?.google_product_category || product.rawData?.googleProductCategory || null;
+        case 'productType': return product.rawData?.product_type || product.rawData?.productType || null;
+        case 'gtin': return product.rawData?.gtin || product.rawData?._gtin || null;
+        case 'mpn': return product.rawData?.mpn || product.rawData?._mpn || null;
+        case 'salePrice': return product.rawData?.sale_price || null;
+        case 'salePriceEffectiveDate': return product.rawData?.sale_price_effective_date || null;
         default: return null;
     }
 }
@@ -127,6 +161,20 @@ function getVariationSourceValue(sourceField: string, variation: any, parent: an
             return String(status);
         }
         case 'brand': return parent.rawData?.brands?.[0]?.name || parent.rawData?.brand || null;
+        case 'additionalImages': {
+            const variationImage = variation.rawData?.image?.src;
+            const parentImages = Array.isArray(parent.rawData?.images) ? parent.rawData.images.slice(1) : [];
+            const images = variationImage ? [{ src: variationImage }, ...parentImages] : parentImages;
+            const urls = images.map((img: any) => img?.src).filter(Boolean);
+            return urls.length > 0 ? urls.join(',') : null;
+        }
+        case 'condition': return variation.rawData?.condition || parent.rawData?.condition || 'new';
+        case 'googleProductCategory': return variation.rawData?.google_product_category || parent.rawData?.google_product_category || null;
+        case 'productType': return variation.rawData?.product_type || parent.rawData?.product_type || null;
+        case 'gtin': return variation.rawData?.gtin || variation.rawData?._gtin || parent.rawData?.gtin || parent.rawData?._gtin || null;
+        case 'mpn': return variation.rawData?.mpn || variation.rawData?._mpn || parent.rawData?.mpn || parent.rawData?._mpn || null;
+        case 'salePrice': return variation.rawData?.sale_price || parent.rawData?.sale_price || null;
+        case 'salePriceEffectiveDate': return variation.rawData?.sale_price_effective_date || parent.rawData?.sale_price_effective_date || null;
         default: return null;
     }
 }

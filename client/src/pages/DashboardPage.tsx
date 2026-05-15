@@ -31,6 +31,79 @@ interface WidgetInstance {
     settings?: unknown;
 }
 
+const DASHBOARD_COLS = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 } as const;
+
+function findNextWidgetPosition(
+    existingWidgets: WidgetInstance[],
+    defaultW: number,
+    defaultH: number,
+    cols: number
+) {
+    const width = Math.max(1, Math.min(defaultW, cols));
+    const height = Math.max(1, defaultH);
+    const occupied = new Set<string>();
+
+    for (const widget of existingWidgets) {
+        const w = Math.max(1, Math.min(widget.position.w, cols));
+        const x = Math.max(0, Math.min(widget.position.x, cols - w));
+        const y = Math.max(0, widget.position.y);
+        const h = Math.max(1, widget.position.h);
+
+        for (let row = y; row < y + h; row += 1) {
+            for (let col = x; col < x + w; col += 1) {
+                occupied.add(`${col},${row}`);
+            }
+        }
+    }
+
+    for (let y = 0; y < 2000; y += 1) {
+        for (let x = 0; x <= cols - width; x += 1) {
+            let canPlace = true;
+            for (let row = y; row < y + height && canPlace; row += 1) {
+                for (let col = x; col < x + width; col += 1) {
+                    if (occupied.has(`${col},${row}`)) {
+                        canPlace = false;
+                        break;
+                    }
+                }
+            }
+            if (canPlace) {
+                return { x, y, w: width, h: height };
+            }
+        }
+    }
+
+    return { x: 0, y: existingWidgets.length * 2, w: width, h: height };
+}
+
+function getDeviceAwareWidgetSize(
+    defaultW: number,
+    defaultH: number,
+    breakpoint: string,
+    cols: number
+) {
+    const isTablet = breakpoint === 'md' || breakpoint === 'sm';
+    const isMobile = breakpoint === 'xs' || breakpoint === 'xxs';
+
+    let width = defaultW;
+    let height = defaultH;
+
+    if (isTablet) {
+        width = Math.max(2, Math.min(defaultW, cols));
+        height = Math.max(2, Math.min(defaultH, 4));
+    }
+
+    if (isMobile) {
+        width = cols;
+        height = Math.max(2, Math.min(defaultH, 4));
+    }
+
+    return {
+        w: Math.max(1, Math.min(width, cols)),
+        h: Math.max(1, height)
+    };
+}
+
 interface DashboardWidgetResponse {
     id: string;
     widgetKey: string;
@@ -172,10 +245,9 @@ export function DashboardPage() {
      * This prevents layout reset when the library re-renders.
      */
     const responsiveLayouts = useMemo(() => {
-        const breakpointCols = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 };
         const layouts: { [key: string]: { i: string; x: number; y: number; w: number; h: number, static?: boolean }[] } = {};
 
-        for (const [bp, cols] of Object.entries(breakpointCols)) {
+        for (const [bp, cols] of Object.entries(DASHBOARD_COLS)) {
             layouts[bp] = widgets.map(widget => {
                 // Clamp width to max available columns
                 const w = Math.min(widget.position.w, cols);
@@ -197,10 +269,13 @@ export function DashboardPage() {
     const addWidget = (key: string) => {
         if (isLayoutLocked) return;
         const entry = WidgetRegistry[key];
+        const cols = DASHBOARD_COLS[currentBreakpoint as keyof typeof DASHBOARD_COLS] || DASHBOARD_COLS.lg;
+        const defaultSize = getDeviceAwareWidgetSize(entry.defaultW, entry.defaultH, currentBreakpoint, cols);
+        const nextPosition = findNextWidgetPosition(widgets, defaultSize.w, defaultSize.h, cols);
         const newWidget: WidgetInstance = {
             id: `new-${Date.now()}`,
             widgetKey: key,
-            position: { x: 0, y: Infinity, w: entry.defaultW, h: entry.defaultH }
+            position: nextPosition
         };
         const updated = [...widgets, newWidget];
         setWidgets(updated);
@@ -335,7 +410,7 @@ export function DashboardPage() {
                 className="layout"
                 layouts={responsiveLayouts}
                 breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+                cols={DASHBOARD_COLS}
                 rowHeight={100}
                 onLayoutChange={(layoutArg, layoutsArg) => {
                     onLayoutChange(
@@ -347,8 +422,8 @@ export function DashboardPage() {
                 isDraggable={!isLayoutLocked}
                 isResizable={!isLayoutLocked}
                 draggableHandle={!isLayoutLocked ? ".drag-handle" : undefined}
-                compactType={null}
-                preventCollision={true}
+                compactType="vertical"
+                preventCollision={false}
             >
                 {widgets
                     .filter(w => {

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Modal } from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useToast } from '../context/ToastContext';
 import { useApiMutation, useApiQuery } from '../hooks/useApiQuery';
 
 type FeedChannel = 'google' | 'meta' | 'pinterest' | 'similar';
+type FeedsViewTab = 'spreadsheet' | 'settings';
 type RefreshMode = 'manual' | 'auto_on_sync' | '1h' | '3h' | '12h' | '24h';
 type VariationMode = 'variable_parent' | 'all_variations' | 'default_variation' | 'first_variation' | 'last_variation' | 'variable_and_variations';
 
@@ -30,6 +32,7 @@ interface FeedRow {
 interface FeedRowsResponse {
     rows: FeedRow[];
     total: number;
+    mappings: Array<{ targetField: string; required?: boolean }>;
 }
 
 const CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
@@ -49,10 +52,12 @@ export function FeedsPage() {
     const { currentAccount } = useAccount();
     const toast = useToast();
     const [activeChannel, setActiveChannel] = useState<FeedChannel>('google');
+    const [activeTab, setActiveTab] = useState<FeedsViewTab>('spreadsheet');
     const [variationMode, setVariationMode] = useState<VariationMode>('all_variations');
     const [query, setQuery] = useState('');
-    const [editingCell, setEditingCell] = useState<{ rowId: string; field: string } | null>(null);
+    const [editingCell, setEditingCell] = useState<{ channel: FeedChannel; rowId: string; field: string } | null>(null);
     const [editingValue, setEditingValue] = useState('');
+    const [expandedDescription, setExpandedDescription] = useState<{ rowName: string; value: string } | null>(null);
     const [selectedRows, setSelectedRows] = useState<Record<string, { wooId: number; variationWooId?: number }>>({});
     const [bulkJobId, setBulkJobId] = useState<string | null>(null);
     const [page, setPage] = useState(1);
@@ -210,6 +215,7 @@ export function FeedsPage() {
     const selectedMode = refreshModeData?.refreshMode || 'manual';
     const maxBulkOptimizeRows = bulkLimitData?.maxBulkOptimizeRows || 5000;
     const rows = rowsData?.rows || [];
+    const mappings = rowsData?.mappings || [];
     const total = rowsData?.total || 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -218,6 +224,8 @@ export function FeedsPage() {
         setPageInput('1');
         setSelectedRows({});
         setAllMatchingSelected(false);
+        setEditingCell(null);
+        setExpandedDescription(null);
     }, [activeChannel, variationMode, query]);
 
     useEffect(() => {
@@ -225,6 +233,23 @@ export function FeedsPage() {
     }, [page]);
 
     const getColumn = (row: FeedRow, field: string) => row.columns.find((c) => c.targetField === field);
+    const canAiOptimizeField = (field: string) => field === 'title' || field === 'description';
+
+    const startEditing = (row: FeedRow, field: string, value: string | null) => {
+        setEditingCell({ channel: activeChannel, rowId: row.rowId, field });
+        setEditingValue(value || '');
+    };
+
+    const cancelEditing = () => {
+        setEditingCell(null);
+        setEditingValue('');
+    };
+
+    const saveEditing = async (row: FeedRow, field: string) => {
+        await saveCellValue({ row, field, value: editingValue });
+        cancelEditing();
+        await refetchRows();
+    };
 
     const toggleRowSelected = (row: FeedRow, checked: boolean) => {
         setSelectedRows((prev) => {
@@ -253,8 +278,157 @@ export function FeedsPage() {
                 </p>
             </div>
 
-            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-4">
-                <div className="flex flex-wrap gap-2 mb-4">
+            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-2">
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            activeTab === 'spreadsheet'
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
+                        }`}
+                        onClick={() => setActiveTab('spreadsheet')}
+                    >
+                        Spreadsheet
+                    </button>
+                    <button
+                        type="button"
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            activeTab === 'settings'
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
+                        }`}
+                        onClick={() => setActiveTab('settings')}
+                    >
+                        Feed Settings
+                    </button>
+                </div>
+            </div>
+
+            {activeTab === 'settings' && (
+                <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-4 space-y-5">
+                    <div className="space-y-2">
+                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Platform</h2>
+                        <div className="flex flex-wrap gap-2">
+                            {CHANNELS.map((channel) => {
+                                const active = activeChannel === channel;
+                                return (
+                                    <button
+                                        key={channel}
+                                        type="button"
+                                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                            active
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
+                                        }`}
+                                        onClick={() => setActiveChannel(channel)}
+                                    >
+                                        {channel.charAt(0).toUpperCase() + channel.slice(1)}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Variation mode</h2>
+                        <select
+                            className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm w-full md:w-auto"
+                            value={variationMode}
+                            onChange={(e) => setVariationMode(e.target.value as VariationMode)}
+                        >
+                            {VARIATION_MODES.map((mode) => (
+                                <option key={mode.value} value={mode.value}>{mode.label}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                            Refresh mode ({activeChannel})
+                        </h2>
+
+                        {(optionsLoading || refreshModeLoading) && (
+                            <p className="text-sm text-slate-600 dark:text-slate-400">Loading feed settings...</p>
+                        )}
+
+                        {!optionsLoading && !refreshModeLoading && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                {options.map((mode) => {
+                                    const active = selectedMode === mode;
+                                    return (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            disabled={isSaving}
+                                            className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
+                                                active
+                                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200'
+                                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
+                                            }`}
+                                            onClick={async () => {
+                                                try {
+                                                    await saveRefreshMode({ refreshMode: mode });
+                                                    await refetch();
+                                                    toast.success(`Refresh mode set to ${modeLabel(mode)}.`);
+                                                } catch (error: any) {
+                                                    toast.error(error?.message || 'Failed to save refresh mode');
+                                                }
+                                            }}
+                                        >
+                                            {modeLabel(mode as RefreshMode)}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Bulk optimize cap</h2>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                            Hard cap per bulk optimize job for this account.
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                min={1}
+                                max={200000}
+                                defaultValue={maxBulkOptimizeRows}
+                                className="w-40 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+                                id="bulk-cap-input"
+                            />
+                            <button
+                                type="button"
+                                disabled={isSavingBulkLimit || bulkLimitLoading}
+                                className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
+                                onClick={async () => {
+                                    const input = document.getElementById('bulk-cap-input') as HTMLInputElement | null;
+                                    const value = Number(input?.value || maxBulkOptimizeRows);
+                                    if (!Number.isFinite(value) || value < 1) {
+                                        toast.error('Please enter a valid bulk limit.');
+                                        return;
+                                    }
+                                    try {
+                                        const saved = await saveBulkLimit({ maxBulkOptimizeRows: value });
+                                        await refetchBulkLimit();
+                                        toast.success(`Bulk cap set to ${saved.maxBulkOptimizeRows.toLocaleString()} rows.`);
+                                    } catch (error: any) {
+                                        toast.error(error?.message || 'Failed to save bulk cap');
+                                    }
+                                }}
+                            >
+                                Save cap
+                            </button>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Current: {maxBulkOptimizeRows.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'spreadsheet' && (
+            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-4 space-y-4">
+                <div className="flex flex-wrap gap-2">
                     {CHANNELS.map((channel) => {
                         const active = activeChannel === channel;
                         return (
@@ -273,103 +447,17 @@ export function FeedsPage() {
                         );
                     })}
                 </div>
-
-                <div className="space-y-3">
-                    <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                        Refresh mode ({activeChannel})
-                    </h2>
-
-                    {(optionsLoading || refreshModeLoading) && (
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Loading feed settings...</p>
-                    )}
-
-                    {!optionsLoading && !refreshModeLoading && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {options.map((mode) => {
-                                const active = selectedMode === mode;
-                                return (
-                                    <button
-                                        key={mode}
-                                        type="button"
-                                        disabled={isSaving}
-                                        className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
-                                            active
-                                                ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200'
-                                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
-                                        }`}
-                                        onClick={async () => {
-                                            try {
-                                                await saveRefreshMode({ refreshMode: mode });
-                                                await refetch();
-                                                toast.success(`Refresh mode set to ${modeLabel(mode)}.`);
-                                            } catch (error: any) {
-                                                toast.error(error?.message || 'Failed to save refresh mode');
-                                            }
-                                        }}
-                                    >
-                                        {modeLabel(mode as RefreshMode)}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
+                <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-white/95 dark:bg-slate-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:supports-[backdrop-filter]:bg-slate-800/80 border-b border-slate-200/70 dark:border-slate-700/70 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
+                        Platform: {activeChannel.charAt(0).toUpperCase() + activeChannel.slice(1)}
+                    </span>
+                    <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                        Variation Mode: {VARIATION_MODES.find((mode) => mode.value === variationMode)?.label || variationMode}
+                    </span>
                 </div>
-
-                <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-2">
-                    <h2 className="text-base font-semibold text-slate-900 dark:text-white">Bulk optimize cap</h2>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">
-                        Hard cap per bulk optimize job for this account.
-                    </p>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="number"
-                            min={1}
-                            max={200000}
-                            defaultValue={maxBulkOptimizeRows}
-                            className="w-40 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
-                            id="bulk-cap-input"
-                        />
-                        <button
-                            type="button"
-                            disabled={isSavingBulkLimit || bulkLimitLoading}
-                            className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
-                            onClick={async () => {
-                                const input = document.getElementById('bulk-cap-input') as HTMLInputElement | null;
-                                const value = Number(input?.value || maxBulkOptimizeRows);
-                                if (!Number.isFinite(value) || value < 1) {
-                                    toast.error('Please enter a valid bulk limit.');
-                                    return;
-                                }
-                                try {
-                                    const saved = await saveBulkLimit({ maxBulkOptimizeRows: value });
-                                    await refetchBulkLimit();
-                                    toast.success(`Bulk cap set to ${saved.maxBulkOptimizeRows.toLocaleString()} rows.`);
-                                } catch (error: any) {
-                                    toast.error(error?.message || 'Failed to save bulk cap');
-                                }
-                            }}
-                        >
-                            Save cap
-                        </button>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Current: {maxBulkOptimizeRows.toLocaleString()}</span>
-                    </div>
-                </div>
-            </div>
-
-            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-4 space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
                     <div className="flex items-center gap-2">
-                        <label className="text-sm text-slate-600 dark:text-slate-300">Variation mode</label>
-                            <select
-                                className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
-                                value={variationMode}
-                                onChange={(e) => setVariationMode(e.target.value as VariationMode)}
-                        >
-                            {VARIATION_MODES.map((mode) => (
-                                <option key={mode.value} value={mode.value}>{mode.label}</option>
-                            ))}
-                            </select>
-                        <label className="text-sm text-slate-600 dark:text-slate-300 ml-2">Page size</label>
+                        <label className="text-sm text-slate-600 dark:text-slate-300">Page size</label>
                         <select
                             className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
                             value={limit}
@@ -528,19 +616,18 @@ export function FeedsPage() {
                                     </th>
                                     <th className="text-left py-2 pr-3">Product</th>
                                     <th className="text-left py-2 pr-3">SKU</th>
-                                    <th className="text-left py-2 pr-3">Title</th>
-                                    <th className="text-left py-2 pr-3">Description</th>
-                                    <th className="text-left py-2 pr-3">Actions</th>
+                                    {mappings.map((mapping) => (
+                                        <th key={mapping.targetField} className="text-left py-2 pr-3 whitespace-nowrap">
+                                            {mapping.targetField}
+                                            {mapping.required ? <span className="text-rose-500 ml-1">*</span> : null}
+                                        </th>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {rows.map((row) => {
-                                    const titleCol = getColumn(row, 'title');
-                                    const descCol = getColumn(row, 'description');
-                                    const isEditingTitle = editingCell?.rowId === row.rowId && editingCell.field === 'title';
-                                    const isEditingDesc = editingCell?.rowId === row.rowId && editingCell.field === 'description';
                                     return (
-                                        <tr key={row.rowId} className="border-b border-slate-100 dark:border-slate-700/60 align-top">
+                                        <tr key={row.rowId} className="border-b border-slate-100 dark:border-slate-700/60 align-middle">
                                             <td className="py-2 pr-2">
                                                 <input
                                                     type="checkbox"
@@ -556,104 +643,105 @@ export function FeedsPage() {
                                                 <div className="text-xs text-slate-500 dark:text-slate-400">{row.rowType}</div>
                                             </td>
                                             <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">{row.sku || '-'}</td>
-                                            <td className="py-2 pr-3 max-w-xs">
-                                                {isEditingTitle ? (
-                                                    <div className="space-y-1">
-                                                        <textarea
-                                                            className="w-full min-h-20 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
-                                                            value={editingValue}
-                                                            onChange={(e) => setEditingValue(e.target.value)}
-                                                        />
-                                                        <div className="flex gap-1">
-                                                            <button
-                                                                type="button"
-                                                                disabled={isSavingCell}
-                                                                className="px-2 py-1 text-xs rounded bg-indigo-600 text-white disabled:opacity-50"
-                                                                onClick={async () => {
-                                                                    try {
-                                                                        await saveCellValue({ row, field: 'title', value: editingValue });
-                                                                        setEditingCell(null);
-                                                                        await refetchRows();
-                                                                        toast.success('Title saved.');
-                                                                    } catch (error: any) {
-                                                                        toast.error(error?.message || 'Failed to save title');
-                                                                    }
-                                                                }}
-                                                            >Save</button>
-                                                            <button type="button" className="px-2 py-1 text-xs rounded bg-slate-100 dark:bg-slate-700" onClick={() => setEditingCell(null)}>Cancel</button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        type="button"
-                                                        className="text-left hover:underline"
-                                                        onClick={() => {
-                                                            setEditingCell({ rowId: row.rowId, field: 'title' });
-                                                            setEditingValue(titleCol?.finalValue || '');
-                                                        }}
-                                                    >
-                                                        {titleCol?.finalValue || '-'}
-                                                    </button>
-                                                )}
-                                            </td>
-                                            <td className="py-2 pr-3 max-w-md">
-                                                {isEditingDesc ? (
-                                                    <div className="space-y-1">
-                                                        <textarea
-                                                            className="w-full min-h-20 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
-                                                            value={editingValue}
-                                                            onChange={(e) => setEditingValue(e.target.value)}
-                                                        />
-                                                        <div className="flex gap-1">
-                                                            <button
-                                                                type="button"
-                                                                disabled={isSavingCell}
-                                                                className="px-2 py-1 text-xs rounded bg-indigo-600 text-white disabled:opacity-50"
-                                                                onClick={async () => {
-                                                                    try {
-                                                                        await saveCellValue({ row, field: 'description', value: editingValue });
-                                                                        setEditingCell(null);
-                                                                        await refetchRows();
-                                                                        toast.success('Description saved.');
-                                                                    } catch (error: any) {
-                                                                        toast.error(error?.message || 'Failed to save description');
-                                                                    }
-                                                                }}
-                                                            >Save</button>
-                                                            <button type="button" className="px-2 py-1 text-xs rounded bg-slate-100 dark:bg-slate-700" onClick={() => setEditingCell(null)}>Cancel</button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        type="button"
-                                                        className="text-left hover:underline"
-                                                        onClick={() => {
-                                                            setEditingCell({ rowId: row.rowId, field: 'description' });
-                                                            setEditingValue(descCol?.finalValue || '');
-                                                        }}
-                                                    >
-                                                        {descCol?.finalValue || '-'}
-                                                    </button>
-                                                )}
-                                            </td>
-                                            <td className="py-2 pr-3">
-                                                <button
-                                                    type="button"
-                                                    disabled={isOptimizingRow}
-                                                    className="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
-                                                    onClick={async () => {
-                                                        try {
-                                                            await optimizeRow({ row, fields: ['title', 'description'] });
-                                                            await refetchRows();
-                                                            toast.success('AI suggestions updated for this row.');
-                                                        } catch (error: any) {
-                                                            toast.error(error?.message || 'Failed to optimize row');
-                                                        }
-                                                    }}
-                                                >
-                                                    AI Optimize
-                                                </button>
-                                            </td>
+                                            {mappings.map((mapping) => {
+                                                const field = mapping.targetField;
+                                                const column = getColumn(row, field);
+                                                const value = column?.finalValue || '';
+                                                const isEditing =
+                                                    editingCell?.channel === activeChannel
+                                                    && editingCell?.rowId === row.rowId
+                                                    && editingCell?.field === field;
+                                                const isLongText = field === 'description' || value.length > 120;
+                                                const displayValue = value || '-';
+
+                                                return (
+                                                    <td key={`${row.rowId}-${field}`} className="py-2 pr-3 max-w-sm align-top">
+                                                        {isEditing ? (
+                                                            <div className="space-y-1">
+                                                                {field === 'description' || value.length > 90 ? (
+                                                                    <textarea
+                                                                        className="w-full min-h-20 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                                                                        value={editingValue}
+                                                                        onChange={(e) => setEditingValue(e.target.value)}
+                                                                    />
+                                                                ) : (
+                                                                    <input
+                                                                        className="w-full px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                                                                        value={editingValue}
+                                                                        onChange={(e) => setEditingValue(e.target.value)}
+                                                                    />
+                                                                )}
+                                                                <div className="flex gap-1 flex-wrap">
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={isSavingCell}
+                                                                        className="px-2 py-1 text-xs rounded bg-indigo-600 text-white disabled:opacity-50"
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                await saveEditing(row, field);
+                                                                                toast.success(`${field} saved.`);
+                                                                            } catch (error: any) {
+                                                                                toast.error(error?.message || `Failed to save ${field}`);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        Save
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="px-2 py-1 text-xs rounded bg-slate-100 dark:bg-slate-700"
+                                                                        onClick={cancelEditing}
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                    {canAiOptimizeField(field) ? (
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={isOptimizingRow}
+                                                                            className="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    await optimizeRow({ row, fields: [field] });
+                                                                                    await refetchRows();
+                                                                                    toast.success(`AI suggestion updated for ${field}.`);
+                                                                                } catch (error: any) {
+                                                                                    toast.error(error?.message || `Failed to optimize ${field}`);
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            AI Optimize
+                                                                        </button>
+                                                                    ) : null}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-start gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    className={`text-left ${isLongText ? 'line-clamp-2' : ''} ${column?.isMissingRequired ? 'text-rose-600 dark:text-rose-400' : 'hover:underline'}`}
+                                                                    onClick={() => {
+                                                                        if (field === 'description') {
+                                                                            setExpandedDescription({ rowName: row.name, value: value || '-' });
+                                                                            return;
+                                                                        }
+                                                                        startEditing(row, field, value);
+                                                                    }}
+                                                                    title={displayValue}
+                                                                >
+                                                                    {displayValue}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600"
+                                                                    onClick={() => startEditing(row, field, value)}
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
                                         </tr>
                                     );
                                 })}
@@ -709,6 +797,18 @@ export function FeedsPage() {
                     </div>
                 </div>
             </div>
+            )}
+
+            <Modal
+                isOpen={!!expandedDescription}
+                onClose={() => setExpandedDescription(null)}
+                title={expandedDescription ? `Description: ${expandedDescription.rowName}` : 'Description'}
+                maxWidth="max-w-4xl"
+            >
+                <div className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-200">
+                    {expandedDescription?.value || '-'}
+                </div>
+            </Modal>
         </div>
     );
 }
