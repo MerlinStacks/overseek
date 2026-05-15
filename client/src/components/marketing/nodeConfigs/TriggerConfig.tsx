@@ -225,18 +225,20 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
 
     return (
         <>
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Trigger Type</label>
-                <select
-                    value={selectedTrigger}
-                    onChange={(e) => onUpdate('triggerType', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                    {TRIGGER_TYPES.map(t => (
-                        <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                </select>
-            </div>
+            {!config.triggerType && (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Trigger Type</label>
+                    <select
+                        value={selectedTrigger}
+                        onChange={(e) => onUpdate('triggerType', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                        {TRIGGER_TYPES.map(t => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             {selectedTrigger === 'NO_PURCHASE_IN_X_DAYS' && (
                 <div className="border-t pt-4 space-y-2">

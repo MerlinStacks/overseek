@@ -21,7 +21,31 @@ function getLayoutHash(layout: any): string {
 }
 
 export class CanonicalInvoiceService {
-    async getOrQueue(accountId: string, orderId: string) {
+    private getInvalidateBeforeDate(): Date | null {
+        const raw = String(process.env.INVOICE_CANONICAL_INVALIDATE_BEFORE || '').trim();
+        if (!raw) return null;
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return parsed;
+    }
+
+    private getStaleReason(artifact: InvoiceArtifact | null, forceRegenerate: boolean): string | null {
+        if (forceRegenerate) return 'forced_refresh';
+        if (!artifact) return 'missing_artifact';
+        if (artifact.status !== 'ready') return 'not_ready';
+        if (!artifact.storagePath || !fs.existsSync(artifact.storagePath)) return 'missing_file';
+        if (artifact.renderer !== 'designer-capture') return 'non_canonical_renderer';
+
+        const invalidateBefore = this.getInvalidateBeforeDate();
+        if (invalidateBefore && artifact.generatedAt && artifact.generatedAt < invalidateBefore) {
+            return 'generated_before_cutoff';
+        }
+
+        return null;
+    }
+
+    async getOrQueue(accountId: string, orderId: string, options: { forceRegenerate?: boolean } = {}) {
+        const forceRegenerate = options.forceRegenerate === true;
         const template = await prisma.invoiceTemplate.findFirst({
             where: { accountId },
             orderBy: { updatedAt: 'desc' },
@@ -46,9 +70,8 @@ export class CanonicalInvoiceService {
             }
         });
 
-        const readyAndReadable = artifact?.status === 'ready'
-            && !!artifact.storagePath
-            && fs.existsSync(artifact.storagePath);
+        const staleReason = this.getStaleReason(artifact, forceRegenerate);
+        const readyAndReadable = !staleReason;
         if (readyAndReadable) {
             return artifact;
         }
@@ -61,34 +84,47 @@ export class CanonicalInvoiceService {
                     templateId: template.id,
                     templateVersion,
                     layoutHash,
-                    renderer: 'designer-capture',
+                    renderer: 'pending',
                     status: 'pending'
                 }
             });
-        } else if (artifact.status === 'failed' || !artifact.storagePath) {
+        } else if (forceRegenerate || artifact.status === 'failed' || !artifact.storagePath) {
             artifact = await prisma.invoiceArtifact.update({
                 where: { id: artifact.id },
                 data: {
                     status: 'pending',
-                    errorMessage: null
+                    errorMessage: null,
+                    generatedAt: null
                 }
             });
         }
 
-        await this.enqueueGeneration(artifact.id, accountId, orderId, template.id);
+        await this.enqueueGeneration(artifact.id, accountId, orderId, template.id, { forceRegenerate });
         return artifact;
     }
 
-    async enqueueGeneration(artifactId: string, accountId: string, orderId: string, templateId: string): Promise<void> {
+    async enqueueGeneration(
+        artifactId: string,
+        accountId: string,
+        orderId: string,
+        templateId: string,
+        options: { forceRegenerate?: boolean } = {}
+    ): Promise<void> {
         const queue = QueueFactory.getQueue(QUEUES.INVOICE_CANONICAL_GENERATE);
         const safeArtifactId = artifactId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const forceRegenerate = options.forceRegenerate === true;
+        const jobId = forceRegenerate
+            ? `invoice-canonical_${safeArtifactId}_force_${Date.now()}`
+            : `invoice-canonical_${safeArtifactId}`;
+
         await queue.add('generate-canonical-invoice', {
             artifactId,
             accountId,
             orderId,
-            templateId
+            templateId,
+            forceRegenerate
         }, {
-            jobId: `invoice-canonical_${safeArtifactId}`
+            jobId
         });
     }
 
@@ -107,9 +143,9 @@ export class CanonicalInvoiceService {
         }
 
         try {
-            const allowPdfkitFallback = process.env.INVOICE_CANONICAL_FALLBACK_PDFKIT !== 'false';
+            const allowPdfkitFallback = process.env.INVOICE_CANONICAL_FALLBACK_PDFKIT === 'true';
             if (!allowPdfkitFallback) {
-                throw new Error('Canonical renderer unavailable and PDFKit fallback disabled');
+                throw new Error('Canonical designer renderer is required for 1:1 output. PDFKit fallback is disabled.');
             }
 
             const generated = await invoiceService.generateInvoicePdf(data.accountId, data.orderId, data.templateId);
@@ -140,7 +176,7 @@ export class CanonicalInvoiceService {
                 where: { id: artifact.id },
                 data: {
                     status: 'failed',
-                    renderer: 'pdfkit-fallback',
+                    renderer: artifact.renderer,
                     errorMessage: message
                 }
             });

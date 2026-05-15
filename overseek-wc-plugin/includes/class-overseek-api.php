@@ -216,8 +216,8 @@ class OverSeek_API {
 			$status = $available ? 'ready' : 'pending';
 		}
 
-		if ( ! $available && method_exists( $service, 'try_generate_invoice_now' ) ) {
-			$service->try_generate_invoice_now( $order_id, 6 );
+		if ( method_exists( $service, 'try_generate_invoice_now' ) ) {
+			$service->try_generate_invoice_now( $order_id, 8, false, true );
 			$available = $service->invoice_is_available( $order_id );
 			$status = (string) $order->get_meta( '_overseek_invoice_status' );
 			if ( $status === '' ) {

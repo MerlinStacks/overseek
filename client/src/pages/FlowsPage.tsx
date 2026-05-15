@@ -394,11 +394,18 @@ export function FlowsPage() {
                     if (rawDraft) {
                         const parsedDraft = JSON.parse(rawDraft) as FlowDraftPayload;
                         if (parsedDraft?.flowDefinition?.nodes && Array.isArray(parsedDraft.flowDefinition.nodes)) {
-                            setRecoveryPrompt({
-                                flowId: id,
-                                flowName: resolvedName,
-                                draftSavedAt: parsedDraft.savedAt,
-                            });
+                            const serverFlow = serializeFlow(data.flowDefinition as FlowDefinition | undefined);
+                            const draftFlow = serializeFlow(parsedDraft.flowDefinition);
+
+                            if (serverFlow !== draftFlow) {
+                                setRecoveryPrompt({
+                                    flowId: id,
+                                    flowName: resolvedName,
+                                    draftSavedAt: parsedDraft.savedAt,
+                                });
+                            } else {
+                                window.localStorage.removeItem(draftKey);
+                            }
                         }
                     }
                 } catch (error) {

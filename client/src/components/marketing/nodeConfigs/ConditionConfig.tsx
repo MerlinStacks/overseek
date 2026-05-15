@@ -187,6 +187,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
 
             <div className="flex gap-2">
                 <button
+                    type="button"
                     onClick={() => onUpdate('matchType', 'all')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${(config.matchType || 'all') === 'all'
                         ? 'bg-blue-100 text-blue-700 border border-blue-300'
@@ -196,6 +197,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                     Match ALL (AND)
                 </button>
                 <button
+                    type="button"
                     onClick={() => onUpdate('matchType', 'any')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${config.matchType === 'any'
                         ? 'bg-blue-100 text-blue-700 border border-blue-300'
@@ -210,6 +212,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                 {CONDITION_GROUPS.map(group => (
                     <button
                         key={group.id}
+                        type="button"
                         onClick={() => setActiveGroup(group.id)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeGroup === group.id
                             ? 'bg-blue-50 text-blue-700 border border-blue-300'
@@ -228,10 +231,17 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                     {availableConditions.map(cond => (
                         <button
                             key={cond.field}
+                            type="button"
                             onClick={() => {
                                 if (conditions[conditions.length - 1]?.field === '') {
-                                    updateCondition(conditions.length - 1, 'field', cond.field);
-                                    updateCondition(conditions.length - 1, 'operator', cond.operators[0]);
+                                    const updated = [...conditions];
+                                    updated[conditions.length - 1] = {
+                                        ...updated[conditions.length - 1],
+                                        field: cond.field,
+                                        operator: cond.operators[0],
+                                    };
+                                    setConditions(updated);
+                                    onUpdate('conditions', updated);
                                 } else {
                                     const newCond: ConditionRule = { field: cond.field, operator: cond.operators[0], value: '' };
                                     const updated = [...conditions, newCond];
@@ -275,6 +285,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                                 />
                             </div>
                             <button
+                                type="button"
                                 onClick={() => removeCondition(idx)}
                                 className="p-1 text-gray-400 hover:text-red-500 transition-colors"
                             >
@@ -299,6 +310,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             )}
 
             <button
+                type="button"
                 onClick={addCondition}
                 className="w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
             >

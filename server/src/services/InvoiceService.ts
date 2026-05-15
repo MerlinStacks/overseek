@@ -694,12 +694,23 @@ export class InvoiceService {
 
                         let detY = startY;
                         const detailLabelWidth = Math.min(120, Math.max(88, width * 0.45));
+                        const detailValueWidth = Math.max(40, width - detailLabelWidth - 6);
+                        const detailLineGap = 3;
                         detailsData.forEach(([label, value]) => {
-                            doc.font('Helvetica').fillColor('#64748b').text(label, x, detY, { width: detailLabelWidth });
-                            doc.font('Helvetica-Bold').fillColor('#1f2937').text(value, x + detailLabelWidth + 6, detY, {
-                                width: Math.max(40, width - detailLabelWidth - 6)
+                            const safeValue = String(value ?? 'N/A');
+
+                            doc.font('Helvetica').fontSize(9);
+                            const labelHeight = doc.heightOfString(label, { width: detailLabelWidth });
+
+                            doc.font('Helvetica-Bold').fontSize(9);
+                            const valueHeight = doc.heightOfString(safeValue, { width: detailValueWidth });
+
+                            doc.font('Helvetica').fillColor('#64748b').fontSize(9).text(label, x, detY, { width: detailLabelWidth });
+                            doc.font('Helvetica-Bold').fillColor('#1f2937').fontSize(9).text(safeValue, x + detailLabelWidth + 6, detY, {
+                                width: detailValueWidth
                             });
-                            detY += 13;
+
+                            detY += Math.max(labelHeight, valueHeight) + detailLineGap;
                         });
                         doc.fillColor('black').font('Helvetica').fontSize(10);
                         blockHeight = detY - startY + 10;

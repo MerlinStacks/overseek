@@ -40,26 +40,30 @@ const ACTION_TYPES = [
 ];
 
 export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) => {
+    const selectedActionType = config.actionType || 'SEND_EMAIL';
+
     return (
         <>
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Action Type</label>
-                <select
-                    value={config.actionType || 'SEND_EMAIL'}
-                    onChange={(e) => onUpdate('actionType', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                    {ACTION_TYPES.map(t => (
-                        <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                </select>
-            </div>
+            {!config.actionType && (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Action Type</label>
+                    <select
+                        value={selectedActionType}
+                        onChange={(e) => onUpdate('actionType', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                        {ACTION_TYPES.map(t => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
-            {config.actionType === 'SEND_EMAIL' && (
+            {selectedActionType === 'SEND_EMAIL' && (
                 <SendEmailConfig config={config} onUpdate={onUpdate} />
             )}
 
-            {config.actionType === 'SEND_SMS' && (
+            {selectedActionType === 'SEND_SMS' && (
                 <>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">SMS Message</label>
@@ -90,7 +94,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) 
                 </>
             )}
 
-            {config.actionType === 'ADD_TAG' && (
+            {selectedActionType === 'ADD_TAG' && (
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Tag Name</label>
                     <input
@@ -104,7 +108,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) 
                 </div>
             )}
 
-            {config.actionType === 'REMOVE_TAG' && (
+            {selectedActionType === 'REMOVE_TAG' && (
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Tag Name</label>
                     <input
@@ -118,7 +122,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) 
                 </div>
             )}
 
-            {config.actionType === 'WEBHOOK' && (
+            {selectedActionType === 'WEBHOOK' && (
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Webhook URL</label>
                     <input
@@ -131,7 +135,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) 
                 </div>
             )}
 
-            {config.actionType === 'GENERATE_COUPON' && (
+            {selectedActionType === 'GENERATE_COUPON' && (
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -209,7 +213,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) 
                 </div>
             )}
 
-            {config.actionType === 'ADD_ORDER_NOTE' && (
+            {selectedActionType === 'ADD_ORDER_NOTE' && (
                 <div className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Order Note</label>
@@ -239,7 +243,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) 
                 </div>
             )}
 
-            {config.actionType === 'UPDATE_ORDER_STATUS' && (
+            {selectedActionType === 'UPDATE_ORDER_STATUS' && (
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Target Order Status</label>
                     <select

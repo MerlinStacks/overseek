@@ -5,11 +5,31 @@ import { Logger } from '../utils/logger';
 import { authenticateRelayEmailAccount } from './email/helpers';
 import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 
+function computeRelayDiagnostic(artifact: any, forceRegenerate: boolean): string | null {
+    if (forceRegenerate) return 'forced_refresh';
+    if (!artifact) return 'missing_artifact';
+    if (artifact.status !== 'ready') return 'not_ready';
+    if (!artifact.storagePath || !fs.existsSync(artifact.storagePath)) return 'missing_file';
+    if (artifact.renderer !== 'designer-capture') return 'non_canonical_renderer';
+
+    const cutoffRaw = String(process.env.INVOICE_CANONICAL_INVALIDATE_BEFORE || '').trim();
+    if (cutoffRaw && artifact.generatedAt) {
+        const cutoff = new Date(cutoffRaw);
+        const generatedAt = new Date(artifact.generatedAt);
+        if (!Number.isNaN(cutoff.getTime()) && !Number.isNaN(generatedAt.getTime()) && generatedAt < cutoff) {
+            return 'generated_before_cutoff';
+        }
+    }
+
+    return null;
+}
+
 const InvoiceRelayBodySchema = z.object({
     account_id: z.string().min(1),
     order_id: z.string().min(1),
     order_number: z.string().optional(),
     store_url: z.string().optional(),
+    force_regenerate: z.boolean().optional(),
 });
 
 const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
@@ -25,7 +45,11 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ success: false, error: 'Invalid payload' });
         }
 
-        const { account_id: accountId, order_id: orderId } = parsed.data;
+        const {
+            account_id: accountId,
+            order_id: orderId,
+            force_regenerate: forceRegenerate,
+        } = parsed.data;
 
         const relayAccount = await authenticateRelayEmailAccount(relayKeyValue);
         if (!relayAccount || relayAccount.accountId !== accountId) {
@@ -33,8 +57,11 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
-            const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId);
+            const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
+                forceRegenerate: forceRegenerate === true,
+            });
             const settled: any = await canonicalInvoiceService.waitForReady(artifact.id, 2200, 250);
+            const diagnosticReason = computeRelayDiagnostic(settled, forceRegenerate === true);
 
             if (canonicalInvoiceService.isReadableReady(settled)) {
                 const fileBuffer = fs.readFileSync(settled.storagePath);
@@ -44,6 +71,8 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                     pdf_base64: fileBuffer.toString('base64'),
                     filename: settled.storagePath.split('/').pop() || 'invoice.pdf',
                     renderer_used: settled.renderer,
+                    diagnostic_reason: diagnosticReason,
+                    generated_at: settled.generatedAt,
                 };
             }
 
@@ -54,6 +83,8 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                     invoice_ref: settled.id,
                     error: settled.errorMessage || 'Invoice generation failed',
                     renderer_used: settled.renderer,
+                    diagnostic_reason: diagnosticReason,
+                    generated_at: settled.generatedAt,
                 });
             }
 
@@ -62,6 +93,8 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                 status: 'pending',
                 invoice_ref: settled?.id ?? artifact.id,
                 error: 'Invoice generation is pending',
+                diagnostic_reason: diagnosticReason,
+                generated_at: settled?.generatedAt ?? null,
             });
         } catch (error) {
             Logger.error('Failed to generate relay invoice PDF', { error, accountId, orderId });

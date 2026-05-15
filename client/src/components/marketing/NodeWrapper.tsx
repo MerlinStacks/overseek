@@ -25,8 +25,8 @@ export const AddStepButton: React.FC<AddStepButtonProps> = ({ nodeId, onAddStep 
 
     return (
         <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center">
-            <div className="w-0.5 h-4 bg-gray-300" />
-            <button onClick={handleClick} className="w-6 h-6 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center shadow-md transition-all hover:scale-110">
+            <div className="w-0.5 h-4 bg-slate-300" />
+            <button onClick={handleClick} className="w-7 h-7 rounded-full bg-linear-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white flex items-center justify-center shadow-lg shadow-blue-300/40 transition-all hover:scale-110">
                 <Plus size={14} />
             </button>
         </div>
@@ -56,13 +56,13 @@ export const NodeActionMenu: React.FC<NodeActionMenuProps> = ({ nodeId, onCopy, 
 
     return (
         <div className="relative" ref={menuRef}>
-            <button onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }} className="p-1 hover:bg-gray-100 rounded-sm transition-colors">
-                <MoreVertical size={14} className="text-gray-400" />
+            <button onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }} className="p-1.5 hover:bg-slate-100 rounded-md transition-colors">
+                <MoreVertical size={14} className="text-slate-500" />
             </button>
             {isOpen && (
-                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[120px]">
-                    {onCopy && <button onClick={(e) => { e.stopPropagation(); handleAction(() => onCopy(nodeId)); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"><Copy size={14} />Copy</button>}
-                    {onMove && <button onClick={(e) => { e.stopPropagation(); handleAction(() => onMove(nodeId)); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"><Move size={14} />Move</button>}
+                <div className="absolute right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-lg shadow-xl shadow-slate-900/10 z-50 py-1 min-w-[130px]">
+                    {onCopy && <button onClick={(e) => { e.stopPropagation(); handleAction(() => onCopy(nodeId)); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"><Copy size={14} />Copy</button>}
+                    {onMove && <button onClick={(e) => { e.stopPropagation(); handleAction(() => onMove(nodeId)); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"><Move size={14} />Move</button>}
                     {onDelete && <button onClick={(e) => { e.stopPropagation(); handleAction(() => onDelete(nodeId)); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"><Trash2 size={14} />Delete</button>}
                 </div>
             )}
@@ -88,25 +88,29 @@ interface NodeWrapperProps {
     onMove?: OnMoveNodeCallback;
     onDelete?: OnDeleteNodeCallback;
     statOrder?: Array<'active' | 'queued' | 'completed' | 'skipped' | 'failed'>;
+    density?: 'compact' | 'comfortable';
 }
 
 export const NodeWrapper: React.FC<NodeWrapperProps> = ({
     children, title, subtitle, icon, iconBgColor, borderColor, bgColor = 'bg-white',
-    stepNumber, stats, onSettingsClick, nodeId, onAddStep, showAddButton = true, onCopy, onMove, onDelete, statOrder
-}) => (
+    stepNumber, stats, onSettingsClick, nodeId, onAddStep, showAddButton = true, onCopy, onMove, onDelete, statOrder, density = 'comfortable'
+}) => {
+    const isCompact = density === 'compact';
+
+    return (
     <div className="relative pb-8">
-        <div className={`shadow-lg rounded-xl border ${borderColor} ${bgColor} min-w-[220px] max-w-[280px] overflow-hidden`}>
-            <div className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-100">
-                <div className={`w-8 h-8 rounded-lg ${iconBgColor} flex items-center justify-center shrink-0`}>{icon}</div>
+        <div className={`rounded-2xl border ${borderColor} ${bgColor} ${isCompact ? 'min-w-[210px] max-w-[270px]' : 'min-w-[240px] max-w-[320px]'} overflow-hidden shadow-xl shadow-slate-900/8 ring-1 ring-slate-900/5 transition-shadow hover:shadow-2xl hover:shadow-slate-900/12`}>
+            <div className={`flex items-center gap-3 ${isCompact ? 'px-3 py-2.5' : 'px-4 py-3'} border-b border-slate-100 bg-linear-to-r from-slate-50/80 to-white`}>
+                <div className={`${isCompact ? 'w-8 h-8 rounded-lg' : 'w-9 h-9 rounded-xl'} ${iconBgColor} flex items-center justify-center shrink-0 shadow-md shadow-slate-900/10`}>{icon}</div>
                 <div className="flex-1 min-w-0">
-                    {stepNumber !== undefined && <div className="text-[11px] text-gray-400 leading-none mb-0.5">Step {stepNumber}</div>}
-                    <div className="text-[30px] leading-tight font-semibold text-gray-900 truncate">{title}</div>
-                    {subtitle && <div className="text-[11px] text-gray-500 truncate mt-0.5">{subtitle}</div>}
+                    {stepNumber !== undefined && <div className={`text-[11px] text-slate-400 leading-none uppercase tracking-wide ${isCompact ? 'mb-0.5' : 'mb-1'}`}>Step {stepNumber}</div>}
+                    <div className={`${isCompact ? 'text-[15px]' : 'text-base'} leading-tight font-semibold text-slate-900 truncate`}>{title}</div>
+                    {subtitle && <div className={`text-xs text-slate-500 truncate ${isCompact ? 'mt-0.5' : 'mt-1'}`}>{subtitle}</div>}
                 </div>
-                {onSettingsClick && <button onClick={(e) => { e.stopPropagation(); onSettingsClick(); }} className="p-1 hover:bg-gray-100 rounded-sm transition-colors"><Settings size={14} className="text-gray-400" /></button>}
+                {onSettingsClick && <button onClick={(e) => { e.stopPropagation(); onSettingsClick(); }} className="p-1.5 hover:bg-slate-100 rounded-md transition-colors"><Settings size={14} className="text-slate-500" /></button>}
                 {nodeId && (onCopy || onMove || onDelete) && <NodeActionMenu nodeId={nodeId} onCopy={onCopy} onMove={onMove} onDelete={onDelete} />}
             </div>
-            <div className="p-3 text-sm text-gray-800">{children}</div>
+            <div className={`${isCompact ? 'px-3 py-2.5 text-[13px]' : 'px-4 py-3 text-sm'} text-slate-800`}>{children}</div>
             {stats && (() => {
                 const defaultOrder: Array<'active' | 'queued' | 'completed' | 'skipped' | 'failed'> = ['active', 'queued', 'completed', 'skipped', 'failed'];
                 const order = statOrder && statOrder.length > 0 ? statOrder : defaultOrder;
@@ -124,7 +128,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
                 if (visibleStats.length === 0) return null;
 
                 return (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-slate-100 border-t border-slate-200 text-[11px]">
+                    <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${isCompact ? 'px-3 py-2' : 'px-4 py-2.5'} bg-slate-50 border-t border-slate-200 text-[11px]`}>
                         {visibleStats.map((entry) => (
                             <div key={entry.key} className="flex items-center gap-1">
                                 <span className="text-slate-700">{entry.label}</span>
@@ -137,4 +141,5 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
         </div>
         {showAddButton && nodeId && onAddStep && <AddStepButton nodeId={nodeId} onAddStep={onAddStep} />}
     </div>
-);
+    );
+};

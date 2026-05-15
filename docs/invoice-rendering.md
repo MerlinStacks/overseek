@@ -41,8 +41,16 @@ Current behavior:
 
 Fallback renderer control:
 
-- `INVOICE_CANONICAL_FALLBACK_PDFKIT=true` (default): allow server PDFKit fallback generation.
-- `INVOICE_CANONICAL_FALLBACK_PDFKIT=false`: fail when canonical renderer is unavailable.
+- `INVOICE_CANONICAL_FALLBACK_PDFKIT=false` (default): fail when canonical renderer is unavailable.
+- `INVOICE_CANONICAL_FALLBACK_PDFKIT=true`: temporarily allow server PDFKit fallback generation.
+
+Artifact freshness control:
+
+- `INVOICE_CANONICAL_INVALIDATE_BEFORE=<ISO datetime>`: if set, artifacts generated before this timestamp are treated as stale and regenerated.
+
+Diagnostic reason values returned by relay/plugin payload:
+
+- `missing_artifact`, `not_ready`, `missing_file`, `non_canonical_renderer`, `generated_before_cutoff`, `forced_refresh`
 
 ## Maintenance rules
 

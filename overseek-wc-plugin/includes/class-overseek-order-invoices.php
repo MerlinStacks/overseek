@@ -24,6 +24,8 @@ class OverSeek_Order_Invoices
     private const META_INVOICE_GENERATED_AT = '_overseek_invoice_generated_at';
     private const META_INVOICE_STATUS = '_overseek_invoice_status';
     private const META_INVOICE_ERROR = '_overseek_invoice_error';
+    private const META_INVOICE_RENDERER = '_overseek_invoice_renderer';
+    private const META_INVOICE_DIAGNOSTIC_REASON = '_overseek_invoice_diagnostic_reason';
 
     private string $api_url;
     private string $account_id;
@@ -41,6 +43,7 @@ class OverSeek_Order_Invoices
         add_action('woocommerce_new_order', [$this, 'handle_new_order'], 20, 1);
         add_action(self::PROCESSING_HOOK, [$this, 'process_processing_order'], 10, 1);
         add_filter('woocommerce_email_attachments', [$this, 'attach_invoice_to_processing_email'], 10, 3);
+        add_action('woocommerce_admin_order_data_after_order_details', [$this, 'render_invoice_diagnostics_panel'], 20, 1);
         add_action(self::CLEANUP_HOOK, [$this, 'cleanup_private_invoices']);
 
         if (!wp_next_scheduled(self::CLEANUP_HOOK)) {
@@ -141,16 +144,27 @@ class OverSeek_Order_Invoices
         $order->save();
     }
 
-    private function generate_invoice_for_order(WC_Order $order, int $timeout_seconds = 8): bool
+    private function generate_invoice_for_order(WC_Order $order, int $timeout_seconds = 8, bool $force_regenerate = false, bool $revalidate_remote = false): bool
     {
         $order_id = (int) $order->get_id();
 
-        if ((string) $order->get_meta(self::META_INVOICE_PATH) !== '') {
+        if (!$force_regenerate && !$revalidate_remote && (string) $order->get_meta(self::META_INVOICE_PATH) !== '') {
             if ((string) $order->get_meta(self::META_INVOICE_STATUS) === '') {
                 $order->update_meta_data(self::META_INVOICE_STATUS, 'ready');
                 $order->save();
             }
             return true;
+        }
+
+        if ($force_regenerate) {
+            $existing_path = (string) $order->get_meta(self::META_INVOICE_PATH);
+            if ($existing_path !== '' && file_exists($existing_path)) {
+                wp_delete_file($existing_path);
+            }
+
+            $order->delete_meta_data(self::META_INVOICE_PATH);
+            $order->delete_meta_data(self::META_INVOICE_FILE);
+            $order->save();
         }
 
         if ($this->api_url === '' || $this->account_id === '' || $this->relay_api_key === '') {
@@ -165,6 +179,7 @@ class OverSeek_Order_Invoices
             'order_id' => (string) $order_id,
             'order_number' => (string) $order->get_order_number(),
             'store_url' => home_url(),
+            'force_regenerate' => $force_regenerate,
         ];
 
         $response = wp_remote_post($this->api_url . '/api/invoices/relay/woocommerce-processing', [
@@ -194,6 +209,17 @@ class OverSeek_Order_Invoices
         $relay_error = '';
         if (is_array($body) && isset($body['error'])) {
             $relay_error = is_string($body['error']) ? $body['error'] : '';
+        }
+        $relay_renderer = is_array($body) && isset($body['renderer_used']) ? sanitize_text_field((string) $body['renderer_used']) : '';
+        $relay_reason = is_array($body) && isset($body['diagnostic_reason']) ? sanitize_text_field((string) $body['diagnostic_reason']) : '';
+        if ($relay_renderer !== '') {
+            $order->update_meta_data(self::META_INVOICE_RENDERER, $relay_renderer);
+        }
+        if ($relay_reason !== '') {
+            $order->update_meta_data(self::META_INVOICE_DIAGNOSTIC_REASON, $relay_reason);
+        }
+        if ($relay_renderer !== '' || $relay_reason !== '') {
+            $order->save();
         }
 
         if ($response_code === 409) {
@@ -260,11 +286,23 @@ class OverSeek_Order_Invoices
         }
 
         $invoice_ref = isset($body['invoice_ref']) ? sanitize_text_field((string) $body['invoice_ref']) : '';
+        $renderer_used = isset($body['renderer_used']) ? sanitize_text_field((string) $body['renderer_used']) : '';
+        $diagnostic_reason = isset($body['diagnostic_reason']) ? sanitize_text_field((string) $body['diagnostic_reason']) : '';
 
         $order->update_meta_data(self::META_INVOICE_PATH, $file_path);
         $order->update_meta_data(self::META_INVOICE_FILE, $file_name);
         if ($invoice_ref !== '') {
             $order->update_meta_data(self::META_INVOICE_REF, $invoice_ref);
+        }
+        if ($renderer_used !== '') {
+            $order->update_meta_data(self::META_INVOICE_RENDERER, $renderer_used);
+        } else {
+            $order->delete_meta_data(self::META_INVOICE_RENDERER);
+        }
+        if ($diagnostic_reason !== '') {
+            $order->update_meta_data(self::META_INVOICE_DIAGNOSTIC_REASON, $diagnostic_reason);
+        } else {
+            $order->delete_meta_data(self::META_INVOICE_DIAGNOSTIC_REASON);
         }
         $order->update_meta_data(self::META_INVOICE_STATUS, 'ready');
         $order->delete_meta_data(self::META_INVOICE_ERROR);
@@ -406,6 +444,8 @@ class OverSeek_Order_Invoices
         $invoice_ref = (string) $order->get_meta(self::META_INVOICE_REF);
         $generated_at = (string) $order->get_meta(self::META_INVOICE_GENERATED_AT);
         $error_message = (string) $order->get_meta(self::META_INVOICE_ERROR);
+        $renderer_used = (string) $order->get_meta(self::META_INVOICE_RENDERER);
+        $diagnostic_reason = (string) $order->get_meta(self::META_INVOICE_DIAGNOSTIC_REASON);
         $download_url = add_query_arg(
             [
                 'order_id' => $order_id,
@@ -422,6 +462,8 @@ class OverSeek_Order_Invoices
             'status' => in_array($status, ['pending', 'ready', 'failed'], true) ? $status : 'pending',
             'issued_at' => $generated_at !== '' ? $generated_at : null,
             'error_message' => $error_message !== '' ? $error_message : null,
+            'renderer_used' => $renderer_used !== '' ? $renderer_used : null,
+            'diagnostic_reason' => $diagnostic_reason !== '' ? $diagnostic_reason : null,
         ];
 
         return apply_filters('overseek_invoice_payload', $payload, $order);
@@ -437,7 +479,7 @@ class OverSeek_Order_Invoices
         return (string) $order->get_meta(self::META_INVOICE_PATH);
     }
 
-    public function try_generate_invoice_now(int $order_id, int $timeout_seconds = 6): bool
+    public function try_generate_invoice_now(int $order_id, int $timeout_seconds = 6, bool $force_regenerate = false, bool $revalidate_remote = false): bool
     {
         if ($order_id <= 0) {
             return false;
@@ -448,11 +490,64 @@ class OverSeek_Order_Invoices
             return false;
         }
 
-        if ($this->invoice_is_available($order_id)) {
+        if (!$force_regenerate && !$revalidate_remote && $this->invoice_is_available($order_id)) {
             return true;
         }
 
-        return $this->generate_invoice_for_order($order, $timeout_seconds);
+        return $this->generate_invoice_for_order($order, $timeout_seconds, $force_regenerate, $revalidate_remote);
+    }
+
+    public function render_invoice_diagnostics_panel($order): void
+    {
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+
+        $status = (string) $order->get_meta(self::META_INVOICE_STATUS);
+        $renderer = (string) $order->get_meta(self::META_INVOICE_RENDERER);
+        $diagnostic_reason = (string) $order->get_meta(self::META_INVOICE_DIAGNOSTIC_REASON);
+        $generated_at = (string) $order->get_meta(self::META_INVOICE_GENERATED_AT);
+        $invoice_ref = (string) $order->get_meta(self::META_INVOICE_REF);
+        $error_message = (string) $order->get_meta(self::META_INVOICE_ERROR);
+
+        if ($status === '' && $renderer === '' && $diagnostic_reason === '' && $generated_at === '' && $invoice_ref === '' && $error_message === '') {
+            return;
+        }
+
+        $reason_labels = [
+            'missing_artifact' => 'Missing canonical artifact',
+            'not_ready' => 'Artifact not ready',
+            'missing_file' => 'Artifact file missing',
+            'non_canonical_renderer' => 'Non-canonical renderer',
+            'generated_before_cutoff' => 'Generated before cutoff',
+            'forced_refresh' => 'Forced refresh',
+        ];
+
+        $reason_label = $diagnostic_reason !== '' && isset($reason_labels[$diagnostic_reason])
+            ? $reason_labels[$diagnostic_reason]
+            : ($diagnostic_reason !== '' ? $diagnostic_reason : 'N/A');
+
+        $generated_label = 'N/A';
+        if ($generated_at !== '') {
+            $timestamp = strtotime($generated_at);
+            $generated_label = $timestamp ? wp_date('Y-m-d H:i:s T', $timestamp) : $generated_at;
+        }
+
+        echo '<div class="order_data_column" style="width:100%;margin-top:12px;">';
+        echo '<h4>' . esc_html__('OverSeek Invoice Diagnostics', 'overseek-wc') . '</h4>';
+        echo '<table class="widefat striped" style="max-width:900px">';
+        echo '<tbody>';
+        echo '<tr><td style="width:220px"><strong>' . esc_html__('Status', 'overseek-wc') . '</strong></td><td>' . esc_html($status !== '' ? $status : 'N/A') . '</td></tr>';
+        echo '<tr><td><strong>' . esc_html__('Renderer', 'overseek-wc') . '</strong></td><td>' . esc_html($renderer !== '' ? $renderer : 'N/A') . '</td></tr>';
+        echo '<tr><td><strong>' . esc_html__('Diagnostic reason', 'overseek-wc') . '</strong></td><td>' . esc_html($reason_label) . '</td></tr>';
+        echo '<tr><td><strong>' . esc_html__('Generated at', 'overseek-wc') . '</strong></td><td>' . esc_html($generated_label) . '</td></tr>';
+        echo '<tr><td><strong>' . esc_html__('Invoice ref', 'overseek-wc') . '</strong></td><td><code>' . esc_html($invoice_ref !== '' ? $invoice_ref : 'N/A') . '</code></td></tr>';
+        if ($error_message !== '') {
+            echo '<tr><td><strong>' . esc_html__('Last error', 'overseek-wc') . '</strong></td><td>' . esc_html($error_message) . '</td></tr>';
+        }
+        echo '</tbody>';
+        echo '</table>';
+        echo '</div>';
     }
 }
 

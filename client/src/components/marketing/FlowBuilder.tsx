@@ -55,6 +55,7 @@ const nodeTypes = {
 } as NodeTypes;
 
 const INVALID_NODE_CLASS = 'overseek-node-invalid';
+const FLOW_DENSITY_KEY = 'overseek-flow-density';
 
 let id = 0;
 const getId = () => `node_${Date.now()}_${id++}`;
@@ -115,6 +116,11 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     const [pendingActionParent, setPendingActionParent] = useState<string | null>(null);
     const pendingActionParentRef = useRef<string | null>(null);
     const [selectionCount, setSelectionCount] = useState(0);
+    const [flowDensity, setFlowDensity] = useState<'compact' | 'comfortable'>(() => {
+        if (typeof window === 'undefined') return 'comfortable';
+        const saved = window.localStorage.getItem(FLOW_DENSITY_KEY);
+        return saved === 'compact' ? 'compact' : 'comfortable';
+    });
     const { setViewport, getViewport } = useReactFlow();
 
 
@@ -415,11 +421,12 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 onAddStep: handleOpenStepPopup,
                 onCopy: onNodeCopy,
                 onDelete: onNodeDelete,
+                density: flowDensity,
             },
         };
         setNodes([newNode]);
         setEdges([]);
-    }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
+    }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete, flowDensity]);
 
     // --- Recipe Selection ---
     const handleRecipeSelect = useCallback((recipe: AutomationRecipe) => {
@@ -433,6 +440,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 onAddStep: handleOpenStepPopup,
                 onCopy: onNodeCopy,
                 onDelete: onNodeDelete,
+                density: flowDensity,
             },
         }));
 
@@ -450,7 +458,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
         setNodes(nodesWithPositions);
         setEdges(edgesWithIds);
-    }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
+    }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete, flowDensity]);
 
     const handleStepSelect = (stepType: StepType) => {
         if (!pendingNodeParent) return;
@@ -481,6 +489,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     onAddStep: handleOpenStepPopup,
                     onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
+                    density: flowDensity,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -496,6 +505,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     onAddStep: handleOpenStepPopup,
                     onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
+                    density: flowDensity,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -511,6 +521,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     onAddStep: handleOpenStepPopup,
                     onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
+                    density: flowDensity,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -526,6 +537,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     onAddStep: handleOpenStepPopup,
                     onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
+                    density: flowDensity,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -540,6 +552,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     config: { actionType: 'EXIT' },
                     onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
+                    density: flowDensity,
                 },
             };
             addNodeAndConnect(newNode, pendingNodeParent);
@@ -567,6 +580,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 onAddStep: handleOpenStepPopup,
                 onCopy: onNodeCopy,
                 onDelete: onNodeDelete,
+                density: flowDensity,
             },
         };
         addNodeAndConnect(newNode, parentId);
@@ -574,6 +588,14 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
         setPendingActionParent(null);
         pendingActionParentRef.current = null;
     };
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(FLOW_DENSITY_KEY, flowDensity);
+        } catch {
+            // Ignore localStorage write failures
+        }
+    }, [flowDensity]);
 
     // Helper to add a node and connect it to parent
     const addNodeAndConnect = useCallback((newNode: Node, parentId: string) => {
@@ -661,10 +683,11 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     onAddStep: canAddFromNode ? handleOpenStepPopup : undefined,
                     onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
+                    density: flowDensity,
                 },
             };
         });
-    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, onNodeCopy, onNodeDelete]);
+    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, onNodeCopy, onNodeDelete, flowDensity]);
 
     return (
             <div className="h-full w-full relative">
@@ -697,6 +720,24 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                             onCancel={onCancel}
                             isSaveDisabled={isSaveDisabled}
                         />
+                    </Panel>
+                    <Panel position="top-left">
+                        <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm p-1 rounded-lg shadow-xs border border-slate-200">
+                            <button
+                                type="button"
+                                className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${flowDensity === 'comfortable' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                                onClick={() => setFlowDensity('comfortable')}
+                            >
+                                Comfortable
+                            </button>
+                            <button
+                                type="button"
+                                className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${flowDensity === 'compact' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                                onClick={() => setFlowDensity('compact')}
+                            >
+                                Compact
+                            </button>
+                        </div>
                     </Panel>
                 </ReactFlow>
 
