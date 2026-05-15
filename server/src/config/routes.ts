@@ -91,6 +91,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(webhookRoutes, { prefix: '/api/webhooks' });
     const trackingEmailEventsRoutes = (await import('../routes/trackingEmailEvents')).default;
     await fastify.register(trackingEmailEventsRoutes, { prefix: '/api/tracking-email-events' });
+    const artworkEventsRoutes = (await import('../routes/artworkEvents')).default;
+    await fastify.register(artworkEventsRoutes, { prefix: '/api/artwork-events' });
 
     // WooCommerce & Sync
     const wooRoutes = (await import('../routes/woo')).default;

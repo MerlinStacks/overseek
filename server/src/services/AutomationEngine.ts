@@ -439,6 +439,7 @@ export class AutomationEngine {
 
     private getTriggerEntityType(triggerType: string, data: any): string | undefined {
         if (triggerType.includes('ORDER')) return 'ORDER';
+        if (triggerType.includes('ARTWORK')) return 'ORDER';
         if (triggerType === 'ABANDONED_CART') return 'CART';
         if (triggerType.includes('REVIEW')) return 'REVIEW';
         if (data?.wooCustomerId || data?.customerId) return 'CUSTOMER';

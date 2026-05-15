@@ -50,6 +50,18 @@ interface CategoryOption {
     name: string;
 }
 
+interface OrderStatusCountsResponse {
+    counts?: Record<string, number>;
+}
+
+const DEFAULT_ORDER_STATUSES = ['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed'];
+
+const formatStatusLabel = (status: string) => status
+    .split('-')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+
 const TRIGGER_TYPES = [
     { value: 'ORDER_CREATED', label: 'Order Created', group: 'WooCommerce' },
     { value: 'ORDER_PAID', label: 'Order Paid', group: 'WooCommerce' },
@@ -80,6 +92,7 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
     const { currentAccount } = useAccount();
     const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
     const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
+    const [orderStatusOptions, setOrderStatusOptions] = useState<string[]>([]);
     const [isLoadingFilters, setIsLoadingFilters] = useState(false);
 
     const selectedTrigger = config.triggerType || 'ORDER_CREATED';
@@ -109,7 +122,7 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
 
             setIsLoadingFilters(true);
             try {
-                const [productsRes, categoriesRes] = await Promise.all([
+                const [productsRes, categoriesRes, statusCountsRes] = await Promise.all([
                     fetch('/api/products?limit=100', {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -117,6 +130,12 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                         }
                     }),
                     fetch('/api/products/categories?limit=100', {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'X-Account-ID': currentAccount.id,
+                        }
+                    }),
+                    fetch('/api/sync/orders/status-counts?source=db', {
                         headers: {
                             Authorization: `Bearer ${token}`,
                             'X-Account-ID': currentAccount.id,
@@ -155,6 +174,15 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                         .sort((a: CategoryOption, b: CategoryOption) => a.name.localeCompare(b.name));
 
                     setCategoryOptions(mappedCategories);
+                }
+
+                if (statusCountsRes.ok) {
+                    const statusData = await statusCountsRes.json() as OrderStatusCountsResponse;
+                    const dynamicStatuses = Object.keys(statusData.counts || {}).filter(Boolean);
+                    const merged = Array.from(new Set([...DEFAULT_ORDER_STATUSES, ...dynamicStatuses])).sort((a, b) => a.localeCompare(b));
+                    setOrderStatusOptions(merged);
+                } else {
+                    setOrderStatusOptions(DEFAULT_ORDER_STATUSES);
                 }
             } finally {
                 setIsLoadingFilters(false);
@@ -205,13 +233,9 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     >
                         <option value="">Any status change</option>
-                        <option value="pending">Pending</option>
-                        <option value="processing">Processing</option>
-                        <option value="on-hold">On Hold</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                        <option value="refunded">Refunded</option>
-                        <option value="failed">Failed</option>
+                        {(orderStatusOptions.length > 0 ? orderStatusOptions : DEFAULT_ORDER_STATUSES).map((status) => (
+                            <option key={status} value={status}>{formatStatusLabel(status)}</option>
+                        ))}
                     </select>
                 </div>
             )}

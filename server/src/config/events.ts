@@ -49,6 +49,26 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
         await automationEngine.processTrigger(data.accountId, 'SHIPMENT_EXCEPTION', data.shipment);
     });
 
+    EventBus.on(EVENTS.ARTWORK.UPLOADED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ARTWORK_UPLOADED', data.artwork);
+    });
+
+    EventBus.on(EVENTS.ARTWORK.APPROVAL_REQUESTED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ARTWORK_APPROVAL_REQUESTED', data.artwork);
+    });
+
+    EventBus.on(EVENTS.ARTWORK.APPROVED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ARTWORK_APPROVED', data.artwork);
+    });
+
+    EventBus.on(EVENTS.ARTWORK.CHANGES_REQUESTED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ARTWORK_CHANGES_REQUESTED', data.artwork);
+    });
+
+    EventBus.on(EVENTS.ARTWORK.OVERRIDE_USED, async (data) => {
+        await automationEngine.processTrigger(data.accountId, 'ARTWORK_OVERRIDE_USED', data.artwork);
+    });
+
     EventBus.on(EVENTS.CUSTOMER.CREATED, async (data) => {
         await automationEngine.processTrigger(data.accountId, 'CUSTOMER_CREATED', data.customer);
     });

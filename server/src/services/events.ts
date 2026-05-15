@@ -18,6 +18,13 @@ export const EVENTS = {
         DELIVERED: 'shipment:delivered',
         EXCEPTION: 'shipment:exception',
     },
+    ARTWORK: {
+        UPLOADED: 'artwork:uploaded',
+        APPROVAL_REQUESTED: 'artwork:approval_requested',
+        APPROVED: 'artwork:approved',
+        CHANGES_REQUESTED: 'artwork:changes_requested',
+        OVERRIDE_USED: 'artwork:override_used',
+    },
     CUSTOMER: {
         CREATED: 'customer:created',
         UPDATED: 'customer:updated',

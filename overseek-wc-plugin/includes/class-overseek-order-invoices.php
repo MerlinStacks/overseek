@@ -325,6 +325,7 @@ class OverSeek_Order_Invoices
         $download_url = add_query_arg(
             [
                 'order_id' => $order_id,
+                'key' => $order->get_order_key(),
             ],
             rest_url('overseek/v1/invoices/download')
         );

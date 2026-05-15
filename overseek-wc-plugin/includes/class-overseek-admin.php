@@ -179,6 +179,7 @@ class OverSeek_Admin
 		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 25);
 		$relay_endpoint     = home_url('/wp-json/overseek/v1/email-relay');
 		$tracking_events_endpoint = home_url('/wp-json/overseek/v1/tracking-email-events');
+		$artwork_events_endpoint  = home_url('/wp-json/overseek/v1/artwork-events');
 		$is_configured      = !empty($api_url) && !empty($account_id);
 		$enabled_features   = array_filter(array(
 			get_option('overseek_enable_tracking'),
@@ -434,6 +435,12 @@ class OverSeek_Admin
 							<span class="overseek-admin__key">Tracking events webhook URL</span>
 							<code><?php echo esc_html($tracking_events_endpoint); ?></code>
 							<p>Use this URL in CK Order Workflow for tracking lifecycle forwarding.</p>
+						</div>
+
+						<div class="overseek-admin__code-block">
+							<span class="overseek-admin__key">Artwork events webhook URL</span>
+							<code><?php echo esc_html($artwork_events_endpoint); ?></code>
+							<p>Use this URL in CK Order Workflow for artwork proof lifecycle forwarding.</p>
 						</div>
 					</section>
 

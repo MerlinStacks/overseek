@@ -80,6 +80,12 @@ class OverSeek_API {
 			'permission_callback' => [ $this, 'check_tracking_events_permission' ],
 		] );
 
+		register_rest_route( 'overseek/v1', '/artwork-events', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'artwork_events_callback' ],
+			'permission_callback' => [ $this, 'check_tracking_events_permission' ],
+		] );
+
 		register_rest_route( 'overseek/v1', '/invoices/(?P<order_id>\d+)', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'invoice_details_callback' ],
@@ -143,19 +149,17 @@ class OverSeek_API {
 			return $this->integration_error( 'invoice_not_found', 'Invoice not found for this order.', 404 );
 		}
 
-		$user_id = get_current_user_id();
-		if ( $user_id <= 0 ) {
-			return $this->integration_error( 'invoice_unauthenticated', 'Authentication required.', 401 );
-		}
-
 		$service = $this->get_invoice_service();
 		if ( ! $service ) {
 			return $this->integration_error( 'invoice_service_unavailable', 'Invoice service unavailable.', 503 );
 		}
 
-		if ( ! $service->user_can_access_invoice( $order, $user_id ) ) {
-			return $this->integration_error( 'invoice_forbidden', 'You are not allowed to access this invoice.', 403 );
+		$authorization = $this->authorize_invoice_access( $order, $request, $service );
+		if ( $authorization instanceof WP_REST_Response ) {
+			return $authorization;
 		}
+
+		$user_id = get_current_user_id();
 
 		$payload = $service->get_invoice_for_order( $order_id, $user_id );
 		if ( ! is_array( $payload ) ) {
@@ -193,18 +197,14 @@ class OverSeek_API {
 			return $this->integration_error( 'invoice_not_found', 'Invoice not found for this order.', 404 );
 		}
 
-		$user_id = get_current_user_id();
-		if ( $user_id <= 0 ) {
-			return $this->integration_error( 'invoice_unauthenticated', 'Authentication required.', 401 );
-		}
-
 		$service = $this->get_invoice_service();
 		if ( ! $service ) {
 			return $this->integration_error( 'invoice_service_unavailable', 'Invoice service unavailable.', 503 );
 		}
 
-		if ( ! $service->user_can_access_invoice( $order, $user_id ) ) {
-			return $this->integration_error( 'invoice_forbidden', 'You are not allowed to access this invoice.', 403 );
+		$authorization = $this->authorize_invoice_access( $order, $request, $service );
+		if ( $authorization instanceof WP_REST_Response ) {
+			return $authorization;
 		}
 
 		$file_path = $service->get_invoice_file_path( $order_id );
@@ -224,6 +224,35 @@ class OverSeek_API {
 	}
 
 	/**
+	 * Ensure current request can access the invoice for an order.
+	 *
+	 * Allows either an authorized logged-in user or a valid WooCommerce order key.
+	 *
+	 * @param WC_Order             $order The WooCommerce order.
+	 * @param WP_REST_Request      $request The request object.
+	 * @param OverSeek_Order_Invoices $service Invoice service.
+	 * @return true|WP_REST_Response
+	 */
+	private function authorize_invoice_access( WC_Order $order, WP_REST_Request $request, OverSeek_Order_Invoices $service ) {
+		$user_id = get_current_user_id();
+		if ( $user_id > 0 && $service->user_can_access_invoice( $order, $user_id ) ) {
+			return true;
+		}
+
+		$provided_order_key = (string) $request->get_param( 'key' );
+		$expected_order_key = (string) $order->get_order_key();
+		if ( $provided_order_key !== '' && $expected_order_key !== '' && hash_equals( $expected_order_key, $provided_order_key ) ) {
+			return true;
+		}
+
+		if ( $user_id <= 0 ) {
+			return $this->integration_error( 'invoice_unauthenticated', 'Authentication or valid order key required.', 401 );
+		}
+
+		return $this->integration_error( 'invoice_forbidden', 'You are not allowed to access this invoice.', 403 );
+	}
+
+	/**
 	 * Check if request has valid relay API key and account ID.
 	 *
 	 * @param WP_REST_Request $request The request object.
@@ -238,11 +267,7 @@ class OverSeek_API {
 		}
 
 		$provided_key = (string) $request->get_header( 'X-Relay-Key' );
-		$auth_header = (string) $request->get_header( 'Authorization' );
-		$provided_bearer = '';
-		if ( preg_match( '/^Bearer\s+(.+)$/i', trim( $auth_header ), $matches ) ) {
-			$provided_bearer = trim( (string) $matches[1] );
-		}
+		$provided_bearer = $this->extract_bearer_token( $request );
 
 		$key_valid = ! empty( $stored_key ) && ! empty( $provided_key ) && hash_equals( $stored_key, $provided_key );
 		$bearer_valid = ! empty( $webhook_token ) && ! empty( $provided_bearer ) && hash_equals( $webhook_token, $provided_bearer );
@@ -280,11 +305,7 @@ class OverSeek_API {
 			return true;
 		}
 
-		$auth_header = (string) $request->get_header( 'Authorization' );
-		$provided_bearer = '';
-		if ( preg_match( '/^Bearer\s+(.+)$/i', trim( $auth_header ), $matches ) ) {
-			$provided_bearer = trim( (string) $matches[1] );
-		}
+		$provided_bearer = $this->extract_bearer_token( $request );
 
 		if ( '' === $provided_bearer || ! hash_equals( $webhook_token, $provided_bearer ) ) {
 			return new WP_Error( 'invalid_webhook_token', 'Invalid or missing webhook bearer token', [ 'status' => 401 ] );
@@ -450,6 +471,70 @@ class OverSeek_API {
 	}
 
 	/**
+	 * Artwork workflow events bridge endpoint.
+	 *
+	 * Receives CK Order Workflow artwork payload and forwards to OverSeek API.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function artwork_events_callback( WP_REST_Request $request ): WP_REST_Response {
+		$params = $this->get_request_body( $request );
+
+		$event = isset( $params['event'] ) && is_array( $params['event'] ) ? $params['event'] : null;
+		if ( null === $event ) {
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => 'Missing top-level event object',
+			], 400 );
+		}
+
+		$account_id = (string) get_option( 'overseek_account_id', '' );
+		$api_url = untrailingslashit( (string) get_option( 'overseek_api_url', '' ) );
+		if ( '' === $account_id || '' === $api_url ) {
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => 'OverSeek connection is not configured',
+			], 503 );
+		}
+
+		$target_url = $api_url . '/api/artwork-events/' . rawurlencode( $account_id );
+		$headers = [
+			'Content-Type' => 'application/json',
+			'User-Agent'   => 'OverSeek-WC-Plugin/' . OVERSEEK_WC_VERSION,
+		];
+
+		$webhook_token = (string) get_option( 'overseek_webhook_auth_token', '' );
+		if ( '' !== $webhook_token ) {
+			$headers['Authorization'] = 'Bearer ' . $webhook_token;
+		}
+
+		$response = wp_remote_post( $target_url, [
+			'timeout' => 10,
+			'headers' => $headers,
+			'body'    => wp_json_encode( [ 'event' => $event ] ),
+		] );
+
+		if ( is_wp_error( $response ) ) {
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => $response->get_error_message(),
+			], 502 );
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code( $response );
+		$decoded = OverSeek_HTTP_Utils::decode_json_response( $response );
+		$ok = $status_code >= 200 && $status_code < 300;
+
+		return new WP_REST_Response( [
+			'success'            => $ok,
+			'forwarded'          => $ok,
+			'upstreamStatusCode' => $status_code,
+			'upstream'           => $decoded,
+		], $ok ? 202 : 502 );
+	}
+
+	/**
 	 * Check if current user has admin permissions.
 	 *
 	 * @return bool
@@ -499,6 +584,7 @@ class OverSeek_API {
 		$chat_enabled     = get_option( 'overseek_enable_chat' );
 		$relay_endpoint   = home_url( '/wp-json/overseek/v1/email-relay' );
 		$tracking_events_endpoint = home_url( '/wp-json/overseek/v1/tracking-email-events' );
+		$artwork_events_endpoint  = home_url( '/wp-json/overseek/v1/artwork-events' );
 		$has_relay_key    = ! empty( (string) get_option( 'overseek_relay_api_key', '' ) );
 		$has_bearer_token = ! empty( (string) get_option( 'overseek_webhook_auth_token', '' ) );
 
@@ -522,6 +608,7 @@ class OverSeek_API {
 			'siteUrl'            => $account_match ? home_url() : null,
 			'emailPlatformWebhookUrl' => $account_match ? $relay_endpoint : null,
 			'trackingEventsWebhookUrl' => $account_match ? $tracking_events_endpoint : null,
+			'artworkEventsWebhookUrl'  => $account_match ? $artwork_events_endpoint : null,
 			'webhookAuth'        => $account_match ? [
 				'supportsXRelayKey' => true,
 				'supportsBearer'    => true,
@@ -530,6 +617,21 @@ class OverSeek_API {
 			] : null,
 			'timestamp'          => gmdate( 'c' ),
 		], 200 );
+	}
+
+	/**
+	 * Extract bearer token from Authorization header.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return string
+	 */
+	private function extract_bearer_token( WP_REST_Request $request ): string {
+		$auth_header = (string) $request->get_header( 'Authorization' );
+		if ( preg_match( '/^Bearer\s+(.+)$/i', trim( $auth_header ), $matches ) ) {
+			return trim( (string) $matches[1] );
+		}
+
+		return '';
 	}
 
 	/**
