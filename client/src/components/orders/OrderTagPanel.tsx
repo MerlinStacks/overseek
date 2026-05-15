@@ -6,7 +6,8 @@ import { useAccount } from '../../context/AccountContext';
 import { emitCrossTabEvent } from '../../utils/productCrossTabEvents';
 
 interface TagMapping {
-    productTag: string;
+    productTag?: string;
+    productTags?: string[];
     orderTag: string;
     enabled: boolean;
     color?: string;
@@ -74,7 +75,13 @@ export function OrderTagPanel({ orderId, currentTags, lastUpdate, onTagsChange, 
     /** Gets available tags that aren't already applied to this order */
     function getAvailableTags(): TagMapping[] {
         const appliedTags = new Set(currentTags.map(t => t.toLowerCase()));
-        return mappings.filter(m => !appliedTags.has(m.orderTag.toLowerCase()));
+        const seenOrderTags = new Set<string>();
+        return mappings.filter((mapping) => {
+            const orderTag = mapping.orderTag.toLowerCase();
+            if (appliedTags.has(orderTag) || seenOrderTags.has(orderTag)) return false;
+            seenOrderTags.add(orderTag);
+            return true;
+        });
     }
 
     /** Filtered available tags based on search */

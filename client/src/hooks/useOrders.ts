@@ -10,6 +10,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useDebouncedValue } from './useDebouncedValue';
+import { useVisibilityRefreshThrottle } from './useVisibilityRefreshThrottle';
 import { Logger } from '../utils/logger';
 import { printPicklist } from '../utils/printPicklist';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
@@ -52,13 +53,15 @@ export function useOrders() {
     const tagsFromUrl = searchParams.get('tags');
     const searchFromUrl = searchParams.get('q');
     const statusFromUrl = searchParams.get('status');
+    const pageFromUrl = Number(searchParams.get('page') || '1');
+    const initialPage = Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? Math.trunc(pageFromUrl) : 1;
 
     // Core state
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
     const [searchQuery, setSearchQuery] = useState(searchFromUrl || '');
-    const [page, setPage] = useState(1);
+    const [page, setPage] = useState(initialPage);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
@@ -81,6 +84,7 @@ export function useOrders() {
     const [isGeneratingPicklist, setIsGeneratingPicklist] = useState(false);
 
     const debouncedSearch = useDebouncedValue(searchQuery, 400);
+    const shouldRefreshOnVisible = useVisibilityRefreshThrottle(45_000);
 
     // Sync filter state to URL
     useEffect(() => {
@@ -88,8 +92,9 @@ export function useOrders() {
         if (selectedTags.length > 0) params.tags = selectedTags.join(',');
         if (debouncedSearch) params.q = debouncedSearch;
         if (selectedStatus && selectedStatus !== 'all') params.status = selectedStatus;
+        if (page > 1) params.page = String(page);
         setSearchParams(params, { replace: true });
-    }, [selectedTags, debouncedSearch, selectedStatus, setSearchParams]);
+    }, [selectedTags, debouncedSearch, selectedStatus, page, setSearchParams]);
 
     // Fetch available tags
     useEffect(() => {
@@ -158,6 +163,9 @@ export function useOrders() {
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
+                if (!shouldRefreshOnVisible()) {
+                    return;
+                }
                 void fetchOrders();
                 setStatusCountsKey((prev) => prev + 1);
             }
@@ -165,7 +173,7 @@ export function useOrders() {
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [fetchOrders]);
+    }, [fetchOrders, shouldRefreshOnVisible]);
 
     // Reset page on filter change
     useEffect(() => { setPage(1); }, [debouncedSearch, selectedTags, selectedStatus]);

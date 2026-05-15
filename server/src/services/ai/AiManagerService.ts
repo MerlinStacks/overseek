@@ -3,6 +3,7 @@ import { SearchToAdsIntelligenceService } from '../ads/SearchToAdsIntelligenceSe
 import { NegativeKeywordAnalyzer } from '../tools/analyzers/NegativeKeywordAnalyzer';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import type { LowHangingFruit, AIKeywordRecommendation } from '../search-console/KeywordRecommendationService';
 
 interface BuiltSuggestion {
     recommendationId: string;
@@ -14,7 +15,29 @@ interface BuiltSuggestion {
     confidence: number;
     dataPoints?: string[];
     tags?: string[];
+    impactScore?: number;
 }
+
+const toNumber = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+
+const computeImpactScore = (suggestion: BuiltSuggestion): number => {
+    const priorityWeight = suggestion.priority === 1 ? 60 : suggestion.priority === 2 ? 35 : 15;
+    const confidenceWeight = Math.round((suggestion.confidence || 0) * 0.25);
+    const dataPointWeight = (suggestion.dataPoints || []).reduce((score, point) => {
+        const normalized = point.toLowerCase();
+        const numberMatch = point.match(/-?\d+(?:\.\d+)?/);
+        const numeric = numberMatch ? Number(numberMatch[0]) : 0;
+
+        if (normalized.includes('estimated wasted spend')) return score + Math.min(numeric, 10000) / 40;
+        if (normalized.includes('estimated monthly savings')) return score + Math.min(numeric, 10000) / 45;
+        if (normalized.includes('estimated upside')) return score + Math.min(numeric, 5000) / 35;
+        if (normalized.includes('impressions')) return score + Math.min(numeric, 50000) / 600;
+        if (normalized.includes('overlap keywords')) return score + Math.min(numeric * 3, 45);
+        return score;
+    }, 0);
+
+    return Math.round((priorityWeight + confidenceWeight + dataPointWeight) * 100) / 100;
+};
 
 export class AiManagerService {
     static async generateSuggestions(accountId: string): Promise<{ created: number }> {
@@ -94,11 +117,13 @@ export class AiManagerService {
                 KeywordRecommendationService.getAIRecommendations(accountId),
             ]);
 
-            lowHanging.slice(0, 4).forEach((item: any, index: number) => {
+            lowHanging.slice(0, 4).forEach((item: LowHangingFruit, index: number) => {
+                const keyword = item.query?.trim();
+                if (!keyword) return;
                 suggestions.push({
                     recommendationId: `ai_manager_seo_fix_${now}_${index}`,
-                    title: `Target low-hanging keyword: ${item.keyword}`,
-                    text: `Create or update content for this keyword with focused H2 structure, stronger title intent match, and improved meta description to capture available clicks.`,
+                    title: `Target low-hanging keyword: ${keyword}`,
+                    text: `Create or update content for "${keyword}" with focused H2 structure, stronger title intent match, and improved meta description to capture available clicks. Current position is ${Math.round(item.position)} with estimated upside of ${Math.max(0, Math.round(item.estimatedUpside))} clicks.`,
                     type: 'SEO_FIX',
                     source: 'SEARCH_CONSOLE',
                     priority: 1,
@@ -107,16 +132,17 @@ export class AiManagerService {
                         `Current position: ${item.position ?? 'n/a'}`,
                         `Impressions: ${item.impressions ?? 0}`,
                         `Clicks: ${item.clicks ?? 0}`,
+                        `Estimated upside: ${Math.max(0, Math.round(item.estimatedUpside ?? 0))}`,
                     ],
                     tags: ['seo', 'keyword', 'search-console'],
                 });
             });
 
-            aiRecommendations.slice(0, 3).forEach((item: any, index: number) => {
+            aiRecommendations.slice(0, 3).forEach((item: AIKeywordRecommendation, index: number) => {
                 suggestions.push({
                     recommendationId: `ai_manager_seo_ai_${now}_${index}`,
                     title: item.title || `SEO opportunity ${index + 1}`,
-                    text: item.recommendation || item.description || 'Refine on-page content for emerging search demand.',
+                    text: item.description || 'Refine on-page content for emerging search demand.',
                     type: 'SEO_FIX',
                     source: 'SEARCH_CONSOLE',
                     priority: 2,
@@ -136,10 +162,22 @@ export class AiManagerService {
             ]);
 
             if (correlation?.summary?.estimatedTotalWastedSpend > 0) {
+                const overlapKeywords = (correlation.overlap || [])
+                    .filter((o) => toNumber(o?.cannibalizationScore) >= 40)
+                    .slice(0, 3)
+                    .map((o) => o.query)
+                    .filter(Boolean);
+
+                const overlapText = overlapKeywords.length > 0
+                    ? `Top overlapping paid keywords: ${overlapKeywords.join(', ')}.`
+                    : 'Review overlapping paid keywords that already rank organically.';
+
+                const topKeywordsLabel = overlapKeywords.length > 0 ? ` (${overlapKeywords.slice(0, 2).join(', ')})` : '';
+
                 suggestions.push({
                     recommendationId: `ai_manager_ads_opt_waste_${now}`,
-                    title: 'Reduce paid-organic cannibalization waste',
-                    text: 'Review overlapping paid keywords that already rank organically and rewrite ad coverage to focus on incremental-value terms.',
+                    title: `Reduce paid-organic cannibalization waste${topKeywordsLabel}`,
+                    text: `${overlapText} Rewrite ad coverage to focus on incremental-value terms.`,
                     type: 'ADS_OPTIMIZATION',
                     source: 'GOOGLE_ADS',
                     priority: 1,
@@ -147,6 +185,7 @@ export class AiManagerService {
                     dataPoints: [
                         `Overlap keywords: ${correlation.summary.overlapCount ?? 0}`,
                         `Estimated wasted spend: ${Math.round(correlation.summary.estimatedTotalWastedSpend ?? 0)}`,
+                        ...(overlapKeywords.length > 0 ? [`Keywords: ${overlapKeywords.join(', ')}`] : []),
                     ],
                     tags: ['ads', 'google-ads', 'efficiency'],
                 });
@@ -227,7 +266,24 @@ export class AiManagerService {
         });
 
         const existingText = new Set(existingRecent.map((r) => r.text.trim().toLowerCase()));
-        const unique = suggestions.filter((s) => !existingText.has(s.text.trim().toLowerCase())).slice(0, 20);
+        const seenRecommendationIds = new Set<string>();
+        const seenTitles = new Set<string>();
+
+        const unique = suggestions
+            .filter((s) => !existingText.has(s.text.trim().toLowerCase()))
+            .filter((s) => {
+                const normalizedId = s.recommendationId.trim().toLowerCase();
+                const normalizedTitle = s.title.trim().toLowerCase();
+                if (seenRecommendationIds.has(normalizedId) || seenTitles.has(normalizedTitle)) {
+                    return false;
+                }
+                seenRecommendationIds.add(normalizedId);
+                seenTitles.add(normalizedTitle);
+                return true;
+            })
+            .map((s) => ({ ...s, impactScore: computeImpactScore(s) }))
+            .sort((a, b) => (b.impactScore || 0) - (a.impactScore || 0))
+            .slice(0, 20);
 
         if (unique.length === 0) {
             return { created: 0 };

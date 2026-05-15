@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -45,6 +46,41 @@ export function Pagination({
 }: PaginationProps) {
     const isFirstPage = currentPage <= 1;
     const isLastPage = currentPage >= totalPages;
+    const [pageInput, setPageInput] = useState(String(currentPage));
+
+    useEffect(() => {
+        setPageInput(String(currentPage));
+    }, [currentPage]);
+
+    const commitPageInput = () => {
+        const parsed = Number(pageInput);
+        const safeTotalPages = Math.max(1, totalPages);
+        if (!Number.isFinite(parsed)) {
+            setPageInput(String(currentPage));
+            return;
+        }
+
+        const clampedPage = Math.min(Math.max(1, Math.trunc(parsed)), safeTotalPages);
+        if (clampedPage !== currentPage) {
+            onPageChange(clampedPage);
+        } else {
+            setPageInput(String(currentPage));
+        }
+    };
+
+    const handlePageInputChange = (value: string) => {
+        setPageInput(value);
+        if (!value.trim()) return;
+
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return;
+
+        const safeTotalPages = Math.max(1, totalPages);
+        const clampedPage = Math.min(Math.max(1, Math.trunc(parsed)), safeTotalPages);
+        if (clampedPage !== currentPage) {
+            onPageChange(clampedPage);
+        }
+    };
 
     return (
         <div className={cn("flex flex-wrap items-center justify-between gap-4 p-4 pr-24 bg-slate-50 border-t border-slate-100", className)}>
@@ -89,6 +125,26 @@ export function Pagination({
                 <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
                     Page <span className="text-slate-900">{currentPage}</span> of <span className="text-slate-900">{Math.max(1, totalPages)}</span>
                 </span>
+
+                <div className="flex items-center gap-2">
+                    <label htmlFor="pagination-page-input" className="text-xs text-slate-500 font-medium uppercase tracking-wide">Go to</label>
+                    <input
+                        id="pagination-page-input"
+                        type="number"
+                        min={1}
+                        max={Math.max(1, totalPages)}
+                        value={pageInput}
+                        onChange={(e) => handlePageInputChange(e.target.value)}
+                        onBlur={commitPageInput}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                commitPageInput();
+                            }
+                        }}
+                        className="w-20 bg-white border border-slate-200 text-slate-700 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 p-1.5 outline-hidden"
+                    />
+                </div>
 
                 <NavButton
                     onClick={() => onPageChange(currentPage + 1)}

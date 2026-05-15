@@ -106,6 +106,11 @@ const toNumber = (val: unknown) => {
 };
 
 const dedupeMetaEntries = (item: InvoiceLineItemData) => {
+    const stripUrls = (value: string) => {
+        const withoutUrls = value.replace(/https?:\/\/\S+/gi, '').replace(/www\.\S+/gi, '');
+        return withoutUrls.replace(/\s{2,}/g, ' ').replace(/\s+\|\s+/g, ' | ').trim();
+    };
+
     const truncateMetaValue = (value: string) => {
         const compact = value.replace(/\s+/g, ' ').trim();
         if (compact.length <= 140) return compact;
@@ -145,7 +150,9 @@ const dedupeMetaEntries = (item: InvoiceLineItemData) => {
                 uniqueParts.push(part);
             }
 
-            const normalizedValue = truncateMetaValue(uniqueParts.length > 0 ? uniqueParts.join(' | ') : rawValue);
+            const sanitizedValue = stripUrls(uniqueParts.length > 0 ? uniqueParts.join(' | ') : rawValue);
+            if (!sanitizedValue) return null;
+            const normalizedValue = truncateMetaValue(sanitizedValue);
             const globalKey = `${label.toLowerCase()}::${normalizedValue.toLowerCase()}`;
             if (seen.has(globalKey)) return null;
             seen.add(globalKey);
@@ -601,11 +608,11 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
         // Approximate content height for the table block so export can span pages.
         // This is intentionally conservative: only order_table is allowed to grow.
-        const headerPx = 56;
-        const baseRowPx = 52;
-        const metaRowPx = 18;
-        const totalsPx = hasOrderData ? 170 : 0;
-        const verticalPaddingPx = 24;
+        const headerPx = 44;
+        const baseRowPx = 38;
+        const metaRowPx = 14;
+        const totalsPx = hasOrderData ? 96 : 0;
+        const verticalPaddingPx = 14;
 
         const rowsPx = lineItems.reduce((sum, item) => {
             const metaCount = getInvoiceItemMeta(item).length;
@@ -614,8 +621,8 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
         const estimatedPx = headerPx + rowsPx + totalsPx + verticalPaddingPx;
 
-        // Keep in sync with grid rowHeight (30) and add a small margin for borders/rounding.
-        const estimatedRows = Math.max(orderTableLayout.h, Math.ceil((estimatedPx + 12) / 30));
+        // Keep in sync with grid rowHeight (30) and use a tight safety margin.
+        const estimatedRows = Math.max(orderTableLayout.h, Math.ceil((estimatedPx + 6) / 30));
 
         const growthRows = Math.max(0, estimatedRows - orderTableLayout.h);
         const originalTableBottom = orderTableLayout.y + orderTableLayout.h;
@@ -647,7 +654,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
             if (entry.i !== footerLayout.i) return entry;
             return {
                 ...entry,
-                y: Math.max(entry.y, maxBottomWithoutFooter + 1),
+                y: Math.max(entry.y, maxBottomWithoutFooter),
             };
         });
     };

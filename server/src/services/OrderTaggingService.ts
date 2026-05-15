@@ -5,10 +5,18 @@ import { Logger } from '../utils/logger';
  * Tag mapping configuration stored in Account.orderTagMappings
  */
 export interface TagMapping {
-    productTag: string;  // The tag name from WooCommerce product
+    productTag?: string;  // Legacy single tag from WooCommerce product
+    productTags?: string[]; // New multi-tag mapping support
     orderTag: string;    // The tag name to apply to orders
     enabled: boolean;    // Whether this mapping is active
     color?: string;      // Optional hex color for display (e.g. "#3B82F6")
+}
+
+interface NormalizedTagMapping {
+    productTags: string[];
+    orderTag: string;
+    enabled: boolean;
+    color?: string;
 }
 
 /**
@@ -16,6 +24,31 @@ export interface TagMapping {
  * Only applies tags that have an enabled mapping in the account settings.
  */
 export class OrderTaggingService {
+    private static normalizeMappings(mappings: TagMapping[]): NormalizedTagMapping[] {
+        return mappings
+            .map((mapping) => {
+                const tagsFromArray = Array.isArray(mapping.productTags)
+                    ? mapping.productTags
+                    : [];
+                const legacyTag = typeof mapping.productTag === 'string' ? [mapping.productTag] : [];
+                const normalizedTags = Array.from(
+                    new Set(
+                        [...tagsFromArray, ...legacyTag]
+                            .map((tag) => String(tag || '').trim())
+                            .filter(Boolean)
+                            .map((tag) => tag.toLowerCase())
+                    )
+                );
+
+                return {
+                    productTags: normalizedTags,
+                    orderTag: String(mapping.orderTag || '').trim(),
+                    enabled: Boolean(mapping.enabled),
+                    color: mapping.color
+                };
+            })
+            .filter((mapping) => mapping.productTags.length > 0 && mapping.orderTag.length > 0);
+    }
 
     /**
      * Get tag mappings for an account
@@ -40,14 +73,15 @@ export class OrderTaggingService {
      * Save tag mappings for an account
      */
     static async saveTagMappings(accountId: string, mappings: TagMapping[]): Promise<void> {
+        const normalizedMappings = this.normalizeMappings(mappings);
         // Prisma 7 requires proper JSON serialization for Json fields
-        const sanitizedMappings = JSON.parse(JSON.stringify(mappings));
+        const sanitizedMappings = JSON.parse(JSON.stringify(normalizedMappings));
 
         await prisma.account.update({
             where: { id: accountId },
             data: { orderTagMappings: sanitizedMappings }
         });
-        Logger.info('Tag mappings saved', { accountId, count: mappings.length });
+        Logger.info('Tag mappings saved', { accountId, count: normalizedMappings.length });
     }
 
     /**
@@ -68,7 +102,7 @@ export class OrderTaggingService {
 
         // Get tag mappings for this account
         const mappings = await this.getTagMappings(accountId);
-        const enabledMappings = mappings.filter(m => m.enabled);
+        const enabledMappings = this.normalizeMappings(mappings).filter(m => m.enabled);
 
         // If no mappings configured, return empty map (all orders have empty tags)
         if (enabledMappings.length === 0) return result;
@@ -76,7 +110,9 @@ export class OrderTaggingService {
         // Build lookup: productTag -> orderTag
         const mappingLookup = new Map<string, string>();
         for (const m of enabledMappings) {
-            mappingLookup.set(m.productTag.toLowerCase(), m.orderTag);
+            for (const productTag of m.productTags) {
+                mappingLookup.set(productTag, m.orderTag);
+            }
         }
 
         // Collect all unique product IDs from all orders
@@ -154,7 +190,7 @@ export class OrderTaggingService {
 
         // Get tag mappings for this account
         const mappings = knownMappings || await this.getTagMappings(accountId);
-        const enabledMappings = mappings.filter(m => m.enabled);
+        const enabledMappings = this.normalizeMappings(mappings).filter(m => m.enabled);
 
         // If no mappings configured, return empty (user must configure first)
         if (enabledMappings.length === 0) return [];
@@ -162,7 +198,9 @@ export class OrderTaggingService {
         // Build lookup: productTag -> orderTag
         const mappingLookup = new Map<string, string>();
         for (const m of enabledMappings) {
-            mappingLookup.set(m.productTag.toLowerCase(), m.orderTag);
+            for (const productTag of m.productTags) {
+                mappingLookup.set(productTag, m.orderTag);
+            }
         }
 
         // Get unique product IDs from line items
@@ -227,4 +265,3 @@ export class OrderTaggingService {
         return Array.from(tagSet).sort();
     }
 }
-

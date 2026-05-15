@@ -19,6 +19,8 @@ const {
     mockGenerateSuggestions: vi.fn(),
 }));
 
+let inMemorySuggestions: any[] = [];
+
 vi.mock('../middleware/auth', () => ({
     requireAuthFastify: async (request: any) => {
         request.user = { id: 'user-1' };
@@ -47,6 +49,8 @@ describe('aiManager routes', () => {
         app = Fastify();
         await app.register(aiManagerRoutes, { prefix: '/api/ai-manager' });
         await app.ready();
+
+        inMemorySuggestions = [];
 
         mockIsAccountFeatureEnabled.mockResolvedValue(true);
         mockPrisma.searchConsoleAccount.count.mockResolvedValue(1);
@@ -98,6 +102,121 @@ describe('aiManager routes', () => {
         expect(res.statusCode).toBe(200);
         expect(mockGenerateSuggestions).toHaveBeenCalledWith('acc-1');
         expect(res.json()).toEqual({ created: 3 });
+    });
+
+    it('returns suggestions preserving db priority order in response', async () => {
+        const newer = new Date('2026-05-14T10:00:00.000Z');
+        const older = new Date('2026-05-14T09:00:00.000Z');
+
+        mockPrisma.recommendationLog.findMany.mockResolvedValue([
+            {
+                id: 'rec-high-impact',
+                campaignName: 'Reduce paid-organic cannibalization waste (buy red mug, custom red mug)',
+                text: 'Top overlapping paid keywords: buy red mug, custom red mug. Rewrite ad coverage to focus on incremental-value terms.',
+                category: 'ADS_OPTIMIZATION',
+                platform: 'GOOGLE_ADS',
+                priority: 1,
+                confidenceScore: 85,
+                status: 'pending',
+                createdAt: newer,
+                dataPoints: ['Estimated wasted spend: 2400', 'Keywords: buy red mug, custom red mug'],
+            },
+            {
+                id: 'rec-lower-impact',
+                campaignName: 'Target low-hanging keyword: blue widgets',
+                text: 'Create or update content for "blue widgets".',
+                category: 'SEO_FIX',
+                platform: 'SEARCH_CONSOLE',
+                priority: 2,
+                confidenceScore: 72,
+                status: 'pending',
+                createdAt: older,
+                dataPoints: ['Estimated upside: 22'],
+            },
+        ]);
+
+        const res = await app.inject({
+            method: 'GET',
+            url: '/api/ai-manager/suggestions?limit=2',
+            headers: { 'x-account-id': 'acc-1' },
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json();
+        expect(body.items).toHaveLength(2);
+        expect(body.items[0].id).toBe('rec-high-impact');
+        expect(body.items[1].id).toBe('rec-lower-impact');
+        expect(body.items[0].dataPoints).toContain('Keywords: buy red mug, custom red mug');
+
+        expect(mockPrisma.recommendationLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                accountId: 'acc-1',
+                recommendationId: { startsWith: 'ai_manager_' },
+            }),
+            orderBy: { createdAt: 'desc' },
+            take: 2,
+        }));
+    });
+
+    it('refresh then fetch returns ranked suggestions end-to-end', async () => {
+        mockGenerateSuggestions.mockImplementation(async () => {
+            inMemorySuggestions = [
+                {
+                    id: 'rec-impact-1',
+                    campaignName: 'Reduce paid-organic cannibalization waste (buy red mug, custom red mug)',
+                    text: 'Top overlapping paid keywords: buy red mug, custom red mug. Rewrite ad coverage to focus on incremental-value terms.',
+                    category: 'ADS_OPTIMIZATION',
+                    platform: 'GOOGLE_ADS',
+                    priority: 1,
+                    confidenceScore: 86,
+                    status: 'pending',
+                    createdAt: new Date('2026-05-14T11:00:00.000Z'),
+                    dataPoints: ['Estimated wasted spend: 2400', 'Keywords: buy red mug, custom red mug'],
+                    recommendationId: 'ai_manager_ads_opt_waste_1',
+                    accountId: 'acc-1',
+                },
+                {
+                    id: 'rec-impact-2',
+                    campaignName: 'Target low-hanging keyword: blue widgets',
+                    text: 'Create or update content for "blue widgets" with focused H2 structure.',
+                    category: 'SEO_FIX',
+                    platform: 'SEARCH_CONSOLE',
+                    priority: 2,
+                    confidenceScore: 72,
+                    status: 'pending',
+                    createdAt: new Date('2026-05-14T10:00:00.000Z'),
+                    dataPoints: ['Estimated upside: 22'],
+                    recommendationId: 'ai_manager_seo_fix_1',
+                    accountId: 'acc-1',
+                },
+            ];
+            return { created: inMemorySuggestions.length };
+        });
+
+        mockPrisma.recommendationLog.findMany.mockImplementation(async () => inMemorySuggestions);
+
+        const refreshRes = await app.inject({
+            method: 'POST',
+            url: '/api/ai-manager/suggestions/refresh',
+            headers: { 'x-account-id': 'acc-1' },
+        });
+
+        expect(refreshRes.statusCode).toBe(200);
+        expect(refreshRes.json()).toEqual({ created: 2 });
+
+        const fetchRes = await app.inject({
+            method: 'GET',
+            url: '/api/ai-manager/suggestions?limit=10',
+            headers: { 'x-account-id': 'acc-1' },
+        });
+
+        expect(fetchRes.statusCode).toBe(200);
+        const body = fetchRes.json();
+        expect(body.items).toHaveLength(2);
+        expect(body.items[0].title).toContain('Reduce paid-organic cannibalization waste');
+        expect(body.items[0].priority).toBe(1);
+        expect(body.items[1].title).toContain('Target low-hanging keyword: blue widgets');
+        expect(body.items[1].priority).toBe(2);
     });
 
     it('updates suggestion status for account-scoped record', async () => {

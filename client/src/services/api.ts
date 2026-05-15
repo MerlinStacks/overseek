@@ -57,12 +57,9 @@ function handleAuthError(message: string) {
         sessionStorage.setItem('authError', 'Your session has expired. Please log in again.');
     }
 
-    // Redirect to login (avoid if already on login page)
-    if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-    }
+    window.dispatchEvent(new Event('overseek:auth-expired'));
 
-    // Reset debounce after redirect
+    // Reset debounce after state propagation
     setTimeout(() => { isHandlingAuthError = false; }, 2000);
 }
 

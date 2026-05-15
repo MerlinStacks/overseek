@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Search, Users, Mail, ShoppingBag, Calendar } from 'lucide-react';
@@ -10,6 +10,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { RelativeTime } from '../components/ui/RelativeTime';
 import { formatDate, formatCurrency } from '../utils/format';
 import { subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
+import { useVisibilityRefreshThrottle } from '../hooks/useVisibilityRefreshThrottle';
 
 interface Customer {
     id: string;
@@ -43,15 +44,29 @@ function getContactStatusBadge(status: Customer['contactStatus']) {
 
 export function CustomersPage() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const pageFromUrl = Number(searchParams.get('page') || '1');
+    const queryFromUrl = searchParams.get('q') || '';
+    const statusFromUrl = searchParams.get('status');
+    const initialStatusFilter: 'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' =
+        statusFromUrl === 'UNVERIFIED' ||
+        statusFromUrl === 'SUBSCRIBED' ||
+        statusFromUrl === 'BOUNCED' ||
+        statusFromUrl === 'UNSUBSCRIBED' ||
+        statusFromUrl === 'SOFT_BOUNCED' ||
+        statusFromUrl === 'COMPLAINT'
+            ? statusFromUrl
+            : 'ALL';
+    const initialPage = Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? Math.trunc(pageFromUrl) : 1;
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [page, setPage] = useState(1);
+    const [searchQuery, setSearchQuery] = useState(queryFromUrl);
+    const [page, setPage] = useState(initialPage);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
-    const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT'>('ALL');
+    const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT'>(initialStatusFilter);
     const [statusCounts, setStatusCounts] = useState<Record<'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT', number>>({
         ALL: 0,
         UNVERIFIED: 0,
@@ -62,16 +77,19 @@ export function CustomersPage() {
         COMPLAINT: 0
     });
 
-    const [debouncedQuery, setDebouncedQuery] = useState('');
+    const [debouncedQuery, setDebouncedQuery] = useState(queryFromUrl);
     const currency = currentAccount?.currency || 'USD';
+    const shouldRefreshOnVisible = useVisibilityRefreshThrottle(45_000);
 
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedQuery(searchQuery);
-            setPage(1);
+            if (searchQuery !== queryFromUrl) {
+                setPage(1);
+            }
         }, 500);
         return () => clearTimeout(timer);
-    }, [searchQuery]);
+    }, [searchQuery, queryFromUrl]);
 
     const fetchCustomers = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -126,13 +144,41 @@ export function CustomersPage() {
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
+                if (!shouldRefreshOnVisible()) {
+                    return;
+                }
                 void fetchCustomers();
             }
         };
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [fetchCustomers]);
+    }, [fetchCustomers, shouldRefreshOnVisible]);
+
+    useEffect(() => {
+        const nextParams = new URLSearchParams(searchParams);
+        if (debouncedQuery) {
+            nextParams.set('q', debouncedQuery);
+        } else {
+            nextParams.delete('q');
+        }
+
+        if (statusFilter !== 'ALL') {
+            nextParams.set('status', statusFilter);
+        } else {
+            nextParams.delete('status');
+        }
+
+        if (page > 1) {
+            nextParams.set('page', String(page));
+        } else {
+            nextParams.delete('page');
+        }
+
+        if (nextParams.toString() !== searchParams.toString()) {
+            setSearchParams(nextParams, { replace: true });
+        }
+    }, [debouncedQuery, statusFilter, page, searchParams, setSearchParams]);
 
     return (
         <div className="space-y-6">

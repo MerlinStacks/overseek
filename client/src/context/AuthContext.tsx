@@ -291,6 +291,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => window.removeEventListener('storage', handleStorage);
     }, []);
 
+    useEffect(() => {
+        const handleAuthExpired = () => {
+            releaseRefreshLock();
+            clearSession();
+        };
+
+        window.addEventListener('overseek:auth-expired', handleAuthExpired);
+        return () => window.removeEventListener('overseek:auth-expired', handleAuthExpired);
+    }, [clearSession, releaseRefreshLock]);
+
     const login = (newToken: string, newUser: User, refreshToken?: string) => {
         localStorage.setItem('token', newToken);
         localStorage.setItem('user', JSON.stringify(newUser));
@@ -331,4 +341,3 @@ export function useAuth() {
     }
     return context;
 }
-

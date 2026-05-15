@@ -17,6 +17,7 @@ import { InternalProductsList } from '../components/inventory/InternalProductsLi
 import { EmptyState } from '../components/ui/EmptyState';
 import { Modal } from '../components/ui/Modal';
 import { subscribeToProductChanges } from '../utils/productCrossTabEvents';
+import { useVisibilityRefreshThrottle } from '../hooks/useVisibilityRefreshThrottle';
 import type { SeoTest } from '../components/Seo/SeoScoreBadge';
 
 interface Product {
@@ -90,11 +91,14 @@ export function InventoryPage() {
     const validTabs = ['catalog', 'suppliers', 'purchasing', 'components'];
     const initialTab = (tabFromUrl && validTabs.includes(tabFromUrl)) ? tabFromUrl : 'catalog';
     const sortFieldFromUrl = searchParams.get('sortField');
+    const queryFromUrl = searchParams.get('q') || '';
     const initialSortField: 'name' | 'price' | null = sortFieldFromUrl === 'name' || sortFieldFromUrl === 'price'
         ? sortFieldFromUrl
         : null;
     const sortDirectionFromUrl = searchParams.get('sortDirection');
     const initialSortDirection: 'asc' | 'desc' = sortDirectionFromUrl === 'desc' ? 'desc' : 'asc';
+    const pageFromUrl = Number(searchParams.get('page') || '1');
+    const initialPage = Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? Math.trunc(pageFromUrl) : 1;
     const [activeTab, setActiveTab] = useState<'catalog' | 'suppliers' | 'purchasing' | 'components'>(initialTab);
 
     // Sync URL when tab changes
@@ -116,13 +120,13 @@ export function InventoryPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = useState(queryFromUrl);
     const [sortField, setSortField] = useState<'name' | 'price' | null>(initialSortField);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(initialSortDirection);
-    const [page, setPage] = useState(1);
+    const [page, setPage] = useState(initialPage);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
-    const [debouncedQuery, setDebouncedQuery] = useState('');
+    const [debouncedQuery, setDebouncedQuery] = useState(queryFromUrl);
 
     // BOM State
     // const [editingBOM, setEditingBOM] = useState<string | null>(null);
@@ -141,6 +145,7 @@ export function InventoryPage() {
     const [tags, setTags] = useState<ProductTerm[]>([]);
     const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
     const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+    const shouldRefreshOnVisible = useVisibilityRefreshThrottle(45_000);
 
     const resetCreateModal = () => {
         setShowCreateModal(false);
@@ -190,10 +195,12 @@ export function InventoryPage() {
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedQuery(searchQuery);
-            setPage(1); // Reset to page 1 on new search
+            if (searchQuery !== queryFromUrl) {
+                setPage(1); // Reset to page 1 on new search
+            }
         }, 500);
         return () => clearTimeout(timer);
-    }, [searchQuery]);
+    }, [searchQuery, queryFromUrl]);
 
     const fetchProducts = useCallback(async () => {
         if (!currentAccount || !token) return;
@@ -237,6 +244,12 @@ export function InventoryPage() {
     useEffect(() => {
         const nextParams = new URLSearchParams(searchParams);
 
+        if (debouncedQuery) {
+            nextParams.set('q', debouncedQuery);
+        } else {
+            nextParams.delete('q');
+        }
+
         if (sortField) {
             nextParams.set('sortField', sortField);
             nextParams.set('sortDirection', sortDirection);
@@ -248,7 +261,20 @@ export function InventoryPage() {
         if (nextParams.toString() !== searchParams.toString()) {
             setSearchParams(nextParams, { replace: true });
         }
-    }, [sortField, sortDirection, searchParams, setSearchParams]);
+    }, [debouncedQuery, sortField, sortDirection, searchParams, setSearchParams]);
+
+    useEffect(() => {
+        const nextParams = new URLSearchParams(searchParams);
+        if (page > 1) {
+            nextParams.set('page', String(page));
+        } else {
+            nextParams.delete('page');
+        }
+
+        if (nextParams.toString() !== searchParams.toString()) {
+            setSearchParams(nextParams, { replace: true });
+        }
+    }, [page, searchParams, setSearchParams]);
 
     useEffect(() => {
         if (activeTab === 'catalog') {
@@ -271,13 +297,16 @@ export function InventoryPage() {
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' && activeTab === 'catalog') {
+                if (!shouldRefreshOnVisible()) {
+                    return;
+                }
                 void fetchProducts();
             }
         };
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [activeTab, fetchProducts]);
+    }, [activeTab, fetchProducts, shouldRefreshOnVisible]);
 
     async function handleCreateProduct() {
         if (!currentAccount || !token || !newProductName.trim()) return;

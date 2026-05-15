@@ -1,14 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Loader2, Save, Tag, Plus, X, ChevronDown, Search } from 'lucide-react';
 
 interface TagMapping {
-    productTag: string;
+    productTag?: string;
+    productTags?: string[];
     orderTag: string;
     enabled: boolean;
     color?: string;  // Hex color for display (e.g. "#3B82F6")
+}
+
+function getMappingProductTags(mapping: TagMapping): string[] {
+    const fromArray = Array.isArray(mapping.productTags) ? mapping.productTags : [];
+    const fromLegacy = mapping.productTag ? [mapping.productTag] : [];
+    return Array.from(new Set([...fromArray, ...fromLegacy].filter(Boolean)));
 }
 
 /**
@@ -28,6 +35,7 @@ export function OrderTagSettings() {
     // Add tag dropdown state
     const [showAddDropdown, setShowAddDropdown] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [rowTagQueries, setRowTagQueries] = useState<Record<number, string>>({});
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown on outside click
@@ -75,7 +83,11 @@ export function OrderTagSettings() {
 
     /** Product tags not yet added as mappings */
     function getAvailableTags(): string[] {
-        const mappedTags = new Set(mappings.map(m => m.productTag.toLowerCase()));
+        const mappedTags = new Set(
+            mappings
+                .flatMap((mapping) => getMappingProductTags(mapping))
+                .map((tag) => tag.toLowerCase())
+        );
         return productTags.filter(tag => !mappedTags.has(tag.toLowerCase()));
     }
 
@@ -91,22 +103,81 @@ export function OrderTagSettings() {
     function addTagMapping(productTag: string) {
         setMappings(prev => [
             ...prev,
-            { productTag, orderTag: productTag, enabled: true, color: '#3B82F6' }
+            { productTags: [productTag], orderTag: productTag, enabled: true, color: '#3B82F6' }
         ]);
         setShowAddDropdown(false);
         setSearchQuery('');
     }
 
-    function removeTagMapping(productTag: string) {
-        setMappings(prev => prev.filter(m => m.productTag.toLowerCase() !== productTag.toLowerCase()));
+    function removeTagMapping(index: number) {
+        setMappings(prev => prev.filter((_, i) => i !== index));
     }
 
-    function updateMapping(productTag: string, updates: Partial<TagMapping>) {
-        setMappings(prev => prev.map(m =>
-            m.productTag.toLowerCase() === productTag.toLowerCase()
-                ? { ...m, ...updates }
-                : m
+    function updateMapping(index: number, updates: Partial<TagMapping>) {
+        setMappings(prev => prev.map((mapping, i) =>
+            i === index ? { ...mapping, ...updates } : mapping
         ));
+    }
+
+    function getAvailableTagsForMapping(index: number): string[] {
+        const usedByOthers = new Set(
+            mappings
+                .filter((_, i) => i !== index)
+                .flatMap((mapping) => getMappingProductTags(mapping))
+                .map((tag) => tag.toLowerCase())
+        );
+
+        return productTags.filter((tag) => !usedByOthers.has(tag.toLowerCase()));
+    }
+
+    function addProductTagToMapping(index: number, tag: string) {
+        const trimmedTag = tag.trim();
+        if (!trimmedTag) return;
+
+        setMappings((prev) => prev.map((mapping, i) => {
+            if (i !== index) return mapping;
+
+            const existing = getMappingProductTags(mapping);
+            const exists = existing.some((existingTag) => existingTag.toLowerCase() === trimmedTag.toLowerCase());
+            if (exists) return mapping;
+
+            return {
+                ...mapping,
+                productTags: [...existing, trimmedTag],
+                productTag: undefined
+            };
+        }));
+
+        setRowTagQueries((prev) => ({ ...prev, [index]: '' }));
+    }
+
+    function removeProductTagFromMapping(index: number, tagToRemove: string) {
+        setMappings((prev) => prev.map((mapping, i) => {
+            if (i !== index) return mapping;
+
+            const remainingTags = getMappingProductTags(mapping)
+                .filter((tag) => tag.toLowerCase() !== tagToRemove.toLowerCase());
+
+            return {
+                ...mapping,
+                productTags: remainingTags,
+                productTag: undefined
+            };
+        }));
+    }
+
+    function setRowTagQuery(index: number, value: string) {
+        setRowTagQueries((prev) => ({ ...prev, [index]: value }));
+    }
+
+    function handleRowSearchKeyDown(index: number, event: KeyboardEvent<HTMLInputElement>, candidates: string[]) {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+
+        const firstMatch = candidates[0];
+        if (firstMatch) {
+            addProductTagToMapping(index, firstMatch);
+        }
     }
 
     async function handleSave() {
@@ -240,9 +311,18 @@ export function OrderTagSettings() {
                         </div>
 
                         {/* Mapping rows */}
-                        {mappings.map(mapping => (
+                        {mappings.map((mapping, index) => {
+                            const mappingProductTags = getMappingProductTags(mapping);
+                            const availableForMapping = getAvailableTagsForMapping(index)
+                                .filter((tag) => !mappingProductTags.some((existingTag) => existingTag.toLowerCase() === tag.toLowerCase()));
+                            const rowQuery = rowTagQueries[index] || '';
+                            const filteredAvailableForMapping = rowQuery.trim()
+                                ? availableForMapping.filter((tag) => tag.toLowerCase().includes(rowQuery.toLowerCase()))
+                                : availableForMapping;
+                            const productTagLabel = mappingProductTags.length > 0 ? mappingProductTags.join(', ') : '-';
+                            return (
                             <div
-                                key={mapping.productTag}
+                                key={`${mapping.orderTag}-${index}`}
                                 className={`grid grid-cols-12 gap-4 items-center p-3 rounded-lg border transition-colors ${mapping.enabled ? 'border-blue-200 bg-blue-50/50' : 'border-gray-200 bg-gray-50/50'
                                     }`}
                             >
@@ -250,21 +330,73 @@ export function OrderTagSettings() {
                                     <input
                                         type="checkbox"
                                         checked={mapping.enabled}
-                                        onChange={(e) => updateMapping(mapping.productTag, { enabled: e.target.checked })}
+                                        onChange={(e) => updateMapping(index, { enabled: e.target.checked })}
                                         className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                                     />
                                 </div>
                                 <div className="col-span-3">
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-sm bg-gray-100 text-gray-700">
-                                        {mapping.productTag}
-                                    </span>
+                                    <div className="space-y-2">
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {mappingProductTags.length > 0 ? mappingProductTags.map((productTag) => (
+                                                <span
+                                                    key={`${mapping.orderTag}-${productTag}`}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700"
+                                                    title={productTagLabel}
+                                                >
+                                                    {productTag}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeProductTagFromMapping(index, productTag)}
+                                                        className="text-gray-400 hover:text-red-600"
+                                                        title="Remove product tag"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </span>
+                                            )) : (
+                                                <span className="text-xs text-gray-400">No product tags</span>
+                                            )}
+                                        </div>
+                                        {availableForMapping.length > 0 && (
+                                            <div className="space-y-1">
+                                                <div className="relative">
+                                                    <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                    <input
+                                                        type="text"
+                                                        value={rowQuery}
+                                                        onChange={(e) => setRowTagQuery(index, e.target.value)}
+                                                        onKeyDown={(e) => handleRowSearchKeyDown(index, e, filteredAvailableForMapping)}
+                                                        placeholder="Search then add tag..."
+                                                        className="w-full pl-6 pr-2 py-1 text-xs border rounded-md bg-white border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    />
+                                                </div>
+                                                <select
+                                                    value=""
+                                                    onChange={(e) => {
+                                                        if (e.target.value) {
+                                                            addProductTagToMapping(index, e.target.value);
+                                                        }
+                                                    }}
+                                                    className="w-full px-2 py-1 text-xs border rounded-md bg-white border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                >
+                                                    <option value="">Add product tag...</option>
+                                                    {filteredAvailableForMapping.map((tag) => (
+                                                        <option key={`${mapping.orderTag}-${tag}`} value={tag}>{tag}</option>
+                                                    ))}
+                                                </select>
+                                                {rowQuery.trim() && filteredAvailableForMapping.length === 0 && (
+                                                    <p className="text-[11px] text-gray-500">No matching product tags</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="col-span-1 text-center text-gray-400">→</div>
                                 <div className="col-span-4">
                                     <input
                                         type="text"
                                         value={mapping.orderTag}
-                                        onChange={(e) => updateMapping(mapping.productTag, { orderTag: e.target.value })}
+                                        onChange={(e) => updateMapping(index, { orderTag: e.target.value })}
                                         placeholder="Order tag name"
                                         className="w-full px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white border-gray-300"
                                     />
@@ -273,7 +405,7 @@ export function OrderTagSettings() {
                                     <input
                                         type="color"
                                         value={mapping.color || '#6B7280'}
-                                        onChange={(e) => updateMapping(mapping.productTag, { color: e.target.value })}
+                                        onChange={(e) => updateMapping(index, { color: e.target.value })}
                                         className="w-8 h-8 rounded-sm cursor-pointer border border-gray-300"
                                         title="Tag color"
                                     />
@@ -286,7 +418,7 @@ export function OrderTagSettings() {
                                 </div>
                                 <div className="col-span-1 flex justify-end">
                                     <button
-                                        onClick={() => removeTagMapping(mapping.productTag)}
+                                        onClick={() => removeTagMapping(index)}
                                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                                         title="Remove mapping"
                                     >
@@ -294,7 +426,8 @@ export function OrderTagSettings() {
                                     </button>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
 

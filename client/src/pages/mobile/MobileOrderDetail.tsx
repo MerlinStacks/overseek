@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { useToast } from '../../context/ToastContext';
 import { fixMojibake, formatCurrency, formatDateTime } from '../../utils/format';
 import { usePermissions } from '../../hooks/usePermissions';
 import { OrderCOGSPanel } from '../../components/orders/OrderCOGSPanel';
@@ -71,6 +73,9 @@ interface OrderDetail {
     currency?: string;
 }
 
+type MobilePanelId = 'tracking' | 'customer' | 'shipping' | 'cogs' | 'tags' | 'attribution';
+const DEFAULT_MOBILE_PANEL_ORDER: MobilePanelId[] = ['tracking', 'customer', 'shipping', 'cogs', 'tags', 'attribution'];
+
 const STATUS_CONFIG: Record<string, { icon: typeof Package; color: string; bg: string; text: string }> = {
     pending: { icon: Clock, color: 'text-yellow-600', bg: 'bg-yellow-100', text: 'Pending' },
     processing: { icon: Package, color: 'text-blue-600', bg: 'bg-blue-100', text: 'Processing' },
@@ -85,11 +90,13 @@ export function MobileOrderDetail() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const [order, setOrder] = useState<OrderDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [attribution, setAttribution] = useState<Attribution | null>(null);
     const [orderTags, setOrderTags] = useState<string[]>([]);
+    const [mobilePanelOrder, setMobilePanelOrder] = useState<MobilePanelId[]>(DEFAULT_MOBILE_PANEL_ORDER);
     const { hasPermission } = usePermissions();
     const canViewCogs = hasPermission('view_cogs');
 
@@ -203,6 +210,37 @@ export function MobileOrderDetail() {
         return unsubscribe;
     }, [currentAccount?.id, fetchOrder, id]);
 
+    useEffect(() => {
+        const storageKey = `mobile-order-detail-panel-order:${currentAccount?.id || 'default'}`;
+        const saved = localStorage.getItem(storageKey);
+
+        if (!saved) {
+            setMobilePanelOrder(DEFAULT_MOBILE_PANEL_ORDER);
+            return;
+        }
+
+        try {
+            const parsed = JSON.parse(saved);
+            if (!Array.isArray(parsed)) {
+                setMobilePanelOrder(DEFAULT_MOBILE_PANEL_ORDER);
+                return;
+            }
+
+            const validOrder = parsed.filter((panelId): panelId is MobilePanelId =>
+                typeof panelId === 'string' && DEFAULT_MOBILE_PANEL_ORDER.includes(panelId as MobilePanelId)
+            );
+            const missing = DEFAULT_MOBILE_PANEL_ORDER.filter((panelId) => !validOrder.includes(panelId));
+            setMobilePanelOrder([...validOrder, ...missing]);
+        } catch {
+            setMobilePanelOrder(DEFAULT_MOBILE_PANEL_ORDER);
+        }
+    }, [currentAccount?.id]);
+
+    useEffect(() => {
+        const storageKey = `mobile-order-detail-panel-order:${currentAccount?.id || 'default'}`;
+        localStorage.setItem(storageKey, JSON.stringify(mobilePanelOrder));
+    }, [currentAccount?.id, mobilePanelOrder]);
+
     const formatDate = (date: string) => formatDateTime(date);
     const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); if ('vibrate' in navigator) navigator.vibrate(10); };
 
@@ -228,34 +266,28 @@ export function MobileOrderDetail() {
         }
     };
 
+    const movePanel = useCallback((panelId: MobilePanelId, direction: 'up' | 'down') => {
+        setMobilePanelOrder((prev) => {
+            const index = prev.indexOf(panelId);
+            if (index === -1) return prev;
+
+            const targetIndex = direction === 'up' ? index - 1 : index + 1;
+            if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+
+            const next = [...prev];
+            [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+            return next;
+        });
+    }, []);
+
     if (loading) return <div className="space-y-4 animate-pulse"><div className="h-10 bg-gray-200 rounded w-1/3" /><div className="h-24 bg-gray-200 rounded-xl" /><div className="h-40 bg-gray-200 rounded-xl" /></div>;
     if (!order) return <div className="text-center py-12"><Package className="mx-auto text-gray-300 mb-4" size={48} /><p className="text-gray-500">Order not found</p><button onClick={() => navigate('/m/orders')} className="mt-4 text-indigo-600 font-medium">Back to Orders</button></div>;
 
     const statusConfig = STATUS_CONFIG[order.status.toLowerCase()] || STATUS_CONFIG.pending;
     const StatusIcon = statusConfig.icon;
-
-    return (
-        <div className="space-y-4 pb-8">
-            <div className="flex items-center gap-3">
-                <button onClick={() => navigate('/m/orders')} className="p-2 -ml-2 rounded-lg active:bg-gray-100"><ArrowLeft size={24} className="text-gray-700" /></button>
-                <div className="flex-1"><h1 className="text-xl font-bold text-gray-900">{order.orderNumber}</h1><p className="text-sm text-gray-500">{formatDate(order.createdAt)}</p></div>
-            </div>
-
-            <div className={`${statusConfig.bg} rounded-xl p-4 flex items-center gap-4`}>
-                <div className="p-3 bg-white rounded-lg shadow-sm"><StatusIcon size={24} className={statusConfig.color} /></div>
-                <div className="flex-1">
-                    <p className={`font-semibold ${statusConfig.color}`}>{statusConfig.text}</p>
-                    {order.trackingItems.length > 0 && (
-                        <button onClick={() => copyToClipboard(order.trackingItems[0].trackingNumber)} className="flex items-center gap-1 text-sm text-gray-600 mt-1">
-                            <span>Tracking: {order.trackingItems[0].trackingNumber}</span><Copy size={14} />
-                        </button>
-                    )}
-                </div>
-                {order.trackingItems[0]?.trackingUrl && <a href={order.trackingItems[0].trackingUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-lg shadow-sm"><ExternalLink size={20} className="text-gray-600" /></a>}
-            </div>
-
-            {/* Shipment Tracking Details */}
-            {order.trackingItems.length > 0 && (
+    const mobilePanels = useMemo(() => {
+        const panels: Record<MobilePanelId, ReactNode | null> = {
+            tracking: order.trackingItems.length > 0 ? (
                 <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
                     <div className="flex items-center gap-2 mb-3">
                         <Truck size={18} className="text-indigo-600" />
@@ -279,20 +311,120 @@ export function MobileOrderDetail() {
                         ))}
                     </div>
                 </div>
-            )}
-
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-900 mb-3">Customer</h2>
-                <div className="space-y-3">
-                    <div className="flex items-center gap-3"><User size={18} className="text-gray-400" /><span className="text-gray-700">{order.customer.name}</span></div>
-                    {order.customer.email && <a href={`mailto:${order.customer.email}`} className="flex items-center gap-3"><Mail size={18} className="text-gray-400" /><span className="text-indigo-600">{order.customer.email}</span></a>}
-                    {order.customer.phone && <a href={`tel:${order.customer.phone}`} className="flex items-center gap-3"><Phone size={18} className="text-gray-400" /><span className="text-indigo-600">{order.customer.phone}</span></a>}
+            ) : null,
+            customer: (
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                    <h2 className="font-semibold text-gray-900 mb-3">Customer</h2>
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-3"><User size={18} className="text-gray-400" /><span className="text-gray-700">{order.customer.name}</span></div>
+                        {order.customer.email && <a href={`mailto:${order.customer.email}`} className="flex items-center gap-3"><Mail size={18} className="text-gray-400" /><span className="text-indigo-600">{order.customer.email}</span></a>}
+                        {order.customer.phone && <a href={`tel:${order.customer.phone}`} className="flex items-center gap-3"><Phone size={18} className="text-gray-400" /><span className="text-indigo-600">{order.customer.phone}</span></a>}
+                    </div>
                 </div>
+            ),
+            shipping: (
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                    <h2 className="font-semibold text-gray-900 mb-3">Shipping Address</h2>
+                    <div className="flex items-start gap-3"><MapPin size={18} className="text-gray-400 mt-0.5" /><div className="text-gray-700"><p>{order.shipping.address1}</p><p>{order.shipping.city}, {order.shipping.state} {order.shipping.postcode}</p><p>{order.shipping.country}</p></div></div>
+                </div>
+            ),
+            cogs: canViewCogs ? <OrderCOGSPanel orderId={order.id} currency={order.currency} /> : null,
+            tags: orderTags.length > 0 ? (
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Tag size={18} className="text-indigo-600" />
+                        <h2 className="font-semibold text-gray-900">Tags</h2>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {orderTags.map((tag) => (
+                            <span
+                                key={tag}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-sm bg-gray-100 text-gray-700 group"
+                            >
+                                {tag}
+                                <button
+                                    onClick={() => removeTag(tag)}
+                                    className="ml-1 p-0.5 rounded active:bg-gray-200 opacity-60 active:opacity-100"
+                                >
+                                    <X size={12} />
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            ) : null,
+            attribution: (
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                        <TrendingUp size={18} className="text-indigo-600" />
+                        <h2 className="font-semibold text-gray-900">Attribution</h2>
+                    </div>
+                    {attribution ? (
+                        <div className="space-y-3">
+                            <div className="flex flex-wrap gap-2">
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                    First: {attribution.firstTouchSource}
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                    Last: {attribution.lastTouchSource}
+                                </span>
+                            </div>
+
+                            {(attribution.utmSource || attribution.utmMedium || attribution.utmCampaign) && (
+                                <div className="text-xs text-gray-600 space-y-1 pt-2 border-t border-gray-100">
+                                    {attribution.utmSource && <div>Source: <span className="text-gray-900">{attribution.utmSource}</span></div>}
+                                    {attribution.utmMedium && <div>Medium: <span className="text-gray-900">{attribution.utmMedium}</span></div>}
+                                    {attribution.utmCampaign && <div>Campaign: <span className="text-gray-900">{attribution.utmCampaign}</span></div>}
+                                </div>
+                            )}
+
+                            {(attribution.deviceType || attribution.country) && (
+                                <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+                                    {attribution.deviceType && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
+                                            {attribution.deviceType === 'mobile' ? <Smartphone size={12} /> :
+                                                attribution.deviceType === 'tablet' ? <Tablet size={12} /> : <Monitor size={12} />}
+                                            {attribution.deviceType}
+                                        </span>
+                                    )}
+                                    {attribution.country && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
+                                            <Globe size={12} />
+                                            {attribution.city ? `${attribution.city}, ` : ''}{attribution.country}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-gray-500 italic">No attribution data</p>
+                    )}
+                </div>
+            )
+        };
+
+        return panels;
+    }, [attribution, canViewCogs, order, orderTags]);
+    const visiblePanelOrder = mobilePanelOrder.filter((panelId) => mobilePanels[panelId]);
+
+    return (
+        <div className="space-y-4 pb-8">
+            <div className="flex items-center gap-3">
+                <button onClick={() => navigate('/m/orders')} className="p-2 -ml-2 rounded-lg active:bg-gray-100"><ArrowLeft size={24} className="text-gray-700" /></button>
+                <div className="flex-1"><h1 className="text-xl font-bold text-gray-900">{order.orderNumber}</h1><p className="text-sm text-gray-500">{formatDate(order.createdAt)}</p></div>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-900 mb-3">Shipping Address</h2>
-                <div className="flex items-start gap-3"><MapPin size={18} className="text-gray-400 mt-0.5" /><div className="text-gray-700"><p>{order.shipping.address1}</p><p>{order.shipping.city}, {order.shipping.state} {order.shipping.postcode}</p><p>{order.shipping.country}</p></div></div>
+            <div className={`${statusConfig.bg} rounded-xl p-4 flex items-center gap-4`}>
+                <div className="p-3 bg-white rounded-lg shadow-sm"><StatusIcon size={24} className={statusConfig.color} /></div>
+                <div className="flex-1">
+                    <p className={`font-semibold ${statusConfig.color}`}>{statusConfig.text}</p>
+                    {order.trackingItems.length > 0 && (
+                        <button onClick={() => copyToClipboard(order.trackingItems[0].trackingNumber)} className="flex items-center gap-1 text-sm text-gray-600 mt-1">
+                            <span>Tracking: {order.trackingItems[0].trackingNumber}</span><Copy size={14} />
+                        </button>
+                    )}
+                </div>
+                {order.trackingItems[0]?.trackingUrl && <a href={order.trackingItems[0].trackingUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-lg shadow-sm"><ExternalLink size={20} className="text-gray-600" /></a>}
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -346,7 +478,7 @@ export function MobileOrderDetail() {
                                                             ))}
                                                         </div>
                                                     ) : (
-                                                        <span className="ml-1 text-gray-700 whitespace-pre-line">{fixMojibake(meta.value)}</span>
+                                                        <span className="ml-1 text-gray-700 whitespace-pre-line">{normalizeMetaValue(fixMojibake(meta.value))}</span>
                                                     )}
                                                 </div>
                                             );
@@ -369,87 +501,45 @@ export function MobileOrderDetail() {
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100"><CreditCard size={16} className="text-gray-400" /><span className="text-sm text-gray-600">{order.paymentMethod}</span></div>
             </div>
 
-            {/* COGS Breakdown - visible to users with view_cogs permission */}
-            {canViewCogs && (
-                <OrderCOGSPanel orderId={order.id} currency={order.currency} />
-            )}
-
-            {/* Tags Section */}
-            {orderTags.length > 0 && (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Tag size={18} className="text-indigo-600" />
-                        <h2 className="font-semibold text-gray-900">Tags</h2>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        {orderTags.map((tag) => (
-                            <span
-                                key={tag}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-sm bg-gray-100 text-gray-700 group"
-                            >
-                                {tag}
-                                <button
-                                    onClick={() => removeTag(tag)}
-                                    className="ml-1 p-0.5 rounded active:bg-gray-200 opacity-60 active:opacity-100"
-                                >
-                                    <X size={12} />
-                                </button>
-                            </span>
-                        ))}
-                    </div>
+            <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase text-gray-500 tracking-wide">Reorder detail panels</span>
+                    <button
+                        onClick={() => {
+                            setMobilePanelOrder(DEFAULT_MOBILE_PANEL_ORDER);
+                            toast.success('Panel order reset');
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 active:bg-gray-50"
+                    >
+                        <RotateCcw size={12} />
+                        Reset
+                    </button>
                 </div>
-            )}
-
-            {/* Attribution Section */}
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                <div className="flex items-center gap-2 mb-3">
-                    <TrendingUp size={18} className="text-indigo-600" />
-                    <h2 className="font-semibold text-gray-900">Attribution</h2>
-                </div>
-                {attribution ? (
-                    <div className="space-y-3">
-                        {/* Traffic Source */}
-                        <div className="flex flex-wrap gap-2">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                                First: {attribution.firstTouchSource}
-                            </span>
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                Last: {attribution.lastTouchSource}
-                            </span>
-                        </div>
-
-                        {/* UTM Parameters */}
-                        {(attribution.utmSource || attribution.utmMedium || attribution.utmCampaign) && (
-                            <div className="text-xs text-gray-600 space-y-1 pt-2 border-t border-gray-100">
-                                {attribution.utmSource && <div>Source: <span className="text-gray-900">{attribution.utmSource}</span></div>}
-                                {attribution.utmMedium && <div>Medium: <span className="text-gray-900">{attribution.utmMedium}</span></div>}
-                                {attribution.utmCampaign && <div>Campaign: <span className="text-gray-900">{attribution.utmCampaign}</span></div>}
-                            </div>
-                        )}
-
-                        {/* Device & Location */}
-                        {(attribution.deviceType || attribution.country) && (
-                            <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
-                                {attribution.deviceType && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
-                                        {attribution.deviceType === 'mobile' ? <Smartphone size={12} /> :
-                                            attribution.deviceType === 'tablet' ? <Tablet size={12} /> : <Monitor size={12} />}
-                                        {attribution.deviceType}
-                                    </span>
-                                )}
-                                {attribution.country && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
-                                        <Globe size={12} />
-                                        {attribution.city ? `${attribution.city}, ` : ''}{attribution.country}
-                                    </span>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <p className="text-sm text-gray-500 italic">No attribution data</p>
-                )}
             </div>
+
+            {visiblePanelOrder.map((panelId, index) => (
+                <div key={panelId}>
+                    <div className="mb-2 flex justify-end gap-2">
+                        <button
+                            onClick={() => movePanel(panelId, 'up')}
+                            disabled={index === 0}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <ChevronUp size={12} />
+                            Up
+                        </button>
+                        <button
+                            onClick={() => movePanel(panelId, 'down')}
+                            disabled={index === visiblePanelOrder.length - 1}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <ChevronDown size={12} />
+                            Down
+                        </button>
+                    </div>
+                    {mobilePanels[panelId]}
+                </div>
+            ))}
 
             {/* Image Preview Modal */}
             {selectedImage && (
@@ -499,3 +589,8 @@ const extractAllImageUrls = (value: string): string[] => {
 
     return urls;
 };
+
+const normalizeMetaValue = (value: string): string => value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n');

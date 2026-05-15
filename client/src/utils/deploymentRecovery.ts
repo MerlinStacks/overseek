@@ -7,10 +7,46 @@
  */
 
 import { Logger } from './logger';
+import * as Sentry from '@sentry/react';
 
 /** Cooldown tracking to prevent infinite reload loops */
 const RELOAD_TIMESTAMP_KEY = 'deployment-reload-timestamp';
 const RELOAD_COOLDOWN_MS = 30000; // 30 seconds between reload attempts
+const TELEMETRY_KEY_PREFIX = 'deployment-recovery-telemetry';
+
+function trackRecoveryTelemetry(event: string, meta: Record<string, unknown> = {}): void {
+    const now = Date.now();
+    const sessionKey = `${TELEMETRY_KEY_PREFIX}:${event}`;
+    let sessionCount = 1;
+
+    try {
+        const raw = sessionStorage.getItem(sessionKey);
+        const previous = raw ? parseInt(raw, 10) : 0;
+        sessionCount = Number.isFinite(previous) ? previous + 1 : 1;
+        sessionStorage.setItem(sessionKey, String(sessionCount));
+    } catch (error) {
+        Logger.warn('[DeploymentRecovery] Failed to persist telemetry counter', { error, event });
+    }
+
+    const payload = {
+        ...meta,
+        event,
+        sessionCount,
+        pathname: window.location.pathname,
+        isOnline: navigator.onLine,
+        timestamp: now,
+    };
+
+    Logger.warn('[DeploymentRecovery] Telemetry event', payload);
+    Sentry.captureMessage(`[DeploymentRecovery] ${event}`, {
+        level: 'warning',
+        tags: {
+            area: 'deployment-recovery',
+            event,
+        },
+        extra: payload,
+    });
+}
 
 /**
  * Shows a toast notification before reloading.
@@ -116,21 +152,36 @@ export function isChunkLoadError(error: Error | string): boolean {
     const message = typeof error === 'string' ? error : error?.message || '';
     const lowerMessage = message.toLowerCase();
 
-    // Require deployment/chunk context to avoid false positives from generic module errors
-    const hasChunkContext =
-        lowerMessage.includes('chunk') ||
-        lowerMessage.includes('dynamically imported module') ||
+    // Require deployment/chunk context to avoid false positives from generic module errors.
+    // `Failed to fetch dynamically imported module` can happen from transient network
+    // drops, so for that case we also require an explicit built-asset path hint.
+    const hasAssetPathHint =
         lowerMessage.includes('/assets/') ||
         lowerMessage.includes('assets/');
 
+    const hasChunkContext =
+        lowerMessage.includes('chunk') ||
+        hasAssetPathHint;
+
     if (!hasChunkContext) return false;
 
-    return (
+    const dynamicImportFetchFailure =
         message.includes('Failed to fetch dynamically imported module') ||
+        message.includes('error loading dynamically imported module');
+
+    if (dynamicImportFetchFailure && !hasAssetPathHint) {
+        trackRecoveryTelemetry('suppressed-non-chunk-dynamic-import-error', {
+            reason: 'missing-asset-path-hint',
+            message,
+        });
+        return false;
+    }
+
+    return (
+        dynamicImportFetchFailure ||
         message.includes('Loading chunk') ||
         message.includes('ChunkLoadError') ||
-        message.includes('Loading CSS chunk') ||
-        message.includes('error loading dynamically imported module')
+        message.includes('Loading CSS chunk')
     );
 }
 
@@ -143,6 +194,16 @@ export function handleChunkLoadError(error?: Error | string): boolean {
 
     // Only handle chunk errors
     if (error && !isChunkLoadError(errorToCheck)) {
+        return false;
+    }
+
+    // Don't hard-reload while offline; users can recover naturally once online.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        Logger.warn('[DeploymentRecovery] Skipping reload while offline');
+        trackRecoveryTelemetry('suppressed-offline-reload', {
+            reason: 'browser-offline',
+            error: typeof errorToCheck === 'string' ? errorToCheck : (errorToCheck as Error)?.message,
+        });
         return false;
     }
 

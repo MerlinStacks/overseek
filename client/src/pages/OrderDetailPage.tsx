@@ -1,11 +1,12 @@
 import { useParams, Link } from 'react-router-dom';
 import { Logger } from '../utils/logger';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatDate, formatCurrency } from '../utils/format';
-import { User, MapPin, Mail, Phone, Package, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, Truck, ExternalLink, Copy } from 'lucide-react';
+import { User, MapPin, Mail, Phone, Package, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, Truck, ExternalLink, Copy, GripVertical } from 'lucide-react';
 import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { Modal } from '../components/ui/Modal';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
@@ -81,6 +82,10 @@ interface OrderDetails {
     [key: string]: unknown;
 }
 
+type SidebarPanelId = 'tags' | 'cogs' | 'customer' | 'addresses' | 'tracking' | 'attribution';
+
+const DEFAULT_SIDEBAR_PANEL_ORDER: SidebarPanelId[] = ['tags', 'cogs', 'customer', 'addresses', 'tracking', 'attribution'];
+
 export function OrderDetailPage() {
     const { id } = useParams();
     const { token } = useAuth();
@@ -95,6 +100,8 @@ export function OrderDetailPage() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [attribution, setAttribution] = useState<Attribution | null>(null);
+    const [sidebarPanelOrder, setSidebarPanelOrder] = useState<SidebarPanelId[]>(DEFAULT_SIDEBAR_PANEL_ORDER);
+    const [draggedPanelId, setDraggedPanelId] = useState<SidebarPanelId | null>(null);
 
 
 
@@ -144,6 +151,38 @@ export function OrderDetailPage() {
             fetchOrder();
         }
     }, [id, currentAccount, token, fetchOrder]);
+
+    useEffect(() => {
+        const storageKey = `order-detail-sidebar-order:${currentAccount?.id || 'default'}`;
+        const saved = localStorage.getItem(storageKey);
+
+        if (!saved) {
+            setSidebarPanelOrder(DEFAULT_SIDEBAR_PANEL_ORDER);
+            return;
+        }
+
+        try {
+            const parsed = JSON.parse(saved);
+            if (!Array.isArray(parsed)) {
+                setSidebarPanelOrder(DEFAULT_SIDEBAR_PANEL_ORDER);
+                return;
+            }
+
+            const validOrder = parsed.filter((panelId): panelId is SidebarPanelId =>
+                typeof panelId === 'string' && DEFAULT_SIDEBAR_PANEL_ORDER.includes(panelId as SidebarPanelId)
+            );
+
+            const missingPanels = DEFAULT_SIDEBAR_PANEL_ORDER.filter((panelId) => !validOrder.includes(panelId));
+            setSidebarPanelOrder([...validOrder, ...missingPanels]);
+        } catch {
+            setSidebarPanelOrder(DEFAULT_SIDEBAR_PANEL_ORDER);
+        }
+    }, [currentAccount?.id]);
+
+    useEffect(() => {
+        const storageKey = `order-detail-sidebar-order:${currentAccount?.id || 'default'}`;
+        localStorage.setItem(storageKey, JSON.stringify(sidebarPanelOrder));
+    }, [currentAccount?.id, sidebarPanelOrder]);
 
     useEffect(() => {
         const unsubscribe = subscribeToCrossTabEvents((event) => {
@@ -230,6 +269,21 @@ export function OrderDetailPage() {
         setOrder((prev) => prev ? { ...prev, tags: newTags } : prev);
     }
 
+    const movePanel = useCallback((draggedId: SidebarPanelId, targetId: SidebarPanelId) => {
+        if (draggedId === targetId) return;
+
+        setSidebarPanelOrder((prev) => {
+            const fromIndex = prev.indexOf(draggedId);
+            const toIndex = prev.indexOf(targetId);
+            if (fromIndex === -1 || toIndex === -1) return prev;
+
+            const next = [...prev];
+            next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, draggedId);
+            return next;
+        });
+    }, []);
+
 
 
     // ... existing useEffect ...
@@ -243,6 +297,224 @@ export function OrderDetailPage() {
 
     const billing = order.billing || {};
     const shipping = order.shipping || {};
+    const hasTrackingItems = (order.tracking_items || []).length > 0;
+
+    const sidebarPanels = useMemo(() => {
+        const panels: Record<SidebarPanelId, ReactNode | null> = {
+            tags: (
+                <OrderTagPanel
+                    orderId={toStringValue(order.id || order.wooId || id || '')}
+                    currentTags={order.tags || []}
+                    lastUpdate={order.internal_updated_at}
+                    onTagsChange={handleTagsChange}
+                    onRefresh={fetchOrder}
+                />
+            ),
+            cogs: <OrderCOGSPanel orderId={toStringValue(order.id || order.wooId || id || '')} currency={order.currency} />,
+            customer: (
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
+                    <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                        <User size={18} className="text-blue-500" />
+                        Customer Details
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-gray-100 rounded-full text-gray-500"><User size={14} /></div>
+                            <div>
+                                {order.customer_id && order.customer_id > 0 ? (
+                                    <Link
+                                        to={`/customers/${order.customer_id}`}
+                                        className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                                    >
+                                        {billing.first_name} {billing.last_name}
+                                    </Link>
+                                ) : (
+                                    <div className="text-sm font-medium text-gray-900">{billing.first_name} {billing.last_name}</div>
+                                )}
+                                <div className="text-xs text-gray-500">
+                                    {order._customerMeta?.ordersCount !== undefined
+                                        ? `${order._customerMeta.ordersCount} order${order._customerMeta.ordersCount !== 1 ? 's' : ''} previously`
+                                        : 'Guest Customer'}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-gray-100 rounded-full text-gray-500"><Mail size={14} /></div>
+                            <div>
+                                <div className="text-sm font-medium text-gray-900 break-all">{billing.email}</div>
+                                <div className="text-xs text-gray-500">Email</div>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-gray-100 rounded-full text-gray-500"><Phone size={14} /></div>
+                            <div>
+                                <div className="text-sm font-medium text-gray-900">{billing.phone || 'No phone'}</div>
+                                <div className="text-xs text-gray-500">Phone</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ),
+            addresses: (
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
+                    <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                        <MapPin size={18} className="text-blue-500" />
+                        Addresses
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Billing</div>
+                            <div className="text-sm text-gray-700 leading-relaxed">
+                                {billing.address_1}<br />
+                                {billing.address_2 && <>{billing.address_2}<br /></>}
+                                {billing.city}, {billing.state} {billing.postcode}<br />
+                                {billing.country}
+                            </div>
+                        </div>
+
+                        {shipping && (
+                            <div>
+                                <div className="text-xs font-semibold text-gray-500 uppercase mb-1 pt-3 border-t border-dashed border-gray-200">Shipping</div>
+                                <div className="text-sm text-gray-700 leading-relaxed">
+                                    {shipping.address_1}<br />
+                                    {shipping.address_2 && <>{shipping.address_2}<br /></>}
+                                    {shipping.city}, {shipping.state} {shipping.postcode}<br />
+                                    {shipping.country}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ),
+            tracking: hasTrackingItems ? (
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
+                    <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                        <Truck size={18} className="text-blue-500" />
+                        Shipment Tracking
+                    </div>
+
+                    <div className="space-y-3">
+                        {(order.tracking_items || []).map((item, idx: number) => (
+                            <div key={idx} className={`space-y-2 ${idx > 0 ? 'pt-3 border-t border-dashed border-gray-200' : ''}`}>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-gray-500 uppercase">{item.provider}</span>
+                                    {item.dateShipped && (
+                                        <span className="text-xs text-gray-400">
+                                            • Shipped {formatDate(item.dateShipped)}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <code className="text-sm font-mono text-gray-900 bg-gray-50 px-2 py-1 rounded flex-1 truncate">
+                                        {item.trackingNumber}
+                                    </code>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(item.trackingNumber);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                                        title="Copy tracking number"
+                                    >
+                                        <Copy size={14} />
+                                    </button>
+                                    {item.trackingUrl && (
+                                        <a
+                                            href={item.trackingUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-1.5 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-700 transition-colors"
+                                            title="Track shipment"
+                                        >
+                                            <ExternalLink size={14} />
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null,
+            attribution: (
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
+                    <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                        <TrendingUp size={18} className="text-blue-500" />
+                        Attribution
+                    </div>
+
+                    {attribution ? (
+                        <div className="space-y-3">
+                            <div>
+                                <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Traffic Source</div>
+                                <div className="flex flex-wrap gap-2">
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                        First: {attribution.firstTouchSource}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                        Last: {attribution.lastTouchSource}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {(attribution.utmSource || attribution.utmMedium || attribution.utmCampaign) && (
+                                <div>
+                                    <div className="text-xs font-semibold text-gray-500 uppercase mb-1 pt-2 border-t border-dashed border-gray-200">UTM Parameters</div>
+                                    <div className="space-y-1 text-sm">
+                                        {attribution.utmSource && (
+                                            <div className="flex gap-2">
+                                                <span className="text-gray-500">Source:</span>
+                                                <span className="text-gray-900">{attribution.utmSource}</span>
+                                            </div>
+                                        )}
+                                        {attribution.utmMedium && (
+                                            <div className="flex gap-2">
+                                                <span className="text-gray-500">Medium:</span>
+                                                <span className="text-gray-900">{attribution.utmMedium}</span>
+                                            </div>
+                                        )}
+                                        {attribution.utmCampaign && (
+                                            <div className="flex gap-2">
+                                                <span className="text-gray-500">Campaign:</span>
+                                                <span className="text-gray-900">{attribution.utmCampaign}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {(attribution.deviceType || attribution.country) && (
+                                <div>
+                                    <div className="text-xs font-semibold text-gray-500 uppercase mb-1 pt-2 border-t border-dashed border-gray-200">Device & Location</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {attribution.deviceType && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
+                                                {attribution.deviceType === 'mobile' ? <Smartphone size={12} /> :
+                                                    attribution.deviceType === 'tablet' ? <Tablet size={12} /> : <Monitor size={12} />}
+                                                {attribution.deviceType}
+                                            </span>
+                                        )}
+                                        {attribution.country && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
+                                                <Globe size={12} />
+                                                {attribution.city ? `${attribution.city}, ` : ''}{attribution.country}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="text-sm text-gray-500 italic">No attribution data available</div>
+                    )}
+                </div>
+            )
+        };
+
+        return panels;
+    }, [attribution, billing.address_1, billing.address_2, billing.city, billing.country, billing.email, billing.first_name, billing.last_name, billing.phone, billing.postcode, billing.state, fetchOrder, hasTrackingItems, id, order._customerMeta?.ordersCount, order.currency, order.customer_id, order.id, order.internal_updated_at, order.tags, order.tracking_items, order.wooId, shipping.address_1, shipping.address_2, shipping.city, shipping.country, shipping.postcode, shipping.state]);
+
+    const visiblePanelOrder = sidebarPanelOrder.filter((panelId) => sidebarPanels[panelId]);
 
     return (
         <div className="max-w-6xl mx-auto space-y-6 pb-20">
@@ -374,221 +646,42 @@ export function OrderDetailPage() {
 
                 {/* Sidebar - Customer Details */}
                 <div className="space-y-6">
-                    {/* Tags Panel - First for visibility */}
-                    <OrderTagPanel
-                        orderId={toStringValue(order.id || order.wooId || id || '')}
-                        currentTags={order.tags || []}
-                        lastUpdate={order.internal_updated_at}
-                        onTagsChange={handleTagsChange}
-                        onRefresh={fetchOrder}
-                    />
-
-                    {/* COGS Breakdown - visible to users with view_cogs permission */}
-                    <OrderCOGSPanel orderId={toStringValue(order.id || order.wooId || id || '')} currency={order.currency} />
-
-                    {/* Customer Card */}
-                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
-                        <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                            <User size={18} className="text-blue-500" />
-                            Customer Details
-                        </div>
-
-                        <div className="space-y-3">
-                            <div className="flex items-start gap-3">
-                                <div className="p-2 bg-gray-100 rounded-full text-gray-500"><User size={14} /></div>
-                                <div>
-                                    {order.customer_id && order.customer_id > 0 ? (
-                                        <Link
-                                            to={`/customers/${order.customer_id}`}
-                                            className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                                        >
-                                            {billing.first_name} {billing.last_name}
-                                        </Link>
-                                    ) : (
-                                        <div className="text-sm font-medium text-gray-900">{billing.first_name} {billing.last_name}</div>
-                                    )}
-                                    <div className="text-xs text-gray-500">
-                                        {order._customerMeta?.ordersCount !== undefined
-                                            ? `${order._customerMeta.ordersCount} order${order._customerMeta.ordersCount !== 1 ? 's' : ''} previously`
-                                            : 'Guest Customer'}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex items-start gap-3">
-                                <div className="p-2 bg-gray-100 rounded-full text-gray-500"><Mail size={14} /></div>
-                                <div>
-                                    <div className="text-sm font-medium text-gray-900 break-all">{billing.email}</div>
-                                    <div className="text-xs text-gray-500">Email</div>
-                                </div>
-                            </div>
-                            <div className="flex items-start gap-3">
-                                <div className="p-2 bg-gray-100 rounded-full text-gray-500"><Phone size={14} /></div>
-                                <div>
-                                    <div className="text-sm font-medium text-gray-900">{billing.phone || 'No phone'}</div>
-                                    <div className="text-xs text-gray-500">Phone</div>
-                                </div>
-                            </div>
-                        </div>
+                    <div className="flex justify-end">
+                        <button
+                            onClick={() => {
+                                setSidebarPanelOrder(DEFAULT_SIDEBAR_PANEL_ORDER);
+                                toast.success('Panel order reset');
+                            }}
+                            className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2"
+                        >
+                            Reset panel order
+                        </button>
                     </div>
-
-                    {/* Address Card */}
-                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
-                        <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                            <MapPin size={18} className="text-blue-500" />
-                            Addresses
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Billing</div>
-                                <div className="text-sm text-gray-700 leading-relaxed">
-                                    {billing.address_1}<br />
-                                    {billing.address_2 && <>{billing.address_2}<br /></>}
-                                    {billing.city}, {billing.state} {billing.postcode}<br />
-                                    {billing.country}
+                    {visiblePanelOrder.map((panelId) => (
+                        <div
+                            key={panelId}
+                            draggable
+                            onDragStart={() => setDraggedPanelId(panelId)}
+                            onDragOver={(event) => {
+                                event.preventDefault();
+                            }}
+                            onDrop={() => {
+                                if (!draggedPanelId) return;
+                                movePanel(draggedPanelId, panelId);
+                                setDraggedPanelId(null);
+                            }}
+                            onDragEnd={() => setDraggedPanelId(null)}
+                            className={draggedPanelId === panelId ? 'opacity-70' : ''}
+                        >
+                            <div className="mb-2 flex justify-end">
+                                <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 cursor-move">
+                                    <GripVertical size={12} />
+                                    Drag to reorder
                                 </div>
                             </div>
-
-                            {/* Only show Shipping if different/exists */}
-                            {shipping && (
-                                <div>
-                                    <div className="text-xs font-semibold text-gray-500 uppercase mb-1 pt-3 border-t border-dashed border-gray-200">Shipping</div>
-                                    <div className="text-sm text-gray-700 leading-relaxed">
-                                        {shipping.address_1}<br />
-                                        {shipping.address_2 && <>{shipping.address_2}<br /></>}
-                                        {shipping.city}, {shipping.state} {shipping.postcode}<br />
-                                        {shipping.country}
-                                    </div>
-                                </div>
-                            )}
+                            {sidebarPanels[panelId]}
                         </div>
-                    </div>
-
-                    {/* Shipment Tracking Card */}
-                    {(order.tracking_items || []).length > 0 && (
-                        <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
-                            <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                                <Truck size={18} className="text-blue-500" />
-                                Shipment Tracking
-                            </div>
-
-                            <div className="space-y-3">
-                                {(order.tracking_items || []).map((item, idx: number) => (
-                                    <div key={idx} className={`space-y-2 ${idx > 0 ? 'pt-3 border-t border-dashed border-gray-200' : ''}`}>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-semibold text-gray-500 uppercase">{item.provider}</span>
-                                            {item.dateShipped && (
-                                                <span className="text-xs text-gray-400">
-                                                    • Shipped {formatDate(item.dateShipped)}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <code className="text-sm font-mono text-gray-900 bg-gray-50 px-2 py-1 rounded flex-1 truncate">
-                                                {item.trackingNumber}
-                                            </code>
-                                            <button
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(item.trackingNumber);
-                                                }}
-                                                className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
-                                                title="Copy tracking number"
-                                            >
-                                                <Copy size={14} />
-                                            </button>
-                                            {item.trackingUrl && (
-                                                <a
-                                                    href={item.trackingUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="p-1.5 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-700 transition-colors"
-                                                    title="Track shipment"
-                                                >
-                                                    <ExternalLink size={14} />
-                                                </a>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Attribution Card */}
-                    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
-                        <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                            <TrendingUp size={18} className="text-blue-500" />
-                            Attribution
-                        </div>
-
-                        {attribution ? (
-                            <div className="space-y-3">
-                                {/* Traffic Source */}
-                                <div>
-                                    <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Traffic Source</div>
-                                    <div className="flex flex-wrap gap-2">
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                                            First: {attribution.firstTouchSource}
-                                        </span>
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                            Last: {attribution.lastTouchSource}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* UTM Parameters */}
-                                {(attribution.utmSource || attribution.utmMedium || attribution.utmCampaign) && (
-                                    <div>
-                                        <div className="text-xs font-semibold text-gray-500 uppercase mb-1 pt-2 border-t border-dashed border-gray-200">UTM Parameters</div>
-                                        <div className="space-y-1 text-sm">
-                                            {attribution.utmSource && (
-                                                <div className="flex gap-2">
-                                                    <span className="text-gray-500">Source:</span>
-                                                    <span className="text-gray-900">{attribution.utmSource}</span>
-                                                </div>
-                                            )}
-                                            {attribution.utmMedium && (
-                                                <div className="flex gap-2">
-                                                    <span className="text-gray-500">Medium:</span>
-                                                    <span className="text-gray-900">{attribution.utmMedium}</span>
-                                                </div>
-                                            )}
-                                            {attribution.utmCampaign && (
-                                                <div className="flex gap-2">
-                                                    <span className="text-gray-500">Campaign:</span>
-                                                    <span className="text-gray-900">{attribution.utmCampaign}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Device & Location */}
-                                {(attribution.deviceType || attribution.country) && (
-                                    <div>
-                                        <div className="text-xs font-semibold text-gray-500 uppercase mb-1 pt-2 border-t border-dashed border-gray-200">Device & Location</div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {attribution.deviceType && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
-                                                    {attribution.deviceType === 'mobile' ? <Smartphone size={12} /> :
-                                                        attribution.deviceType === 'tablet' ? <Tablet size={12} /> : <Monitor size={12} />}
-                                                    {attribution.deviceType}
-                                                </span>
-                                            )}
-                                            {attribution.country && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
-                                                    <Globe size={12} />
-                                                    {attribution.city ? `${attribution.city}, ` : ''}{attribution.country}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="text-sm text-gray-500 italic">No attribution data available</div>
-                        )}
-                    </div>
+                    ))}
                 </div>
 
             </div>
@@ -611,4 +704,3 @@ export function OrderDetailPage() {
         </div>
     );
 }
-

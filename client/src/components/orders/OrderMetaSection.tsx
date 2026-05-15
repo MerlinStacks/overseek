@@ -31,6 +31,13 @@ interface ImageThumbnailProps {
     onImageClick: (url: string) => void;
 }
 
+function normalizeMetaValue(value: string): string {
+    return value
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\r\n/g, '\n');
+}
+
 
 /**
  * Extracts an image URL from a meta value.
@@ -126,7 +133,7 @@ export function ImageThumbnail({ item, onImageClick }: ImageThumbnailProps) {
  * Categories are collapsible and display data in appropriate formats (key-value or image gallery).
  */
 export function OrderMetaSection({ metaData, onImageClick }: OrderMetaSectionProps) {
-    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['variations', 'custom']));
+    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['custom']));
 
     // Filter out hidden meta and categorize
     const filteredMeta = metaData.filter(m => !m.key.startsWith('_'));
@@ -155,20 +162,11 @@ export function OrderMetaSection({ metaData, onImageClick }: OrderMetaSectionPro
         !variations.includes(m) && !uploads.includes(m)
     );
 
-    if (variations.length > 0) {
-        categories.push({
-            id: 'variations',
-            label: 'Product Options',
-            icon: <Palette size={12} />,
-            color: 'text-purple-700',
-            bgColor: 'bg-purple-50 border-purple-200',
-            items: variations.map(m => ({
-                key: fixMojibake(m.display_key || m.key.replace('pa_', '').replace(/_/g, ' ')),
-                value: fixMojibake(m.display_value || m.value),
-                imageUrl: null
-            }))
-        });
-    }
+    const variationItems = variations.map(m => ({
+        key: fixMojibake(m.display_key || m.key.replace('pa_', '').replace(/_/g, ' ')),
+        value: fixMojibake(m.display_value || m.value),
+        imageUrl: null
+    }));
 
     if (customFields.length > 0) {
         categories.push({
@@ -231,6 +229,30 @@ export function OrderMetaSection({ metaData, onImageClick }: OrderMetaSectionPro
 
     return (
         <div className="mt-3 space-y-2">
+            {variationItems.length > 0 && (
+                <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-purple-700">
+                        <Palette size={12} />
+                        <span className="capitalize">Product Options</span>
+                        <span className="px-1.5 py-0.5 rounded-full bg-purple-50 text-[10px] font-bold border border-purple-200">
+                            {variationItems.length}
+                        </span>
+                    </div>
+                    <div className="grid gap-1.5">
+                        {variationItems.map((item, idx) => (
+                            <div key={idx} className="flex items-baseline gap-2 text-xs">
+                                <span className="font-medium text-gray-600 capitalize min-w-[80px]">
+                                    {item.key}:
+                                </span>
+                                <span className="text-gray-900 break-all whitespace-pre-line">
+                                    {normalizeMetaValue(item.value)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {categories.map(category => {
                 const isExpanded = expandedCategories.has(category.id);
 
@@ -239,7 +261,7 @@ export function OrderMetaSection({ metaData, onImageClick }: OrderMetaSectionPro
                         {/* Category Header */}
                         <button
                             onClick={() => toggleCategory(category.id)}
-                            className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/30 transition-colors"
+                            className="w-full px-3 py-2 flex items-center justify-between transition-colors hover:bg-white/30"
                         >
                             <div className={`flex items-center gap-2 text-xs font-semibold ${category.color}`}>
                                 {category.icon}
@@ -278,17 +300,17 @@ export function OrderMetaSection({ metaData, onImageClick }: OrderMetaSectionPro
                                                     {item.key}:
                                                 </span>
                                                 <span className="text-gray-900 break-all whitespace-pre-line">
-                                                    {item.value.startsWith('http') ? (
+                                                    {normalizeMetaValue(item.value).startsWith('http') ? (
                                                         <a
-                                                            href={item.value}
+                                                            href={normalizeMetaValue(item.value)}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="text-blue-600 hover:underline"
                                                         >
-                                                            {item.value.length > 40 ? item.value.slice(0, 40) + '...' : item.value}
+                                                            {normalizeMetaValue(item.value).length > 40 ? normalizeMetaValue(item.value).slice(0, 40) + '...' : normalizeMetaValue(item.value)}
                                                         </a>
                                                     ) : (
-                                                        item.value
+                                                        normalizeMetaValue(item.value)
                                                     )}
                                                 </span>
                                             </div>
