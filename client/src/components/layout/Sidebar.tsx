@@ -31,7 +31,8 @@ import {
     Search,
     Bot,
     FileText,
-    Mail
+    Mail,
+    Rss
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -105,6 +106,7 @@ const navItems = [
             { icon: Star, label: 'Reviews', path: '/reviews' },
             { icon: Search, label: 'SEO Keywords', path: '/seo' },
             { icon: FileText, label: 'SEO Content', path: '/seo/content' },
+            { icon: Rss, label: 'Feeds', path: '/feeds' },
             { icon: Bot, label: 'AI Manager', path: '/ai-manager' },
         ]
     },
@@ -132,6 +134,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     const isEmailEnabled = useAccountFeature('EMAIL');
     const isBotShieldEnabled = useAccountFeature('BOT_SHIELD');
     const isAiManagerEnabled = useAccountFeature('AI_MANAGER');
+    const isFeedsEnabled = useAccountFeature('FEED_EXPORTS');
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
 
@@ -202,6 +205,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     children: item.children.filter(child => {
                         if (child.path === '/crawlers') return isBotShieldEnabled;
                         if (child.path === '/ai-manager') return isAiManagerEnabled && hasPermission('view_marketing');
+                        if (child.path === '/feeds') return isFeedsEnabled && hasPermission('view_marketing');
                         if (child.path === '/orders') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
@@ -216,7 +220,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             }
             return item;
         });
-    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled]);
+    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled, isFeedsEnabled]);
 
     // State for expanded groups
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);

@@ -11,6 +11,7 @@ import { Worker } from 'bullmq';
 import { automationEngine } from '../services/AutomationEngine';
 import { MarketingService } from '../services/MarketingService';
 import { normalizeOrderStatus } from '../constants/orderStatus';
+import { FeedMappingService } from '../services/feedMapping';
 
 /** Track all workers for graceful shutdown */
 const activeWorkers: Worker[] = [];
@@ -99,6 +100,11 @@ export async function startWorkers() {
         }
 
         await marketingService.sendCampaign(campaignId, accountId);
+    }));
+
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.FEED_OPTIMIZE, async (job) => {
+        const result = await FeedMappingService.processOptimizeBulkJob(job.data, job as any);
+        return result as any;
     }));
 
 

@@ -18,6 +18,7 @@ export const QUEUES = {
     BOM_SYNC: 'bom-inventory-sync',
     AUTOMATIONS: 'automation-execution',
     CAMPAIGNS: 'campaign-send',
+    FEED_OPTIMIZE: 'feed-optimize',
 };
 
 // Global Store for Queues to adapter

@@ -77,6 +77,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     // Products
     const productsRoutes = (await import('../routes/products')).default;
     await fastify.register(productsRoutes, { prefix: '/api/products' });
+    const feedsRoutes = (await import('../routes/feeds')).default;
+    await fastify.register(feedsRoutes, { prefix: '/api/feeds' });
 
     // Webhooks
     const metaWebhookRoutes = (await import('../routes/meta-webhook')).default;

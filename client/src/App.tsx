@@ -66,6 +66,7 @@ const InvoiceDesigner = lazy(() => import('./pages/InvoiceDesigner').then(m => (
 const PoliciesPage = lazy(() => import('./pages/PoliciesPage').then(m => ({ default: m.PoliciesPage })));
 const CrawlersPage = lazy(() => import('./pages/CrawlersPage').then(m => ({ default: m.CrawlersPage })));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage').then(m => ({ default: m.UserProfilePage })));
+const FeedsPage = lazy(() => import('./pages/FeedsPage').then(m => ({ default: m.FeedsPage })));
 
 // Analytics Sub-Pages
 const AnalyticsOverviewPage = lazy(() => import('./pages/analytics/AnalyticsOverviewPage').then(m => ({ default: m.AnalyticsOverviewPage })));
@@ -258,6 +259,7 @@ function App() {
                                                 <Route path="/conversions/health" element={<AccountGuard><CAPIHealthPage /></AccountGuard>} />
                                                 <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path="/seo/content" element={<AccountGuard><SeoContentPage /></AccountGuard>} />
+                                                <Route path="/feeds" element={<AccountGuard><FeatureGuard featureKey="FEED_EXPORTS"><FeedsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/ai-manager" element={<AccountGuard><FeatureGuard featureKey="AI_MANAGER"><AiManagerPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/broadcasts" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BroadcastsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/emails/lists" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailListsPage /></FeatureGuard></AccountGuard>} />
