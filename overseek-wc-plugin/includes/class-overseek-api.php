@@ -225,18 +225,20 @@ class OverSeek_API {
 			}
 		}
 
-		if ( ! $available ) {
-			if ( $status === 'pending' ) {
-				return $this->integration_error( 'invoice_pending', 'Invoice is not ready yet.', 409 );
-			}
+		if ( $status === 'pending' ) {
+			return $this->integration_error( 'invoice_pending', 'Invoice is not ready yet.', 409 );
+		}
 
-			if ( $status === 'failed' ) {
-				$payload = $service->get_invoice_for_order( $order_id, get_current_user_id() );
-				$failure_message = is_array( $payload ) && isset( $payload['error_message'] ) && is_string( $payload['error_message'] ) && $payload['error_message'] !== ''
-					? $payload['error_message']
-					: 'Invoice generation failed.';
-				return $this->integration_error( 'invoice_failed', $failure_message, 409 );
-			}
+		if ( $status === 'failed' ) {
+			$payload = $service->get_invoice_for_order( $order_id, get_current_user_id() );
+			$failure_message = is_array( $payload ) && isset( $payload['error_message'] ) && is_string( $payload['error_message'] ) && $payload['error_message'] !== ''
+				? $payload['error_message']
+				: 'Invoice generation failed.';
+			return $this->integration_error( 'invoice_failed', $failure_message, 409 );
+		}
+
+		if ( ! $available ) {
+			return $this->integration_error( 'invoice_not_found', 'Invoice PDF not found for this order.', 404 );
 		}
 
 		$file_path = $service->get_invoice_file_path( $order_id );

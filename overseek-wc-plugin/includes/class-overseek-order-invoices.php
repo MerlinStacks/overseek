@@ -156,7 +156,7 @@ class OverSeek_Order_Invoices
             return true;
         }
 
-        if ($force_regenerate) {
+        if ($force_regenerate || $revalidate_remote) {
             $existing_path = (string) $order->get_meta(self::META_INVOICE_PATH);
             if ($existing_path !== '' && file_exists($existing_path)) {
                 wp_delete_file($existing_path);
@@ -499,6 +499,10 @@ class OverSeek_Order_Invoices
 
     public function render_invoice_diagnostics_panel($order): void
     {
+        if (!get_option('overseek_show_invoice_diagnostics', '1')) {
+            return;
+        }
+
         if (!$order instanceof WC_Order) {
             return;
         }
