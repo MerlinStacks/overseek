@@ -112,6 +112,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     const [showRecipeSelector, setShowRecipeSelector] = useState(false);
     const [stepPopupPosition, setStepPopupPosition] = useState({ x: 0, y: 0 });
     const [pendingNodeParent, setPendingNodeParent] = useState<string | null>(null);
+    const [pendingActionParent, setPendingActionParent] = useState<string | null>(null);
+    const pendingActionParentRef = useRef<string | null>(null);
     const [selectionCount, setSelectionCount] = useState(0);
     const { setViewport, getViewport } = useReactFlow();
 
@@ -464,6 +466,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
         if (stepType === 'action') {
             // Open action selector for action type
+            setPendingActionParent(pendingNodeParent);
+            pendingActionParentRef.current = pendingNodeParent;
             setShowActionSelector(true);
         } else if (stepType === 'delay') {
             // Add delay node directly
@@ -544,9 +548,10 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
     // --- Action Selection ---
     const handleActionSelect = (action: { actionType: string; label: string }) => {
-        if (!pendingNodeParent) return;
+        const parentId = pendingActionParentRef.current || pendingActionParent || pendingNodeParent;
+        if (!parentId) return;
 
-        const parentNode = nodes.find(n => n.id === pendingNodeParent);
+        const parentNode = nodes.find(n => n.id === parentId);
         if (!parentNode) return;
 
         const newNode: Node = {
@@ -564,8 +569,10 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 onDelete: onNodeDelete,
             },
         };
-        addNodeAndConnect(newNode, pendingNodeParent);
+        addNodeAndConnect(newNode, parentId);
         setShowActionSelector(false);
+        setPendingActionParent(null);
+        pendingActionParentRef.current = null;
     };
 
     // Helper to add a node and connect it to parent
@@ -736,6 +743,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 onClose={() => {
                     setShowActionSelector(false);
                     setPendingNodeParent(null);
+                    setPendingActionParent(null);
+                    pendingActionParentRef.current = null;
                 }}
                 onSelect={handleActionSelect}
             />

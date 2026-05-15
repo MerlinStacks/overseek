@@ -25,6 +25,54 @@ export class MarketingService {
         this.emailService = new EmailService();
     }
 
+    private normalizeFlowDefinition(flowDefinition: any) {
+        if (!flowDefinition || !Array.isArray(flowDefinition.nodes)) {
+            return flowDefinition;
+        }
+
+        const allowedDelayUnits = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);
+        let didNormalize = false;
+
+        const nodes = flowDefinition.nodes.map((node: any) => {
+            if (String(node?.type).toLowerCase() !== 'delay') {
+                return node;
+            }
+
+            const config = node?.data?.config || node?.data || {};
+            const durationRaw = config.duration;
+            const duration = typeof durationRaw === 'number' ? durationRaw : Number(durationRaw);
+            const normalizedDuration = Number.isFinite(duration) && duration > 0 ? duration : 1;
+            const unitRaw = String(config.unit || 'hours').toLowerCase();
+            const normalizedUnit = allowedDelayUnits.has(unitRaw) ? unitRaw : 'hours';
+
+            if (normalizedDuration === duration && normalizedUnit === unitRaw) {
+                return node;
+            }
+
+            didNormalize = true;
+            return {
+                ...node,
+                data: {
+                    ...(node?.data || {}),
+                    config: {
+                        ...config,
+                        duration: normalizedDuration,
+                        unit: normalizedUnit
+                    }
+                }
+            };
+        });
+
+        if (didNormalize) {
+            Logger.warn('[MarketingService] Normalized invalid delay node config before saving automation flow');
+        }
+
+        return {
+            ...flowDefinition,
+            nodes
+        };
+    }
+
     // -------------------
     // Campaigns (Broadcasts)
     // -------------------
@@ -432,15 +480,79 @@ export class MarketingService {
     // -------------------
 
     async listAutomations(accountId: string) {
-        return prisma.marketingAutomation.findMany({
+        const automations = await prisma.marketingAutomation.findMany({
             where: { accountId },
-            include: {
-                enrollments: {
-                    where: { status: 'ACTIVE' },
-                    select: { id: true }
-                }
-            },
             orderBy: { createdAt: 'desc' }
+        });
+
+        if (automations.length === 0) {
+            return [];
+        }
+
+        const automationIds = automations.map((automation) => automation.id);
+
+        const [enrollmentGroups, failedRunGroups, goalGroups] = await Promise.all([
+            prisma.automationEnrollment.groupBy({
+                by: ['automationId', 'status'],
+                where: {
+                    accountId,
+                    automationId: { in: automationIds }
+                },
+                _count: true
+            }),
+            prisma.automationRunEvent.groupBy({
+                by: ['automationId'],
+                where: {
+                    accountId,
+                    automationId: { in: automationIds },
+                    OR: [
+                        { eventType: 'FAILED' },
+                        { outcome: { contains: 'FAILED', mode: 'insensitive' } }
+                    ]
+                },
+                _count: true
+            }),
+            prisma.automationGoalEvent.groupBy({
+                by: ['automationId'],
+                where: {
+                    accountId,
+                    automationId: { in: automationIds }
+                },
+                _sum: { revenue: true }
+            })
+        ]);
+
+        const enrollmentStats = new Map<string, { active: number; paused: number; completed: number }>();
+        for (const group of enrollmentGroups) {
+            const existing = enrollmentStats.get(group.automationId) || { active: 0, paused: 0, completed: 0 };
+            if (group.status === 'ACTIVE') existing.active = group._count;
+            if (group.status === 'CANCELLED') existing.paused = group._count;
+            if (group.status === 'COMPLETED') existing.completed = group._count;
+            enrollmentStats.set(group.automationId, existing);
+        }
+
+        const failedStats = new Map<string, number>();
+        for (const group of failedRunGroups) {
+            failedStats.set(group.automationId, group._count);
+        }
+
+        const revenueStats = new Map<string, number>();
+        for (const group of goalGroups) {
+            revenueStats.set(group.automationId, Number(group._sum.revenue || 0));
+        }
+
+        return automations.map((automation) => {
+            const enrollment = enrollmentStats.get(automation.id) || { active: 0, paused: 0, completed: 0 };
+            return {
+                ...automation,
+                metrics: {
+                    activeInFlow: enrollment.active,
+                    pausedInFlow: enrollment.paused,
+                    completedInFlow: enrollment.completed,
+                    failedInFlow: failedStats.get(automation.id) || 0,
+                    revenue: revenueStats.get(automation.id) || 0
+                }
+            };
         });
     }
 
@@ -454,7 +566,7 @@ export class MarketingService {
     async upsertAutomation(accountId: string, data: any) {
         const { id, name, triggerType, triggerConfig, isActive } = data;
 
-        const flowDefinition = data.flowDefinition;
+        const flowDefinition = this.normalizeFlowDefinition(data.flowDefinition);
         const triggerNode = flowDefinition?.nodes?.find((node: any) => {
             const nodeType = String(node?.type || '').toUpperCase();
             return nodeType === 'TRIGGER';

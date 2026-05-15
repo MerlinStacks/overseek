@@ -216,6 +216,15 @@ class OverSeek_API {
 			$status = $available ? 'ready' : 'pending';
 		}
 
+		if ( ! $available && method_exists( $service, 'try_generate_invoice_now' ) ) {
+			$service->try_generate_invoice_now( $order_id, 6 );
+			$available = $service->invoice_is_available( $order_id );
+			$status = (string) $order->get_meta( '_overseek_invoice_status' );
+			if ( $status === '' ) {
+				$status = $available ? 'ready' : 'pending';
+			}
+		}
+
 		if ( ! $available ) {
 			if ( $status === 'pending' ) {
 				return $this->integration_error( 'invoice_pending', 'Invoice is not ready yet.', 409 );

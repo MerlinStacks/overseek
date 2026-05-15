@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Zap, Play, Pause, Trash2, Loader2, GitBranch } from 'lucide-react';
+import { Plus, Zap, Play, Pause, Trash2, Loader2, GitBranch, Circle, CheckCircle2, XCircle, DollarSign } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Toast, ToastType } from '../ui/Toast';
 
@@ -16,6 +16,36 @@ interface FlowRecord {
     isActive: boolean;
     triggerType?: string;
     enrollments?: unknown[];
+    metrics?: {
+        activeInFlow: number;
+        pausedInFlow: number;
+        completedInFlow: number;
+        failedInFlow: number;
+        revenue: number;
+    };
+}
+
+function formatRevenue(value: number): string {
+    if (!value || value <= 0) return '-';
+    if (value >= 1000) return `$${(value / 1000).toFixed(2)}k`;
+    return `$${value.toFixed(2)}`;
+}
+
+function MetricPill({
+    icon,
+    value,
+    className
+}: {
+    icon: React.ReactNode;
+    value: string | number;
+    className?: string;
+}) {
+    return (
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${className || 'bg-slate-100 text-slate-700'}`}>
+            {icon}
+            {value}
+        </span>
+    );
 }
 
 export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string) => void }) {
@@ -206,13 +236,14 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                 {isLoading ? <Loader2 className="animate-spin" /> : (
                     <div className="grid gap-4">
                         {flows.map(flow => (
-                            <div key={flow.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center justify-between">
-                                <div className="flex items-center gap-4">
+                            <div key={flow.id} className="bg-white px-4 py-3 rounded-xl border border-gray-200 shadow-xs">
+                                <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_minmax(440px,1.2fr)_180px] lg:items-center">
+                                    <div className="flex items-center gap-4 min-w-0">
                                     <div className={`p-3 rounded-lg ${flow.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                                         <Zap size={24} />
                                     </div>
-                                    <div>
-                                        <h3 className="font-semibold text-gray-900">{flow.name}</h3>
+                                    <div className="min-w-0">
+                                        <h3 className="font-semibold text-gray-900 truncate">{flow.name}</h3>
                                         <div className="flex items-center gap-2 text-sm text-gray-500">
                                             {flow.triggerType && flow.triggerType !== 'NONE' && (
                                                 <>
@@ -220,16 +251,53 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                                     <span className="text-gray-300">|</span>
                                                 </>
                                             )}
-                                            <span className="flex items-center gap-1"><GitBranch size={14} /> {flow.enrollments?.length || 0} active</span>
+                                            <span className="flex items-center gap-1"><GitBranch size={14} /> {flow.metrics?.activeInFlow || flow.enrollments?.length || 0} active</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-3">
+                                    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-2">
+                                        <div className="mb-1.5 hidden grid-cols-5 gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+                                            <span>Active in Flow</span>
+                                            <span>Paused in Flow</span>
+                                            <span>Completed Flow</span>
+                                            <span>Failed in Flow</span>
+                                            <span>Revenue</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+                                            <MetricPill
+                                                icon={<Circle size={12} />}
+                                                value={flow.metrics?.activeInFlow || 0}
+                                                className="bg-slate-100 text-slate-700"
+                                            />
+                                            <MetricPill
+                                                icon={<Pause size={12} />}
+                                                value={flow.metrics?.pausedInFlow || 0}
+                                                className="bg-slate-100 text-slate-700"
+                                            />
+                                            <MetricPill
+                                                icon={<CheckCircle2 size={12} />}
+                                                value={flow.metrics?.completedInFlow || 0}
+                                                className="bg-slate-100 text-slate-700"
+                                            />
+                                            <MetricPill
+                                                icon={<XCircle size={12} />}
+                                                value={flow.metrics?.failedInFlow || 0}
+                                                className="bg-slate-100 text-slate-700"
+                                            />
+                                            <MetricPill
+                                                icon={<DollarSign size={12} />}
+                                                value={formatRevenue(flow.metrics?.revenue || 0)}
+                                                className="bg-teal-100 text-teal-800"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 lg:justify-end lg:border-l lg:border-slate-200 lg:pl-3">
                                     <button
                                         onClick={() => toggleActive(flow)}
                                         disabled={updatingFlowId === flow.id}
-                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${flow.isActive
+                                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${flow.isActive
                                             ? 'bg-green-100 text-green-800 hover:bg-green-200'
                                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                             } ${updatingFlowId === flow.id ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -238,12 +306,13 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                             ? <>Updating...</>
                                             : (flow.isActive ? <><Pause size={14} /> Active</> : <><Play size={14} /> Paused</>)}
                                     </button>
-                                    <button onClick={() => onEdit(flow.id, flow.name)} className="text-blue-600 hover:text-blue-800 p-2 font-medium text-sm">
+                                    <button onClick={() => onEdit(flow.id, flow.name)} className="text-blue-600 hover:text-blue-800 px-2 py-1.5 font-medium text-xs rounded-md hover:bg-blue-50">
                                         Edit Flow
                                     </button>
-                                    <button onClick={() => setPendingDelete({ id: flow.id, name: flow.name })} className="p-2 text-gray-400 hover:text-red-600">
-                                        <Trash2 size={18} />
+                                    <button onClick={() => setPendingDelete({ id: flow.id, name: flow.name })} className="p-1.5 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50">
+                                        <Trash2 size={16} />
                                     </button>
+                                </div>
                                 </div>
                             </div>
                         ))}

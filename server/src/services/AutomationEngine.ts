@@ -266,7 +266,20 @@ export class AutomationEngine {
 
                 if (nextNode && (nextNode.type === 'delay' || nextNode.type === 'DELAY')) {
                     const durationMs = calculateDelayDuration(AutomationEngine.getNodeConfig(nextNode));
-                    nextRunAt = new Date(Date.now() + durationMs);
+                    const safeDurationMs = Number.isFinite(durationMs) && durationMs > 0
+                        ? durationMs
+                        : 60 * 1000;
+
+                    if (safeDurationMs !== durationMs) {
+                        Logger.warn('[AutomationEngine] Invalid delay node duration, falling back to 1 minute', {
+                            enrollmentId,
+                            automationId: enrollment.automationId,
+                            nodeId: nextNode.id,
+                            durationMs
+                        });
+                    }
+
+                    nextRunAt = new Date(Date.now() + safeDurationMs);
                     Logger.debug(`Next is Delay. Scheduling for ${nextRunAt.toISOString()}`);
                 }
 
@@ -299,7 +312,31 @@ export class AutomationEngine {
         }
 
         if (stepsProcessed >= MAX_STEPS) {
-            Logger.warn(`[AutomationEngine] Enrollment ${enrollmentId} hit MAX_STEPS limit`, { stepsProcessed });
+            const retryAt = new Date(Date.now() + 5 * 60 * 1000);
+            Logger.warn(`[AutomationEngine] Enrollment ${enrollmentId} hit MAX_STEPS limit`, {
+                stepsProcessed,
+                retryAt: retryAt.toISOString()
+            });
+
+            await automationEnrollmentService.updateProgress(enrollmentId, {
+                nextRunAt: retryAt,
+                statusReason: 'MAX_STEPS_GUARD'
+            });
+            await automationEnrollmentService.markWaiting(enrollmentId, {
+                accountId: enrollment.automation.accountId,
+                automationId: enrollment.automationId,
+                nodeId: enrollment.currentNodeId,
+                nextRunAt: retryAt,
+                metadata: {
+                    reason: 'MAX_STEPS_GUARD',
+                    stepsProcessed,
+                    maxSteps: MAX_STEPS
+                }
+            });
+            await automationQueueService.enqueueEnrollment({
+                enrollmentId,
+                runAt: retryAt
+            });
         }
     }
 

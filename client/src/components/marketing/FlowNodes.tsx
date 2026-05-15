@@ -46,11 +46,12 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
+    const triggerLabel = getTriggerLabel(config);
 
     return (
         <>
             <NodeWrapper
-                title={getTriggerLabel(config)}
+                title={triggerLabel}
                 subtitle="WooCommerce"
                 icon={getTriggerIcon(config)}
                 iconBgColor="bg-linear-to-br from-blue-500 to-blue-600"
@@ -63,9 +64,10 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
                 onAddStep={onAddStep}
                 onCopy={onCopy}
                 onDelete={onDelete}
+                statOrder={['active', 'completed']}
             >
-                <div className="font-semibold text-gray-900">{data.label as string}</div>
-                <div className="text-xs text-gray-500 mt-1">Starts the automation</div>
+                <div className="text-xs text-gray-500">Flow trigger</div>
+                <div className="font-medium text-gray-900 mt-1">Starts when <span className="font-semibold">{triggerLabel}</span> happens.</div>
             </NodeWrapper>
             <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
         </>
@@ -84,12 +86,13 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const isExitNode = config?.actionType === 'EXIT';
+    const actionLabel = getActionLabel(config);
 
     return (
         <>
             <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-gray-400 !border-2 !border-white" />
             <NodeWrapper
-                title={getActionLabel(config)}
+                title={actionLabel}
                 subtitle={config?.actionType === 'SEND_EMAIL' ? 'Email' : undefined}
                 icon={getActionIcon(config)}
                 iconBgColor={getActionGradient(config)}
@@ -102,9 +105,13 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                 showAddButton={!isExitNode}
                 onCopy={onCopy}
                 onDelete={onDelete}
+                statOrder={['completed', 'skipped', 'failed', 'queued', 'active']}
             >
-                <div className="font-semibold text-gray-900">{data.label as string}</div>
-                {config?.subject && <div className="text-xs text-gray-500 truncate mt-1 max-w-[200px]">{config.subject}</div>}
+                <div className="text-xs text-gray-500">{config?.actionType === 'SEND_EMAIL' ? 'Email' : 'Action step'}</div>
+                <div className="font-semibold text-gray-900 mt-1">{actionLabel}</div>
+                {config?.subject
+                    ? <div className="text-xs text-gray-600 truncate mt-1 max-w-[220px]">{config.subject}</div>
+                    : <div className="text-xs text-gray-500 mt-1">Set up this step in the sidebar.</div>}
                 {config?.actionType === 'SEND_EMAIL' && (
                     <button className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
                         <Eye size={12} />View Analytics
@@ -151,14 +158,10 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
                 onAddStep={onAddStep}
                 onCopy={onCopy}
                 onDelete={onDelete}
+                statOrder={['queued', 'completed']}
             >
-                <div className="font-semibold text-gray-900">{data.label as string}</div>
-                <div className="flex items-center gap-1 mt-2 px-2 py-1.5 bg-blue-50 rounded-lg border border-blue-100">
-                    <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
-                        <span className="text-white text-[10px]">i</span>
-                    </div>
-                    <span className="text-xs text-blue-700">{delayDescription}</span>
-                </div>
+                <div className="text-xs text-gray-500">Delay for a specific period</div>
+                <div className="font-semibold text-gray-900 mt-1">{delayDescription}</div>
             </NodeWrapper>
             <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-yellow-500 !border-2 !border-white" />
         </>

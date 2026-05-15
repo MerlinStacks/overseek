@@ -436,6 +436,24 @@ class OverSeek_Order_Invoices
 
         return (string) $order->get_meta(self::META_INVOICE_PATH);
     }
+
+    public function try_generate_invoice_now(int $order_id, int $timeout_seconds = 6): bool
+    {
+        if ($order_id <= 0) {
+            return false;
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return false;
+        }
+
+        if ($this->invoice_is_available($order_id)) {
+            return true;
+        }
+
+        return $this->generate_invoice_for_order($order, $timeout_seconds);
+    }
 }
 
 if (!function_exists('overseek_get_invoice_for_order')) {

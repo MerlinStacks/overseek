@@ -50,6 +50,29 @@ function areStringArraysEqual(left: string[], right: string[]): boolean {
     return true;
 }
 
+const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);
+
+function getDelayNodeError(config: Record<string, unknown>): string | null {
+    const delayMode = String(config.delayMode || 'SPECIFIC_PERIOD').toUpperCase();
+    if (delayMode !== 'SPECIFIC_PERIOD') {
+        return 'uses a delay mode that is not supported yet';
+    }
+
+    const rawDuration = config.duration;
+    const duration = typeof rawDuration === 'number' ? rawDuration : Number(rawDuration);
+    const unit = String(config.unit || 'hours').toLowerCase();
+
+    if (!Number.isFinite(duration) || duration <= 0) {
+        return 'must have a duration greater than 0';
+    }
+
+    if (!ALLOWED_DELAY_UNITS.has(unit)) {
+        return 'has an invalid time unit';
+    }
+
+    return null;
+}
+
 function validateFlowDefinition(flow: FlowDefinition): string | null {
     const nodes = flow.nodes || [];
     const edges = flow.edges || [];
@@ -75,8 +98,11 @@ function validateFlowDefinition(flow: FlowDefinition): string | null {
         }
 
         const config = (node.data as { config?: Record<string, unknown> } | undefined)?.config || {};
-        if (node.type === 'delay' && typeof config.duration !== 'number' && !config.delayUntilTime) {
-            return `Delay node "${(node.data as { label?: string } | undefined)?.label || node.id}" is missing timing.`;
+        if (node.type === 'delay') {
+            const delayError = getDelayNodeError(config);
+            if (delayError) {
+                return `Delay node "${(node.data as { label?: string } | undefined)?.label || node.id}" ${delayError}.`;
+            }
         }
         if (node.type === 'action' && typeof config.actionType !== 'string') {
             return `Action node "${(node.data as { label?: string } | undefined)?.label || node.id}" is missing action type.`;
@@ -148,7 +174,7 @@ function getInvalidNodeIds(flow: FlowDefinition): string[] {
     for (const node of nodes) {
         const config = (node.data as { config?: Record<string, unknown> } | undefined)?.config || {};
         if (triggerNodes[0] && node.id !== triggerNodes[0].id && (incoming.get(node.id) || 0) === 0) invalid.add(node.id);
-        if (node.type === 'delay' && typeof config.duration !== 'number' && !config.delayUntilTime) invalid.add(node.id);
+        if (node.type === 'delay' && getDelayNodeError(config)) invalid.add(node.id);
         if (node.type === 'action' && typeof config.actionType !== 'string') invalid.add(node.id);
         if (node.type === 'condition') {
             const conditions = Array.isArray(config.conditions)
@@ -473,6 +499,17 @@ export function FlowsPage() {
     };
 
     useEffect(() => {
+        if (!isEditing) return;
+
+        const onPopState = () => {
+            handleRequestCloseEditor();
+        };
+
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, [isEditing, handleRequestCloseEditor]);
+
+    useEffect(() => {
         if (!isEditing || !editingItem || !isDirty) return;
 
         const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -684,7 +721,7 @@ export function FlowsPage() {
 
     if (isEditing) {
         return (
-            <div className="absolute inset-0 top-16 z-50 -m-6 h-[calc(100vh-64px)] bg-white">
+            <div className="relative z-50 h-[calc(100vh-64px)] bg-white -mx-4 -my-4 md:-mx-6 md:-my-6 lg:-mx-8 lg:-my-8">
                 <div className="flex h-full flex-col">
                     <div className="flex items-center justify-between border-b bg-gray-50 p-4">
                         <div className="flex items-center gap-2">

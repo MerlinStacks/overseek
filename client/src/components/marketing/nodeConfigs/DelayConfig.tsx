@@ -40,6 +40,12 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
         }
     };
 
+    const handleDurationChange = (value: string) => {
+        const parsed = Number.parseInt(value, 10);
+        const normalized = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+        onUpdate('duration', normalized);
+    };
+
     return (
         <div className="space-y-4">
             {/* Delay Mode Selector */}
@@ -64,13 +70,14 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         type="radio"
                         name="delayMode"
                         value="SPECIFIC_DATE"
+                        disabled
                         checked={delayMode === 'SPECIFIC_DATE'}
                         onChange={() => onUpdate('delayMode', 'SPECIFIC_DATE')}
                         className="w-4 h-4 text-blue-600"
                     />
                     <div>
                         <div className="font-medium text-gray-900">Delay until a specific date and time</div>
-                        <div className="text-xs text-gray-500">Set a specific date and time</div>
+                        <div className="text-xs text-gray-500">Set a specific date and time (coming soon)</div>
                     </div>
                 </label>
 
@@ -79,13 +86,14 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         type="radio"
                         name="delayMode"
                         value="CUSTOM_FIELD"
+                        disabled
                         checked={delayMode === 'CUSTOM_FIELD'}
                         onChange={() => onUpdate('delayMode', 'CUSTOM_FIELD')}
                         className="w-4 h-4 text-blue-600"
                     />
                     <div>
                         <div className="font-medium text-gray-900">Delay until a custom field date</div>
-                        <div className="text-xs text-gray-500">Choose from contacts custom field</div>
+                        <div className="text-xs text-gray-500">Choose from contacts custom field (coming soon)</div>
                     </div>
                 </label>
             </div>
@@ -98,7 +106,7 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                             type="number"
                             min="1"
                             value={config.duration || 1}
-                            onChange={(e) => onUpdate('duration', parseInt(e.target.value) || 1)}
+                            onChange={(e) => handleDurationChange(e.target.value)}
                             className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         />
                         <select

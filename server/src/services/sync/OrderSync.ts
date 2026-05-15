@@ -8,6 +8,7 @@ import { Logger } from '../../utils/logger';
 import { WooOrderSchema, WooOrder } from './wooSchemas';
 import { esClient } from '../../utils/elastic';
 import { isExcludedOrderStatus, normalizeOrderStatus } from '../../constants/orderStatus';
+import { retryWithBackoff } from '../../utils/retryWithBackoff';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -373,10 +374,17 @@ export class OrderSync extends BaseSync {
                 GROUP BY c."id"
             `;
 
-            await prisma.wooCustomer.updateMany({
-                where: { accountId },
-                data: { ordersCount: 0, totalSpent: 0 }
-            });
+            await retryWithBackoff(
+                () => prisma.wooCustomer.updateMany({
+                    where: { accountId },
+                    data: { ordersCount: 0, totalSpent: 0 }
+                }),
+                {
+                    context: 'OrderSync:resetCustomerOrderCounts',
+                    maxRetries: 3,
+                    baseDelayMs: 500
+                }
+            );
 
             if (counts.length === 0) {
                 Logger.info('No customer order counts to update', { accountId, syncId });
@@ -390,12 +398,23 @@ export class OrderSync extends BaseSync {
             for (let i = 0; i < counts.length; i += BATCH_SIZE) {
                 const batch = counts.slice(i, i + BATCH_SIZE);
                 await Promise.all(batch.map(c =>
-                    prisma.wooCustomer.updateMany({
-                        where: { accountId, id: c.customer_id },
-                        data: { ordersCount: c.count, totalSpent: c.total_spent }
-                    }).catch(err => {
+                    retryWithBackoff(
+                        () => prisma.wooCustomer.updateMany({
+                            where: { accountId, id: c.customer_id },
+                            data: { ordersCount: c.count, totalSpent: c.total_spent }
+                        }),
+                        {
+                            context: `OrderSync:updateCustomerOrderCount:${c.customer_id}`,
+                            maxRetries: 3,
+                            baseDelayMs: 500
+                        }
+                    ).catch(err => {
                         Logger.warn('Failed to update order count for customer', {
-                            accountId, syncId, customerId: c.customer_id, error: err.message
+                            accountId,
+                            syncId,
+                            customerId: c.customer_id,
+                            error: err.message,
+                            code: err?.code || err?.cause?.code
                         });
                     })
                 ));
