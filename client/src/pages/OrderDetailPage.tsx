@@ -18,7 +18,7 @@ import { OrderCOGSPanel } from '../components/orders/OrderCOGSPanel';
 import { OrderDetailPageSkeleton } from '../components/ui/PageSkeletons';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useToast } from '../context/ToastContext';
-import { subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
+import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 
 interface Attribution {
     firstTouchSource: string;
@@ -57,6 +57,10 @@ interface InvoiceTemplate {
         grid?: unknown[];
         items?: unknown[];
     };
+}
+
+interface WooOrderStatusesResponse {
+    data?: Array<{ slug?: string; name?: string }> | Record<string, { slug?: string; name?: string }>;
 }
 
 interface OrderDetails {
@@ -105,6 +109,9 @@ export function OrderDetailPage() {
     const [dragOverPanelId, setDragOverPanelId] = useState<SidebarPanelId | null>(null);
     const [draggedPanelHeight, setDraggedPanelHeight] = useState<number>(0);
     const [isReorderMode, setIsReorderMode] = useState(false);
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [statusToApply, setStatusToApply] = useState('');
+    const [orderStatusOptions, setOrderStatusOptions] = useState<string[]>([]);
     const panelRefs = useRef<Partial<Record<SidebarPanelId, HTMLDivElement | null>>>({});
 
 
@@ -267,6 +274,101 @@ export function OrderDetailPage() {
             setIsGenerating(false);
         }
     };
+
+    const normalizeStatusSlug = (status: string) => status.replace(/^wc-/, '').toLowerCase();
+    const formatStatusLabel = (status: string) => status
+        .split('-')
+        .filter(Boolean)
+        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+        .join(' ');
+
+    const shouldExcludeStatus = (status: string) => {
+        const normalized = normalizeStatusSlug(status);
+        return normalized.includes('cancel') || normalized.includes('refund');
+    };
+
+    const loadOrderStatuses = useCallback(async () => {
+        if (!token || !currentAccount?.id) return;
+
+        try {
+            const res = await fetch('/api/woocommerce/order-statuses', {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id,
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error('Failed to fetch order statuses');
+            }
+
+            const data = await res.json() as WooOrderStatusesResponse;
+            const source = data.data;
+            const rawStatuses = Array.isArray(source)
+                ? source.map((item) => item.slug).filter((status): status is string => Boolean(status))
+                : Object.keys(source || {}).filter(Boolean);
+
+            const normalized = Array.from(new Set(rawStatuses.map(normalizeStatusSlug)))
+                .filter((status) => !shouldExcludeStatus(status))
+                .sort((a, b) => a.localeCompare(b));
+
+            setOrderStatusOptions(normalized);
+        } catch (err) {
+            Logger.error('Failed to load WooCommerce order statuses', { error: err });
+            setOrderStatusOptions(['pending', 'processing', 'on-hold', 'completed', 'failed']);
+        }
+    }, [currentAccount?.id, token]);
+
+    useEffect(() => {
+        if (currentAccount?.id && token) {
+            void loadOrderStatuses();
+        }
+    }, [currentAccount?.id, loadOrderStatuses, token]);
+
+    const handleUpdateOrderStatus = useCallback(async (nextStatus: string) => {
+        if (!order || !currentAccount?.id || !token) return;
+
+        const wooOrderId = Number(order.id || order.wooId);
+        if (!Number.isFinite(wooOrderId)) {
+            toast.error('Unable to update status for this order.');
+            return;
+        }
+
+        setIsUpdatingStatus(true);
+        try {
+            const res = await fetch('/api/orders/bulk-status', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ orderIds: [wooOrderId], status: nextStatus })
+            });
+
+            if (!res.ok) {
+                const body = await res.json().catch(() => null) as { error?: string } | null;
+                throw new Error(body?.error || 'Failed to update order status');
+            }
+
+            setOrder((prev) => prev ? { ...prev, status: nextStatus } : prev);
+            setStatusToApply('');
+            toast.success(`Order status updated to ${formatStatusLabel(nextStatus)}.`);
+
+            emitCrossTabEvent({
+                resource: 'order',
+                type: 'status-updated',
+                accountId: currentAccount.id,
+                resourceId: toStringValue(order.id || order.wooId || id || ''),
+            });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to update order status';
+            Logger.error('Order status update failed', { error: message });
+            toast.error(message);
+        } finally {
+            setIsUpdatingStatus(false);
+        }
+    }, [currentAccount?.id, id, order, token, toast]);
 
     /** Callback when tags are updated via the OrderTagPanel */
     function handleTagsChange(newTags: string[]) {
@@ -538,6 +640,23 @@ export function OrderDetailPage() {
                     <div className="text-sm text-gray-500 mt-1">Placed on {formatDate(toStringValue(order.date_created))} via {order.payment_method_title}</div>
                 </div>
                 <div className="flex gap-2">
+                    <select
+                        value={statusToApply}
+                        onChange={(event) => {
+                            const nextStatus = event.target.value;
+                            setStatusToApply(nextStatus);
+                            if (nextStatus) {
+                                void handleUpdateOrderStatus(nextStatus);
+                            }
+                        }}
+                        disabled={isUpdatingStatus || orderStatusOptions.length === 0}
+                        className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
+                    >
+                        <option value="">{isUpdatingStatus ? 'Updating status...' : 'Change status...'}</option>
+                        {orderStatusOptions.map((status) => (
+                            <option key={status} value={status}>{formatStatusLabel(status)}</option>
+                        ))}
+                    </select>
                     <button
                         onClick={handleGenerateInvoice}
                         disabled={isGenerating}

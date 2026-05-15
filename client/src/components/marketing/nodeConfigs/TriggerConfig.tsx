@@ -54,6 +54,10 @@ interface OrderStatusCountsResponse {
     counts?: Record<string, number>;
 }
 
+interface WooOrderStatusesResponse {
+    data?: Array<{ slug?: string; name?: string }> | Record<string, { slug?: string; name?: string }>;
+}
+
 const DEFAULT_ORDER_STATUSES = ['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed'];
 
 const formatStatusLabel = (status: string) => status
@@ -61,6 +65,8 @@ const formatStatusLabel = (status: string) => status
     .filter(Boolean)
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(' ');
+
+const normalizeStatusSlug = (status: string) => status.replace(/^wc-/, '').toLowerCase();
 
 const TRIGGER_TYPES = [
     { value: 'ORDER_CREATED', label: 'Order Created', group: 'WooCommerce' },
@@ -122,7 +128,7 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
 
             setIsLoadingFilters(true);
             try {
-                const [productsRes, categoriesRes, statusCountsRes] = await Promise.all([
+                const [productsRes, categoriesRes, statusCountsRes, wooStatusesRes] = await Promise.all([
                     fetch('/api/products?limit=100', {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -136,6 +142,12 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                         }
                     }),
                     fetch('/api/sync/orders/status-counts?source=db', {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'X-Account-ID': currentAccount.id,
+                        }
+                    }),
+                    fetch('/api/woocommerce/order-statuses', {
                         headers: {
                             Authorization: `Bearer ${token}`,
                             'X-Account-ID': currentAccount.id,
@@ -176,12 +188,31 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                     setCategoryOptions(mappedCategories);
                 }
 
+                if (wooStatusesRes.ok) {
+                    const wooStatusesData = await wooStatusesRes.json() as WooOrderStatusesResponse;
+                    const source = wooStatusesData.data;
+                    const dynamicFromWoo = Array.isArray(source)
+                        ? source.map((item) => item.slug).filter((status): status is string => Boolean(status)).map(normalizeStatusSlug)
+                        : Object.keys(source || {}).filter(Boolean).map(normalizeStatusSlug);
+
+                    const merged = Array.from(new Set([...DEFAULT_ORDER_STATUSES, ...dynamicFromWoo])).sort((a, b) => a.localeCompare(b));
+                    setOrderStatusOptions(merged);
+                }
+
                 if (statusCountsRes.ok) {
                     const statusData = await statusCountsRes.json() as OrderStatusCountsResponse;
                     const dynamicStatuses = Object.keys(statusData.counts || {}).filter(Boolean);
-                    const merged = Array.from(new Set([...DEFAULT_ORDER_STATUSES, ...dynamicStatuses])).sort((a, b) => a.localeCompare(b));
-                    setOrderStatusOptions(merged);
-                } else {
+                    setOrderStatusOptions((previous) => {
+                        const merged = Array.from(new Set([
+                            ...DEFAULT_ORDER_STATUSES,
+                            ...previous,
+                            ...dynamicStatuses,
+                        ])).sort((a, b) => a.localeCompare(b));
+                        return merged;
+                    });
+                }
+
+                if (!wooStatusesRes.ok && !statusCountsRes.ok) {
                     setOrderStatusOptions(DEFAULT_ORDER_STATUSES);
                 }
             } finally {

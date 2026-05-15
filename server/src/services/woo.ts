@@ -259,6 +259,11 @@ export class WooService {
         return this.requestWithRetry('get', 'orders', apiParams);
     }
 
+    async getOrderStatuses() {
+        if (this.isDemo) return Promise.resolve({ data: [] as Array<{ slug?: string; name?: string }> });
+        return this.requestWithRetry('get', 'orders/statuses');
+    }
+
     async getProducts(params: { after?: string; page?: number; per_page?: number } = {}) {
         if (this.isDemo) return Promise.resolve({ data: MOCK_PRODUCTS, total: MOCK_PRODUCTS.length, totalPages: 1 });
         const { after, ...rest } = params;

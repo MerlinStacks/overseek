@@ -34,6 +34,15 @@ const TAB_STATUSES = [
     'failed'
 ] as const;
 
+const BASE_STATUS_SET = new Set<string>(TAB_STATUSES as readonly string[]);
+
+function formatStatusLabel(status: string): string {
+    return status
+        .split('-')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+}
+
 export function OrderStatusTabs({ selectedStatus, onStatusChange }: OrderStatusTabsProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -67,7 +76,19 @@ export function OrderStatusTabs({ selectedStatus, onStatusChange }: OrderStatusT
     }, [currentAccount, token]);
 
     const tabs = useMemo(() => {
-        return TAB_STATUSES.map(status => {
+        const dynamicStatuses = Object.keys(statusCounts?.counts || {})
+            .map((status) => status.toLowerCase().trim())
+            .filter((status) => status && !BASE_STATUS_SET.has(status));
+
+        const selectedNormalized = selectedStatus.toLowerCase().trim();
+        if (selectedNormalized && selectedNormalized !== 'all' && !BASE_STATUS_SET.has(selectedNormalized)) {
+            dynamicStatuses.push(selectedNormalized);
+        }
+
+        const uniqueDynamicStatuses = Array.from(new Set(dynamicStatuses)).sort((a, b) => a.localeCompare(b));
+        const allStatuses = [...TAB_STATUSES, ...uniqueDynamicStatuses];
+
+        return allStatuses.map(status => {
             if (status === 'all') {
                 return {
                     value: 'all',
@@ -80,12 +101,12 @@ export function OrderStatusTabs({ selectedStatus, onStatusChange }: OrderStatusT
             const config = getStatusConfig(status);
             return {
                 value: status,
-                label: config.label,
+                label: config.label === 'Unknown' ? formatStatusLabel(status) : config.label,
                 count: statusCounts?.counts[status] ?? null,
                 color: status
             };
         });
-    }, [statusCounts]);
+    }, [selectedStatus, statusCounts]);
 
     const getTabStyles = (status: string, isActive: boolean) => {
         const baseStyles = 'group relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer select-none whitespace-nowrap';
@@ -102,7 +123,7 @@ export function OrderStatusTabs({ selectedStatus, onStatusChange }: OrderStatusT
                 refunded: 'bg-purple-500 text-white shadow-md shadow-purple-200/50',
                 failed: 'bg-red-600 text-white shadow-md shadow-red-200/50'
             };
-            return `${baseStyles} ${colorMap[status] || colorMap.all}`;
+            return `${baseStyles} ${colorMap[status] || 'bg-slate-700 text-white shadow-md shadow-slate-200/50'}`;
         }
 
         // Inactive state - subtle with hover effect

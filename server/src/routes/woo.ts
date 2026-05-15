@@ -102,6 +102,20 @@ const wooRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get('/order-statuses', async (request, reply) => {
+        try {
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
+
+            const woo = await WooService.forAccount(accountId);
+            const response = await woo.getOrderStatuses();
+            return response;
+        } catch (error: any) {
+            Logger.error('Woo API Error', { error: error.response?.data || error.message });
+            return reply.code(500).send({ error: 'Failed to fetch order statuses' });
+        }
+    });
+
     fastify.post('/configure', async (request, reply) => {
         try {
             const accountId = getAdsAccountIdOrReply(request, reply);

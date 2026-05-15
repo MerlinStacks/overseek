@@ -37,6 +37,7 @@ class OverSeek_Order_Invoices
         $this->relay_api_key = (string) get_option('overseek_relay_api_key', '');
 
         add_action('woocommerce_order_status_processing', [$this, 'handle_processing_order'], 20, 1);
+        add_action('woocommerce_new_order', [$this, 'handle_new_order'], 20, 1);
         add_action(self::PROCESSING_HOOK, [$this, 'process_processing_order'], 10, 1);
         add_filter('woocommerce_email_attachments', [$this, 'attach_invoice_to_processing_email'], 10, 3);
         add_action(self::CLEANUP_HOOK, [$this, 'cleanup_private_invoices']);
@@ -74,6 +75,33 @@ class OverSeek_Order_Invoices
                 $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
                 $order->save();
             }
+            wp_schedule_single_event(time() + 2, self::PROCESSING_HOOK, [$order_id]);
+        }
+    }
+
+    public function handle_new_order(int $order_id): void
+    {
+        if (!get_option('overseek_enable_processing_invoice_sync', '1') || $order_id <= 0) {
+            return;
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        if ($order->get_status() !== 'processing') {
+            return;
+        }
+
+        $status = (string) $order->get_meta(self::META_INVOICE_STATUS);
+        if (in_array($status, ['pending', 'ready'], true)) {
+            return;
+        }
+
+        if (!wp_next_scheduled(self::PROCESSING_HOOK, [$order_id])) {
+            $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
+            $order->save();
             wp_schedule_single_event(time() + 2, self::PROCESSING_HOOK, [$order_id]);
         }
     }
