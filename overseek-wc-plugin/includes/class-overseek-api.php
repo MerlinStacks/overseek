@@ -74,6 +74,12 @@ class OverSeek_API {
 			'permission_callback' => [ $this, 'check_relay_permission' ],
 		] );
 
+		register_rest_route( 'overseek/v1', '/tracking-email-events', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'tracking_email_events_callback' ],
+			'permission_callback' => [ $this, 'check_tracking_events_permission' ],
+		] );
+
 		register_rest_route( 'overseek/v1', '/invoices/(?P<order_id>\d+)', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'invoice_details_callback' ],
@@ -225,14 +231,23 @@ class OverSeek_API {
 	 */
 	public function check_relay_permission( WP_REST_Request $request ) {
 		$stored_key = (string) get_option( 'overseek_relay_api_key', '' );
+		$webhook_token = (string) get_option( 'overseek_webhook_auth_token', '' );
 		
-		if ( empty( $stored_key ) ) {
+		if ( empty( $stored_key ) && empty( $webhook_token ) ) {
 			return new WP_Error( 'relay_not_configured', 'Email relay is not configured', [ 'status' => 503 ] );
 		}
 
 		$provided_key = (string) $request->get_header( 'X-Relay-Key' );
-		
-		if ( empty( $provided_key ) || ! hash_equals( $stored_key, $provided_key ) ) {
+		$auth_header = (string) $request->get_header( 'Authorization' );
+		$provided_bearer = '';
+		if ( preg_match( '/^Bearer\s+(.+)$/i', trim( $auth_header ), $matches ) ) {
+			$provided_bearer = trim( (string) $matches[1] );
+		}
+
+		$key_valid = ! empty( $stored_key ) && ! empty( $provided_key ) && hash_equals( $stored_key, $provided_key );
+		$bearer_valid = ! empty( $webhook_token ) && ! empty( $provided_bearer ) && hash_equals( $webhook_token, $provided_bearer );
+
+		if ( ! $key_valid && ! $bearer_valid ) {
 			return new WP_Error( 'invalid_relay_key', 'Invalid or missing relay API key', [ 'status' => 401 ] );
 		}
 
@@ -245,6 +260,34 @@ class OverSeek_API {
 			if ( empty( $provided_account_id ) || $provided_account_id !== $stored_account_id ) {
 				return new WP_Error( 'account_mismatch', 'Account ID does not match linked account', [ 'status' => 403 ] );
 			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Check if request has valid token for tracking email events bridge.
+	 *
+	 * If no token is configured, requests are accepted.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return bool|WP_Error
+	 */
+	public function check_tracking_events_permission( WP_REST_Request $request ) {
+		$webhook_token = (string) get_option( 'overseek_webhook_auth_token', '' );
+
+		if ( '' === $webhook_token ) {
+			return true;
+		}
+
+		$auth_header = (string) $request->get_header( 'Authorization' );
+		$provided_bearer = '';
+		if ( preg_match( '/^Bearer\s+(.+)$/i', trim( $auth_header ), $matches ) ) {
+			$provided_bearer = trim( (string) $matches[1] );
+		}
+
+		if ( '' === $provided_bearer || ! hash_equals( $webhook_token, $provided_bearer ) ) {
+			return new WP_Error( 'invalid_webhook_token', 'Invalid or missing webhook bearer token', [ 'status' => 401 ] );
 		}
 
 		return true;
@@ -343,6 +386,70 @@ class OverSeek_API {
 	}
 
 	/**
+	 * Tracking events bridge endpoint.
+	 *
+	 * Receives CK Order Workflow payload and forwards to OverSeek API.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function tracking_email_events_callback( WP_REST_Request $request ): WP_REST_Response {
+		$params = $this->get_request_body( $request );
+
+		$event = isset( $params['event'] ) && is_array( $params['event'] ) ? $params['event'] : null;
+		if ( null === $event ) {
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => 'Missing top-level event object',
+			], 400 );
+		}
+
+		$account_id = (string) get_option( 'overseek_account_id', '' );
+		$api_url = untrailingslashit( (string) get_option( 'overseek_api_url', '' ) );
+		if ( '' === $account_id || '' === $api_url ) {
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => 'OverSeek connection is not configured',
+			], 503 );
+		}
+
+		$target_url = $api_url . '/api/tracking-email-events/' . rawurlencode( $account_id );
+		$headers = [
+			'Content-Type' => 'application/json',
+			'User-Agent'   => 'OverSeek-WC-Plugin/' . OVERSEEK_WC_VERSION,
+		];
+
+		$webhook_token = (string) get_option( 'overseek_webhook_auth_token', '' );
+		if ( '' !== $webhook_token ) {
+			$headers['Authorization'] = 'Bearer ' . $webhook_token;
+		}
+
+		$response = wp_remote_post( $target_url, [
+			'timeout' => 10,
+			'headers' => $headers,
+			'body'    => wp_json_encode( [ 'event' => $event ] ),
+		] );
+
+		if ( is_wp_error( $response ) ) {
+			return new WP_REST_Response( [
+				'success' => false,
+				'error'   => $response->get_error_message(),
+			], 502 );
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code( $response );
+		$decoded = OverSeek_HTTP_Utils::decode_json_response( $response );
+		$ok = $status_code >= 200 && $status_code < 300;
+
+		return new WP_REST_Response( [
+			'success'            => $ok,
+			'forwarded'          => $ok,
+			'upstreamStatusCode' => $status_code,
+			'upstream'           => $decoded,
+		], $ok ? 202 : 502 );
+	}
+
+	/**
 	 * Check if current user has admin permissions.
 	 *
 	 * @return bool
@@ -390,6 +497,10 @@ class OverSeek_API {
 		$api_url          = get_option( 'overseek_api_url' );
 		$tracking_enabled = get_option( 'overseek_enable_tracking' );
 		$chat_enabled     = get_option( 'overseek_enable_chat' );
+		$relay_endpoint   = home_url( '/wp-json/overseek/v1/email-relay' );
+		$tracking_events_endpoint = home_url( '/wp-json/overseek/v1/tracking-email-events' );
+		$has_relay_key    = ! empty( (string) get_option( 'overseek_relay_api_key', '' ) );
+		$has_bearer_token = ! empty( (string) get_option( 'overseek_webhook_auth_token', '' ) );
 
 		$query_account_id = $request->get_param( 'account_id' );
 		$account_match    = empty( $query_account_id ) || $query_account_id === $account_id;
@@ -409,6 +520,14 @@ class OverSeek_API {
 			'woocommerceVersion' => $account_match && defined( 'WC_VERSION' ) ? WC_VERSION : null,
 			'phpVersion'         => $account_match ? PHP_VERSION : null,
 			'siteUrl'            => $account_match ? home_url() : null,
+			'emailPlatformWebhookUrl' => $account_match ? $relay_endpoint : null,
+			'trackingEventsWebhookUrl' => $account_match ? $tracking_events_endpoint : null,
+			'webhookAuth'        => $account_match ? [
+				'supportsXRelayKey' => true,
+				'supportsBearer'    => true,
+				'hasRelayApiKey'    => $has_relay_key,
+				'hasBearerToken'    => $has_bearer_token,
+			] : null,
 			'timestamp'          => gmdate( 'c' ),
 		], 200 );
 	}

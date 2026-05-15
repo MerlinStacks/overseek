@@ -42,6 +42,14 @@ interface FlowDraftPayload {
 
 type SaveIndicatorState = 'saved' | 'saving' | 'unsaved';
 
+function areStringArraysEqual(left: string[], right: string[]): boolean {
+    if (left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+        if (left[index] !== right[index]) return false;
+    }
+    return true;
+}
+
 function validateFlowDefinition(flow: FlowDefinition): string | null {
     const nodes = flow.nodes || [];
     const edges = flow.edges || [];
@@ -357,7 +365,7 @@ export function FlowsPage() {
         void handleEditFlow(flowId);
     }, [searchParams, isEditing, token, currentAccount, handleEditFlow]);
 
-    const handleFlowChange = (flow: FlowDefinition) => {
+    const handleFlowChange = useCallback((flow: FlowDefinition) => {
         if (!editingItem) return;
         const draftKey = getDraftKey(editingItem.id);
         if (!draftKey) return;
@@ -366,7 +374,10 @@ export function FlowsPage() {
         const dirty = current !== baselineFlowRef.current;
         setIsDirty(dirty);
         setSaveState(dirty ? 'unsaved' : 'saved');
-        setInvalidNodeIds(getInvalidNodeIds(flow));
+        const nextInvalidNodeIds = getInvalidNodeIds(flow);
+        setInvalidNodeIds((previous) => (
+            areStringArraysEqual(previous, nextInvalidNodeIds) ? previous : nextInvalidNodeIds
+        ));
 
         if (autosaveTimerRef.current) {
             window.clearTimeout(autosaveTimerRef.current);
@@ -390,7 +401,7 @@ export function FlowsPage() {
         } catch (error) {
             Logger.warn('Failed to persist flow draft to localStorage', { error, flowId: editingItem.id });
         }
-    };
+    }, [editingItem, getDraftKey]);
 
     const handleRequestCloseEditor = () => {
         if (isDirty) {

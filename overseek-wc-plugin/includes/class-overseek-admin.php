@@ -102,6 +102,10 @@ class OverSeek_Admin
 			'type' => 'string',
 			'sanitize_callback' => 'sanitize_text_field',
 		));
+		register_setting('overseek_options_group', 'overseek_webhook_auth_token', array(
+			'type' => 'string',
+			'sanitize_callback' => 'sanitize_text_field',
+		));
 		register_setting('overseek_options_group', 'overseek_enable_processing_invoice_sync', array(
 			'type' => 'string',
 			'sanitize_callback' => array($this, 'sanitize_checkbox'),
@@ -169,10 +173,12 @@ class OverSeek_Admin
 		$account_id         = (string) get_option('overseek_account_id', '');
 		$connection_config  = (string) get_option('overseek_connection_config', '');
 		$relay_api_key      = (string) get_option('overseek_relay_api_key', '');
+		$webhook_auth_token = (string) get_option('overseek_webhook_auth_token', '');
 		$retention          = (int) get_option('overseek_cookie_retention_days', 365);
 		$invoice_retention  = (int) get_option('overseek_invoice_retention_days', 30);
 		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 25);
 		$relay_endpoint     = home_url('/wp-json/overseek/v1/email-relay');
+		$tracking_events_endpoint = home_url('/wp-json/overseek/v1/tracking-email-events');
 		$is_configured      = !empty($api_url) && !empty($account_id);
 		$enabled_features   = array_filter(array(
 			get_option('overseek_enable_tracking'),
@@ -412,10 +418,22 @@ class OverSeek_Admin
 							<span class="overseek-admin__hint">Use the same secure key configured in OverSeek email settings.</span>
 						</label>
 
+						<label class="overseek-admin__field" for="overseek_webhook_auth_token">
+							<span class="overseek-admin__label">Webhook auth token (optional)</span>
+							<input id="overseek_webhook_auth_token" type="text" name="overseek_webhook_auth_token" value="<?php echo esc_attr($webhook_auth_token); ?>" spellcheck="false" />
+							<span class="overseek-admin__hint">If set, third-party plugins can use <code>Authorization: Bearer {token}</code>. This same token is also sent when forwarding tracking events to the OverSeek API.</span>
+						</label>
+
 						<div class="overseek-admin__code-block">
-							<span class="overseek-admin__key">Relay endpoint</span>
+							<span class="overseek-admin__key">Email platform webhook URL</span>
 							<code><?php echo esc_html($relay_endpoint); ?></code>
 							<p>Copy this URL into OverSeek so outbound mail can be posted to this store.</p>
+						</div>
+
+						<div class="overseek-admin__code-block">
+							<span class="overseek-admin__key">Tracking events webhook URL</span>
+							<code><?php echo esc_html($tracking_events_endpoint); ?></code>
+							<p>Use this URL in CK Order Workflow for tracking lifecycle forwarding.</p>
 						</div>
 					</section>
 

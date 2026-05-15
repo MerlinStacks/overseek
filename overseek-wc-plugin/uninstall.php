@@ -30,6 +30,7 @@ $options = array(
     'overseek_require_consent',
     'overseek_cookie_retention_days',
     'overseek_relay_api_key',
+    'overseek_webhook_auth_token',
     'overseek_enable_processing_invoice_sync',
     'overseek_invoice_retention_days',
 );
