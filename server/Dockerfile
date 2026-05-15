@@ -29,7 +29,12 @@ COPY server/package.json server/
 
 # Install server dependencies using workspace
 RUN --mount=type=cache,target=/root/.npm \
-    npm install --workspace=server --legacy-peer-deps --prefer-offline --no-audit
+    npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 10000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set registry https://registry.npmjs.org/ \
+    && npm ci --workspace=server --legacy-peer-deps --prefer-offline --no-audit
 
 # Copy shared core package source and build it for runtime imports
 COPY packages/overseek-core/ packages/overseek-core/
@@ -73,7 +78,12 @@ COPY packages/overseek-core/package.json packages/overseek-core/
 # Copy server package.json and install production dependencies only
 COPY server/package.json server/
 RUN --mount=type=cache,target=/root/.npm \
-    npm install --workspace=server --legacy-peer-deps --omit=dev --prefer-offline --no-audit
+    npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 10000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set registry https://registry.npmjs.org/ \
+    && npm ci --workspace=server --legacy-peer-deps --omit=dev --prefer-offline --no-audit
 
 # Copy required shared package for runtime imports
 COPY --from=builder /app/packages/overseek-core/dist /app/packages/overseek-core/dist
