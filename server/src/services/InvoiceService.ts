@@ -538,6 +538,7 @@ export class InvoiceService {
             };
 
             let currentPageIndex = 0;
+            const pageFlowOffset = new Map<number, number>();
             const ensurePage = (targetIndex: number) => {
                 while (currentPageIndex < targetIndex) {
                     doc.addPage();
@@ -723,17 +724,19 @@ export class InvoiceService {
                         const tableFooterSafetyBuffer = 18;
                         const tableX = x;
                         const fullTableWidth = width;
-                        const descWidth = fullTableWidth * 0.55;
-                        const qtyWidth = 40;
-                        const priceWidth = 70;
-                        const totalWidth = fullTableWidth - descWidth - qtyWidth - priceWidth;
+                        const minimumTableWidth = 220;
+                        const safeTableWidth = Math.max(minimumTableWidth, fullTableWidth);
+                        const qtyWidth = Math.max(32, Math.round(safeTableWidth * 0.12));
+                        const priceWidth = Math.max(52, Math.round(safeTableWidth * 0.19));
+                        const totalWidth = Math.max(52, Math.round(safeTableWidth * 0.19));
+                        const descWidth = Math.max(84, safeTableWidth - qtyWidth - priceWidth - totalWidth);
 
                         doc.fillColor('#334155').text('Description', tableX, startY);
                         doc.text('Qty', tableX + descWidth, startY, { width: qtyWidth, align: 'center' });
                         doc.text('Unit Price', tableX + descWidth + qtyWidth, startY, { width: priceWidth, align: 'right' });
                         doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, startY, { width: totalWidth, align: 'right' });
 
-                        doc.moveTo(tableX, startY + 12).lineTo(tableX + fullTableWidth, startY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
+                        doc.moveTo(tableX, startY + 12).lineTo(tableX + safeTableWidth, startY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
                         doc.strokeColor('black').lineWidth(1);
 
                         let tableY = startY + 18;
@@ -745,7 +748,7 @@ export class InvoiceService {
                             doc.text('Qty', tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
                             doc.text('Unit Price', tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
-                            doc.moveTo(tableX, tableY + 12).lineTo(tableX + fullTableWidth, tableY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
+                            doc.moveTo(tableX, tableY + 12).lineTo(tableX + safeTableWidth, tableY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
                             doc.strokeColor('black').lineWidth(1);
                             tableY += 18;
                             doc.font('Helvetica').fontSize(9).fillColor('black');
@@ -829,7 +832,7 @@ export class InvoiceService {
                             }
 
                             tableY += 8;
-                            doc.moveTo(tableX, tableY - 3).lineTo(tableX + fullTableWidth, tableY - 3).strokeColor('#f1f5f9').lineWidth(0.7).stroke();
+                            doc.moveTo(tableX, tableY - 3).lineTo(tableX + safeTableWidth, tableY - 3).strokeColor('#f1f5f9').lineWidth(0.7).stroke();
                             doc.strokeColor('black').lineWidth(1);
                         });
 
@@ -837,7 +840,7 @@ export class InvoiceService {
                         const rawOrderData = order.rawData as any || {};
                         const estimatedTotalsHeight = 90;
                         ensureSpaceForHeight(estimatedTotalsHeight);
-                        doc.moveTo(tableX, tableY).lineTo(tableX + fullTableWidth, tableY).strokeColor('#cbd5e1').lineWidth(1).stroke();
+                        doc.moveTo(tableX, tableY).lineTo(tableX + safeTableWidth, tableY).strokeColor('#cbd5e1').lineWidth(1).stroke();
                         doc.strokeColor('black').lineWidth(1);
                         tableY += 10;
 
@@ -845,7 +848,7 @@ export class InvoiceService {
                         const shipVal = parseFloat(rawOrderData.shipping_total ?? order.shippingTotal ?? 0);
                         const totalVal = parseFloat(rawOrderData.total ?? order.total ?? 0);
                         const subtotal = totalVal - taxVal - shipVal;
-                        const totalsX = tableX + fullTableWidth - 170;
+                        const totalsX = tableX + safeTableWidth - 170;
 
                         doc.font('Helvetica').fontSize(9).fillColor('#475569');
                         doc.text('Subtotal', totalsX, tableY);
@@ -1053,11 +1056,20 @@ export class InvoiceService {
                 const localY = normalizedY - (pageIndex * usablePageHeight);
                 ensurePage(pageIndex);
 
-                const itemX = bounds.x;
-                const itemWidth = bounds.w;
-                const itemY = marginTop + localY;
+                const rawItemX = bounds.x;
+                const maxPageX = marginLeft + pageWidth;
+                const itemX = Math.max(marginLeft, Math.min(rawItemX, maxPageX - 20));
+                const maxWidthAvailable = Math.max(20, maxPageX - itemX);
+                const itemWidth = Math.max(20, Math.min(bounds.w, maxWidthAvailable));
+                const flowOffset = pageFlowOffset.get(pageIndex) || 0;
+                const itemY = marginTop + localY + flowOffset;
                 const itemHeight = bounds.h;
-                renderBlock(itemConfig, itemX, itemWidth, itemY, itemHeight);
+                const renderedHeight = renderBlock(itemConfig, itemX, itemWidth, itemY, itemHeight);
+
+                const overflow = Math.max(0, renderedHeight - itemHeight);
+                if (overflow > 0) {
+                    pageFlowOffset.set(pageIndex, flowOffset + overflow + 4);
+                }
             });
 
             // Register handlers before ending doc to avoid race condition

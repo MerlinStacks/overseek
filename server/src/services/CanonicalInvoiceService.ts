@@ -5,12 +5,12 @@ import { QueueFactory, QUEUES } from './queue/QueueFactory';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { InvoiceService } from './InvoiceService';
-import { canonicalBrowserInvoiceService } from './CanonicalBrowserInvoiceService';
 
 const invoiceService = new InvoiceService();
 
 function isCanonicalRenderer(renderer: string | null | undefined): boolean {
-    return renderer === 'designer-capture' || renderer === 'designer-capture-browser';
+    return renderer === 'pdfkit-primary'
+        || renderer === 'pdfkit-fallback';
 }
 
 function normalizeTemplateVersion(layout: any): string {
@@ -149,28 +149,11 @@ export class CanonicalInvoiceService {
 
         try {
             let generatedPath = '';
-            let rendererUsed = 'designer-capture-browser';
+            let rendererUsed = 'pdfkit-primary';
 
-            try {
-                const canonicalGenerated = await canonicalBrowserInvoiceService.renderPdf({
-                    accountId: data.accountId,
-                    orderId: data.orderId,
-                    templateId: data.templateId,
-                    artifactId: artifact.id,
-                });
-                generatedPath = canonicalGenerated.absolutePath;
-                rendererUsed = canonicalGenerated.rendererUsed;
-            } catch (canonicalError) {
-                const allowPdfkitFallback = process.env.INVOICE_CANONICAL_FALLBACK_PDFKIT === 'true';
-                if (!allowPdfkitFallback) {
-                    const message = canonicalError instanceof Error ? canonicalError.message : String(canonicalError);
-                    throw new Error(`Canonical designer renderer is required for 1:1 output. ${message}`);
-                }
-
-                const fallbackGenerated = await invoiceService.generateInvoicePdf(data.accountId, data.orderId, data.templateId);
-                generatedPath = fallbackGenerated.absolutePath;
-                rendererUsed = 'pdfkit-fallback';
-            }
+            const generated = await invoiceService.generateInvoicePdf(data.accountId, data.orderId, data.templateId);
+            generatedPath = generated.absolutePath;
+            rendererUsed = 'pdfkit-primary';
 
             const stat = fs.statSync(generatedPath);
 

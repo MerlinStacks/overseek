@@ -26,6 +26,7 @@ class OverSeek_Order_Invoices
     private const META_INVOICE_ERROR = '_overseek_invoice_error';
     private const META_INVOICE_RENDERER = '_overseek_invoice_renderer';
     private const META_INVOICE_DIAGNOSTIC_REASON = '_overseek_invoice_diagnostic_reason';
+    private const META_INVOICE_RETRY_COUNT = '_overseek_invoice_retry_count';
 
     private string $api_url;
     private string $account_id;
@@ -79,6 +80,7 @@ class OverSeek_Order_Invoices
             $order = wc_get_order($order_id);
             if ($order) {
                 $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
+                $order->update_meta_data(self::META_INVOICE_RETRY_COUNT, 0);
                 $order->save();
             }
             wp_schedule_single_event(time() + 2, self::PROCESSING_HOOK, [$order_id]);
@@ -107,6 +109,7 @@ class OverSeek_Order_Invoices
 
         if (!wp_next_scheduled(self::PROCESSING_HOOK, [$order_id])) {
             $order->update_meta_data(self::META_INVOICE_STATUS, 'pending');
+            $order->update_meta_data(self::META_INVOICE_RETRY_COUNT, 0);
             $order->save();
             wp_schedule_single_event(time() + 2, self::PROCESSING_HOOK, [$order_id]);
         }
@@ -128,7 +131,23 @@ class OverSeek_Order_Invoices
 
     private function schedule_processing_retry(int $order_id, int $delay_seconds = 60): void
     {
-        $delay = max(15, $delay_seconds);
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        if ($delay_seconds <= 0) {
+            $attempt = (int) $order->get_meta(self::META_INVOICE_RETRY_COUNT);
+            $delays = [5, 10, 20, 40, 60];
+            $index = min(max(0, $attempt), count($delays) - 1);
+            $delay = $delays[$index];
+
+            $order->update_meta_data(self::META_INVOICE_RETRY_COUNT, $attempt + 1);
+            $order->save();
+        } else {
+            $delay = max(5, $delay_seconds);
+        }
+
         if (!wp_next_scheduled(self::PROCESSING_HOOK, [$order_id])) {
             wp_schedule_single_event(time() + $delay, self::PROCESSING_HOOK, [$order_id]);
         }
@@ -138,6 +157,11 @@ class OverSeek_Order_Invoices
     {
         $normalized_status = in_array($status, ['pending', 'ready', 'failed'], true) ? $status : 'pending';
         $order->update_meta_data(self::META_INVOICE_STATUS, $normalized_status);
+
+        if ($normalized_status === 'ready' || $normalized_status === 'failed') {
+            $order->delete_meta_data(self::META_INVOICE_RETRY_COUNT);
+        }
+
         if ($error_message !== '') {
             $order->update_meta_data(self::META_INVOICE_ERROR, sanitize_text_field($error_message));
         } elseif ($normalized_status !== 'failed') {
@@ -201,14 +225,14 @@ class OverSeek_Order_Invoices
 
         if (is_wp_error($response)) {
             $this->set_invoice_status($order, 'pending', $response->get_error_message());
-            $this->schedule_processing_retry($order_id, 60);
+            $this->schedule_processing_retry($order_id, 0);
             return false;
         }
 
         $response_code = (int) wp_remote_retrieve_response_code($response);
         if ($response_code === 202) {
             $this->set_invoice_status($order, 'pending');
-            $this->schedule_processing_retry($order_id, 45);
+            $this->schedule_processing_retry($order_id, 0);
             return false;
         }
 
@@ -233,7 +257,7 @@ class OverSeek_Order_Invoices
             $status = isset($body['status']) ? (string) $body['status'] : '';
             if ($status === 'pending') {
                 $this->set_invoice_status($order, 'pending');
-                $this->schedule_processing_retry($order_id, 45);
+                $this->schedule_processing_retry($order_id, 0);
                 return false;
             }
 
@@ -244,7 +268,7 @@ class OverSeek_Order_Invoices
         if ($response_code >= 300) {
             if ($response_code >= 500 || $response_code === 429) {
                 $this->set_invoice_status($order, 'pending', $relay_error !== '' ? $relay_error : 'Invoice relay is temporarily unavailable.');
-                $this->schedule_processing_retry($order_id, 60);
+                $this->schedule_processing_retry($order_id, 0);
                 return false;
             }
 
@@ -254,16 +278,38 @@ class OverSeek_Order_Invoices
 
         if (!is_array($body)) {
             $this->set_invoice_status($order, 'pending', 'Invalid relay response while generating invoice.');
-            $this->schedule_processing_retry($order_id, 60);
+            $this->schedule_processing_retry($order_id, 0);
             return false;
         }
 
+        $artifact_download_url = isset($body['artifact_download_url']) ? esc_url_raw((string) $body['artifact_download_url']) : '';
         $base64_pdf = isset($body['pdf_base64']) ? (string) $body['pdf_base64'] : '';
-        if ($base64_pdf === '') {
+        $decoded = false;
+
+        if ($artifact_download_url !== '') {
+            $artifact_response = wp_remote_get($artifact_download_url, [
+                'timeout' => max(5, $request_timeout),
+                'headers' => [
+                    'Accept' => 'application/pdf',
+                ],
+            ]);
+
+            if (!is_wp_error($artifact_response)) {
+                $artifact_code = (int) wp_remote_retrieve_response_code($artifact_response);
+                if ($artifact_code >= 200 && $artifact_code < 300) {
+                    $artifact_body = wp_remote_retrieve_body($artifact_response);
+                    if (is_string($artifact_body) && $artifact_body !== '') {
+                        $decoded = $artifact_body;
+                    }
+                }
+            }
+        }
+
+        if ($decoded === false && $base64_pdf === '') {
             $status = isset($body['status']) ? (string) $body['status'] : '';
             if ($status === 'pending') {
                 $this->set_invoice_status($order, 'pending');
-                $this->schedule_processing_retry($order_id, 45);
+                $this->schedule_processing_retry($order_id, 0);
                 return false;
             }
             $this->set_invoice_status($order, 'failed', $relay_error !== '' ? $relay_error : 'Invoice PDF payload missing from relay response.');
@@ -280,10 +326,12 @@ class OverSeek_Order_Invoices
         $file_name = 'invoice-order-' . ($safe_order_number ?: (string) $order_id) . '-' . gmdate('YmdHis') . '.pdf';
         $file_path = trailingslashit($private_dir) . $file_name;
 
-        $decoded = base64_decode($base64_pdf, true);
         if ($decoded === false) {
-            $this->set_invoice_status($order, 'failed', 'Received invalid invoice PDF payload.');
-            return false;
+            $decoded = base64_decode($base64_pdf, true);
+            if ($decoded === false) {
+                $this->set_invoice_status($order, 'failed', 'Received invalid invoice PDF payload.');
+                return false;
+            }
         }
 
         $written = file_put_contents($file_path, $decoded);
@@ -536,7 +584,7 @@ class OverSeek_Order_Invoices
             'missing_artifact' => 'Missing canonical artifact',
             'not_ready' => 'Artifact not ready',
             'missing_file' => 'Artifact file missing',
-            'non_canonical_renderer' => 'Non-canonical renderer',
+            'non_canonical_renderer' => 'Legacy renderer artifact',
             'generated_before_cutoff' => 'Generated before cutoff',
             'forced_refresh' => 'Forced refresh',
         ];

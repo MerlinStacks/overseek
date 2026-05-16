@@ -1,15 +1,14 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fs from 'fs';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { z } from 'zod';
-import { mergeInvoiceSettings } from '@overseek/core';
 import { Logger } from '../utils/logger';
 import { authenticateRelayEmailAccount } from './email/helpers';
 import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
-import { prisma } from '../utils/prisma';
 
 function isCanonicalRenderer(renderer: string | null | undefined): boolean {
-    return renderer === 'designer-capture' || renderer === 'designer-capture-browser';
+    return renderer === 'pdfkit-primary'
+        || renderer === 'pdfkit-fallback';
 }
 
 function getCanonicalSigningSecret(): string {
@@ -27,53 +26,19 @@ function signCanonicalPayload(artifactId: string, expires: number): string {
         .digest('hex');
 }
 
+function buildArtifactDownloadUrl(request: FastifyRequest, artifactId: string): string {
+    const expires = Date.now() + (5 * 60 * 1000);
+    const sig = signCanonicalPayload(artifactId, expires);
+    const base = `${request.protocol}://${request.hostname}`;
+    return `${base}/api/invoices/relay/artifact/${encodeURIComponent(artifactId)}?expires=${encodeURIComponent(String(expires))}&sig=${encodeURIComponent(sig)}`;
+}
+
 function verifyCanonicalSignature(artifactId: string, expires: number, signature: string): boolean {
     const expected = signCanonicalPayload(artifactId, expires);
     const expectedBuf = Buffer.from(expected, 'utf8');
     const actualBuf = Buffer.from(signature, 'utf8');
     if (expectedBuf.length !== actualBuf.length) return false;
     return timingSafeEqual(expectedBuf, actualBuf);
-}
-
-async function buildCanonicalPayload(accountId: string, orderId: string, templateId: string) {
-    const orderNum = Number(orderId);
-    const order = await prisma.wooOrder.findFirst({
-        where: {
-            accountId,
-            OR: [
-                { id: orderId },
-                ...(Number.isFinite(orderNum) ? [{ wooId: orderNum }] : [])
-            ]
-        }
-    });
-    if (!order) throw new Error('Order not found for canonical rendering');
-
-    const template = await prisma.invoiceTemplate.findFirst({
-        where: { id: templateId, accountId }
-    });
-    if (!template) throw new Error('Invoice template not found for canonical rendering');
-
-    const rawLayout = typeof template.layout === 'string' ? JSON.parse(template.layout) : (template.layout || {});
-    const settings = mergeInvoiceSettings(rawLayout.settings || {});
-    const layout = Array.isArray(rawLayout.grid) ? rawLayout.grid : [];
-    const items = Array.isArray(rawLayout.items) ? rawLayout.items : [];
-    const rawOrder = (order.rawData as any) || {};
-
-    return {
-        layout,
-        items,
-        settings,
-        order: {
-            ...rawOrder,
-            id: order.id,
-            number: order.number,
-            order_number: order.number,
-            total: order.total,
-            shipping_total: rawOrder.shipping_total ?? 0,
-            tax_total: rawOrder.total_tax ?? 0,
-            date_created: rawOrder.date_created || order.createdAt,
-        }
-    };
 }
 
 function computeRelayDiagnostic(artifact: any, forceRegenerate: boolean): string | null {
@@ -103,49 +68,43 @@ const InvoiceRelayBodySchema = z.object({
     force_regenerate: z.boolean().optional(),
 });
 
-const CanonicalPayloadParamsSchema = z.object({
+const ArtifactParamsSchema = z.object({
     artifactId: z.string().min(1),
 });
 
-const CanonicalPayloadQuerySchema = z.object({
+const ArtifactQuerySchema = z.object({
     expires: z.coerce.number().int().positive(),
     sig: z.string().min(1),
 });
 
 const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
-    fastify.get('/canonical-print-payload/:artifactId', async (request, reply) => {
-        const parsedParams = CanonicalPayloadParamsSchema.safeParse(request.params);
-        const parsedQuery = CanonicalPayloadQuerySchema.safeParse(request.query);
+    fastify.get('/artifact/:artifactId', async (request, reply) => {
+        const parsedParams = ArtifactParamsSchema.safeParse(request.params);
+        const parsedQuery = ArtifactQuerySchema.safeParse(request.query);
         if (!parsedParams.success || !parsedQuery.success) {
-            return reply.code(400).send({ success: false, error: 'Invalid canonical payload request' });
+            return reply.code(400).send({ success: false, error: 'Invalid artifact request' });
         }
 
         const { artifactId } = parsedParams.data;
         const { expires, sig } = parsedQuery.data;
 
         if (Date.now() > expires) {
-            return reply.code(401).send({ success: false, error: 'Canonical payload request expired' });
+            return reply.code(401).send({ success: false, error: 'Artifact request expired' });
         }
 
         if (!verifyCanonicalSignature(artifactId, expires, sig)) {
-            return reply.code(401).send({ success: false, error: 'Invalid canonical payload signature' });
+            return reply.code(401).send({ success: false, error: 'Invalid artifact signature' });
         }
 
         const artifact = await canonicalInvoiceService.getArtifactById(artifactId);
-        if (!artifact) {
-            return reply.code(404).send({ success: false, error: 'Invoice artifact not found' });
+        if (!canonicalInvoiceService.isReadableReady(artifact)) {
+            return reply.code(404).send({ success: false, error: 'Invoice artifact not ready' });
         }
 
-        try {
-            const payload = await buildCanonicalPayload(artifact.accountId, artifact.orderId, artifact.templateId);
-            return { success: true, payload };
-        } catch (error) {
-            Logger.error('Failed to build canonical print payload', {
-                artifactId,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return reply.code(500).send({ success: false, error: 'Failed to build canonical payload' });
-        }
+        const filename = artifact.storagePath.split('/').pop() || 'invoice.pdf';
+        reply.header('Content-Type', 'application/pdf');
+        reply.header('Content-Disposition', `inline; filename="${filename}"`);
+        return reply.send(fs.createReadStream(artifact.storagePath));
     });
 
     fastify.post('/woocommerce-processing', async (request, reply) => {
@@ -179,11 +138,11 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
             const diagnosticReason = computeRelayDiagnostic(settled, forceRegenerate === true);
 
             if (canonicalInvoiceService.isReadableReady(settled)) {
-                const fileBuffer = fs.readFileSync(settled.storagePath);
+                const artifactDownloadUrl = buildArtifactDownloadUrl(request, settled.id);
                 return {
                     success: true,
                     invoice_ref: settled.id,
-                    pdf_base64: fileBuffer.toString('base64'),
+                    artifact_download_url: artifactDownloadUrl,
                     filename: settled.storagePath.split('/').pop() || 'invoice.pdf',
                     renderer_used: settled.renderer,
                     diagnostic_reason: diagnosticReason,
@@ -216,11 +175,11 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                     const refreshedReason = computeRelayDiagnostic(refreshed, forceRegenerate === true);
 
                     if (canonicalInvoiceService.isReadableReady(refreshed)) {
-                        const fileBuffer = fs.readFileSync(refreshed.storagePath);
+                        const artifactDownloadUrl = buildArtifactDownloadUrl(request, refreshed.id);
                         return {
                             success: true,
                             invoice_ref: refreshed.id,
-                            pdf_base64: fileBuffer.toString('base64'),
+                            artifact_download_url: artifactDownloadUrl,
                             filename: refreshed.storagePath.split('/').pop() || 'invoice.pdf',
                             renderer_used: refreshed.renderer,
                             diagnostic_reason: refreshedReason,

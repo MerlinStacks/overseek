@@ -1,13 +1,8 @@
 # Invoice Rendering Architecture
 
-## Canonical renderer
+## Legacy client renderer
 
-Invoice PDFs generated from the client use a single canonical path:
-
-- `client/src/utils/InvoiceGenerator.ts`
-- Renderer: `designer-capture` (HTML capture of `InvoiceRenderer`)
-
-This path is the source of truth for designer fidelity.
+Client-side HTML capture (`designer-capture`) is now a legacy path and is not used by the WooCommerce relay generation flow.
 
 ## Fallback renderer (disabled by default)
 
@@ -20,9 +15,9 @@ If the flag is not enabled, capture failures return an explicit error and do not
 
 ## Server PDF path
 
-`server/src/services/InvoiceService.ts` still contains a PDFKit generator used by server-side automation flows.
+`server/src/services/InvoiceService.ts` is the production renderer for WooCommerce relay and automation flows.
 
-Important: this is **non-canonical** for designer fidelity. Use client canonical output when exact visual match is required.
+Important: this is now the primary operational path to prioritize fast, reliable customer downloads.
 
 ## WooCommerce relay behavior
 
@@ -39,10 +34,10 @@ Current behavior:
 - If still generating, it returns `202` (`status: pending`) so the plugin can retry asynchronously.
 - If generation fails, it returns `409` (`status: failed`).
 
-Fallback renderer control:
+Renderer control:
 
-- `INVOICE_CANONICAL_FALLBACK_PDFKIT=false` (default): fail when canonical renderer is unavailable.
-- `INVOICE_CANONICAL_FALLBACK_PDFKIT=true`: temporarily allow server PDFKit fallback generation.
+- Canonical artifact generation now uses PDFKit as the default renderer (`pdfkit-primary`).
+- Playwright/browser rendering is removed from the canonical relay generation path.
 
 Artifact freshness control:
 
@@ -50,7 +45,7 @@ Artifact freshness control:
 
 Diagnostic reason values returned by relay/plugin payload:
 
-- `missing_artifact`, `not_ready`, `missing_file`, `non_canonical_renderer`, `generated_before_cutoff`, `forced_refresh`
+- `missing_artifact`, `not_ready`, `missing_file`, `non_canonical_renderer` (legacy renderer artifact), `generated_before_cutoff`, `forced_refresh`
 
 ## Maintenance rules
 

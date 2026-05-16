@@ -45,6 +45,8 @@ const SAVED_FOOTERS_KEY = 'overseek-email-builder-saved-footers';
 const MAX_HISTORY_SNAPSHOTS = 8;
 const MAX_TEST_RECIPIENTS = 6;
 const MAX_SAVED_SECTION_PRESETS = 12;
+const EMAIL_SIDEBAR_WIDTH = '360px';
+const EMAIL_SIDEBAR_GUTTER = '20px';
 
 
 export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCancel }) => {
@@ -906,6 +908,117 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [exportHtml, loading, saving]);
 
+    const reusableSidebarContent = (
+        <>
+            <div className="mb-3">
+                <div className="mb-2 flex items-center gap-2">
+                    <Bookmark size={14} className="text-slate-600" />
+                    <p className="text-xs font-semibold text-slate-800">Text Block Styles</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {textStylePresets.map((preset) => (
+                        <button
+                            key={preset.id}
+                            onClick={() => insertReusableSection(preset, 'append')}
+                            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                            + {preset.name}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="mb-2 border-t border-slate-200 pt-3" />
+
+            <div className="mb-3">
+                <div className="mb-2 flex items-center gap-2">
+                    <Bookmark size={14} className="text-slate-600" />
+                    <p className="text-xs font-semibold text-slate-800">Starter Layouts</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {starterLayouts.map((layout) => (
+                        <button
+                            key={layout.id}
+                            onClick={() => applyStarterLayout(layout.id)}
+                            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                            + {layout.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="mb-2 border-t border-slate-200 pt-3">
+                <div className="mb-2 flex items-center gap-2">
+                    <Bookmark size={14} className="text-slate-600" />
+                    <p className="text-xs font-semibold text-slate-800">Reusable Headers and Footers</p>
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Headers</p>
+                <div className="flex flex-wrap gap-2">
+                    {defaultHeaderPresets.map((preset) => (
+                        <button
+                            key={preset.id}
+                            onClick={() => insertReusableSection(preset, 'header')}
+                            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                            + {preset.name}
+                        </button>
+                    ))}
+                    <button
+                        onClick={() => saveCurrentSection('header')}
+                        className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
+                    >
+                        Save Top Row as Header
+                    </button>
+                </div>
+                {savedHeaders.length > 0 && (
+                    <div className="max-h-20 space-y-1 overflow-auto">
+                        {savedHeaders.map((preset) => (
+                            <div key={preset.id} className="flex items-center justify-between rounded-md border border-slate-200 px-2 py-1">
+                                <button onClick={() => insertReusableSection(preset, 'header')} className="truncate text-xs text-slate-700 hover:text-blue-700">Use {preset.name}</button>
+                                <button onClick={() => deleteSavedSection(preset.id, 'header')} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 size={12} /></button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <div className="mt-3 space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Footers</p>
+                <div className="flex flex-wrap gap-2">
+                    {defaultFooterPresets.map((preset) => (
+                        <button
+                            key={preset.id}
+                            onClick={() => insertReusableSection(preset, 'footer')}
+                            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                            + {preset.name}
+                        </button>
+                    ))}
+                    <button
+                        onClick={() => saveCurrentSection('footer')}
+                        className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
+                    >
+                        Save Bottom Row as Footer
+                    </button>
+                </div>
+                {savedFooters.length > 0 && (
+                    <div className="max-h-20 space-y-1 overflow-auto">
+                        {savedFooters.map((preset) => (
+                            <div key={preset.id} className="flex items-center justify-between rounded-md border border-slate-200 px-2 py-1">
+                                <button onClick={() => insertReusableSection(preset, 'footer')} className="truncate text-xs text-slate-700 hover:text-blue-700">Use {preset.name}</button>
+                                <button onClick={() => deleteSavedSection(preset.id, 'footer')} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 size={12} /></button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </>
+    );
+
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/45 backdrop-blur-sm">
             <div className="flex h-full w-full flex-col overflow-hidden rounded-none bg-slate-50">
@@ -984,7 +1097,17 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     </div>
                 </div>
 
-                <div className="relative bg-slate-100" style={{ height: 'calc(100vh - 82px)' }}>
+                <div
+                    className="relative min-h-0 flex-1 bg-slate-100"
+                    style={{
+                        '--email-sidebar-width': EMAIL_SIDEBAR_WIDTH,
+                        '--email-sidebar-gutter': EMAIL_SIDEBAR_GUTTER,
+                    } as React.CSSProperties}
+                >
+                    <aside className="absolute bottom-0 left-0 top-0 z-20 hidden overflow-y-auto border-r border-slate-200/80 bg-white/95 p-3 backdrop-blur-sm md:block md:w-[var(--email-sidebar-width)]">
+                        {reusableSidebarContent}
+                    </aside>
+
                     {showTestEmailPanel && (
                         <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[340px]">
                             <p className="text-sm font-semibold text-slate-900">Send a quick test</p>
@@ -1030,7 +1153,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     )}
 
                     {showChecklistPanel && (
-                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-[380px] md:right-auto md:top-4 md:w-[380px]">
+                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[380px] xl:left-[calc(var(--email-sidebar-width)+var(--email-sidebar-gutter))] xl:right-auto">
                             <div className="mb-3 flex items-center justify-between">
                                 <p className="text-sm font-semibold text-slate-900">Preflight Checklist</p>
                                 <button onClick={closeTransientPanels} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
@@ -1070,7 +1193,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     )}
 
                     {showHistoryPanel && (
-                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-[380px] md:right-auto md:top-4 md:w-[360px]">
+                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[360px] xl:left-[calc(var(--email-sidebar-width)+var(--email-sidebar-gutter))] xl:right-auto">
                             <div className="mb-3 flex items-center justify-between">
                                 <p className="text-sm font-semibold text-slate-900">Version History</p>
                                 <button onClick={closeTransientPanels} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
@@ -1103,113 +1226,8 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </div>
                     )}
 
-                    <div className="absolute left-2 right-2 bottom-2 z-30 max-h-[46vh] overflow-auto rounded-xl border border-slate-200/80 bg-white/95 p-3 shadow-lg backdrop-blur-sm md:left-4 md:right-auto md:top-4 md:bottom-auto md:max-h-none md:w-[360px] md:overflow-visible">
-                        <div className="mb-3">
-                            <div className="mb-2 flex items-center gap-2">
-                                <Bookmark size={14} className="text-slate-600" />
-                                <p className="text-xs font-semibold text-slate-800">Text Block Styles</p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {textStylePresets.map((preset) => (
-                                    <button
-                                        key={preset.id}
-                                        onClick={() => insertReusableSection(preset, 'append')}
-                                        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                                    >
-                                        + {preset.name}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="mb-2 border-t border-slate-200 pt-3" />
-
-                        <div className="mb-3">
-                            <div className="mb-2 flex items-center gap-2">
-                                <Bookmark size={14} className="text-slate-600" />
-                                <p className="text-xs font-semibold text-slate-800">Starter Layouts</p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {starterLayouts.map((layout) => (
-                                    <button
-                                        key={layout.id}
-                                        onClick={() => applyStarterLayout(layout.id)}
-                                        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                                    >
-                                        + {layout.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="mb-2 border-t border-slate-200 pt-3">
-                            <div className="mb-2 flex items-center gap-2">
-                                <Bookmark size={14} className="text-slate-600" />
-                                <p className="text-xs font-semibold text-slate-800">Reusable Headers and Footers</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Headers</p>
-                            <div className="flex flex-wrap gap-2">
-                                {defaultHeaderPresets.map((preset) => (
-                                    <button
-                                        key={preset.id}
-                                        onClick={() => insertReusableSection(preset, 'header')}
-                                        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                                    >
-                                        + {preset.name}
-                                    </button>
-                                ))}
-                                <button
-                                    onClick={() => saveCurrentSection('header')}
-                                    className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
-                                >
-                                    Save Top Row as Header
-                                </button>
-                            </div>
-                            {savedHeaders.length > 0 && (
-                                <div className="max-h-20 space-y-1 overflow-auto">
-                                    {savedHeaders.map((preset) => (
-                                        <div key={preset.id} className="flex items-center justify-between rounded-md border border-slate-200 px-2 py-1">
-                                            <button onClick={() => insertReusableSection(preset, 'header')} className="truncate text-xs text-slate-700 hover:text-blue-700">Use {preset.name}</button>
-                                            <button onClick={() => deleteSavedSection(preset.id, 'header')} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 size={12} /></button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="mt-3 space-y-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Footers</p>
-                            <div className="flex flex-wrap gap-2">
-                                {defaultFooterPresets.map((preset) => (
-                                    <button
-                                        key={preset.id}
-                                        onClick={() => insertReusableSection(preset, 'footer')}
-                                        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                                    >
-                                        + {preset.name}
-                                    </button>
-                                ))}
-                                <button
-                                    onClick={() => saveCurrentSection('footer')}
-                                    className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
-                                >
-                                    Save Bottom Row as Footer
-                                </button>
-                            </div>
-                            {savedFooters.length > 0 && (
-                                <div className="max-h-20 space-y-1 overflow-auto">
-                                    {savedFooters.map((preset) => (
-                                        <div key={preset.id} className="flex items-center justify-between rounded-md border border-slate-200 px-2 py-1">
-                                            <button onClick={() => insertReusableSection(preset, 'footer')} className="truncate text-xs text-slate-700 hover:text-blue-700">Use {preset.name}</button>
-                                            <button onClick={() => deleteSavedSection(preset.id, 'footer')} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 size={12} /></button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                    <div className="absolute bottom-2 left-2 right-2 z-30 max-h-[46vh] overflow-auto rounded-xl border border-slate-200/80 bg-white/95 p-3 shadow-lg backdrop-blur-sm md:hidden">
+                        {reusableSidebarContent}
                     </div>
 
                     {loading && (
@@ -1227,17 +1245,18 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </div>
                     )}
 
-                    <EmailEditor
-                        ref={emailEditorRef}
-                        onLoad={() => {}}
-                        onReady={onReady}
-                        minHeight={'calc(100vh - 82px)'}
-                        style={{
-                            height: 'calc(100vh - 82px)',
-                            width: '100%',
-                            display: 'flex'
-                        }}
-                        options={{
+                    <div className="h-full md:ml-[var(--email-sidebar-width)]">
+                        <EmailEditor
+                            ref={emailEditorRef}
+                            onLoad={() => {}}
+                            onReady={onReady}
+                            minHeight={'100%'}
+                            style={{
+                                height: '100%',
+                                width: '100%',
+                                display: 'flex'
+                            }}
+                            options={{
                             appearance: {
                                 theme: 'light',
                                 panels: {
@@ -1247,6 +1266,8 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                 }
                             },
                             features: {
+                                preview: true,
+                                responsiveDesign: true,
                                 textEditor: {
                                     spellChecker: true
                                 }
@@ -1268,8 +1289,9 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                 'custom#woo_section_review_request': { position: 10 },
                                 'custom#woo_section_shipping_update': { position: 11 },
                             },
-                        }}
-                    />
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
         </div>
