@@ -26,6 +26,16 @@ class OverSeek_Email_Relay_Profiles
 	 */
 	private static $hooks_registered = false;
 
+	/**
+	 * @var string
+	 */
+	private static $requested_profile_id = '';
+
+	/**
+	 * @var string
+	 */
+	private static $resolved_profile_id = '';
+
 	public function __construct()
 	{
 		if (self::$hooks_registered) {
@@ -110,6 +120,7 @@ class OverSeek_Email_Relay_Profiles
 	public static function begin_relay_scope(array $payload): callable
 	{
 		$profile_id = isset($payload['relay_profile_id']) ? sanitize_key((string) $payload['relay_profile_id']) : '';
+		self::$requested_profile_id = $profile_id;
 		if ($profile_id === '') {
 			$profile_id = sanitize_key((string) get_option(self::OPTION_DEFAULT_PROFILE, ''));
 		}
@@ -117,16 +128,42 @@ class OverSeek_Email_Relay_Profiles
 		$profile = self::get_profile($profile_id);
 		if (!is_array($profile)) {
 			self::$active_profile = null;
+			self::$resolved_profile_id = '';
 			return static function (): void {
 				self::$active_profile = null;
+				self::$requested_profile_id = '';
+				self::$resolved_profile_id = '';
 			};
 		}
 
 		self::$active_profile = $profile;
+		self::$resolved_profile_id = isset($profile['id']) ? (string) $profile['id'] : '';
 
 		return static function (): void {
 			self::$active_profile = null;
+			self::$requested_profile_id = '';
+			self::$resolved_profile_id = '';
 		};
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	public static function get_scope_debug(): array
+	{
+		$from_email = '';
+		$from_name = '';
+		if (is_array(self::$active_profile)) {
+			$from_email = isset(self::$active_profile['from_email']) ? (string) self::$active_profile['from_email'] : '';
+			$from_name = isset(self::$active_profile['from_name']) ? (string) self::$active_profile['from_name'] : '';
+		}
+
+		return [
+			'requested_profile_id' => self::$requested_profile_id,
+			'resolved_profile_id' => self::$resolved_profile_id,
+			'from_email' => $from_email,
+			'from_name' => $from_name,
+		];
 	}
 
 	/**
@@ -211,6 +248,15 @@ class OverSeek_Email_Relay_Profiles
 			return;
 		}
 
+		$from_email = isset(self::$active_profile['from_email']) ? (string) self::$active_profile['from_email'] : '';
+		$from_name = isset(self::$active_profile['from_name']) ? (string) self::$active_profile['from_name'] : '';
+		if (is_email($from_email)) {
+			$phpmailer->From = $from_email;
+			$phpmailer->FromName = $from_name !== '' ? $from_name : $phpmailer->FromName;
+			$phpmailer->Sender = $from_email;
+			$phpmailer->setFrom($from_email, $from_name, false);
+		}
+
 		$smtp_host = isset(self::$active_profile['smtp_host']) ? (string) self::$active_profile['smtp_host'] : '';
 		if ($smtp_host === '') {
 			return;
@@ -228,14 +274,13 @@ class OverSeek_Email_Relay_Profiles
 			$phpmailer->SMTPSecure = $smtp_secure;
 		}
 
-		$from_email = isset(self::$active_profile['from_email']) ? (string) self::$active_profile['from_email'] : '';
-		$from_name = isset(self::$active_profile['from_name']) ? (string) self::$active_profile['from_name'] : '';
 		if (is_email($from_email) && !empty(self::$active_profile['smtp_from_force'])) {
 			$phpmailer->setFrom($from_email, $from_name, false);
 		}
 
 		$reply_to = isset(self::$active_profile['reply_to']) ? (string) self::$active_profile['reply_to'] : '';
 		if (is_email($reply_to)) {
+			$phpmailer->clearReplyTos();
 			$phpmailer->addReplyTo($reply_to);
 		}
 	}

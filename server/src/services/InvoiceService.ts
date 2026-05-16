@@ -482,9 +482,27 @@ export class InvoiceService {
                 if (x + w > GRID_COLS) w = GRID_COLS - x;
 
                 // Match the client vector renderer behavior: nearly full-width tables snap to full width.
-                if (itemType === 'order_table' && w >= 11) {
+                if (itemType === 'order_table' && w >= 10) {
                     x = 0;
                     w = GRID_COLS;
+                }
+
+                if (itemType === 'header') {
+                    x = 0;
+                    w = Math.max(w, 6);
+                }
+
+                if (itemType === 'order_details') {
+                    x = Math.min(6, x);
+                    w = Math.max(w, 6);
+                    if (x + w > GRID_COLS) {
+                        x = Math.max(0, GRID_COLS - w);
+                    }
+                }
+
+                if (itemType === 'customer_details') {
+                    x = 0;
+                    w = Math.max(w, 5);
                 }
 
                 return {
@@ -722,8 +740,8 @@ export class InvoiceService {
                         ];
 
                         let detY = startY;
-                        const detailLabelWidth = Math.min(120, Math.max(88, width * 0.45));
-                        const detailValueWidth = Math.max(40, width - detailLabelWidth - 6);
+                        const detailLabelWidth = Math.min(140, Math.max(88, width * 0.42));
+                        const detailValueWidth = Math.max(140, width - detailLabelWidth - 6);
                         const detailLineGap = 3;
                         detailsData.forEach(([label, value]) => {
                             const safeValue = String(value ?? 'N/A');
@@ -789,7 +807,9 @@ export class InvoiceService {
                             renderTableHeader();
                         };
 
-                        const getSafeContentLimitY = () => getPageContentLimitY(currentPageIndex) - tableFooterSafetyBuffer;
+                        // For line-item tables, consume the full printable page height.
+                        // Footer placement is handled by layout flow after table growth.
+                        const getSafeContentLimitY = () => (marginTop + pageHeight) - tableFooterSafetyBuffer;
 
                         const ensureSpaceForHeight = (requiredHeight: number) => {
                             let contentLimitY = getSafeContentLimitY();

@@ -216,6 +216,12 @@ export class NodeExecutor {
      * Send Email Action
      */
     private async executeSendEmail(config: any, enrollment: any): Promise<NodeExecutionResult> {
+        const account = await prisma.account.findFirst({
+            where: { id: enrollment.automation.accountId },
+            select: { wooUrl: true, domain: true }
+        });
+        const storeUrl = account?.wooUrl || account?.domain || '';
+
         const recoveryUrl = cartRecoveryService.createRecoveryUrl({
             accountId: enrollment.automation.accountId,
             enrollmentId: enrollment.id,
@@ -237,6 +243,9 @@ export class NodeExecutor {
                     checkoutUrl: enrollment.contextData?.cart?.checkoutUrl || enrollment.contextData?.checkoutUrl || ''
                 }
                 : undefined,
+            store: { url: storeUrl },
+            storeUrl,
+            store_url: storeUrl,
             ...enrollment.contextData
         };
 

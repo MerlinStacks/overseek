@@ -15,6 +15,8 @@ interface EmailAccount {
     isDefault?: boolean;
 }
 
+type ComposeMode = 'EMAIL' | 'SMS';
+
 interface NewEmailModalProps {
     onClose: () => void;
     onSent: (conversationId: string) => void;
@@ -50,6 +52,8 @@ export function NewEmailModal({
     const [body, setBody] = useState(initialBody);
     const [emailAccountId, setEmailAccountId] = useState('');
     const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+    const [composeMode, setComposeMode] = useState<ComposeMode>('EMAIL');
+    const [smsEnabled, setSmsEnabled] = useState(false);
     const [showCc, setShowCc] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -117,6 +121,26 @@ export function NewEmailModal({
             }
         };
         fetchAccounts();
+    }, [currentAccount, token]);
+
+    useEffect(() => {
+        const fetchSmsSettings = async () => {
+            if (!currentAccount || !token) return;
+            try {
+                const res = await fetch('/api/sms/settings', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    }
+                });
+                if (!res.ok) return;
+                const settings = await res.json() as { enabled?: boolean; accountSid?: string; authToken?: string; fromNumber?: string };
+                setSmsEnabled(Boolean(settings.enabled && settings.accountSid && settings.authToken && settings.fromNumber));
+            } catch (err) {
+                Logger.error('Failed to fetch SMS settings for composer', { error: err });
+            }
+        };
+        fetchSmsSettings();
     }, [currentAccount, token]);
 
     // Get user's email signature
@@ -200,21 +224,33 @@ export function NewEmailModal({
     };
 
     const handleSend = async () => {
-        if (!to.trim() || !subject.trim() || !body.trim()) {
+        if (!to.trim() || !body.trim() || (composeMode === 'EMAIL' && !subject.trim())) {
             setError('Please fill in all required fields');
             return;
         }
 
-        // Basic email format validation
-        const emails = to.split(',').map(e => e.trim()).filter(Boolean);
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        const invalidEmails = emails.filter(e => !emailRegex.test(e));
-        if (invalidEmails.length > 0) {
-            setError(`Invalid email address: ${invalidEmails.join(', ')}`);
-            return;
+        if (composeMode === 'EMAIL') {
+            const emails = to.split(',').map(e => e.trim()).filter(Boolean);
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            const invalidEmails = emails.filter(e => !emailRegex.test(e));
+            if (invalidEmails.length > 0) {
+                setError(`Invalid email address: ${invalidEmails.join(', ')}`);
+                return;
+            }
+        } else {
+            const normalizedTo = to.replace(/[^\d+]/g, '');
+            const smsDigits = normalizedTo.startsWith('+') ? normalizedTo.slice(1) : normalizedTo;
+            if (smsDigits.length < 10 || smsDigits.length > 15) {
+                setError('Invalid mobile number. Use E.164 format, e.g. +61400111222');
+                return;
+            }
+            if (!smsEnabled) {
+                setError('SMS is not enabled in Twilio settings for this account.');
+                return;
+            }
         }
 
-        if (!emailAccountId) {
+        if (composeMode === 'EMAIL' && !emailAccountId) {
             setError('Please select an email account');
             return;
         }
@@ -225,15 +261,19 @@ export function NewEmailModal({
 
         try {
             const formData = new FormData();
-            formData.append('to', to.trim());
-            formData.append('cc', cc.trim());
-            formData.append('subject', subject.trim());
-            formData.append('body', body + (signature ? `<br><br>${signature}` : ''));
-            formData.append('emailAccountId', emailAccountId);
-
-            attachments.forEach(file => {
-                formData.append('attachments', file);
-            });
+            if (composeMode === 'EMAIL') {
+                formData.append('to', to.trim());
+                formData.append('cc', cc.trim());
+                formData.append('subject', subject.trim());
+                formData.append('body', body + (signature ? `<br><br>${signature}` : ''));
+                formData.append('emailAccountId', emailAccountId);
+                attachments.forEach(file => {
+                    formData.append('attachments', file);
+                });
+            } else {
+                formData.append('to', to.trim());
+                formData.append('body', DOMPurify.sanitize(body).replace(/<[^>]*>/g, '').trim());
+            }
 
             // Use XMLHttpRequest to track upload progress
             const xhr = new XMLHttpRequest();
@@ -265,7 +305,7 @@ export function NewEmailModal({
                     reject(new Error('Network error'));
                 };
 
-                xhr.open('POST', '/api/chat/compose');
+                xhr.open('POST', composeMode === 'EMAIL' ? '/api/chat/compose' : '/api/chat/compose-sms');
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                 xhr.setRequestHeader('x-account-id', currentAccount?.id || '');
                 xhr.send(formData);
@@ -289,7 +329,7 @@ export function NewEmailModal({
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-                    <h2 className="text-lg font-semibold text-gray-900">New Email</h2>
+                    <h2 className="text-lg font-semibold text-gray-900">{composeMode === 'SMS' ? 'New SMS' : 'New Email'}</h2>
                     <button
                         onClick={onClose}
                         className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -304,60 +344,80 @@ export function NewEmailModal({
                     <div className="flex items-center gap-2">
                         <label className="w-16 text-sm font-medium text-gray-600">To:</label>
                         <input
-                            type="email"
+                            type={composeMode === 'EMAIL' ? 'email' : 'text'}
                             value={to}
                             onChange={(e) => setTo(e.target.value)}
-                            placeholder="recipient@example.com"
+                            placeholder={composeMode === 'EMAIL' ? 'recipient@example.com' : '+61400111222'}
                             className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         />
                     </div>
 
-                    {/* Via (Email Account) */}
+                    {/* Via */}
                     <div className="flex items-center gap-2">
                         <label className="w-16 text-sm font-medium text-gray-600">Via:</label>
-                        <select
-                            value={emailAccountId}
-                            onChange={(e) => setEmailAccountId(e.target.value)}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                        >
-                            {emailAccounts.length === 0 ? (
-                                <option value="">No email accounts configured</option>
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <select
+                                value={composeMode}
+                                onChange={(e) => setComposeMode(e.target.value as ComposeMode)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                            >
+                                <option value="EMAIL">Email</option>
+                                {smsEnabled && <option value="SMS">SMS</option>}
+                            </select>
+                            {composeMode === 'EMAIL' ? (
+                                <select
+                                    value={emailAccountId}
+                                    onChange={(e) => setEmailAccountId(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                                >
+                                    {emailAccounts.length === 0 ? (
+                                        <option value="">No email accounts configured</option>
+                                    ) : (
+                                        emailAccounts.map(account => (
+                                            <option key={account.id} value={account.id}>
+                                                {account.name} ({account.email})
+                                            </option>
+                                        ))
+                                    )}
+                                </select>
                             ) : (
-                                emailAccounts.map(account => (
-                                    <option key={account.id} value={account.id}>
-                                        {account.name} ({account.email})
-                                    </option>
-                                ))
+                                <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-700">
+                                    Twilio SMS Channel
+                                </div>
                             )}
-                        </select>
+                        </div>
                     </div>
 
                     {/* Subject */}
-                    <div className="flex items-center gap-2">
-                        <label className="w-16 text-sm font-medium text-gray-600">Subject:</label>
-                        <input
-                            type="text"
-                            value={subject}
-                            onChange={(e) => setSubject(e.target.value)}
-                            placeholder="Enter your email subject here"
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        />
-                    </div>
+                    {composeMode === 'EMAIL' && (
+                        <div className="flex items-center gap-2">
+                            <label className="w-16 text-sm font-medium text-gray-600">Subject:</label>
+                            <input
+                                type="text"
+                                value={subject}
+                                onChange={(e) => setSubject(e.target.value)}
+                                placeholder="Enter your email subject here"
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            />
+                        </div>
+                    )}
 
                     {/* CC Toggle */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setShowCc(!showCc)}
-                            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-                        >
-                            {showCc ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                            Cc
-                        </button>
-                    </div>
+                    {composeMode === 'EMAIL' && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowCc(!showCc)}
+                                className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+                            >
+                                {showCc ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                Cc
+                            </button>
+                        </div>
+                    )}
 
                     {/* CC Field (collapsible) */}
-                    {showCc && (
+                    {composeMode === 'EMAIL' && showCc && (
                         <div className="flex items-center gap-2">
                             <label className="w-16 text-sm font-medium text-gray-600">Cc:</label>
                             <input
@@ -414,7 +474,7 @@ export function NewEmailModal({
                                         <button
                                             type="button"
                                             onClick={handleAIAssist}
-                                            disabled={isGeneratingAI}
+                                            disabled={isGeneratingAI || composeMode === 'SMS'}
                                             className="p-2 rounded-sm hover:bg-purple-50 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
                                             title="Generate AI Draft"
                                             aria-label="Generate AI draft email"
@@ -434,7 +494,8 @@ export function NewEmailModal({
                                         <button
                                             type="button"
                                             onClick={() => fileInputRef.current?.click()}
-                                            className="p-2 rounded-sm hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+                                            disabled={composeMode === 'SMS'}
+                                            className="p-2 rounded-sm hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                             title="Attach File"
                                             aria-label="Attach File"
                                         >
@@ -455,7 +516,7 @@ export function NewEmailModal({
                     </div>
 
                     {/* Attachments List */}
-                    {attachments.length > 0 && (
+                    {composeMode === 'EMAIL' && attachments.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                             {attachments.map((file, index) => (
                                 <div key={index} className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full text-sm text-gray-700 border border-gray-200">
@@ -474,7 +535,7 @@ export function NewEmailModal({
                     )}
 
                     {/* Upload Progress Bar */}
-                    {isSending && attachments.length > 0 && (
+                    {composeMode === 'EMAIL' && isSending && attachments.length > 0 && (
                         <div className="space-y-1">
                             <div className="flex items-center justify-between text-xs text-gray-600">
                                 <span>Uploading attachments...</span>
@@ -491,7 +552,7 @@ export function NewEmailModal({
 
 
                     {/* Signature Preview */}
-                    {signature && (
+                    {composeMode === 'EMAIL' && signature && (
                         <div className="text-xs text-gray-400 border-t border-gray-100 pt-2">
                             <span className="font-medium">Signature will be appended:</span>
                             <div
@@ -525,7 +586,7 @@ export function NewEmailModal({
                     </button>
                     <button
                         onClick={handleSend}
-                        disabled={isSending || emailAccounts.length === 0}
+                        disabled={isSending || (composeMode === 'EMAIL' && emailAccounts.length === 0)}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isSending ? (

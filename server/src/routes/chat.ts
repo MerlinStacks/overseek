@@ -17,6 +17,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { ChatService } from '../services/ChatService';
 import { EmailService } from '../services/EmailService';
+import { TwilioService } from '../services/TwilioService';
 import { InboxAIService } from '../services/InboxAIService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
@@ -413,6 +414,45 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             } catch (error: any) {
                 Logger.error('Failed to compose email', { error: error.message });
                 return reply.code(500).send({ error: error.message || 'Failed to send email' });
+            }
+        });
+
+        // POST /compose-sms - Create conversation and send new SMS
+        fastify.post('/compose-sms', async (request, reply) => {
+            try {
+                const accountId = request.accountId;
+                const userId = request.user?.id;
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+                const { to, body } = request.body as { to?: string; body?: string };
+                if (!to || !body) {
+                    return reply.code(400).send({ error: 'Missing required fields: to, body' });
+                }
+
+                const normalizedTo = to.replace(/[^\d+]/g, '');
+                const smsDigits = normalizedTo.startsWith('+') ? normalizedTo.slice(1) : normalizedTo;
+                if (smsDigits.length < 10 || smsDigits.length > 15) {
+                    return reply.code(400).send({ error: 'Invalid phone number format' });
+                }
+
+                const conversation = await prisma.conversation.create({
+                    data: {
+                        accountId,
+                        channel: 'SMS',
+                        status: 'OPEN',
+                        externalConversationId: to.trim(),
+                        assignedTo: userId
+                    }
+                });
+
+                await chatService.addMessage(conversation.id, body, 'AGENT', userId, false, accountId);
+                await TwilioService.sendSms(accountId, to.trim(), body);
+
+                Logger.info('Composed and sent new SMS', { conversationId: conversation.id, to });
+                return { success: true, conversationId: conversation.id };
+            } catch (error: any) {
+                Logger.error('Failed to compose SMS', { error: error.message });
+                return reply.code(500).send({ error: error.message || 'Failed to send SMS' });
             }
         });
 

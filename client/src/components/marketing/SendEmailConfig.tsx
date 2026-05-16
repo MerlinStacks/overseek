@@ -3,6 +3,7 @@
  * Includes visual builder, rich text, raw HTML modes, template management, and preview
  */
 import { useRef, useState, type RefObject } from 'react';
+import { Search, Copy, X } from 'lucide-react';
 import { RichTextEditor } from '../common/RichTextEditor';
 import { EmailDesignEditor } from './EmailDesignEditor';
 import { EmailTemplateSelectorModal } from './flow/EmailTemplateSelectorModal';
@@ -37,6 +38,58 @@ interface SendEmailConfigProps {
     onUpdate: (key: string, value: unknown) => void;
 }
 
+type MergeTagField = 'to' | 'subject' | 'previewText';
+
+interface MergeTagDefinition {
+    category: 'customer' | 'order' | 'product' | 'coupon' | 'cart' | 'general';
+    label: string;
+    value: string;
+}
+
+const MERGE_TAGS: MergeTagDefinition[] = [
+    { category: 'customer', label: 'Customer First Name', value: '{{customer.firstName}}' },
+    { category: 'customer', label: 'Customer Last Name', value: '{{customer.lastName}}' },
+    { category: 'customer', label: 'Customer Email', value: '{{customer.email}}' },
+    { category: 'customer', label: 'Customer Phone', value: '{{customer.phone}}' },
+    { category: 'order', label: 'Order Number', value: '{{order.number}}' },
+    { category: 'order', label: 'Order Date', value: '{{order.date}}' },
+    { category: 'order', label: 'Order Status', value: '{{order.status}}' },
+    { category: 'order', label: 'Payment Method', value: '{{order.paymentMethod}}' },
+    { category: 'order', label: 'Order Subtotal', value: '{{order.subtotal}}' },
+    { category: 'order', label: 'Order Shipping Total', value: '{{order.shippingTotal}}' },
+    { category: 'order', label: 'Order Discount Total', value: '{{order.discountTotal}}' },
+    { category: 'order', label: 'Order Total', value: '{{order.total}}' },
+    { category: 'order', label: 'Customer Note', value: '{{order.customerNote}}' },
+    { category: 'order', label: 'Billing Address', value: '{{order.billingAddress}}' },
+    { category: 'order', label: 'Shipping Address', value: '{{order.shippingAddress}}' },
+    { category: 'order', label: 'Order Items Table', value: '{{order.itemsTable}}' },
+    { category: 'order', label: 'Downloads Table', value: '{{order.downloads}}' },
+    { category: 'product', label: 'Product Name', value: '{{product.name}}' },
+    { category: 'product', label: 'Product Price', value: '{{product.price}}' },
+    { category: 'product', label: 'Product Image', value: '{{product.image}}' },
+    { category: 'product', label: 'Product Description', value: '{{product.description}}' },
+    { category: 'coupon', label: 'Coupon Code', value: '{{coupon.code}}' },
+    { category: 'coupon', label: 'Coupon Discount', value: '{{coupon.discount}}' },
+    { category: 'coupon', label: 'Coupon Description', value: '{{coupon.description}}' },
+    { category: 'coupon', label: 'Coupon Expiry', value: '{{coupon.expiry}}' },
+    { category: 'cart', label: 'Cart Recovery URL', value: '{{cart.recoveryUrl}}' },
+    { category: 'cart', label: 'Cart Checkout URL', value: '{{cart.checkoutUrl}}' },
+    { category: 'cart', label: 'Cart Total', value: '{{cart.total}}' },
+    { category: 'cart', label: 'Cart Currency', value: '{{cart.currency}}' },
+    { category: 'cart', label: 'Cart Items Table', value: '{{cart.itemsTable}}' },
+    { category: 'general', label: 'Store URL', value: '{{store_url}}' },
+    { category: 'general', label: 'Unsubscribe URL', value: '{{unsubscribe_url}}' },
+];
+
+const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: string }> = [
+    { id: 'customer', label: 'Customer' },
+    { id: 'order', label: 'Order' },
+    { id: 'product', label: 'Product' },
+    { id: 'coupon', label: 'Coupon' },
+    { id: 'cart', label: 'Cart' },
+    { id: 'general', label: 'General' },
+];
+
 export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
     const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
@@ -44,6 +97,10 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const [showVisualBuilder, setShowVisualBuilder] = useState(false);
     const [showPreflightModal, setShowPreflightModal] = useState(false);
     const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([]);
+    const [showMergeTagModal, setShowMergeTagModal] = useState(false);
+    const [mergeTagSearch, setMergeTagSearch] = useState('');
+    const [mergeTagCategory, setMergeTagCategory] = useState<MergeTagDefinition['category']>('customer');
+    const [activeMergeTagField, setActiveMergeTagField] = useState<MergeTagField>('subject');
     const toInputRef = useRef<HTMLInputElement>(null);
     const subjectInputRef = useRef<HTMLInputElement>(null);
     const previewTextInputRef = useRef<HTMLInputElement>(null);
@@ -94,7 +151,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const groupedIssues = groupPreflightIssues(preflightIssues);
 
     const insertMergeTag = (
-        field: 'to' | 'subject' | 'previewText',
+        field: MergeTagField,
         mergeTag: string,
         inputRef: RefObject<HTMLInputElement | null>,
     ) => {
@@ -118,6 +175,25 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
         });
     };
 
+    const openMergeTagModal = (field: MergeTagField) => {
+        setActiveMergeTagField(field);
+        setMergeTagSearch('');
+        setShowMergeTagModal(true);
+    };
+
+    const getFieldRef = (field: MergeTagField) => {
+        if (field === 'to') return toInputRef;
+        if (field === 'subject') return subjectInputRef;
+        return previewTextInputRef;
+    };
+
+    const visibleMergeTags = MERGE_TAGS.filter((tag) => {
+        if (tag.category !== mergeTagCategory) return false;
+        if (!mergeTagSearch.trim()) return true;
+        const term = mergeTagSearch.trim().toLowerCase();
+        return tag.label.toLowerCase().includes(term) || tag.value.toLowerCase().includes(term);
+    });
+
     return (
         <div className="space-y-4">
             <div>
@@ -135,7 +211,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                     />
                     <button
                         type="button"
-                        onClick={() => insertMergeTag('to', '{{customer.email}}', toInputRef)}
+                        onClick={() => openMergeTagModal('to')}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                         title="Insert merge tag"
                     >
@@ -155,12 +231,12 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                         type="text"
                         value={config.subject || ''}
                         onChange={(e) => onUpdate('subject', e.target.value)}
-                        placeholder="Thank you {{contact_first_name}}, Order {{order_id}} has been Confirmed."
+                        placeholder="Thank you {{customer.firstName}}, Order {{order.number}} has been confirmed."
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                     />
                     <button
                         type="button"
-                        onClick={() => insertMergeTag('subject', '{{}}', subjectInputRef)}
+                        onClick={() => openMergeTagModal('subject')}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                         title="Insert merge tag"
                     >
@@ -182,7 +258,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                     />
                     <button
                         type="button"
-                        onClick={() => insertMergeTag('previewText', '{{}}', previewTextInputRef)}
+                        onClick={() => openMergeTagModal('previewText')}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                         title="Insert merge tag"
                     >
@@ -537,6 +613,78 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                             >
                                 Continue to Preview
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showMergeTagModal && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-xs">
+                    <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                        <div className="flex items-center gap-4 border-b border-gray-200 px-5 py-4">
+                            <h3 className="text-2xl font-medium text-gray-900">Merge Tags</h3>
+                            <div className="ml-auto flex w-full max-w-xs items-center gap-2 rounded-lg border border-gray-300 px-3 py-2">
+                                <Search className="h-4 w-4 text-gray-400" />
+                                <input
+                                    value={mergeTagSearch}
+                                    onChange={(e) => setMergeTagSearch(e.target.value)}
+                                    placeholder="Search by name"
+                                    className="w-full border-0 text-sm text-gray-700 outline-none"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowMergeTagModal(false)}
+                                className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                aria-label="Close merge tag modal"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="grid h-[520px] grid-cols-[180px_1fr]">
+                            <div className="border-r border-gray-200 bg-gray-50">
+                                {MERGE_TAG_CATEGORIES.map((category) => (
+                                    <button
+                                        key={category.id}
+                                        type="button"
+                                        onClick={() => setMergeTagCategory(category.id)}
+                                        className={`flex w-full items-center px-4 py-3 text-left text-sm ${
+                                            mergeTagCategory === category.id
+                                                ? 'bg-white font-medium text-gray-900'
+                                                : 'text-gray-600 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        {category.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="overflow-y-auto">
+                                {visibleMergeTags.length === 0 ? (
+                                    <div className="p-8 text-sm text-gray-500">No merge tags found for that search.</div>
+                                ) : (
+                                    visibleMergeTags.map((tag) => (
+                                        <div key={tag.value} className="flex items-center gap-4 border-b border-gray-100 px-6 py-3">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-medium text-gray-900">{tag.label}</p>
+                                            </div>
+                                            <code className="min-w-[220px] text-xs text-gray-500">{tag.value}</code>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    insertMergeTag(activeMergeTagField, tag.value, getFieldRef(activeMergeTagField));
+                                                    setShowMergeTagModal(false);
+                                                }}
+                                                className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                                title="Insert merge tag"
+                                            >
+                                                <Copy className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -200,6 +200,12 @@ export class MarketingService {
             throw new Error('No sending-capable email account is configured');
         }
 
+        const account = await prisma.account.findFirst({
+            where: { id: accountId },
+            select: { wooUrl: true, domain: true }
+        });
+        const storeUrl = account?.wooUrl || account?.domain || '';
+
         let totalRecipients = 0;
 
         if ((campaign as any).listId) {
@@ -236,15 +242,21 @@ export class MarketingService {
         let skippedCount = 0;
         const BATCH_SIZE = 1000;
 
-        const sendToBatch = async (customers: Array<{ id: string; email: string | null }>) => {
+        const sendToBatch = async (customers: Array<{ id: string; email: string | null; firstName?: string | null; lastName?: string | null }>) => {
             for (const customer of customers) {
                 const recipientEmail = customer.email?.trim();
                 if (!recipientEmail) continue;
 
                 processedCount++;
                 try {
-                    const subject = resolveMergeTags(campaign.subject, { customer });
-                    const content = resolveMergeTags(campaign.content, { customer });
+                    const subject = resolveMergeTags(campaign.subject, {
+                        customer,
+                        store: { url: storeUrl }
+                    });
+                    const content = resolveMergeTags(campaign.content, {
+                        customer,
+                        store: { url: storeUrl }
+                    });
 
                     const result = await this.emailService.sendEmail(
                         accountId,

@@ -73,7 +73,7 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
                 <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">Flow trigger</div>
                 <div className="mt-2 leading-relaxed text-slate-700">Starts when <span className="font-semibold text-slate-900">{triggerLabel}</span> happens.</div>
             </NodeWrapper>
-            <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white !shadow-md !shadow-blue-300/60" />
+            <Handle type="source" position={Position.Bottom} className="!w-0 !h-0 !bg-transparent !border-0 !shadow-none !opacity-0" />
         </>
     );
 });
@@ -124,7 +124,7 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                     </button>
                 )}
             </NodeWrapper>
-            {!isExitNode && <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-emerald-500 !border-2 !border-white !shadow-md !shadow-emerald-300/60" />}
+            {!isExitNode && <Handle type="source" position={Position.Bottom} className="!w-0 !h-0 !bg-transparent !border-0 !shadow-none !opacity-0" />}
         </>
     );
 });
@@ -171,7 +171,7 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
                 <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">Wait step</div>
                 <div className="font-semibold text-slate-900 mt-2">{delayDescription}</div>
             </NodeWrapper>
-            <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-amber-500 !border-2 !border-white !shadow-md !shadow-amber-300/60" />
+            <Handle type="source" position={Position.Bottom} className="!w-0 !h-0 !bg-transparent !border-0 !shadow-none !opacity-0" />
         </>
     );
 });
@@ -221,37 +221,40 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
                 <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 mb-2">Branch logic</div>
                 <div className="font-semibold text-slate-900 mb-1">{data.label as string}</div>
                 <div className="text-xs text-slate-600 mb-3 truncate">{conditionPreview}</div>
-                <div className="flex justify-between items-center pt-2.5 border-t border-orange-200">
-                    <button
-                        type="button"
-                        aria-label="Add YES branch node"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (!onAddConditionBranch) return;
-                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                            onAddConditionBranch(id, 'true', { x: rect.left + rect.width / 2, y: rect.bottom });
-                        }}
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm hover:bg-emerald-600 transition-colors"
-                    >
-                        +
-                    </button>
-                    <button
-                        type="button"
-                        aria-label="Add NO branch node"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (!onAddConditionBranch) return;
-                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                            onAddConditionBranch(id, 'false', { x: rect.left + rect.width / 2, y: rect.bottom });
-                        }}
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white shadow-sm hover:bg-rose-600 transition-colors"
-                    >
-                        +
-                    </button>
-                </div>
+                <div className="pt-2.5 border-t border-orange-200" />
             </NodeWrapper>
-            <Handle type="source" position={Position.Bottom} id="true" className="!bg-emerald-500 !w-3.5 !h-3.5 !border-2 !border-white !shadow-md !shadow-emerald-300/60 !z-10" style={{ left: '25%' }} />
-            <Handle type="source" position={Position.Bottom} id="false" className="!bg-rose-500 !w-3.5 !h-3.5 !border-2 !border-white !shadow-md !shadow-rose-300/60 !z-10" style={{ left: '75%' }} />
+            <Handle
+                type="source"
+                position={Position.Bottom}
+                id="true"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (!onAddConditionBranch) return;
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    onAddConditionBranch(id, 'true', { x: rect.left + rect.width / 2, y: rect.bottom });
+                }}
+                className="!bg-emerald-500 !w-5 !h-5 !border-2 !border-white !shadow-md !shadow-emerald-300/60 !z-10 !text-white !text-xs !font-bold !flex !items-center !justify-center cursor-pointer"
+                style={{ left: '25%' }}
+                aria-label="Add YES branch node"
+            >
+                +
+            </Handle>
+            <Handle
+                type="source"
+                position={Position.Bottom}
+                id="false"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (!onAddConditionBranch) return;
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    onAddConditionBranch(id, 'false', { x: rect.left + rect.width / 2, y: rect.bottom });
+                }}
+                className="!bg-rose-500 !w-5 !h-5 !border-2 !border-white !shadow-md !shadow-rose-300/60 !z-10 !text-white !text-xs !font-bold !flex !items-center !justify-center cursor-pointer"
+                style={{ left: '75%' }}
+                aria-label="Add NO branch node"
+            >
+                +
+            </Handle>
         </>
     );
 });

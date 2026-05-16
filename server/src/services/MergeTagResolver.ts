@@ -13,6 +13,11 @@ interface MergeTagContext {
     product?: any;
     coupon?: any;
     cart?: any;
+    store?: {
+        url?: string;
+    };
+    storeUrl?: string;
+    store_url?: string;
 }
 
 /**
@@ -22,11 +27,17 @@ interface MergeTagContext {
 export function resolveMergeTags(html: string, context: MergeTagContext): string {
     let result = html;
 
+    const storeUrl = normalizeStoreUrl(
+        context.store?.url || context.storeUrl || context.store_url || context.order?.storeUrl || context.order?.store_url
+    );
+    result = result.replace(/\{\{store_url\}\}/g, storeUrl);
+
     // Order merge tags
     if (context.order) {
         const order = context.order;
 
         result = result.replace(/\{\{order\.number\}\}/g, order.orderNumber || order.id || '');
+        result = result.replace(/\{\{order_id\}\}/g, order.orderNumber || order.id || '');
         result = result.replace(/\{\{order\.date\}\}/g, formatDate(order.dateCreated));
         result = result.replace(/\{\{order\.status\}\}/g, formatStatus(order.status));
         result = result.replace(/\{\{order\.paymentMethod\}\}/g, order.paymentMethodTitle || '');
@@ -55,6 +66,16 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         result = result.replace(/\{\{customer\.lastName\}\}/g, customer.lastName || customer.last_name || '');
         result = result.replace(/\{\{customer\.email\}\}/g, customer.email || '');
         result = result.replace(/\{\{customer\.phone\}\}/g, customer.phone || customer.billing?.phone || '');
+
+        const firstName = customer.firstName || customer.first_name || '';
+        const lastName = customer.lastName || customer.last_name || '';
+        const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+
+        result = result.replace(/\{\{contact_first_name\}\}/g, firstName);
+        result = result.replace(/\{\{contact_last_name\}\}/g, lastName);
+        result = result.replace(/\{\{contact_email\}\}/g, customer.email || '');
+        result = result.replace(/\{\{contact_full_name\}\}/g, fullName);
+        result = result.replace(/\{\{contact_id\}\}/g, customer.id ? String(customer.id) : '');
     }
 
     // Product merge tags
@@ -90,6 +111,14 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     }
 
     return result;
+}
+
+function normalizeStoreUrl(rawUrl?: string): string {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return '';
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
 }
 
 /**

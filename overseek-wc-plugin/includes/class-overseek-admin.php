@@ -212,6 +212,15 @@ class OverSeek_Admin
 		$email_profile_test = isset($_GET['overseek_email_profile_test'])
 			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_test']))
 			: '';
+		$email_profile_requested = isset($_GET['overseek_email_profile_requested'])
+			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_requested']))
+			: '';
+		$email_profile_resolved = isset($_GET['overseek_email_profile_resolved'])
+			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_resolved']))
+			: '';
+		$email_profile_from = isset($_GET['overseek_email_profile_from'])
+			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_from']))
+			: '';
 		?>
 		<div class="wrap overseek-admin">
 			<div class="overseek-admin__hero">
@@ -262,9 +271,9 @@ class OverSeek_Admin
 				<div class="notice notice-warning is-dismissible"><p>Bot Shield test warning: no cached patterns available yet.</p></div>
 			<?php endif; ?>
 			<?php if ($email_profile_test === 'pass') : ?>
-				<div class="notice notice-success is-dismissible"><p>Email sender profile test sent successfully.</p></div>
+				<div class="notice notice-success is-dismissible"><p>Email sender profile test sent successfully. Requested profile: <code><?php echo esc_html($email_profile_requested); ?></code>. Resolved profile: <code><?php echo esc_html($email_profile_resolved); ?></code>. From: <code><?php echo esc_html($email_profile_from); ?></code>.</p></div>
 			<?php elseif ($email_profile_test === 'failed') : ?>
-				<div class="notice notice-error is-dismissible"><p>Email sender profile test failed. Verify profile ID, SMTP credentials, and recipient email.</p></div>
+				<div class="notice notice-error is-dismissible"><p>Email sender profile test failed. Requested profile: <code><?php echo esc_html($email_profile_requested); ?></code>. Resolved profile: <code><?php echo esc_html($email_profile_resolved); ?></code>. From: <code><?php echo esc_html($email_profile_from); ?></code>. Verify profile ID, SMTP credentials, and recipient email.</p></div>
 			<?php endif; ?>
 
 			<form method="post" action="options.php" class="overseek-admin__form">
@@ -769,6 +778,7 @@ class OverSeek_Admin
 		if ($profile_id !== '' && is_email($to)) {
 			$cleanup_scope = OverSeek_Email_Relay_Profiles::begin_relay_scope(array('relay_profile_id' => $profile_id));
 			try {
+				$debug = OverSeek_Email_Relay_Profiles::get_scope_debug();
 				$result = wp_mail(
 					$to,
 					'[OverSeek] Sender Profile Test',
@@ -780,10 +790,21 @@ class OverSeek_Admin
 			}
 		}
 
+		if (!isset($debug) || !is_array($debug)) {
+			$debug = array(
+				'requested_profile_id' => $profile_id,
+				'resolved_profile_id' => '',
+				'from_email' => '',
+			);
+		}
+
 		$redirect = add_query_arg(
 			array(
 				'page' => 'overseek',
 				'overseek_email_profile_test' => $result,
+				'overseek_email_profile_requested' => isset($debug['requested_profile_id']) ? (string) $debug['requested_profile_id'] : '',
+				'overseek_email_profile_resolved' => isset($debug['resolved_profile_id']) ? (string) $debug['resolved_profile_id'] : '',
+				'overseek_email_profile_from' => isset($debug['from_email']) ? (string) $debug['from_email'] : '',
 			),
 			admin_url('admin.php')
 		);

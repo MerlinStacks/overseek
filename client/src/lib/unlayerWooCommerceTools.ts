@@ -228,7 +228,7 @@ export function registerWooCommerceTools(
         'woo_section_shipping_update',
         'Shipping Update Section',
         'fa-shipping-fast',
-        '<div style="background:#f8fafc;padding:20px 24px;font-family:Arial,sans-serif;"><h3 style="margin:0 0 6px 0;line-height:1.35;color:#0f172a;">Shipping Update for Order {{order_id}}</h3><p style="margin:0;line-height:1.6;color:#475569;">Your package is on the move. Add tracking details and delivery estimates here.</p></div>'
+        '<div style="background:#f8fafc;padding:20px 24px;font-family:Arial,sans-serif;"><h3 style="margin:0 0 6px 0;line-height:1.35;color:#0f172a;">Shipping Update for Order {{order.number}}</h3><p style="margin:0;line-height:1.6;color:#475569;">Your package is on the move. Add tracking details and delivery estimates here.</p></div>'
     );
 
     // ============================================

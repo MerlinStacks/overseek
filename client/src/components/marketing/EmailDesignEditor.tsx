@@ -51,6 +51,8 @@ const MAX_SAVED_SECTION_PRESETS = 12;
 export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCancel }) => {
     const emailEditorRef = useRef<EditorRef>(null);
     const autosaveTimeoutRef = useRef<number | null>(null);
+    const toolsRegisteredRef = useRef(false);
+    const editorShellRef = useRef<HTMLDivElement | null>(null);
 
     const { token, user } = useAuth();
     const { currentAccount } = useAccount();
@@ -162,6 +164,38 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         setShowChecklistPanel(false);
         setShowReusablePanel(false);
         setShowHistoryPanel((value) => !value);
+    }, []);
+
+    const ensureMobilePreviewButton = useCallback((): boolean => {
+        const root = editorShellRef.current;
+        if (!root) return false;
+
+        if (root.querySelector('[data-overseek-mobile-preview="true"]')) {
+            return true;
+        }
+
+        const buttons = Array.from(root.querySelectorAll('button'));
+        const desktopButton = buttons.find((button) => {
+            const label = `${button.getAttribute('title') || ''} ${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`.toLowerCase();
+            return label.includes('desktop');
+        });
+
+        if (!desktopButton || !desktopButton.parentElement) return false;
+
+        const mobileButton = desktopButton.cloneNode(true) as HTMLButtonElement;
+        mobileButton.setAttribute('data-overseek-mobile-preview', 'true');
+        mobileButton.setAttribute('title', 'Mobile');
+        mobileButton.setAttribute('aria-label', 'Mobile preview');
+        mobileButton.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>';
+        mobileButton.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const editor = emailEditorRef.current?.editor as { showPreview?: (mode?: 'desktop' | 'mobile') => void } | null;
+            editor?.showPreview?.('mobile');
+        };
+
+        desktopButton.parentElement.appendChild(mobileButton);
+        return true;
     }, []);
 
     const toggleReusablePanel = useCallback(() => {
@@ -536,7 +570,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                 id: 'announce-heading',
                                 type: 'text',
                                 values: {
-                                    text: '<h2 style="text-align:left;margin:0;line-height:1.3;">A quick update for {{contact_first_name}}</h2>',
+                                    text: '<h2 style="text-align:left;margin:0;line-height:1.3;">A quick update for {{customer.firstName}}</h2>',
                                     padding: '16px 20px 8px'
                                 }
                             }, {
@@ -722,25 +756,39 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         );
     }, [buildDynamicSidebarBlocks]);
 
+    const registerEditorTools = useCallback((editorInstance: unknown) => {
+        if (toolsRegisteredRef.current) return;
+        const storedHeaders = loadSavedRows(SAVED_HEADERS_KEY);
+        const storedFooters = loadSavedRows(SAVED_FOOTERS_KEY);
+        const dynamicSidebarBlocks = buildDynamicSidebarBlocks(storedHeaders, storedFooters);
+
+        registerWooCommerceTools(
+            editorInstance as Parameters<typeof registerWooCommerceTools>[0],
+            { dynamicSidebarBlocks }
+        );
+        (editorInstance as { setMergeTags?: (tags: unknown) => void }).setMergeTags?.(getWooCommerceMergeTags());
+        toolsRegisteredRef.current = true;
+    }, [buildDynamicSidebarBlocks, loadSavedRows]);
+
     const onReady = () => {
         setLoading(false);
 
         const editor = emailEditorRef.current?.editor;
         if (editor) {
-            const storedHeaders = loadSavedRows(SAVED_HEADERS_KEY);
-            const storedFooters = loadSavedRows(SAVED_FOOTERS_KEY);
-            const dynamicSidebarBlocks = buildDynamicSidebarBlocks(storedHeaders, storedFooters);
-
-            registerWooCommerceTools(
-                editor as unknown as Parameters<typeof registerWooCommerceTools>[0],
-                { dynamicSidebarBlocks }
-            );
-            editor.setMergeTags(getWooCommerceMergeTags());
             editor.addEventListener('design:updated', () => {
                 setHasUnsavedChanges(true);
                 queueDraftSave();
             });
         }
+
+        let attempts = 0;
+        const maxAttempts = 15;
+        const injectButton = () => {
+            attempts += 1;
+            if (ensureMobilePreviewButton() || attempts >= maxAttempts) return;
+            window.setTimeout(injectButton, 250);
+        };
+        window.setTimeout(injectButton, 250);
 
         if (initialDesign && emailEditorRef.current?.editor) {
             const readyEditor = emailEditorRef.current.editor;
@@ -752,6 +800,10 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
             readyEditor.loadDesign(starterLayouts[0].design as LoadDesignArg);
             setHasUnsavedChanges(true);
         }
+    };
+
+    const onLoad = (unlayer: unknown) => {
+        registerEditorTools(unlayer);
     };
 
     const restoreDraft = () => {
@@ -1209,7 +1261,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     </div>
                 </div>
 
-                <div className="relative bg-slate-100" style={{ height: 'calc(100vh - 82px)' }}>
+                <div ref={editorShellRef} className="relative bg-slate-100" style={{ height: 'calc(100vh - 82px)' }}>
 
                     {showTestEmailPanel && (
                         <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[340px]">
@@ -1357,7 +1409,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     <div className="h-full">
                         <EmailEditor
                             ref={emailEditorRef}
-                            onLoad={() => {}}
+                            onLoad={onLoad}
                             onReady={onReady}
                             minHeight={'calc(100vh - 82px)'}
                             style={{

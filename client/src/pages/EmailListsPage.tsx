@@ -17,6 +17,17 @@ interface EmailListMember {
     isSubscribed: boolean;
 }
 
+interface BulkUnsubscribeResult {
+    processed: number;
+    created: number;
+    updated: number;
+    matchedCustomers?: number;
+    matchedWithOrders?: number;
+    unmatchedCount?: number;
+    unmatchedEmailsSample?: string[];
+    invalidCount?: number;
+}
+
 export function EmailListsPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -31,6 +42,7 @@ export function EmailListsPage() {
     const [bulkUnsubscribeReason, setBulkUnsubscribeReason] = useState('');
     const [bulkUnsubscribeScope, setBulkUnsubscribeScope] = useState<'MARKETING' | 'ALL'>('MARKETING');
     const [isBulkUploading, setIsBulkUploading] = useState(false);
+    const [lastBulkUnsubscribeResult, setLastBulkUnsubscribeResult] = useState<BulkUnsubscribeResult | null>(null);
 
     const fetchLists = useCallback(async () => {
         if (!currentAccount) return;
@@ -195,8 +207,11 @@ export function EmailListsPage() {
 
             setBulkUnsubscribeInput('');
             setBulkUnsubscribeReason('');
+            setLastBulkUnsubscribeResult(data as BulkUnsubscribeResult);
             const invalidSuffix = data.invalidCount ? `, ${data.invalidCount} invalid` : '';
-            toast.success(`Processed ${data.processed} emails (${data.created} new, ${data.updated} updated${invalidSuffix})`);
+            const matchedWithOrders = typeof data.matchedWithOrders === 'number' ? data.matchedWithOrders : 0;
+            const unmatchedCount = typeof data.unmatchedCount === 'number' ? data.unmatchedCount : 0;
+            toast.success(`Processed ${data.processed} emails (${data.created} new, ${data.updated} updated${invalidSuffix}). ${matchedWithOrders} match customers with orders, ${unmatchedCount} unmatched.`);
             await fetchLists();
             if (selectedListId) await fetchMembers(selectedListId);
         } catch (error) {
@@ -314,6 +329,25 @@ export function EmailListsPage() {
                         {isBulkUploading ? 'Uploading...' : 'Upload Unsubscribes'}
                     </button>
                 </form>
+
+                {lastBulkUnsubscribeResult && (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 space-y-1">
+                        <div>
+                            Processed {lastBulkUnsubscribeResult.processed} ({lastBulkUnsubscribeResult.created} new, {lastBulkUnsubscribeResult.updated} updated)
+                        </div>
+                        <div>
+                            Matched customers: {lastBulkUnsubscribeResult.matchedCustomers ?? 0} | Customers with orders: {lastBulkUnsubscribeResult.matchedWithOrders ?? 0}
+                        </div>
+                        <div>
+                            Unmatched: {lastBulkUnsubscribeResult.unmatchedCount ?? 0} | Invalid: {lastBulkUnsubscribeResult.invalidCount ?? 0}
+                        </div>
+                        {!!(lastBulkUnsubscribeResult.unmatchedEmailsSample && lastBulkUnsubscribeResult.unmatchedEmailsSample.length > 0) && (
+                            <div className="text-gray-600">
+                                Sample unmatched: {lastBulkUnsubscribeResult.unmatchedEmailsSample.slice(0, 5).join(', ')}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

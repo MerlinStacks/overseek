@@ -317,14 +317,18 @@ export class EmailService {
             ? this.buildUnsubscribeHeaderUrl(trackingId)
             : null;
 
+        const htmlWithMergeTagUrls = unsubscribeUrl
+            ? htmlWithTracking.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl)
+            : htmlWithTracking;
+
         // Try HTTP relay first if configured
         if (emailAccount.relayEndpoint && emailAccount.relayApiKey) {
             try {
-                const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithTracking, attachments, {
+                const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithMergeTagUrls, attachments, {
                     ...options,
                     unsubscribeUrl: unsubscribeUrl || undefined
                 });
-
+                
                 await prisma.emailLog.create({
                     data: {
                         accountId,
@@ -358,7 +362,7 @@ export class EmailService {
                             sourceId: options?.sourceId,
                             canRetry: true,
                             emailPayload: {
-                                html: htmlWithTracking,
+                                html: htmlWithMergeTagUrls,
                                 attachments: attachments || [],
                                 options: options || {}
                             }
@@ -382,7 +386,7 @@ export class EmailService {
                 from: `"${emailAccount.name}" <${emailAccount.email}>`,
                 to,
                 subject,
-                html: htmlWithTracking,
+                html: htmlWithMergeTagUrls,
                 attachments,
                 headers: unsubscribeUrl
                     ? {
