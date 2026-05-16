@@ -411,7 +411,7 @@ export class InvoiceService {
         }
     ): Promise<void> {
         return new Promise((resolve, reject) => {
-            const doc = new PDFDocument({ margin: 50, size: 'A4' });
+            const doc = new PDFDocument({ margin: 0, size: 'A4' });
             const stream = fs.createWriteStream(filePath);
 
             doc.on('error', reject);
@@ -461,10 +461,10 @@ export class InvoiceService {
             const rawData = order.rawData as any || {};
 
             // Page + grid metrics (aligned with designer canvas/react-grid-layout spacing)
-            const pageWidth = 495; // 595 - 100 (A4 width minus 50pt margins)
-            const marginLeft = 50;
-            const marginTop = 50;
-            const pageHeight = 742;
+            const pageWidth = doc.page.width;
+            const marginLeft = 0;
+            const marginTop = 0;
+            const pageHeight = doc.page.height;
             const DESIGN_WIDTH_PX = 794;
             const GRID_COLS = 12;
             const GRID_ROW_HEIGHT_PX = 30;
@@ -530,7 +530,7 @@ export class InvoiceService {
                 }
             });
 
-            const defaultBottomReserve = 120;
+            const defaultBottomReserve = 80;
             const getPageContentLimitY = (pageIndex: number) => {
                 const footerStart = footerStartByPage.get(pageIndex);
                 if (typeof footerStart === 'number') return Math.max(marginTop + 40, footerStart - 10);

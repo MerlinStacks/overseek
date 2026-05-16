@@ -8,11 +8,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export function useModalDraftState<T>(initialState: T, isOpen: boolean) {
     const [draft, setDraft] = useState<T>(initialState);
     const initialRef = useRef<T>(initialState);
+    const wasOpenRef = useRef<boolean>(isOpen);
 
     useEffect(() => {
         initialRef.current = initialState;
-        if (isOpen) {
-            setDraft(initialState);
+
+        const openedNow = isOpen && !wasOpenRef.current;
+        wasOpenRef.current = isOpen;
+
+        if (openedNow) {
+            queueMicrotask(() => {
+                setDraft(initialState);
+            });
         }
     }, [initialState, isOpen]);
 

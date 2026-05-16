@@ -28,6 +28,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
 }) => {
     const [localData, setLocalData] = useState<NodeDataState>({});
     const [originalData, setOriginalData] = useState<NodeDataState>({});
+    const nodeId = node?.id;
 
     // Sync local state when node changes
     useEffect(() => {
@@ -39,8 +40,6 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
             });
         }
     }, [node]);
-
-    if (!node) return null;
 
     const handleSave = () => {
         onClose();
@@ -60,23 +59,29 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     };
 
     const updateConfig = useCallback((key: string, value: unknown) => {
+        if (!nodeId) return;
+
         setLocalData((prev) => {
             const next = {
                 ...prev,
                 config: { ...(prev.config || {}), [key]: value }
             };
-            onUpdate(node.id, next);
+            onUpdate(nodeId, next);
             return next;
         });
-    }, [node.id, onUpdate]);
+    }, [nodeId, onUpdate]);
 
     const updateLabel = useCallback((label: string) => {
+        if (!nodeId) return;
+
         setLocalData((prev) => {
             const next = { ...prev, label };
-            onUpdate(node.id, next);
+            onUpdate(nodeId, next);
             return next;
         });
-    }, [node.id, onUpdate]);
+    }, [nodeId, onUpdate]);
+
+    if (!node) return null;
 
     // Get panel title and icon based on node type
     const getPanelHeader = () => {
