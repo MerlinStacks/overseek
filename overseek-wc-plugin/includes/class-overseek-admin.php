@@ -248,6 +248,9 @@ class OverSeek_Admin
 
 			<?php settings_errors('overseek_connection_config'); ?>
 			<?php settings_errors('overseek_email_relay_profiles'); ?>
+			<?php if (isset($_GET['settings-updated']) && $_GET['settings-updated'] === 'true') : ?>
+				<div class="notice notice-success is-dismissible"><p>OverSeek settings saved successfully.</p></div>
+			<?php endif; ?>
 			<?php if ($sync_notice === 'success') : ?>
 				<div class="notice notice-success is-dismissible"><p>Bot Shield sync completed successfully.</p></div>
 			<?php elseif ($sync_notice === 'failed') : ?>
@@ -345,35 +348,39 @@ class OverSeek_Admin
 							</div>
 						</div>
 
-						<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top: 10px;">
-							<input type="hidden" name="action" value="overseek_sync_blocked_agents" />
+						<div style="margin-top: 10px;">
 							<?php wp_nonce_field('overseek_sync_blocked_agents', 'overseek_sync_nonce'); ?>
 							<?php submit_button(
 								'Sync Bot Shield now',
 								'secondary',
-								'submit',
+								'action',
 								false,
 								array(
-									'disabled' => !$is_configured,
-									'title'    => $is_configured ? 'Fetch latest blocked crawler list from OverSeek.' : 'Connect your OverSeek account to enable Bot Shield sync.',
+									'disabled'   => !$is_configured,
+									'title'      => $is_configured ? 'Fetch latest blocked crawler list from OverSeek.' : 'Connect your OverSeek account to enable Bot Shield sync.',
+									'formaction' => esc_url(admin_url('admin-post.php')),
+									'formmethod' => 'post',
+									'value'      => 'overseek_sync_blocked_agents',
 								)
 							); ?>
-						</form>
+						</div>
 
-						<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top: 8px;">
-							<input type="hidden" name="action" value="overseek_test_bot_shield" />
+						<div style="margin-top: 8px;">
 							<?php wp_nonce_field('overseek_test_bot_shield', 'overseek_test_nonce'); ?>
 							<?php submit_button(
 								'Test Bot Shield',
 								'secondary',
-								'submit',
+								'action',
 								false,
 								array(
-									'disabled' => !$is_configured,
-									'title'    => $is_configured ? 'Run a local health test against cached bot patterns.' : 'Connect your OverSeek account to enable Bot Shield tests.',
+									'disabled'   => !$is_configured,
+									'title'      => $is_configured ? 'Run a local health test against cached bot patterns.' : 'Connect your OverSeek account to enable Bot Shield tests.',
+									'formaction' => esc_url(admin_url('admin-post.php')),
+									'formmethod' => 'post',
+									'value'      => 'overseek_test_bot_shield',
 								)
 							); ?>
-						</form>
+						</div>
 
 						<p class="overseek-admin__hint">If this remains stale, check WP-Cron and run a real server cron for <code>wp-cron.php</code> every 5 minutes.</p>
 					</section>
