@@ -1,16 +1,87 @@
 import { FastifyPluginAsync } from 'fastify';
 import fs from 'fs';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { z } from 'zod';
+import { mergeInvoiceSettings } from '@overseek/core';
 import { Logger } from '../utils/logger';
 import { authenticateRelayEmailAccount } from './email/helpers';
 import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
+import { prisma } from '../utils/prisma';
+
+function isCanonicalRenderer(renderer: string | null | undefined): boolean {
+    return renderer === 'designer-capture' || renderer === 'designer-capture-browser';
+}
+
+function getCanonicalSigningSecret(): string {
+    return String(
+        process.env.INVOICE_CANONICAL_SIGNING_SECRET
+        || process.env.RELAY_WEBHOOK_SECRET
+        || process.env.JWT_SECRET
+        || 'overseek-canonical-invoice-secret'
+    );
+}
+
+function signCanonicalPayload(artifactId: string, expires: number): string {
+    return createHmac('sha256', getCanonicalSigningSecret())
+        .update(`${artifactId}:${expires}`)
+        .digest('hex');
+}
+
+function verifyCanonicalSignature(artifactId: string, expires: number, signature: string): boolean {
+    const expected = signCanonicalPayload(artifactId, expires);
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    const actualBuf = Buffer.from(signature, 'utf8');
+    if (expectedBuf.length !== actualBuf.length) return false;
+    return timingSafeEqual(expectedBuf, actualBuf);
+}
+
+async function buildCanonicalPayload(accountId: string, orderId: string, templateId: string) {
+    const orderNum = Number(orderId);
+    const order = await prisma.wooOrder.findFirst({
+        where: {
+            accountId,
+            OR: [
+                { id: orderId },
+                ...(Number.isFinite(orderNum) ? [{ wooId: orderNum }] : [])
+            ]
+        }
+    });
+    if (!order) throw new Error('Order not found for canonical rendering');
+
+    const template = await prisma.invoiceTemplate.findFirst({
+        where: { id: templateId, accountId }
+    });
+    if (!template) throw new Error('Invoice template not found for canonical rendering');
+
+    const rawLayout = typeof template.layout === 'string' ? JSON.parse(template.layout) : (template.layout || {});
+    const settings = mergeInvoiceSettings(rawLayout.settings || {});
+    const layout = Array.isArray(rawLayout.grid) ? rawLayout.grid : [];
+    const items = Array.isArray(rawLayout.items) ? rawLayout.items : [];
+    const rawOrder = (order.rawData as any) || {};
+
+    return {
+        layout,
+        items,
+        settings,
+        order: {
+            ...rawOrder,
+            id: order.id,
+            number: order.number,
+            order_number: order.number,
+            total: order.total,
+            shipping_total: rawOrder.shipping_total ?? 0,
+            tax_total: rawOrder.total_tax ?? 0,
+            date_created: rawOrder.date_created || order.createdAt,
+        }
+    };
+}
 
 function computeRelayDiagnostic(artifact: any, forceRegenerate: boolean): string | null {
     if (forceRegenerate) return 'forced_refresh';
     if (!artifact) return 'missing_artifact';
     if (artifact.status !== 'ready') return 'not_ready';
     if (!artifact.storagePath || !fs.existsSync(artifact.storagePath)) return 'missing_file';
-    if (artifact.renderer !== 'designer-capture') return 'non_canonical_renderer';
+    if (!isCanonicalRenderer(artifact.renderer)) return 'non_canonical_renderer';
 
     const cutoffRaw = String(process.env.INVOICE_CANONICAL_INVALIDATE_BEFORE || '').trim();
     if (cutoffRaw && artifact.generatedAt) {
@@ -32,7 +103,51 @@ const InvoiceRelayBodySchema = z.object({
     force_regenerate: z.boolean().optional(),
 });
 
+const CanonicalPayloadParamsSchema = z.object({
+    artifactId: z.string().min(1),
+});
+
+const CanonicalPayloadQuerySchema = z.object({
+    expires: z.coerce.number().int().positive(),
+    sig: z.string().min(1),
+});
+
 const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
+    fastify.get('/canonical-print-payload/:artifactId', async (request, reply) => {
+        const parsedParams = CanonicalPayloadParamsSchema.safeParse(request.params);
+        const parsedQuery = CanonicalPayloadQuerySchema.safeParse(request.query);
+        if (!parsedParams.success || !parsedQuery.success) {
+            return reply.code(400).send({ success: false, error: 'Invalid canonical payload request' });
+        }
+
+        const { artifactId } = parsedParams.data;
+        const { expires, sig } = parsedQuery.data;
+
+        if (Date.now() > expires) {
+            return reply.code(401).send({ success: false, error: 'Canonical payload request expired' });
+        }
+
+        if (!verifyCanonicalSignature(artifactId, expires, sig)) {
+            return reply.code(401).send({ success: false, error: 'Invalid canonical payload signature' });
+        }
+
+        const artifact = await canonicalInvoiceService.getArtifactById(artifactId);
+        if (!artifact) {
+            return reply.code(404).send({ success: false, error: 'Invoice artifact not found' });
+        }
+
+        try {
+            const payload = await buildCanonicalPayload(artifact.accountId, artifact.orderId, artifact.templateId);
+            return { success: true, payload };
+        } catch (error) {
+            Logger.error('Failed to build canonical print payload', {
+                artifactId,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            return reply.code(500).send({ success: false, error: 'Failed to build canonical payload' });
+        }
+    });
+
     fastify.post('/woocommerce-processing', async (request, reply) => {
         const relayKey = request.headers['x-relay-key'];
         const relayKeyValue = typeof relayKey === 'string' ? relayKey : undefined;

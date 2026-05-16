@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { InvoiceRenderer } from '../components/invoicing/InvoiceRenderer';
 
 type CanonicalPayload = {
@@ -27,11 +27,62 @@ function parsePayload(raw: string | null): CanonicalPayload | null {
 }
 
 export function InvoiceCanonicalPrintPage() {
+    const { artifactId } = useParams<{ artifactId?: string }>();
     const [params] = useSearchParams();
-    const payload = useMemo(() => parsePayload(params.get('payload')), [params]);
+    const [fetchedPayload, setFetchedPayload] = useState<CanonicalPayload | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const payload = useMemo(() => {
+        if (artifactId) return fetchedPayload;
+        return parsePayload(params.get('payload'));
+    }, [artifactId, fetchedPayload, params]);
+
+    useEffect(() => {
+        if (!artifactId) return;
+        const expires = params.get('expires');
+        const sig = params.get('sig');
+        if (!expires || !sig) {
+            setLoadError('Missing canonical payload signature');
+            return;
+        }
+
+        let cancelled = false;
+        const url = `/api/invoices/relay/canonical-print-payload/${encodeURIComponent(artifactId)}?expires=${encodeURIComponent(expires)}&sig=${encodeURIComponent(sig)}`;
+
+        (async () => {
+            try {
+                const res = await fetch(url);
+                if (!res.ok) {
+                    setLoadError('Unable to load invoice payload');
+                    return;
+                }
+
+                const data = await res.json();
+                if (!data?.success || !data?.payload) {
+                    setLoadError('Invalid invoice payload response');
+                    return;
+                }
+
+                if (!cancelled) {
+                    const parsed = data.payload;
+                    setFetchedPayload({
+                        layout: Array.isArray(parsed.layout) ? parsed.layout : [],
+                        items: Array.isArray(parsed.items) ? parsed.items : [],
+                        order: parsed.order && typeof parsed.order === 'object' ? parsed.order : {},
+                        settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
+                    });
+                }
+            } catch {
+                if (!cancelled) setLoadError('Failed to fetch invoice payload');
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [artifactId, params]);
 
     if (!payload) {
-        return <div style={{ padding: 24 }}>Invalid invoice payload</div>;
+        return <div style={{ padding: 24 }}>{loadError || 'Loading invoice payload...'}</div>;
     }
 
     return (

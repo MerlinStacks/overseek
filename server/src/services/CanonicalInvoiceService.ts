@@ -9,6 +9,10 @@ import { canonicalBrowserInvoiceService } from './CanonicalBrowserInvoiceService
 
 const invoiceService = new InvoiceService();
 
+function isCanonicalRenderer(renderer: string | null | undefined): boolean {
+    return renderer === 'designer-capture' || renderer === 'designer-capture-browser';
+}
+
 function normalizeTemplateVersion(layout: any): string {
     const versions = Array.isArray(layout?.versions) ? layout.versions : [];
     const latest = versions[0];
@@ -35,7 +39,7 @@ export class CanonicalInvoiceService {
         if (!artifact) return 'missing_artifact';
         if (artifact.status !== 'ready') return 'not_ready';
         if (!artifact.storagePath || !fs.existsSync(artifact.storagePath)) return 'missing_file';
-        if (artifact.renderer !== 'designer-capture') return 'non_canonical_renderer';
+        if (!isCanonicalRenderer(artifact.renderer)) return 'non_canonical_renderer';
 
         const invalidateBefore = this.getInvalidateBeforeDate();
         if (invalidateBefore && artifact.generatedAt && artifact.generatedAt < invalidateBefore) {

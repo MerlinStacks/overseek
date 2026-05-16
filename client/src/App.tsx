@@ -225,6 +225,7 @@ function App() {
                                         <Route path="/data-deletion" element={<DataDeletionPage />} />
                                         <Route path="/terms-of-service" element={<TermsOfServicePage />} />
                                         <Route path="/invoices/canonical-print" element={<InvoiceCanonicalPrintPage />} />
+                                        <Route path="/invoices/canonical-print/:artifactId" element={<InvoiceCanonicalPrintPage />} />
 
                                         {/* Protected Routes */}
                                         <Route element={<ProtectedRoute />}>
