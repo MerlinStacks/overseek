@@ -348,6 +348,9 @@ model SmsSettings {
   /// Optional: enabled flag
   enabled Boolean @default(true)
 
+  /// Optional: estimated cost per SMS segment for UI cost previews
+  smsCostPerSegment Float @default(0)
+
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
@@ -2091,6 +2094,7 @@ model EmailAccount {
   // HTTP Relay Configuration (for SMTP-blocked environments)
   relayEndpoint String? // e.g. "https://example.com/wp-json/overseek/v1/email-relay"
   relayApiKey   String? // API key for relay authentication (encrypted at app level)
+  relayProfileId String? // Optional profile ID consumed by Woo relay plugin
 
   isDefault Boolean @default(false) // Default for sending
 

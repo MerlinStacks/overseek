@@ -36,6 +36,7 @@ function buildEmailAccountBaseData(body: any) {
         imapUsername: body.imapUsername || null,
         imapSecure: body.imapSecure ?? true,
         relayEndpoint: body.relayEndpoint || null,
+        relayProfileId: body.relayProfileId || null,
     };
 }
 
@@ -212,7 +213,7 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
         const accountId = request.accountId;
         const parsed = parseBodyOrReply(reply, TestRelayBodySchema.safeParse(request.body));
         if (!parsed) return;
-        const { relayEndpoint, relayApiKey, emailAccountId, testEmail } = parsed;
+        const { relayEndpoint, relayApiKey, relayProfileId, emailAccountId, testEmail } = parsed;
         const parsedUrl = parseHttpsUrlOrReply(relayEndpoint, reply);
         if (!parsedUrl) return;
         let apiKeyToUse = relayApiKey;
@@ -233,6 +234,7 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
             html: '<p>This is a test email to verify the HTTP relay connection is working.</p>',
             from_name: 'OverSeek Test',
             from_email: process.env.CONTACT_EMAIL || 'noreply@localhost',
+            relay_profile_id: relayProfileId || undefined,
             test_mode: true
         };
         try {

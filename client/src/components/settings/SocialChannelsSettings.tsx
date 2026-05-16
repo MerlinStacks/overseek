@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
-import { Facebook, Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, CheckCircle, MessageSquare, Save } from 'lucide-react';
+import { Facebook, Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, CheckCircle, MessageSquare, Save, Copy, ExternalLink } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -25,6 +25,7 @@ interface SmsSettings {
     authToken: string;
     fromNumber: string;
     enabled: boolean;
+    smsCostPerSegment: number;
 }
 
 /**
@@ -45,9 +46,24 @@ export function SocialChannelsSettings() {
         accountSid: '',
         authToken: '',
         fromNumber: '',
-        enabled: true
+        enabled: true,
+        smsCostPerSegment: 0
     });
     const [smsLoading, setSmsLoading] = useState(false);
+    const [webhookCopied, setWebhookCopied] = useState(false);
+
+    const smsWebhookUrl = `${window.location.origin}/api/sms/webhook`;
+
+    const copyWebhookUrl = async () => {
+        try {
+            await navigator.clipboard.writeText(smsWebhookUrl);
+            setWebhookCopied(true);
+            setTimeout(() => setWebhookCopied(false), 1800);
+        } catch (err) {
+            Logger.error('Failed to copy SMS webhook URL', { error: err });
+            setError('Could not copy webhook URL. Please copy it manually.');
+        }
+    };
 
     const fetchAccounts = useCallback(async () => {
         if (!token || !currentAccount) return;
@@ -76,7 +92,8 @@ export function SocialChannelsSettings() {
                     accountSid: data.accountSid ?? '',
                     authToken: data.authToken ?? '', // Usually masked or encrypted, but for now...
                     fromNumber: data.fromNumber ?? '',
-                    enabled: data.enabled ?? true
+                    enabled: data.enabled ?? true,
+                    smsCostPerSegment: Number(data.smsCostPerSegment ?? 0)
                 });
             }
         } catch (err) {
@@ -275,6 +292,38 @@ export function SocialChannelsSettings() {
                     <MessageSquare className="text-gray-400" size={20} />
                 </div>
                 <div className="p-6 space-y-4">
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-medium text-amber-900">Incoming SMS webhook</p>
+                            <a
+                                href="https://console.twilio.com/us1/develop/phone-numbers/manage/incoming"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900"
+                            >
+                                Open Twilio Console
+                                <ExternalLink size={12} />
+                            </a>
+                        </div>
+                        <p className="text-xs text-amber-800">
+                            In Twilio, set your phone number's "A message comes in" webhook to this URL (HTTP POST).
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <code className="flex-1 truncate rounded border border-amber-300 bg-white px-2 py-1 text-xs text-amber-900">
+                                {smsWebhookUrl}
+                            </code>
+                            <button
+                                type="button"
+                                onClick={copyWebhookUrl}
+                                className="inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                                title="Copy webhook URL"
+                            >
+                                {webhookCopied ? <CheckCircle size={12} /> : <Copy size={12} />}
+                                {webhookCopied ? 'Copied' : 'Copy'}
+                            </button>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Account SID</label>
@@ -317,6 +366,19 @@ export function SocialChannelsSettings() {
                                 />
                                 <span className="text-sm text-gray-700">Enable SMS Channel</span>
                             </label>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Cost per SMS Segment (USD)</label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.0001"
+                                value={smsSettings.smsCostPerSegment}
+                                onChange={(e) => setSmsSettings({ ...smsSettings, smsCostPerSegment: Number(e.target.value) || 0 })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="0.0075"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Used for estimated SMS cost in flow builder.</p>
                         </div>
                     </div>
                     <div className="pt-2 flex justify-end">

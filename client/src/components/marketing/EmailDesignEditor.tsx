@@ -13,7 +13,7 @@ import {
     Undo2,
     X,
 } from 'lucide-react';
-import { registerWooCommerceTools, getWooCommerceMergeTags } from '../../lib/unlayerWooCommerceTools';
+import { registerDynamicSidebarBlocks, registerWooCommerceTools, getWooCommerceMergeTags } from '../../lib/unlayerWooCommerceTools';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
@@ -35,6 +35,7 @@ interface SavedRowPreset {
     name: string;
     row: Record<string, unknown>;
     createdAt: string;
+    html?: string;
 }
 
 const DRAFT_STORAGE_KEY = 'overseek-email-builder-draft';
@@ -80,6 +81,62 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     const [snapshots, setSnapshots] = useState<DesignSnapshot[]>([]);
     const [savedHeaders, setSavedHeaders] = useState<SavedRowPreset[]>([]);
     const [savedFooters, setSavedFooters] = useState<SavedRowPreset[]>([]);
+
+    const escapeHtml = (value: string) => value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const rowToStaticHtml = useCallback((row: Record<string, unknown>): string => {
+        const columns = Array.isArray((row as { columns?: unknown[] }).columns)
+            ? ((row as { columns?: unknown[] }).columns as Record<string, unknown>[])
+            : [];
+
+        if (columns.length === 0) {
+            return '<div style="background:#ffffff;padding:16px 20px;font-family:Arial,sans-serif;"><p style="margin:0;color:#64748b;">Saved block</p></div>';
+        }
+
+        const columnHtml = columns.map((column) => {
+            const contents = Array.isArray((column as { contents?: unknown[] }).contents)
+                ? ((column as { contents?: unknown[] }).contents as Record<string, unknown>[])
+                : [];
+
+            const contentHtml = contents.map((content) => {
+                const type = (content as { type?: string }).type;
+                const values = ((content as { values?: Record<string, unknown> }).values || {}) as Record<string, unknown>;
+
+                if (type === 'text' && typeof values.text === 'string') {
+                    return `<div style="margin:0;">${values.text}</div>`;
+                }
+
+                if (type === 'image') {
+                    const src = (values.src as { url?: string } | undefined)?.url;
+                    const alt = typeof values.altText === 'string' ? values.altText : 'Image';
+                    if (src) {
+                        return `<div style="text-align:center;"><img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" style="max-width:100%;height:auto;border:0;" /></div>`;
+                    }
+                }
+
+                if (type === 'button') {
+                    const text = typeof values.text === 'string' ? values.text : 'Button';
+                    const href = typeof values.href === 'string' ? values.href : '{{store_url}}';
+                    return `<div style="text-align:center;"><a href="${escapeHtml(href)}" style="display:inline-block;padding:10px 16px;background:#1d4ed8;color:#ffffff;text-decoration:none;border-radius:8px;font-family:Arial,sans-serif;font-size:14px;">${escapeHtml(text)}</a></div>`;
+                }
+
+                if (type === 'divider') {
+                    return '<hr style="border:0;border-top:1px solid #e2e8f0;margin:12px 0;" />';
+                }
+
+                return '';
+            }).join('');
+
+            return `<td style="vertical-align:top;padding:0 8px;">${contentHtml}</td>`;
+        }).join('');
+
+        return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;background:#ffffff;"><tr>${columnHtml}</tr></table>`;
+    }, []);
 
     const closeTransientPanels = useCallback(() => {
         setShowTestEmailPanel(false);
@@ -637,12 +694,47 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         });
     }, []);
 
+    const buildDynamicSidebarBlocks = useCallback((headers: SavedRowPreset[], footers: SavedRowPreset[]) => {
+        const toSafeSlug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+        return [
+            ...headers.map((preset) => ({
+                name: `woo_saved_header_${toSafeSlug(preset.id)}`,
+                label: `Saved Header: ${preset.name}`,
+                icon: 'fa-window-maximize',
+                html: preset.html || rowToStaticHtml(preset.row),
+            })),
+            ...footers.map((preset) => ({
+                name: `woo_saved_footer_${toSafeSlug(preset.id)}`,
+                label: `Saved Footer: ${preset.name}`,
+                icon: 'fa-window-minimize',
+                html: preset.html || rowToStaticHtml(preset.row),
+            })),
+        ];
+    }, [rowToStaticHtml]);
+
+    const refreshDynamicSavedBlocks = useCallback((headers: SavedRowPreset[], footers: SavedRowPreset[]) => {
+        const editor = emailEditorRef.current?.editor;
+        if (!editor) return;
+        registerDynamicSidebarBlocks(
+            editor as unknown as Parameters<typeof registerDynamicSidebarBlocks>[0],
+            buildDynamicSidebarBlocks(headers, footers)
+        );
+    }, [buildDynamicSidebarBlocks]);
+
     const onReady = () => {
         setLoading(false);
 
         const editor = emailEditorRef.current?.editor;
         if (editor) {
-            registerWooCommerceTools(editor as unknown as Parameters<typeof registerWooCommerceTools>[0]);
+            const storedHeaders = loadSavedRows(SAVED_HEADERS_KEY);
+            const storedFooters = loadSavedRows(SAVED_FOOTERS_KEY);
+            const dynamicSidebarBlocks = buildDynamicSidebarBlocks(storedHeaders, storedFooters);
+
+            registerWooCommerceTools(
+                editor as unknown as Parameters<typeof registerWooCommerceTools>[0],
+                { dynamicSidebarBlocks }
+            );
             editor.setMergeTags(getWooCommerceMergeTags());
             editor.addEventListener('design:updated', () => {
                 setHasUnsavedChanges(true);
@@ -756,16 +848,19 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                 name: name.trim(),
                 row: rowCopy as Record<string, unknown>,
                 createdAt: new Date().toISOString(),
+                html: rowToStaticHtml(rowCopy as Record<string, unknown>),
             };
 
             if (type === 'header') {
                 const next = [nextItem, ...savedHeaders].slice(0, MAX_SAVED_SECTION_PRESETS);
                 setSavedHeaders(next);
                 persistSavedRows(SAVED_HEADERS_KEY, next);
+                refreshDynamicSavedBlocks(next, savedFooters);
             } else {
                 const next = [nextItem, ...savedFooters].slice(0, MAX_SAVED_SECTION_PRESETS);
                 setSavedFooters(next);
                 persistSavedRows(SAVED_FOOTERS_KEY, next);
+                refreshDynamicSavedBlocks(savedHeaders, next);
             }
         });
     };
@@ -806,11 +901,13 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
             const next = savedHeaders.filter((item) => item.id !== id);
             setSavedHeaders(next);
             persistSavedRows(SAVED_HEADERS_KEY, next);
+            refreshDynamicSavedBlocks(next, savedFooters);
             return;
         }
         const next = savedFooters.filter((item) => item.id !== id);
         setSavedFooters(next);
         persistSavedRows(SAVED_FOOTERS_KEY, next);
+        refreshDynamicSavedBlocks(savedHeaders, next);
     };
 
     const sendTestEmail = async (targetEmail?: string) => {
@@ -1072,7 +1169,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </button>
                         <button
                             onClick={toggleReusablePanel}
-                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                            className="hidden items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
                             <Bookmark size={16} />
                             <span className="hidden sm:inline">Reusable</span>
@@ -1278,8 +1375,12 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                 }
                             },
                             features: {
-                                preview: true,
-                                responsiveDesign: true,
+                                preview: {
+                                    enabled: true,
+                                    deviceResolutions: {
+                                        showDefaultResolutions: true,
+                                    },
+                                },
                                 textEditor: {
                                     spellChecker: true
                                 }
@@ -1300,6 +1401,17 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                 'custom#woo_section_coupon_strip': { position: 9 },
                                 'custom#woo_section_review_request': { position: 10 },
                                 'custom#woo_section_shipping_update': { position: 11 },
+                                'custom#woo_text_heading': { position: 12 },
+                                'custom#woo_text_subheading': { position: 13 },
+                                'custom#woo_text_body_copy': { position: 14 },
+                                'custom#woo_text_bullet_list': { position: 15 },
+                                'custom#woo_text_highlight_box': { position: 16 },
+                                'custom#woo_layout_promo_hero': { position: 17 },
+                                'custom#woo_layout_clean_announcement': { position: 18 },
+                                'custom#woo_header_brand': { position: 19 },
+                                'custom#woo_header_promo_banner': { position: 20 },
+                                'custom#woo_footer_simple': { position: 21 },
+                                'custom#woo_footer_support': { position: 22 },
                             },
                             }}
                         />

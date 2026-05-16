@@ -2,7 +2,7 @@
  * SendEmailConfig - Full configuration panel for Send Email action
  * Includes visual builder, rich text, raw HTML modes, template management, and preview
  */
-import { useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { RichTextEditor } from '../common/RichTextEditor';
 import { EmailDesignEditor } from './EmailDesignEditor';
 import { EmailTemplateSelectorModal } from './flow/EmailTemplateSelectorModal';
@@ -44,6 +44,9 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const [showVisualBuilder, setShowVisualBuilder] = useState(false);
     const [showPreflightModal, setShowPreflightModal] = useState(false);
     const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([]);
+    const toInputRef = useRef<HTMLInputElement>(null);
+    const subjectInputRef = useRef<HTMLInputElement>(null);
+    const previewTextInputRef = useRef<HTMLInputElement>(null);
 
     const templateType = config.templateType || 'visual';
     const emailCategory = config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING');
@@ -90,6 +93,31 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const hasBlockingIssues = preflightIssues.some((issue) => issue.severity === 'blocking');
     const groupedIssues = groupPreflightIssues(preflightIssues);
 
+    const insertMergeTag = (
+        field: 'to' | 'subject' | 'previewText',
+        mergeTag: string,
+        inputRef: RefObject<HTMLInputElement | null>,
+    ) => {
+        const input = inputRef.current;
+        const currentValue = (config[field] as string) || '';
+
+        if (!input) {
+            onUpdate(field, currentValue + mergeTag);
+            return;
+        }
+
+        const start = input.selectionStart ?? currentValue.length;
+        const end = input.selectionEnd ?? currentValue.length;
+        const nextValue = `${currentValue.slice(0, start)}${mergeTag}${currentValue.slice(end)}`;
+        onUpdate(field, nextValue);
+
+        requestAnimationFrame(() => {
+            input.focus();
+            const cursor = start + mergeTag.length;
+            input.setSelectionRange(cursor, cursor);
+        });
+    };
+
     return (
         <div className="space-y-4">
             <div>
@@ -98,6 +126,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                 </label>
                 <div className="relative">
                     <input
+                        ref={toInputRef}
                         type="text"
                         value={config.to || '{{customer.email}}'}
                         onChange={(e) => onUpdate('to', e.target.value)}
@@ -106,10 +135,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                     />
                     <button
                         type="button"
-                        onClick={() => {
-                            const current = config.to || '';
-                            onUpdate('to', current + '{{customer.email}}');
-                        }}
+                        onClick={() => insertMergeTag('to', '{{customer.email}}', toInputRef)}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                         title="Insert merge tag"
                     >
@@ -125,6 +151,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                 </label>
                 <div className="relative">
                     <input
+                        ref={subjectInputRef}
                         type="text"
                         value={config.subject || ''}
                         onChange={(e) => onUpdate('subject', e.target.value)}
@@ -133,10 +160,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                     />
                     <button
                         type="button"
-                        onClick={() => {
-                            const current = config.subject || '';
-                            onUpdate('subject', current + '{{}}');
-                        }}
+                        onClick={() => insertMergeTag('subject', '{{}}', subjectInputRef)}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                         title="Insert merge tag"
                     >
@@ -149,6 +173,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                 <label className="mb-1 block text-sm font-medium text-gray-700">Preview Text</label>
                 <div className="relative">
                     <input
+                        ref={previewTextInputRef}
                         type="text"
                         value={config.previewText || ''}
                         onChange={(e) => onUpdate('previewText', e.target.value)}
@@ -157,10 +182,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
                     />
                     <button
                         type="button"
-                        onClick={() => {
-                            const current = config.previewText || '';
-                            onUpdate('previewText', current + '{{}}');
-                        }}
+                        onClick={() => insertMergeTag('previewText', '{{}}', previewTextInputRef)}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                         title="Insert merge tag"
                     >

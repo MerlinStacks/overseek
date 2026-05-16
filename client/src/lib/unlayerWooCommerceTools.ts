@@ -14,6 +14,13 @@ interface UnlayerEditor {
     createViewer: (config: { render: (values: ToolValues) => string }) => unknown;
 }
 
+interface DynamicSidebarBlock {
+    name: string;
+    label: string;
+    icon?: string;
+    html: string;
+}
+
 function registerStaticSectionTool(
     unlayer: UnlayerEditor,
     name: string,
@@ -44,6 +51,21 @@ function registerStaticSectionTool(
                 js() { return ''; },
             },
         },
+    });
+}
+
+export function registerDynamicSidebarBlocks(
+    unlayer: UnlayerEditor,
+    blocks: DynamicSidebarBlock[]
+) {
+    blocks.forEach((block) => {
+        registerStaticSectionTool(
+            unlayer,
+            block.name,
+            block.label,
+            block.icon || 'fa-bookmark',
+            block.html
+        );
     });
 }
 
@@ -82,7 +104,10 @@ export function getWooCommerceMergeTags() {
 /**
  * Register all WooCommerce custom tools with the Unlayer editor
  */
-export function registerWooCommerceTools(unlayer: UnlayerEditor) {
+export function registerWooCommerceTools(
+    unlayer: UnlayerEditor,
+    options?: { dynamicSidebarBlocks?: DynamicSidebarBlock[] }
+) {
     // ============================================
     // 1. PRODUCT BLOCK
     // ============================================
@@ -205,6 +230,93 @@ export function registerWooCommerceTools(unlayer: UnlayerEditor) {
         'fa-shipping-fast',
         '<div style="background:#f8fafc;padding:20px 24px;font-family:Arial,sans-serif;"><h3 style="margin:0 0 6px 0;line-height:1.35;color:#0f172a;">Shipping Update for Order {{order_id}}</h3><p style="margin:0;line-height:1.6;color:#475569;">Your package is on the move. Add tracking details and delivery estimates here.</p></div>'
     );
+
+    // ============================================
+    // TEXT STYLE + STARTER + HEADER/FOOTER BLOCKS
+    // ============================================
+    registerStaticSectionTool(
+        unlayer,
+        'woo_text_heading',
+        'Heading',
+        'fa-heading',
+        '<div style="background:#ffffff;padding:18px 24px;font-family:Arial,sans-serif;"><h2 style="margin:0;line-height:1.35;color:#0f172a;font-size:28px;">Add your headline here</h2></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_text_subheading',
+        'Subheading',
+        'fa-text-height',
+        '<div style="background:#ffffff;padding:10px 24px 16px;font-family:Arial,sans-serif;"><h3 style="margin:0;line-height:1.45;color:#334155;font-size:20px;">Add your subheading here</h3></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_text_body_copy',
+        'Body Copy',
+        'fa-align-left',
+        '<div style="background:#ffffff;padding:12px 24px;font-family:Arial,sans-serif;"><p style="margin:0;line-height:1.7;color:#475569;font-size:15px;">Add your paragraph text here. Keep it concise and easy to scan on mobile.</p></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_text_bullet_list',
+        'Bullet List',
+        'fa-list-ul',
+        '<div style="background:#ffffff;padding:12px 24px;font-family:Arial,sans-serif;"><ul style="margin:0;padding-left:20px;line-height:1.7;color:#334155;font-size:15px;"><li>First key point</li><li>Second key point</li><li>Third key point</li></ul></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_text_highlight_box',
+        'Highlight Box',
+        'fa-quote-right',
+        '<div style="background:#eff6ff;border-left:4px solid #1d4ed8;padding:16px 18px;margin:0 24px;font-family:Arial,sans-serif;"><p style="margin:0;line-height:1.65;color:#1e3a8a;font-size:15px;"><strong>Highlight:</strong> Add an important detail, offer, or callout here.</p></div>'
+    );
+
+    registerStaticSectionTool(
+        unlayer,
+        'woo_layout_promo_hero',
+        'Promo Hero',
+        'fa-image',
+        '<div style="background:#ffffff;padding:26px 24px 8px;font-family:Arial,sans-serif;text-align:center;"><h2 style="margin:0 0 8px 0;line-height:1.3;color:#0f172a;">Big Promo Headline</h2><p style="margin:0 0 14px 0;line-height:1.65;color:#475569;">Use this hero area for a campaign, product launch, or seasonal sale.</p><a href="{{store_url}}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;border-radius:8px;padding:10px 16px;font-weight:600;">Shop Now</a></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_layout_clean_announcement',
+        'Clean Announcement',
+        'fa-bullhorn',
+        '<div style="background:#f8fafc;padding:18px 24px;font-family:Arial,sans-serif;"><h3 style="margin:0 0 6px 0;color:#0f172a;line-height:1.35;">Announcement Title</h3><p style="margin:0;line-height:1.65;color:#475569;">Use this for short updates, release notes, or inventory alerts.</p></div>'
+    );
+
+    registerStaticSectionTool(
+        unlayer,
+        'woo_header_brand',
+        'Brand Header',
+        'fa-window-maximize',
+        '<div style="background:#ffffff;padding:20px 20px 16px;font-family:Arial,sans-serif;text-align:center;"><h2 style="text-align:center;margin:0;line-height:1.3;color:#0f172a;">Your Store</h2><p style="text-align:center;margin:8px 0 0 0;font-size:13px;color:#64748b;">Brand message or tagline</p></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_header_promo_banner',
+        'Promo Banner Header',
+        'fa-window-maximize',
+        '<div style="background:#1d4ed8;padding:12px 16px;font-family:Arial,sans-serif;"><p style="text-align:center;margin:0;font-size:13px;color:#ffffff;"><strong>Free shipping over $50</strong> | New arrivals every week</p></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_footer_simple',
+        'Simple Footer',
+        'fa-window-minimize',
+        '<div style="background:#f8fafc;padding:18px 20px;font-family:Arial,sans-serif;"><p style="text-align:center;margin:0;font-size:12px;line-height:1.6;color:#64748b;">You are receiving this email from Your Store.<br />{{store_url}}</p><p style="text-align:center;margin:8px 0 0 0;font-size:12px;"><a href="{{unsubscribe_url}}" style="color:#64748b;">Unsubscribe</a></p></div>'
+    );
+    registerStaticSectionTool(
+        unlayer,
+        'woo_footer_support',
+        'Support Footer',
+        'fa-window-minimize',
+        '<div style="background:#e2e8f0;padding:18px 20px;font-family:Arial,sans-serif;"><p style="text-align:center;margin:0;font-size:12px;line-height:1.65;color:#475569;">Need help? Reply to this email and our team will assist you.<br />{{store_url}}</p></div>'
+    );
+
+    if (options?.dynamicSidebarBlocks?.length) {
+        registerDynamicSidebarBlocks(unlayer, options.dynamicSidebarBlocks);
+    }
 
     // ============================================
     // 2. COUPON BLOCK

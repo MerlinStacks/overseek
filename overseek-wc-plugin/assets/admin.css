@@ -275,6 +275,105 @@
 	outline: none;
 }
 
+.overseek-admin__test-form {
+	margin-top: 10px;
+	padding: 14px 16px;
+	border: 1px solid rgba(29, 53, 87, 0.08);
+	border-radius: 16px;
+	background: rgba(247, 250, 252, 0.9);
+}
+
+.overseek-admin__textarea--hidden {
+	display: none;
+}
+
+.overseek-admin__profiles {
+	margin: 12px 0;
+	padding: 14px 16px;
+	border: 1px solid rgba(29, 53, 87, 0.08);
+	border-radius: 16px;
+	background: rgba(247, 250, 252, 0.9);
+}
+
+.overseek-admin__profiles-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 10px;
+}
+
+.overseek-admin__profiles-list {
+	display: grid;
+	gap: 10px;
+}
+
+.overseek-admin__profile-card {
+	padding: 12px;
+	border: 1px solid rgba(29, 53, 87, 0.12);
+	border-radius: 12px;
+	background: #fff;
+}
+
+.overseek-admin__profiles-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px 10px;
+}
+
+.overseek-admin__profiles-grid label {
+	display: grid;
+	gap: 4px;
+}
+
+.overseek-admin__profiles-grid label span {
+	font-size: 12px;
+	font-weight: 600;
+	color: #24425f;
+}
+
+.overseek-admin__profiles-grid input.is-field-invalid,
+.overseek-admin__profiles-grid select.is-field-invalid {
+	border-color: rgba(180, 83, 9, 0.65);
+	box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.14);
+	background: rgba(255, 251, 235, 0.9);
+}
+
+.overseek-admin__profiles-grid .overseek-admin__check {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	font-size: 13px;
+	color: #24425f;
+}
+
+.overseek-admin__profiles details {
+	margin-top: 10px;
+}
+
+.overseek-admin__profiles details textarea {
+	margin-top: 8px;
+	width: 100%;
+	font-family: Consolas, Monaco, monospace;
+}
+
+.overseek-admin__profiles-validation {
+	display: none;
+	margin-top: 10px;
+	padding: 10px 12px;
+	border: 1px solid rgba(180, 83, 9, 0.35);
+	background: rgba(180, 83, 9, 0.08);
+	border-radius: 10px;
+	color: #7a3e08;
+}
+
+.overseek-admin__profiles-validation.is-visible {
+	display: block;
+}
+
+.overseek-admin__profiles-validation ul {
+	margin: 8px 0 0 18px;
+}
+
 .overseek-admin__toggle {
 	display: flex;
 	gap: 14px;
@@ -351,5 +450,9 @@
 	.overseek-admin__card-header {
 		flex-direction: column;
 		align-items: flex-start;
+	}
+
+	.overseek-admin__profiles-grid {
+		grid-template-columns: 1fr;
 	}
 }

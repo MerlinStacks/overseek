@@ -618,6 +618,7 @@ export class EmailService {
             html,
             from_name: emailAccount.name,
             from_email: emailAccount.email,
+            relay_profile_id: emailAccount.relayProfileId || undefined,
             in_reply_to: options?.inReplyTo,
             references: options?.references,
             list_unsubscribe: options?.unsubscribeUrl,

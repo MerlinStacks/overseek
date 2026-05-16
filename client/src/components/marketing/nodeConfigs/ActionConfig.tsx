@@ -2,8 +2,11 @@
  * ActionConfig - Configuration panel for flow action nodes.
  * Extracted from NodeConfigPanel for modularity.
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { SendEmailConfig } from '../SendEmailConfig';
+import { useAuth } from '../../../context/AuthContext';
+import { useAccount } from '../../../context/AccountContext';
+import { api } from '../../../services/api';
 
 interface ActionNodeConfig {
     actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK' | 'GENERATE_COUPON' | 'ADD_ORDER_NOTE' | 'UPDATE_ORDER_STATUS';
@@ -39,8 +42,60 @@ const ACTION_TYPES = [
     { value: 'WEBHOOK', label: 'Webhook' },
 ];
 
+const GSM_7BIT_REGEX = /^[\r\n @\u00A3$\u00A5\u00E8\u00E9\u00F9\u00EC\u00F2\u00C7\u00D8\u00F8\u00C5\u00E5\u0394_\u03A6\u0393\u039B\u03A9\u03A0\u03A8\u03A3\u0398\u039E\u00C6\u00E6\u00DF\u00C9!"#\u00A4%&'()*+,\-./0-9:;<=>?\u00A1A-Z\u00C4\u00D6\u00D1\u00DC\u00A7\u00BFa-z\u00E4\u00F6\u00F1\u00FC\u00E0^{}\\[~\]|\u20AC]*$/;
+const GSM_EXTENDED_REGEX = /[{}\\[~\]|\u20AC^]/g;
+
+const TWILIO_MAX_SMS_LENGTH = 1600;
+
+function getSmsMetrics(message: string) {
+    const text = message || '';
+    const isGsm = GSM_7BIT_REGEX.test(text);
+    const extendedChars = isGsm ? (text.match(GSM_EXTENDED_REGEX)?.length || 0) : 0;
+    const effectiveLength = isGsm ? text.length + extendedChars : text.length;
+    const singleLimit = isGsm ? 160 : 70;
+    const multipartLimit = isGsm ? 153 : 67;
+    const length = effectiveLength;
+
+    const segments =
+        length === 0
+            ? 0
+            : length <= singleLimit
+                ? 1
+                : Math.ceil(length / multipartLimit);
+
+    return {
+        rawLength: text.length,
+        length,
+        segments,
+        maxLength: TWILIO_MAX_SMS_LENGTH,
+        isGsm,
+        overLimit: text.length > TWILIO_MAX_SMS_LENGTH,
+    };
+}
+
 export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) => {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const selectedActionType = config.actionType || 'SEND_EMAIL';
+    const smsMetrics = getSmsMetrics(String(config.smsMessage || ''));
+    const [smsCostPerSegment, setSmsCostPerSegment] = useState(0);
+
+    useEffect(() => {
+        const fetchSmsSettings = async () => {
+            if (!token || !currentAccount?.id) return;
+
+            try {
+                const settings = await api.get<{ smsCostPerSegment?: number }>('/api/sms/settings', token, currentAccount.id);
+                setSmsCostPerSegment(Number(settings?.smsCostPerSegment ?? 0));
+            } catch {
+                setSmsCostPerSegment(0);
+            }
+        };
+
+        void fetchSmsSettings();
+    }, [token, currentAccount?.id]);
+
+    const estimatedCost = smsMetrics.segments * smsCostPerSegment;
 
     return (
         <>
@@ -72,9 +127,30 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) 
                             onChange={(e) => onUpdate('smsMessage', e.target.value)}
                             placeholder="Hi {{customer.firstName}}, thanks for your order!"
                             rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${smsMetrics.overLimit ? 'border-red-300' : 'border-gray-300'}`}
                         />
-                        <p className="text-xs text-gray-500 mt-1">Use {"{{variable}}"} for personalization</p>
+                        <div className="mt-1 flex items-center justify-between gap-3 text-xs text-gray-500">
+                            <p>Use {"{{variable}}"} for personalization</p>
+                            <p>
+                                {smsMetrics.segments} SMS {smsMetrics.segments === 1 ? 'message' : 'messages'}
+                                {' '}
+                                ({smsMetrics.rawLength}/{smsMetrics.maxLength} chars)
+                            </p>
+                        </div>
+                        {smsMetrics.rawLength > 0 && (
+                            <p className={`mt-1 text-xs ${smsMetrics.overLimit ? 'text-red-600' : smsMetrics.segments > 1 ? 'text-amber-700' : 'text-gray-500'}`}>
+                                {smsMetrics.overLimit
+                                    ? `Message exceeds Twilio limit by ${smsMetrics.rawLength - smsMetrics.maxLength} characters and cannot be sent.`
+                                    : smsMetrics.segments > 1
+                                        ? `This message will be split into ${smsMetrics.segments} SMS segments (${smsMetrics.isGsm ? 'GSM-7' : 'Unicode'} encoding).`
+                                        : `Uses ${smsMetrics.isGsm ? 'GSM-7' : 'Unicode'} encoding.`}
+                            </p>
+                        )}
+                        {smsMetrics.segments > 0 && smsCostPerSegment > 0 && (
+                            <p className="mt-1 text-xs text-gray-600">
+                                Est. cost: {smsMetrics.segments} x ${smsCostPerSegment.toFixed(4)} = ${estimatedCost.toFixed(4)}
+                            </p>
+                        )}
                     </div>
                     {/* Mark as Transactional */}
                     <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">

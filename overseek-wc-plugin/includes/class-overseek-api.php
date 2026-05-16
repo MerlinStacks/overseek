@@ -427,13 +427,18 @@ class OverSeek_API {
 			$attachment_paths = $this->prepare_attachments( $params['attachments'] );
 		}
 
-		// Send via wp_mail (with attachments if any).
-		$sent = wp_mail( $to, $subject, $html, $headers, $attachment_paths );
+		$cleanup_scope = OverSeek_Email_Relay_Profiles::begin_relay_scope( $params );
+		try {
+			// Send via wp_mail (with attachments if any).
+			$sent = wp_mail( $to, $subject, $html, $headers, $attachment_paths );
+		} finally {
+			$cleanup_scope();
 
-		// Cleanup temp attachment files.
-		foreach ( $attachment_paths as $path ) {
-			if ( is_string( $path ) && file_exists( $path ) ) {
-				wp_delete_file( $path );
+			// Cleanup temp attachment files.
+			foreach ( $attachment_paths as $path ) {
+				if ( is_string( $path ) && file_exists( $path ) ) {
+					wp_delete_file( $path );
+				}
 			}
 		}
 

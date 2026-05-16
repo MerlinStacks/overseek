@@ -21,6 +21,7 @@ interface SmsResult {
 }
 
 const SMS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const MAX_SMS_LENGTH = 1600;
 
 interface CachedCreds {
     creds: TwilioCredentials | null;
@@ -40,6 +41,13 @@ export class SmsService {
     async sendSms(to: string, body: string, accountId: string): Promise<SmsResult> {
         if (!accountId) {
             return { success: false, error: 'Account ID required' };
+        }
+
+        if (body.length > MAX_SMS_LENGTH) {
+            return {
+                success: false,
+                error: `Message too long. Maximum length is ${MAX_SMS_LENGTH} characters.`
+            };
         }
 
         try {

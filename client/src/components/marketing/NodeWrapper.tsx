@@ -98,7 +98,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
     const isCompact = density === 'compact';
 
     return (
-    <div className="relative pb-8">
+    <div className="relative mb-8">
         <div className={`rounded-2xl border ${borderColor} ${bgColor} ${isCompact ? 'min-w-[210px] max-w-[270px]' : 'min-w-[240px] max-w-[320px]'} overflow-hidden shadow-xl shadow-slate-900/8 ring-1 ring-slate-900/5 transition-shadow hover:shadow-2xl hover:shadow-slate-900/12`}>
             <div className={`flex items-center gap-3 ${isCompact ? 'px-3 py-2.5' : 'px-4 py-3'} border-b border-slate-100 bg-linear-to-r from-slate-50/80 to-white`}>
                 <div className={`${isCompact ? 'w-8 h-8 rounded-lg' : 'w-9 h-9 rounded-xl'} ${iconBgColor} flex items-center justify-center shrink-0 shadow-md shadow-slate-900/10`}>{icon}</div>

@@ -17,6 +17,7 @@ export const EmailAccountBodySchema = z.object({
     imapSecure: z.boolean().optional(),
     relayEndpoint: z.string().url().optional(),
     relayApiKey: z.string().optional(),
+    relayProfileId: z.string().optional(),
 });
 
 export const TestConnectionBodySchema = z.object({
@@ -43,6 +44,7 @@ export const DeliveryEventBodySchema = z.object({
 export const TestRelayBodySchema = z.object({
     relayEndpoint: z.string().url(),
     relayApiKey: z.string().optional(),
+    relayProfileId: z.string().optional(),
     emailAccountId: z.string().optional(),
     testEmail: z.string().email().optional(),
 });

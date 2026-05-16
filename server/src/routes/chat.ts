@@ -503,7 +503,12 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     return reply.code(404).send({ error: 'Not found' });
                 }
 
-                const channels: Array<{ channel: string; identifier: string; available: boolean }> = [];
+                const channels: Array<{ channel: string; identifier: string; available: boolean; unavailableReason?: string }> = [];
+                const smsSettings = await prisma.smsSettings.findUnique({
+                    where: { accountId: conv.accountId },
+                    select: { enabled: true }
+                });
+                const isSmsEnabled = Boolean(smsSettings?.enabled);
 
                 if (conv.channel === 'EMAIL' && (conv.wooCustomer?.email || conv.guestEmail)) {
                     channels.push({
@@ -523,7 +528,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                         identifier: conv.socialAccount.name,
                         available: true
                     });
-                } else if (conv.channel === 'SMS' && conv.externalConversationId) {
+                } else if (conv.channel === 'SMS' && conv.externalConversationId && isSmsEnabled) {
                     channels.push({
                         channel: 'SMS',
                         identifier: conv.externalConversationId,
@@ -548,7 +553,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                                 available: true
                             });
                         }
-                    } else if (merged.channel === 'SMS' && merged.externalConversationId) {
+                    } else if (merged.channel === 'SMS' && merged.externalConversationId && isSmsEnabled) {
                         if (!channels.find(c => c.channel === 'SMS' && c.identifier === merged.externalConversationId)) {
                             channels.push({
                                 channel: 'SMS',
@@ -557,6 +562,16 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                             });
                         }
                     }
+                }
+
+                const hasSmsRecipient = channels.some(c => c.channel === 'SMS' && c.available);
+                if (!hasSmsRecipient && isSmsEnabled) {
+                    channels.push({
+                        channel: 'SMS',
+                        identifier: 'No mobile number',
+                        available: false,
+                        unavailableReason: 'Customer has no mobile number configured'
+                    });
                 }
 
                 return { channels, currentChannel: conv.channel };

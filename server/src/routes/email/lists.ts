@@ -210,6 +210,25 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
             });
         }
 
+        const [matchedCustomers, matchedCustomersWithOrders] = await Promise.all([
+            prisma.$queryRaw<Array<{ email: string }>>`
+                SELECT DISTINCT lower("email") AS email
+                FROM "WooCustomer"
+                WHERE "accountId" = ${accountId}
+                  AND lower("email") = ANY(${validEmails}::text[])
+            `,
+            prisma.$queryRaw<Array<{ email: string }>>`
+                SELECT DISTINCT lower("email") AS email
+                FROM "WooCustomer"
+                WHERE "accountId" = ${accountId}
+                  AND "ordersCount" > 0
+                  AND lower("email") = ANY(${validEmails}::text[])
+            `
+        ]);
+
+        const matchedCustomerSet = new Set(matchedCustomers.map((row) => row.email));
+        const unmatchedEmails = validEmails.filter((email) => !matchedCustomerSet.has(email));
+
         const existing = await prisma.emailUnsubscribe.findMany({
             where: {
                 accountId,
@@ -274,6 +293,10 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
             processed: validEmails.length,
             created: toCreate.length,
             updated: toUpdate.length,
+            matchedCustomers: matchedCustomers.length,
+            matchedWithOrders: matchedCustomersWithOrders.length,
+            unmatchedCount: unmatchedEmails.length,
+            unmatchedEmailsSample: unmatchedEmails.slice(0, 20),
             invalidCount: invalidEmails.length,
             invalidEmails: invalidEmails.slice(0, 20)
         };

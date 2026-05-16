@@ -27,6 +27,7 @@ interface ComposerToolbarProps {
     isSmsTooLong: boolean;
     plainTextLength: number;
     maxSmsLength: number;
+    smsSegments: number;
     onSend: (e?: React.FormEvent, channel?: ConversationChannel) => void;
     onOpenSchedule: () => void;
 }
@@ -54,6 +55,7 @@ export function ComposerToolbar({
     isSmsTooLong,
     plainTextLength,
     maxSmsLength,
+    smsSegments,
     onSend,
     onOpenSchedule
 }: ComposerToolbarProps) {
@@ -133,7 +135,7 @@ export function ComposerToolbar({
 
             {selectedChannel === 'SMS' && (
                 <div className={cn("text-xs px-1", isSmsTooLong ? "text-red-600 font-medium" : "text-gray-400")}>
-                    {plainTextLength}/{maxSmsLength}
+                    {smsSegments} SMS {smsSegments === 1 ? 'segment' : 'segments'} ({plainTextLength}/{maxSmsLength})
                 </div>
             )}
 

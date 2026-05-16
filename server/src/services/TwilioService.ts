@@ -82,13 +82,22 @@ export class TwilioService {
     /**
      * Save or update SMS settings
      */
-    static async saveSettings(accountId: string, data: { accountSid: string; authToken: string; fromNumber: string; enabled: boolean }) {
+    static async saveSettings(accountId: string, data: { accountSid: string; authToken: string; fromNumber: string; enabled: boolean; smsCostPerSegment?: number }) {
+        const sanitizedCost =
+            typeof data.smsCostPerSegment === 'number' && Number.isFinite(data.smsCostPerSegment)
+                ? Math.max(0, data.smsCostPerSegment)
+                : 0;
+
         return prisma.smsSettings.upsert({
             where: { accountId },
-            update: data,
+            update: {
+                ...data,
+                smsCostPerSegment: sanitizedCost,
+            },
             create: {
                 accountId,
-                ...data
+                ...data,
+                smsCostPerSegment: sanitizedCost,
             }
         });
     }

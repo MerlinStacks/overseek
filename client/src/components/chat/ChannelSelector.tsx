@@ -9,6 +9,7 @@ interface ChannelOption {
     channel: ConversationChannel;
     identifier: string; // e.g., email address, username, or page name
     available: boolean;
+    unavailableReason?: string;
 }
 
 interface ChannelSelectorProps {
@@ -51,13 +52,12 @@ export function ChannelSelector({
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useClickOutside<HTMLDivElement>(() => setIsOpen(false));
 
-    // Filter to only available channels
-    const availableChannels = channels.filter(c => c.available);
+    const selectableChannels = channels.filter(c => c.available);
     const selected = channels.find(c => c.channel === selectedChannel);
     const config = CHANNEL_CONFIG[selectedChannel];
 
     // Only show static display if no channels available (fallback)
-    if (availableChannels.length === 0) {
+    if (selectableChannels.length === 0) {
         const Icon = config.icon;
         return (
             <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -107,21 +107,25 @@ export function ChannelSelector({
                             Reply via
                         </span>
                     </div>
-                    {availableChannels.map((option) => {
+                    {channels.map((option) => {
                         const optConfig = CHANNEL_CONFIG[option.channel];
                         const OptIcon = optConfig.icon;
                         const isSelected = option.channel === selectedChannel;
+                        const isUnavailable = !option.available;
 
                         return (
                             <button
                                 key={option.channel}
                                 type="button"
                                 onClick={() => {
+                                    if (isUnavailable) return;
                                     onChannelChange(option.channel);
                                     setIsOpen(false);
                                 }}
+                                disabled={isUnavailable}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors",
+                                    "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                                    isUnavailable ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50",
                                     isSelected && "bg-blue-50"
                                 )}
                             >
@@ -135,9 +139,15 @@ export function ChannelSelector({
                                     <div className="text-sm font-medium text-gray-900">
                                         {optConfig.label}
                                     </div>
-                                    <div className="text-xs text-gray-500 truncate">
-                                        {option.identifier}
-                                    </div>
+                                    {isUnavailable && option.unavailableReason ? (
+                                        <div className="text-xs text-red-600 truncate">
+                                            {option.unavailableReason}
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-gray-500 truncate">
+                                            {option.identifier}
+                                        </div>
+                                    )}
                                 </div>
                                 {isSelected && (
                                     <div className="w-2 h-2 rounded-full bg-blue-600" />

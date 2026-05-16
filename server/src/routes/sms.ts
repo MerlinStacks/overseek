@@ -32,7 +32,10 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
             accountSid: data.accountSid,
             authToken: data.authToken,
             fromNumber: data.fromNumber,
-            enabled: data.enabled !== false
+            enabled: data.enabled !== false,
+            smsCostPerSegment: typeof data.smsCostPerSegment === 'number'
+                ? data.smsCostPerSegment
+                : Number.parseFloat(String(data.smsCostPerSegment || 0))
         });
 
         return settings;

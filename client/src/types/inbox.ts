@@ -39,4 +39,5 @@ export interface AvailableChannelOption {
     channel: ConversationChannel;
     identifier: string;
     available: boolean;
+    unavailableReason?: string;
 }

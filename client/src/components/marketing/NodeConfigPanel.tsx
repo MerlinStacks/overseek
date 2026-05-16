@@ -46,15 +46,20 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     };
 
     const handleCancel = () => {
+        if (!nodeId) {
+            onClose();
+            return;
+        }
         if (JSON.stringify(localData) !== JSON.stringify(originalData)) {
-            onUpdate(node.id, originalData);
+            onUpdate(nodeId, originalData);
         }
         onClose();
     };
 
     const handleDelete = () => {
+        if (!nodeId) return;
         if (confirm('Delete this node?')) {
-            onDelete(node.id);
+            onDelete(nodeId);
         }
     };
 

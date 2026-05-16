@@ -51,6 +51,10 @@ describe('GoogleEnhancedConversionsService', () => {
         vi.clearAllMocks();
         process.env.GOOGLE_ADS_DEVELOPER_TOKEN = 'dev-tok-test';
 
+        vi.spyOn(service as any, 'refreshToken').mockResolvedValue('access-tok-1');
+        vi.spyOn(service as any, 'enforcePerCustomerRequestPacing').mockResolvedValue(undefined);
+        vi.spyOn(service as any, 'getActiveQuotaCooldownUntil').mockResolvedValue(0);
+
         (prisma.adAccount.findFirst as any).mockResolvedValue({
             id: 'ad-acc-1',
             accessToken: 'access-tok-1',
@@ -60,6 +64,7 @@ describe('GoogleEnhancedConversionsService', () => {
         (global.fetch as any).mockResolvedValue({
             ok: true,
             status: 200,
+            json: async () => ({ results: [] }),
             text: async () => '{"results": []}',
         });
     });

@@ -662,6 +662,10 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
     }
 
     private async enforcePerCustomerRequestPacing(customerId: string): Promise<void> {
+        if (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true') {
+            return;
+        }
+
         const key = this.requestPacingRedisKey(customerId);
 
         try {

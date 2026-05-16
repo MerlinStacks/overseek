@@ -15,6 +15,7 @@ interface ChannelOption {
     channel: ConversationChannel;
     identifier: string;
     available: boolean;
+    unavailableReason?: string;
 }
 
 interface EmailAccountOption {
@@ -129,8 +130,17 @@ export const ChatComposer = memo(function ChatComposer({
 }: ChatComposerProps) {
     const [selectedChannel, setSelectedChannel] = useState<ConversationChannel>(currentChannel || 'CHAT');
 
+    const GSM_7BIT_REGEX = /^[\r\n\x20-\x7E\u00A3\u00A5\u00A7\u00BF\u00C4\u00C5\u00C6\u00C9\u00D1\u00D6\u00D8\u00DC\u00DF\u00E0\u00E4\u00E5\u00E6\u00E8\u00E9\u00EC\u00F1\u00F2\u00F6\u00F8\u00F9\u00FC\u0393\u0394\u0398\u039B\u039E\u03A0\u03A3\u03A6\u03A8\u03A9\u20AC^{}\\[~\]|]+$/;
     const MAX_SMS_LENGTH = 1600;
     const plainTextLength = input.replace(/<[^>]*>/g, '').length;
+    const isGsm = GSM_7BIT_REGEX.test(input.replace(/<[^>]*>/g, ''));
+    const smsSingleLimit = isGsm ? 160 : 70;
+    const smsMultipartLimit = isGsm ? 153 : 67;
+    const smsSegments = plainTextLength === 0
+        ? 0
+        : plainTextLength <= smsSingleLimit
+            ? 1
+            : Math.ceil(plainTextLength / smsMultipartLimit);
     const isSmsTooLong = selectedChannel === 'SMS' && plainTextLength > MAX_SMS_LENGTH;
 
     return (
@@ -236,7 +246,7 @@ export const ChatComposer = memo(function ChatComposer({
             )}
 
             {/* From field (Email Account Selector) - show when using EMAIL channel */}
-            {!isInternal && recipientEmail && emailAccounts && emailAccounts.length > 1 && (
+            {!isInternal && selectedChannel === 'EMAIL' && recipientEmail && emailAccounts && emailAccounts.length > 1 && (
                 <div className="px-4 py-2 border-b border-gray-100 text-sm">
                     <div className="flex items-center gap-2">
                         <span className="text-gray-400 w-12">FROM</span>
@@ -251,6 +261,15 @@ export const ChatComposer = memo(function ChatComposer({
                                 </option>
                             ))}
                         </select>
+                    </div>
+                </div>
+            )}
+
+            {!isInternal && selectedChannel === 'SMS' && (
+                <div className="px-4 py-2 border-b border-gray-100 text-sm">
+                    <div className="flex items-center gap-2">
+                        <span className="text-gray-400 w-12">VIA</span>
+                        <span className="text-gray-700">SMS</span>
                     </div>
                 </div>
             )}
@@ -338,6 +357,7 @@ export const ChatComposer = memo(function ChatComposer({
                             isSmsTooLong={isSmsTooLong}
                             plainTextLength={plainTextLength}
                             maxSmsLength={MAX_SMS_LENGTH}
+                            smsSegments={smsSegments}
                             onSend={onSend}
                             onOpenSchedule={onOpenSchedule}
                         />

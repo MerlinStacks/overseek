@@ -221,39 +221,33 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
                 <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 mb-2">Branch logic</div>
                 <div className="font-semibold text-slate-900 mb-1">{data.label as string}</div>
                 <div className="text-xs text-slate-600 mb-3 truncate">{conditionPreview}</div>
-                <div className="flex justify-between items-center text-xs font-semibold pt-2.5 border-t border-orange-200">
-                    <div className="inline-flex items-center gap-2 text-emerald-700">
-                        <span>YES</span>
-                        <button
-                            type="button"
-                            aria-label="Add YES branch node"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (!onAddConditionBranch) return;
-                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                onAddConditionBranch(id, 'true', { x: rect.left + rect.width / 2, y: rect.bottom });
-                            }}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm hover:bg-emerald-600 transition-colors"
-                        >
-                            +
-                        </button>
-                    </div>
-                    <div className="inline-flex items-center gap-2 text-rose-700">
-                        <button
-                            type="button"
-                            aria-label="Add NO branch node"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (!onAddConditionBranch) return;
-                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                onAddConditionBranch(id, 'false', { x: rect.left + rect.width / 2, y: rect.bottom });
-                            }}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white shadow-sm hover:bg-rose-600 transition-colors"
-                        >
-                            +
-                        </button>
-                        <span>NO</span>
-                    </div>
+                <div className="flex justify-between items-center pt-2.5 border-t border-orange-200">
+                    <button
+                        type="button"
+                        aria-label="Add YES branch node"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (!onAddConditionBranch) return;
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            onAddConditionBranch(id, 'true', { x: rect.left + rect.width / 2, y: rect.bottom });
+                        }}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm hover:bg-emerald-600 transition-colors"
+                    >
+                        +
+                    </button>
+                    <button
+                        type="button"
+                        aria-label="Add NO branch node"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (!onAddConditionBranch) return;
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            onAddConditionBranch(id, 'false', { x: rect.left + rect.width / 2, y: rect.bottom });
+                        }}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white shadow-sm hover:bg-rose-600 transition-colors"
+                    >
+                        +
+                    </button>
                 </div>
             </NodeWrapper>
             <Handle type="source" position={Position.Bottom} id="true" className="!bg-emerald-500 !w-3.5 !h-3.5 !border-2 !border-white !shadow-md !shadow-emerald-300/60 !z-10" style={{ left: '25%' }} />

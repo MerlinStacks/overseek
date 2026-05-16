@@ -502,6 +502,10 @@ export class InvoiceService {
                 const wPx = (entry.w * colWidthPx) + (Math.max(0, entry.w - 1) * GRID_MARGIN_X_PX);
                 const hPx = (entry.h * GRID_ROW_HEIGHT_PX) + (Math.max(0, entry.h - 1) * GRID_MARGIN_Y_PX);
                 return {
+                    xPx,
+                    yPx,
+                    wPx,
+                    hPx,
                     x: marginLeft + (xPx * pxToPt),
                     y: marginTop + (yPx * pxToPt),
                     w: Math.max(20, wPx * pxToPt),
@@ -514,6 +518,30 @@ export class InvoiceService {
 
             // Find item config by ID
             const getItemConfig = (id: string) => items.find((i: any) => i.id === id);
+
+            const normalizedEntries = sortedGrid
+                .map((gridItem: any) => {
+                    const itemConfig = getItemConfig(gridItem.i);
+                    if (!itemConfig) return null;
+                    return {
+                        itemConfig,
+                        normalizedGridItem: normalizeGridItem(gridItem, itemConfig.type),
+                    };
+                })
+                .filter((entry: any) => !!entry);
+
+            const contentBoundsPx = normalizedEntries.reduce((acc: any, entry: any) => {
+                const bounds = toItemBounds(entry.normalizedGridItem);
+                const minX = Math.min(acc.minX, bounds.xPx);
+                const maxX = Math.max(acc.maxX, bounds.xPx + bounds.wPx);
+                return { minX, maxX };
+            }, { minX: Number.POSITIVE_INFINITY, maxX: 0 });
+
+            const contentWidthPx = Number.isFinite(contentBoundsPx.minX)
+                ? Math.max(1, contentBoundsPx.maxX - contentBoundsPx.minX)
+                : DESIGN_WIDTH_PX;
+            const fitScaleX = Math.max(1, Math.min(2.5, DESIGN_WIDTH_PX / contentWidthPx));
+            const contentOffsetPx = Number.isFinite(contentBoundsPx.minX) ? contentBoundsPx.minX : 0;
 
             const footerStartByPage = new Map<number, number>();
             sortedGrid.forEach((gridItem: any) => {
@@ -1045,22 +1073,22 @@ export class InvoiceService {
             };
 
             // Render each grid item using designer coordinates (x/y/w) to preserve layout.
-            sortedGrid.forEach((gridItem: any) => {
-                const itemConfig = getItemConfig(gridItem.i);
-                if (!itemConfig) return;
-
-                const normalizedGridItem = normalizeGridItem(gridItem, itemConfig.type);
+            normalizedEntries.forEach((entry: any) => {
+                const itemConfig = entry.itemConfig;
+                const normalizedGridItem = entry.normalizedGridItem;
                 const bounds = toItemBounds(normalizedGridItem);
                 const normalizedY = Math.max(0, bounds.y - marginTop);
                 const pageIndex = Math.floor(normalizedY / usablePageHeight);
                 const localY = normalizedY - (pageIndex * usablePageHeight);
                 ensurePage(pageIndex);
 
-                const rawItemX = bounds.x;
+                const scaledXPt = ((bounds.xPx - contentOffsetPx) * pxToPt * fitScaleX) + marginLeft;
+                const scaledWPt = bounds.wPx * pxToPt * fitScaleX;
+                const rawItemX = scaledXPt;
                 const maxPageX = marginLeft + pageWidth;
                 const itemX = Math.max(marginLeft, Math.min(rawItemX, maxPageX - 20));
                 const maxWidthAvailable = Math.max(20, maxPageX - itemX);
-                const itemWidth = Math.max(20, Math.min(bounds.w, maxWidthAvailable));
+                const itemWidth = Math.max(20, Math.min(scaledWPt, maxWidthAvailable));
                 const flowOffset = pageFlowOffset.get(pageIndex) || 0;
                 const itemY = marginTop + localY + flowOffset;
                 const itemHeight = bounds.h;
