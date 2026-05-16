@@ -5,6 +5,7 @@ import { QueueFactory, QUEUES } from './queue/QueueFactory';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { InvoiceService } from './InvoiceService';
+import { canonicalBrowserInvoiceService } from './CanonicalBrowserInvoiceService';
 
 const invoiceService = new InvoiceService();
 
@@ -143,21 +144,38 @@ export class CanonicalInvoiceService {
         }
 
         try {
-            const allowPdfkitFallback = process.env.INVOICE_CANONICAL_FALLBACK_PDFKIT === 'true';
-            if (!allowPdfkitFallback) {
-                throw new Error('Canonical designer renderer is required for 1:1 output. PDFKit fallback is disabled.');
+            let generatedPath = '';
+            let rendererUsed = 'designer-capture-browser';
+
+            try {
+                const canonicalGenerated = await canonicalBrowserInvoiceService.renderPdf({
+                    accountId: data.accountId,
+                    orderId: data.orderId,
+                    templateId: data.templateId,
+                    artifactId: artifact.id,
+                });
+                generatedPath = canonicalGenerated.absolutePath;
+                rendererUsed = canonicalGenerated.rendererUsed;
+            } catch (canonicalError) {
+                const allowPdfkitFallback = process.env.INVOICE_CANONICAL_FALLBACK_PDFKIT === 'true';
+                if (!allowPdfkitFallback) {
+                    const message = canonicalError instanceof Error ? canonicalError.message : String(canonicalError);
+                    throw new Error(`Canonical designer renderer is required for 1:1 output. ${message}`);
+                }
+
+                const fallbackGenerated = await invoiceService.generateInvoicePdf(data.accountId, data.orderId, data.templateId);
+                generatedPath = fallbackGenerated.absolutePath;
+                rendererUsed = 'pdfkit-fallback';
             }
 
-            const generated = await invoiceService.generateInvoicePdf(data.accountId, data.orderId, data.templateId);
-            const stat = fs.statSync(generated.absolutePath);
-            const rendererUsed = 'pdfkit-fallback';
+            const stat = fs.statSync(generatedPath);
 
             await prisma.invoiceArtifact.update({
                 where: { id: artifact.id },
                 data: {
                     status: 'ready',
                     renderer: rendererUsed,
-                    storagePath: generated.absolutePath,
+                    storagePath: generatedPath,
                     fileSize: Number(stat.size || 0),
                     generatedAt: new Date(),
                     errorMessage: null

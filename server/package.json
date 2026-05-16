@@ -44,6 +44,7 @@
         "nodemailer": "^7.0.12",
         "otplib": "^12.0.1",
         "pdfkit": "^0.17.2",
+        "playwright": "^1.53.2",
         "pg": "^8.11.3",
         "pino": "^10.1.1",
         "pino-pretty": "^13.0.0",

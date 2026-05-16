@@ -67,6 +67,7 @@ const PoliciesPage = lazy(() => import('./pages/PoliciesPage').then(m => ({ defa
 const CrawlersPage = lazy(() => import('./pages/CrawlersPage').then(m => ({ default: m.CrawlersPage })));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage').then(m => ({ default: m.UserProfilePage })));
 const FeedsPage = lazy(() => import('./pages/FeedsPage').then(m => ({ default: m.FeedsPage })));
+const InvoiceCanonicalPrintPage = lazy(() => import('./pages/InvoiceCanonicalPrintPage').then(m => ({ default: m.InvoiceCanonicalPrintPage })));
 
 // Analytics Sub-Pages
 const AnalyticsOverviewPage = lazy(() => import('./pages/analytics/AnalyticsOverviewPage').then(m => ({ default: m.AnalyticsOverviewPage })));
@@ -223,6 +224,7 @@ function App() {
                                         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                                         <Route path="/data-deletion" element={<DataDeletionPage />} />
                                         <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+                                        <Route path="/invoices/canonical-print" element={<InvoiceCanonicalPrintPage />} />
 
                                         {/* Protected Routes */}
                                         <Route element={<ProtectedRoute />}>
