@@ -184,8 +184,13 @@ class OverSeek_Order_Invoices
             'force_regenerate' => $force_regenerate,
         ];
 
+        $request_timeout = max(2, $timeout_seconds);
+        if ($revalidate_remote) {
+            $request_timeout = max($request_timeout, 30);
+        }
+
         $response = wp_remote_post($this->api_url . '/api/invoices/relay/woocommerce-processing', [
-            'timeout' => max(2, $timeout_seconds),
+            'timeout' => $request_timeout,
             'headers' => [
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',

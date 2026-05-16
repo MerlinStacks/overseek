@@ -88,6 +88,40 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                 });
             }
 
+            if ((settled?.status === 'pending' || !settled) && settled?.id) {
+                try {
+                    await canonicalInvoiceService.processGenerationJob({
+                        artifactId: settled.id,
+                        accountId,
+                        orderId,
+                        templateId: artifact.templateId,
+                    });
+
+                    const refreshed: any = await canonicalInvoiceService.getArtifactById(settled.id);
+                    const refreshedReason = computeRelayDiagnostic(refreshed, forceRegenerate === true);
+
+                    if (canonicalInvoiceService.isReadableReady(refreshed)) {
+                        const fileBuffer = fs.readFileSync(refreshed.storagePath);
+                        return {
+                            success: true,
+                            invoice_ref: refreshed.id,
+                            pdf_base64: fileBuffer.toString('base64'),
+                            filename: refreshed.storagePath.split('/').pop() || 'invoice.pdf',
+                            renderer_used: refreshed.renderer,
+                            diagnostic_reason: refreshedReason,
+                            generated_at: refreshed.generatedAt,
+                        };
+                    }
+                } catch (syncError) {
+                    Logger.warn('Synchronous invoice generation fallback failed', {
+                        accountId,
+                        orderId,
+                        artifactId: settled.id,
+                        error: syncError instanceof Error ? syncError.message : String(syncError),
+                    });
+                }
+            }
+
             return reply.code(202).send({
                 success: false,
                 status: 'pending',
