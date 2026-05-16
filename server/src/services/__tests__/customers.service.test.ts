@@ -5,6 +5,7 @@ import { CustomersService } from '../customers';
 const mockFindFirst = vi.fn();
 const mockFindMany = vi.fn();
 const mockUpdate = vi.fn();
+const mockQueryRaw = vi.fn();
 const mockEmailUnsubscribeFindFirst = vi.fn();
 const mockEmailUnsubscribeFindMany = vi.fn();
 const mockEmailUnsubscribeCount = vi.fn();
@@ -36,7 +37,8 @@ vi.mock('../../utils/prisma', () => ({
         },
         conversation: {
             findMany: vi.fn().mockResolvedValue([]),
-        }
+        },
+        $queryRaw: (...args: any[]) => mockQueryRaw(...args)
     }
 }));
 
@@ -65,6 +67,7 @@ describe('CustomersService', () => {
         mockEmailUnsubscribeFindFirst.mockResolvedValue(null);
         mockEmailUnsubscribeFindMany.mockResolvedValue([]);
         mockEmailUnsubscribeCount.mockResolvedValue(0);
+        mockQueryRaw.mockResolvedValue([]);
     });
 
     describe('getCustomerDetails', () => {
@@ -177,6 +180,7 @@ describe('CustomersService', () => {
 
                 return [];
             });
+            mockQueryRaw.mockResolvedValueOnce([{ email: 'alice@example.com' }]);
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'ALL', []);
 
@@ -198,6 +202,7 @@ describe('CustomersService', () => {
 
                 return [];
             });
+            mockQueryRaw.mockResolvedValueOnce([{ email: 'alice@example.com' }]);
 
             mockSearch
                 .mockResolvedValueOnce({

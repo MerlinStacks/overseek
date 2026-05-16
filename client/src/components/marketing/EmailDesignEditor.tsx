@@ -45,8 +45,6 @@ const SAVED_FOOTERS_KEY = 'overseek-email-builder-saved-footers';
 const MAX_HISTORY_SNAPSHOTS = 8;
 const MAX_TEST_RECIPIENTS = 6;
 const MAX_SAVED_SECTION_PRESETS = 12;
-const EMAIL_SIDEBAR_WIDTH = '360px';
-const EMAIL_SIDEBAR_GUTTER = '20px';
 
 
 export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCancel }) => {
@@ -78,6 +76,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     const groupedChecklistItems = groupPreflightIssues(checklistItems);
 
     const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+    const [showReusablePanel, setShowReusablePanel] = useState(false);
     const [snapshots, setSnapshots] = useState<DesignSnapshot[]>([]);
     const [savedHeaders, setSavedHeaders] = useState<SavedRowPreset[]>([]);
     const [savedFooters, setSavedFooters] = useState<SavedRowPreset[]>([]);
@@ -86,6 +85,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         setShowTestEmailPanel(false);
         setShowChecklistPanel(false);
         setShowHistoryPanel(false);
+        setShowReusablePanel(false);
     }, []);
 
     const toggleTestPanel = useCallback(() => {
@@ -103,7 +103,15 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     const toggleHistoryPanel = useCallback(() => {
         setShowTestEmailPanel(false);
         setShowChecklistPanel(false);
+        setShowReusablePanel(false);
         setShowHistoryPanel((value) => !value);
+    }, []);
+
+    const toggleReusablePanel = useCallback(() => {
+        setShowTestEmailPanel(false);
+        setShowChecklistPanel(false);
+        setShowHistoryPanel(false);
+        setShowReusablePanel((value) => !value);
     }, []);
 
     const defaultHeaderPresets = useMemo((): SavedRowPreset[] => ([
@@ -1063,6 +1071,13 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                             <span className="hidden sm:inline">History</span>
                         </button>
                         <button
+                            onClick={toggleReusablePanel}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                        >
+                            <Bookmark size={16} />
+                            <span className="hidden sm:inline">Reusable</span>
+                        </button>
+                        <button
                             onClick={toggleTestPanel}
                             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
@@ -1097,16 +1112,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     </div>
                 </div>
 
-                <div
-                    className="relative min-h-0 flex-1 bg-slate-100"
-                    style={{
-                        '--email-sidebar-width': EMAIL_SIDEBAR_WIDTH,
-                        '--email-sidebar-gutter': EMAIL_SIDEBAR_GUTTER,
-                    } as React.CSSProperties}
-                >
-                    <aside className="absolute bottom-0 left-0 top-0 z-20 hidden overflow-y-auto border-r border-slate-200/80 bg-white/95 p-3 backdrop-blur-sm md:block md:w-[var(--email-sidebar-width)]">
-                        {reusableSidebarContent}
-                    </aside>
+                <div className="relative bg-slate-100" style={{ height: 'calc(100vh - 82px)' }}>
 
                     {showTestEmailPanel && (
                         <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[340px]">
@@ -1153,7 +1159,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     )}
 
                     {showChecklistPanel && (
-                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[380px] xl:left-[calc(var(--email-sidebar-width)+var(--email-sidebar-gutter))] xl:right-auto">
+                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[380px]">
                             <div className="mb-3 flex items-center justify-between">
                                 <p className="text-sm font-semibold text-slate-900">Preflight Checklist</p>
                                 <button onClick={closeTransientPanels} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
@@ -1193,7 +1199,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     )}
 
                     {showHistoryPanel && (
-                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[360px] xl:left-[calc(var(--email-sidebar-width)+var(--email-sidebar-gutter))] xl:right-auto">
+                        <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[360px]">
                             <div className="mb-3 flex items-center justify-between">
                                 <p className="text-sm font-semibold text-slate-900">Version History</p>
                                 <button onClick={closeTransientPanels} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
@@ -1226,9 +1232,15 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </div>
                     )}
 
-                    <div className="absolute bottom-2 left-2 right-2 z-30 max-h-[46vh] overflow-auto rounded-xl border border-slate-200/80 bg-white/95 p-3 shadow-lg backdrop-blur-sm md:hidden">
-                        {reusableSidebarContent}
-                    </div>
+                    {showReusablePanel && (
+                        <div className="absolute left-2 right-2 top-2 z-30 max-h-[70vh] overflow-auto rounded-xl border border-slate-200/80 bg-white/95 p-3 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:max-h-[78vh] md:w-[360px]">
+                            <div className="mb-2 flex items-center justify-between">
+                                <p className="text-sm font-semibold text-slate-900">Reusable Blocks</p>
+                                <button onClick={() => setShowReusablePanel(false)} className="rounded p-1 hover:bg-slate-100"><X size={14} /></button>
+                            </div>
+                            {reusableSidebarContent}
+                        </div>
+                    )}
 
                     {loading && (
                         <div className="absolute inset-0 z-20 flex items-center justify-center bg-white">
@@ -1245,14 +1257,14 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </div>
                     )}
 
-                    <div className="h-full md:ml-[var(--email-sidebar-width)]">
+                    <div className="h-full">
                         <EmailEditor
                             ref={emailEditorRef}
                             onLoad={() => {}}
                             onReady={onReady}
-                            minHeight={'100%'}
+                            minHeight={'calc(100vh - 82px)'}
                             style={{
-                                height: '100%',
+                                height: 'calc(100vh - 82px)',
                                 width: '100%',
                                 display: 'flex'
                             }}

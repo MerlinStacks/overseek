@@ -184,6 +184,18 @@ export class CustomersService {
             });
 
         const unsubscribedEmailList = unsubscribedEmails.map((row) => row.email.toLowerCase());
+        const unsubscribedCustomerEmails = unsubscribedEmailList.length > 0
+            ? await prisma.$queryRaw<Array<{ email: string }>>`
+                SELECT DISTINCT "email"
+                FROM "WooCustomer"
+                WHERE "accountId" = ${accountId}
+                  AND "ordersCount" > 0
+                  AND lower("email") = ANY(${unsubscribedEmailList}::text[])
+            `
+            : [];
+        const unsubscribedCustomerEmailList = unsubscribedCustomerEmails
+            .map((row) => String(row.email || '').trim())
+            .filter(Boolean);
 
         const baseMust: any[] = [
             { term: { accountId } },
@@ -203,7 +215,7 @@ export class CustomersService {
         const statusMust = [...baseMust];
 
         if (status === 'UNSUBSCRIBED') {
-            if (unsubscribedEmailList.length === 0) {
+            if (unsubscribedCustomerEmailList.length === 0) {
                 return {
                     customers: [],
                     total: 0,
@@ -223,7 +235,7 @@ export class CustomersService {
 
             statusMust.push({
                 terms: {
-                    'email.keyword': unsubscribedEmailList
+                    'email.keyword': unsubscribedCustomerEmailList
                 }
             });
         }
@@ -296,7 +308,7 @@ export class CustomersService {
                         }
                     }
                 }),
-                unsubscribedEmailList.length > 0
+                unsubscribedCustomerEmailList.length > 0
                     ? esClient.search({
                         index: 'customers',
                         query: {
@@ -305,7 +317,7 @@ export class CustomersService {
                                     ...baseMust,
                                     {
                                         terms: {
-                                            'email.keyword': unsubscribedEmailList
+                                            'email.keyword': unsubscribedCustomerEmailList
                                         }
                                     }
                                 ]

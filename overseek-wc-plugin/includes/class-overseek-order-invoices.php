@@ -44,9 +44,6 @@ class OverSeek_Order_Invoices
         add_action('woocommerce_new_order', [$this, 'handle_new_order'], 20, 1);
         add_action(self::PROCESSING_HOOK, [$this, 'process_processing_order'], 10, 1);
         add_filter('woocommerce_email_attachments', [$this, 'attach_invoice_to_processing_email'], 10, 3);
-        if ((string) get_option('overseek_show_invoice_diagnostics', '1') === '1') {
-            add_action('woocommerce_admin_order_data_after_order_details', [$this, 'render_invoice_diagnostics_panel'], 20, 1);
-        }
         add_action(self::CLEANUP_HOOK, [$this, 'cleanup_private_invoices']);
 
         if (!wp_next_scheduled(self::CLEANUP_HOOK)) {
@@ -174,12 +171,21 @@ class OverSeek_Order_Invoices
     {
         $order_id = (int) $order->get_id();
 
-        if (!$force_regenerate && !$revalidate_remote && (string) $order->get_meta(self::META_INVOICE_PATH) !== '') {
-            if ((string) $order->get_meta(self::META_INVOICE_STATUS) === '') {
-                $order->update_meta_data(self::META_INVOICE_STATUS, 'ready');
+        if (!$force_regenerate && !$revalidate_remote) {
+            $existing_path = (string) $order->get_meta(self::META_INVOICE_PATH);
+            if ($existing_path !== '') {
+                if (file_exists($existing_path) && is_readable($existing_path)) {
+                    if ((string) $order->get_meta(self::META_INVOICE_STATUS) === '') {
+                        $order->update_meta_data(self::META_INVOICE_STATUS, 'ready');
+                        $order->save();
+                    }
+                    return true;
+                }
+
+                $order->delete_meta_data(self::META_INVOICE_PATH);
+                $order->delete_meta_data(self::META_INVOICE_FILE);
                 $order->save();
             }
-            return true;
         }
 
         if ($force_regenerate || $revalidate_remote) {
@@ -552,70 +558,6 @@ class OverSeek_Order_Invoices
         return $this->generate_invoice_for_order($order, $timeout_seconds, $force_regenerate, $revalidate_remote);
     }
 
-    public function render_invoice_diagnostics_panel($order): void
-    {
-        if ((string) get_option('overseek_show_invoice_diagnostics', '1') !== '1') {
-            return;
-        }
-
-        if (!$order instanceof WC_Order) {
-            return;
-        }
-
-        $status = (string) $order->get_meta(self::META_INVOICE_STATUS);
-        $renderer = (string) $order->get_meta(self::META_INVOICE_RENDERER);
-        $diagnostic_reason = (string) $order->get_meta(self::META_INVOICE_DIAGNOSTIC_REASON);
-        $generated_at = (string) $order->get_meta(self::META_INVOICE_GENERATED_AT);
-        $invoice_ref = (string) $order->get_meta(self::META_INVOICE_REF);
-        $error_message = (string) $order->get_meta(self::META_INVOICE_ERROR);
-        $download_url = add_query_arg(
-            [
-                'order_id' => (int) $order->get_id(),
-                'key' => (string) $order->get_order_key(),
-            ],
-            rest_url('overseek/v1/invoices/download')
-        );
-
-        if ($status === '' && $renderer === '' && $diagnostic_reason === '' && $generated_at === '' && $invoice_ref === '' && $error_message === '') {
-            return;
-        }
-
-        $reason_labels = [
-            'missing_artifact' => 'Missing canonical artifact',
-            'not_ready' => 'Artifact not ready',
-            'missing_file' => 'Artifact file missing',
-            'non_canonical_renderer' => 'Legacy renderer artifact',
-            'generated_before_cutoff' => 'Generated before cutoff',
-            'forced_refresh' => 'Forced refresh',
-        ];
-
-        $reason_label = $diagnostic_reason !== '' && isset($reason_labels[$diagnostic_reason])
-            ? $reason_labels[$diagnostic_reason]
-            : ($diagnostic_reason !== '' ? $diagnostic_reason : 'N/A');
-
-        $generated_label = 'N/A';
-        if ($generated_at !== '') {
-            $timestamp = strtotime($generated_at);
-            $generated_label = $timestamp ? wp_date('Y-m-d H:i:s T', $timestamp) : $generated_at;
-        }
-
-        echo '<div class="order_data_column" style="width:100%;margin-top:12px;">';
-        echo '<h4>' . esc_html__('OverSeek Invoice Diagnostics', 'overseek-wc') . '</h4>';
-        echo '<table class="widefat striped" style="max-width:900px">';
-        echo '<tbody>';
-        echo '<tr><td style="width:220px"><strong>' . esc_html__('Status', 'overseek-wc') . '</strong></td><td>' . esc_html($status !== '' ? $status : 'N/A') . '</td></tr>';
-        echo '<tr><td><strong>' . esc_html__('Renderer', 'overseek-wc') . '</strong></td><td>' . esc_html($renderer !== '' ? $renderer : 'N/A') . '</td></tr>';
-        echo '<tr><td><strong>' . esc_html__('Diagnostic reason', 'overseek-wc') . '</strong></td><td>' . esc_html($reason_label) . '</td></tr>';
-        echo '<tr><td><strong>' . esc_html__('Generated at', 'overseek-wc') . '</strong></td><td>' . esc_html($generated_label) . '</td></tr>';
-        echo '<tr><td><strong>' . esc_html__('Invoice ref', 'overseek-wc') . '</strong></td><td><code>' . esc_html($invoice_ref !== '' ? $invoice_ref : 'N/A') . '</code></td></tr>';
-        if ($error_message !== '') {
-            echo '<tr><td><strong>' . esc_html__('Last error', 'overseek-wc') . '</strong></td><td>' . esc_html($error_message) . '</td></tr>';
-        }
-        echo '<tr><td><strong>' . esc_html__('Actions', 'overseek-wc') . '</strong></td><td><a class="button button-secondary" href="' . esc_url($download_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('View latest invoice', 'overseek-wc') . '</a></td></tr>';
-        echo '</tbody>';
-        echo '</table>';
-        echo '</div>';
-    }
 }
 
 if (!function_exists('overseek_get_invoice_for_order')) {

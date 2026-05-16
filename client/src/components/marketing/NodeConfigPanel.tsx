@@ -2,7 +2,7 @@
  * NodeConfigPanel - Slide-out configuration panel for flow nodes.
  * Opens when a node is selected, showing type-specific configuration options.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Node } from '@xyflow/react';
 import { X, Trash2, Zap, Mail, Clock, Split, Save } from 'lucide-react';
 import { TriggerConfig, ActionConfig, DelayConfig, ConditionConfig } from './nodeConfigs';
@@ -59,7 +59,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
         }
     };
 
-    const updateConfig = (key: string, value: unknown) => {
+    const updateConfig = useCallback((key: string, value: unknown) => {
         setLocalData((prev) => {
             const next = {
                 ...prev,
@@ -68,15 +68,15 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
             onUpdate(node.id, next);
             return next;
         });
-    };
+    }, [node.id, onUpdate]);
 
-    const updateLabel = (label: string) => {
+    const updateLabel = useCallback((label: string) => {
         setLocalData((prev) => {
             const next = { ...prev, label };
             onUpdate(node.id, next);
             return next;
         });
-    };
+    }, [node.id, onUpdate]);
 
     // Get panel title and icon based on node type
     const getPanelHeader = () => {

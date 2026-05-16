@@ -33,7 +33,6 @@ $options = array(
     'overseek_webhook_auth_token',
     'overseek_enable_processing_invoice_sync',
     'overseek_invoice_retention_days',
-    'overseek_show_invoice_diagnostics',
 );
 
 foreach ($options as $option) {
