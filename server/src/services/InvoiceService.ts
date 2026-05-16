@@ -482,7 +482,7 @@ export class InvoiceService {
                 if (x + w > GRID_COLS) w = GRID_COLS - x;
 
                 // Match the client vector renderer behavior: nearly full-width tables snap to full width.
-                if (itemType === 'order_table' && w >= 10) {
+                if (itemType === 'order_table') {
                     x = 0;
                     w = GRID_COLS;
                 }
@@ -493,16 +493,13 @@ export class InvoiceService {
                 }
 
                 if (itemType === 'order_details') {
-                    x = Math.min(6, x);
-                    w = Math.max(w, 6);
-                    if (x + w > GRID_COLS) {
-                        x = Math.max(0, GRID_COLS - w);
-                    }
+                    x = 6;
+                    w = 6;
                 }
 
                 if (itemType === 'customer_details') {
                     x = 0;
-                    w = Math.max(w, 5);
+                    w = 6;
                 }
 
                 return {

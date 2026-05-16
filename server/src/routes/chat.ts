@@ -424,7 +424,21 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const userId = request.user?.id;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
-                const { to, body } = request.body as { to?: string; body?: string };
+                let to: string | undefined;
+                let body: string | undefined;
+
+                if (request.isMultipart()) {
+                    const parts = request.parts();
+                    for await (const part of parts) {
+                        if (part.type === 'field') {
+                            if (part.fieldname === 'to') to = String((part as any).value || '');
+                            if (part.fieldname === 'body') body = String((part as any).value || '');
+                        }
+                    }
+                } else {
+                    ({ to, body } = request.body as { to?: string; body?: string });
+                }
+
                 if (!to || !body) {
                     return reply.code(400).send({ error: 'Missing required fields: to, body' });
                 }

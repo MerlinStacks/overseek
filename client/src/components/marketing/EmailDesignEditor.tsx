@@ -758,8 +758,19 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
 
     const registerEditorTools = useCallback((editorInstance: unknown) => {
         if (toolsRegisteredRef.current) return;
-        const storedHeaders = loadSavedRows(SAVED_HEADERS_KEY);
-        const storedFooters = loadSavedRows(SAVED_FOOTERS_KEY);
+        const parseSavedRows = (key: string): SavedRowPreset[] => {
+            const raw = localStorage.getItem(key);
+            if (!raw) return [];
+            try {
+                const parsed = JSON.parse(raw) as SavedRowPreset[];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch {
+                return [];
+            }
+        };
+
+        const storedHeaders = parseSavedRows(SAVED_HEADERS_KEY);
+        const storedFooters = parseSavedRows(SAVED_FOOTERS_KEY);
         const dynamicSidebarBlocks = buildDynamicSidebarBlocks(storedHeaders, storedFooters);
 
         registerWooCommerceTools(
@@ -768,7 +779,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         );
         (editorInstance as { setMergeTags?: (tags: unknown) => void }).setMergeTags?.(getWooCommerceMergeTags());
         toolsRegisteredRef.current = true;
-    }, [buildDynamicSidebarBlocks, loadSavedRows]);
+    }, [buildDynamicSidebarBlocks]);
 
     const onReady = () => {
         setLoading(false);

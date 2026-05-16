@@ -179,22 +179,25 @@ export class CustomersService {
                     accountId,
                     scope: { in: ['MARKETING', 'ALL'] }
                 },
-                select: { email: true },
+                select: { email: true, scope: true },
                 distinct: ['email']
             });
 
         const unsubscribedEmailList = unsubscribedEmails.map((row) => row.email.toLowerCase());
-        const unsubscribedCustomerEmails = unsubscribedEmailList.length > 0
-            ? await prisma.$queryRaw<Array<{ email: string }>>`
-                SELECT DISTINCT "email"
+        const suppressionByEmail = new Map(
+            unsubscribedEmails.map((row) => [row.email.toLowerCase(), row.scope])
+        );
+        const unsubscribedCustomerRows = unsubscribedEmailList.length > 0
+            ? await prisma.$queryRaw<Array<{ id: string }>>`
+                SELECT DISTINCT "id"
                 FROM "WooCustomer"
                 WHERE "accountId" = ${accountId}
                   AND "ordersCount" > 0
                   AND lower("email") = ANY(${unsubscribedEmailList}::text[])
             `
             : [];
-        const unsubscribedCustomerEmailList = unsubscribedCustomerEmails
-            .map((row) => String(row.email || '').trim())
+        const unsubscribedCustomerIdList = unsubscribedCustomerRows
+            .map((row) => String(row.id || '').trim())
             .filter(Boolean);
 
         const baseMust: any[] = [
@@ -215,7 +218,7 @@ export class CustomersService {
         const statusMust = [...baseMust];
 
         if (status === 'UNSUBSCRIBED') {
-            if (unsubscribedCustomerEmailList.length === 0) {
+            if (unsubscribedCustomerIdList.length === 0) {
                 return {
                     customers: [],
                     total: 0,
@@ -235,7 +238,7 @@ export class CustomersService {
 
             statusMust.push({
                 terms: {
-                    'email.keyword': unsubscribedCustomerEmailList
+                    'id.keyword': unsubscribedCustomerIdList
                 }
             });
         }
@@ -308,7 +311,7 @@ export class CustomersService {
                         }
                     }
                 }),
-                unsubscribedCustomerEmailList.length > 0
+                unsubscribedCustomerIdList.length > 0
                     ? esClient.search({
                         index: 'customers',
                         query: {
@@ -317,7 +320,7 @@ export class CustomersService {
                                     ...baseMust,
                                     {
                                         terms: {
-                                            'email.keyword': unsubscribedCustomerEmailList
+                                            'id.keyword': unsubscribedCustomerIdList
                                         }
                                     }
                                 ]
@@ -335,26 +338,6 @@ export class CustomersService {
                 ...(hit._source as any),
                 contactStatus: normalizeContactStatus((hit._source as any)?.rawData?.contactStatus)
             }));
-
-            const pageEmails = Array.from(new Set(
-                hits
-                    .map((hit) => String((hit as any).email || '').trim().toLowerCase())
-                    .filter(Boolean)
-            ));
-
-            const pageSuppressions = pageEmails.length > 0
-                ? await prisma.emailUnsubscribe.findMany({
-                    where: {
-                        accountId,
-                        email: { in: pageEmails }
-                    },
-                    select: { email: true, scope: true }
-                })
-                : [];
-
-            const suppressionByEmail = new Map(
-                pageSuppressions.map((row) => [row.email.toLowerCase(), row.scope])
-            );
 
             const normalizedHits = hits.map((hit: any) => {
                 const normalizedEmail = String(hit.email || '').trim().toLowerCase();

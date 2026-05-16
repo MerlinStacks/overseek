@@ -36,15 +36,21 @@ class OverSeek_Email_Relay_Profiles
 	 */
 	private static $resolved_profile_id = '';
 
+	/**
+	 * @var array<string, string>
+	 */
+	private static $last_mailer_debug = [];
+
 	public function __construct()
 	{
 		if (self::$hooks_registered) {
 			return;
 		}
 
-		add_filter('wp_mail_from', [self::class, 'filter_mail_from']);
-		add_filter('wp_mail_from_name', [self::class, 'filter_mail_from_name']);
-		add_action('phpmailer_init', [self::class, 'configure_phpmailer']);
+		add_filter('wp_mail_from', [self::class, 'filter_mail_from'], 9999);
+		add_filter('wp_mail_from_name', [self::class, 'filter_mail_from_name'], 9999);
+		add_action('phpmailer_init', [self::class, 'configure_phpmailer'], 1);
+		add_action('phpmailer_init', [self::class, 'finalize_phpmailer'], 9999);
 
 		self::$hooks_registered = true;
 	}
@@ -167,6 +173,14 @@ class OverSeek_Email_Relay_Profiles
 	}
 
 	/**
+	 * @return array<string, string>
+	 */
+	public static function get_last_mailer_debug(): array
+	{
+		return self::$last_mailer_debug;
+	}
+
+	/**
 	 * @return array<int, array<string, mixed>>
 	 */
 	private static function get_profiles(): array
@@ -248,14 +262,7 @@ class OverSeek_Email_Relay_Profiles
 			return;
 		}
 
-		$from_email = isset(self::$active_profile['from_email']) ? (string) self::$active_profile['from_email'] : '';
-		$from_name = isset(self::$active_profile['from_name']) ? (string) self::$active_profile['from_name'] : '';
-		if (is_email($from_email)) {
-			$phpmailer->From = $from_email;
-			$phpmailer->FromName = $from_name !== '' ? $from_name : $phpmailer->FromName;
-			$phpmailer->Sender = $from_email;
-			$phpmailer->setFrom($from_email, $from_name, false);
-		}
+		self::apply_profile_sender($phpmailer, false);
 
 		$smtp_host = isset(self::$active_profile['smtp_host']) ? (string) self::$active_profile['smtp_host'] : '';
 		if ($smtp_host === '') {
@@ -283,5 +290,59 @@ class OverSeek_Email_Relay_Profiles
 			$phpmailer->clearReplyTos();
 			$phpmailer->addReplyTo($reply_to);
 		}
+
+		self::capture_mailer_debug($phpmailer);
+	}
+
+	/**
+	 * Late pass to re-apply sender after other plugins.
+	 *
+	 * @param PHPMailer\PHPMailer\PHPMailer $phpmailer
+	 * @return void
+	 */
+	public static function finalize_phpmailer($phpmailer): void
+	{
+		if (!is_array(self::$active_profile)) {
+			return;
+		}
+
+		self::apply_profile_sender($phpmailer, true);
+		self::capture_mailer_debug($phpmailer);
+	}
+
+	/**
+	 * @param PHPMailer\PHPMailer\PHPMailer $phpmailer
+	 */
+	private static function apply_profile_sender($phpmailer, bool $force): void
+	{
+		$from_email = isset(self::$active_profile['from_email']) ? (string) self::$active_profile['from_email'] : '';
+		$from_name = isset(self::$active_profile['from_name']) ? (string) self::$active_profile['from_name'] : '';
+		if (!is_email($from_email)) {
+			return;
+		}
+
+		if ($force || !empty(self::$active_profile['smtp_from_force'])) {
+			$phpmailer->From = $from_email;
+			$phpmailer->FromName = $from_name !== '' ? $from_name : $phpmailer->FromName;
+			$phpmailer->Sender = $from_email;
+			$phpmailer->setFrom($from_email, $from_name, false);
+		}
+	}
+
+	/**
+	 * @param PHPMailer\PHPMailer\PHPMailer $phpmailer
+	 */
+	private static function capture_mailer_debug($phpmailer): void
+	{
+		self::$last_mailer_debug = [
+			'mailer' => isset($phpmailer->Mailer) ? (string) $phpmailer->Mailer : '',
+			'host' => isset($phpmailer->Host) ? (string) $phpmailer->Host : '',
+			'port' => isset($phpmailer->Port) ? (string) $phpmailer->Port : '',
+			'secure' => isset($phpmailer->SMTPSecure) ? (string) $phpmailer->SMTPSecure : '',
+			'username' => isset($phpmailer->Username) ? (string) $phpmailer->Username : '',
+			'from' => isset($phpmailer->From) ? (string) $phpmailer->From : '',
+			'from_name' => isset($phpmailer->FromName) ? (string) $phpmailer->FromName : '',
+			'sender' => isset($phpmailer->Sender) ? (string) $phpmailer->Sender : '',
+		];
 	}
 }

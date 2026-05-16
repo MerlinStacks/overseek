@@ -171,7 +171,7 @@ describe('CustomersService', () => {
 
             mockEmailUnsubscribeFindMany.mockImplementation(async (args: any) => {
                 if (args?.where?.scope) {
-                    return [{ email: 'alice@example.com' }];
+                    return [{ email: 'alice@example.com', scope: 'MARKETING' }];
                 }
 
                 if (args?.where?.email?.in) {
@@ -180,7 +180,7 @@ describe('CustomersService', () => {
 
                 return [];
             });
-            mockQueryRaw.mockResolvedValueOnce([{ email: 'alice@example.com' }]);
+            mockQueryRaw.mockResolvedValueOnce([{ id: 'customer-1' }]);
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'ALL', []);
 
@@ -193,7 +193,7 @@ describe('CustomersService', () => {
         it('filters UNSUBSCRIBED status by suppression list emails', async () => {
             mockEmailUnsubscribeFindMany.mockImplementation(async (args: any) => {
                 if (args?.where?.scope) {
-                    return [{ email: 'alice@example.com' }];
+                    return [{ email: 'alice@example.com', scope: 'MARKETING' }];
                 }
 
                 if (args?.where?.email?.in) {
@@ -202,7 +202,7 @@ describe('CustomersService', () => {
 
                 return [];
             });
-            mockQueryRaw.mockResolvedValueOnce([{ email: 'alice@example.com' }]);
+            mockQueryRaw.mockResolvedValueOnce([{ id: 'customer-1' }]);
 
             mockSearch
                 .mockResolvedValueOnce({
@@ -245,7 +245,7 @@ describe('CustomersService', () => {
             const searchPayload = mockSearch.mock.calls[0][0];
             const mustClauses = searchPayload.query.bool.must as Array<any>;
 
-            expect(mustClauses.some((clause) => clause.terms?.['email.keyword']?.includes('alice@example.com'))).toBe(true);
+            expect(mustClauses.some((clause) => clause.terms?.['id.keyword']?.includes('customer-1'))).toBe(true);
             expect(result.customers).toHaveLength(1);
             expect(result.customers[0].contactStatus).toBe('UNSUBSCRIBED');
         });

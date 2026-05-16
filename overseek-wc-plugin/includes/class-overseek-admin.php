@@ -221,6 +221,15 @@ class OverSeek_Admin
 		$email_profile_from = isset($_GET['overseek_email_profile_from'])
 			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_from']))
 			: '';
+		$email_profile_mailer = isset($_GET['overseek_email_profile_mailer'])
+			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_mailer']))
+			: '';
+		$email_profile_host = isset($_GET['overseek_email_profile_host'])
+			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_host']))
+			: '';
+		$email_profile_port = isset($_GET['overseek_email_profile_port'])
+			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_port']))
+			: '';
 		?>
 		<div class="wrap overseek-admin">
 			<div class="overseek-admin__hero">
@@ -271,9 +280,9 @@ class OverSeek_Admin
 				<div class="notice notice-warning is-dismissible"><p>Bot Shield test warning: no cached patterns available yet.</p></div>
 			<?php endif; ?>
 			<?php if ($email_profile_test === 'pass') : ?>
-				<div class="notice notice-success is-dismissible"><p>Email sender profile test sent successfully. Requested profile: <code><?php echo esc_html($email_profile_requested); ?></code>. Resolved profile: <code><?php echo esc_html($email_profile_resolved); ?></code>. From: <code><?php echo esc_html($email_profile_from); ?></code>.</p></div>
+				<div class="notice notice-success is-dismissible"><p>Email sender profile test sent successfully. Requested profile: <code><?php echo esc_html($email_profile_requested); ?></code>. Resolved profile: <code><?php echo esc_html($email_profile_resolved); ?></code>. From: <code><?php echo esc_html($email_profile_from); ?></code>. Mailer: <code><?php echo esc_html($email_profile_mailer); ?></code>. Host/Port: <code><?php echo esc_html($email_profile_host); ?>:<?php echo esc_html($email_profile_port); ?></code>.</p></div>
 			<?php elseif ($email_profile_test === 'failed') : ?>
-				<div class="notice notice-error is-dismissible"><p>Email sender profile test failed. Requested profile: <code><?php echo esc_html($email_profile_requested); ?></code>. Resolved profile: <code><?php echo esc_html($email_profile_resolved); ?></code>. From: <code><?php echo esc_html($email_profile_from); ?></code>. Verify profile ID, SMTP credentials, and recipient email.</p></div>
+				<div class="notice notice-error is-dismissible"><p>Email sender profile test failed. Requested profile: <code><?php echo esc_html($email_profile_requested); ?></code>. Resolved profile: <code><?php echo esc_html($email_profile_resolved); ?></code>. From: <code><?php echo esc_html($email_profile_from); ?></code>. Mailer: <code><?php echo esc_html($email_profile_mailer); ?></code>. Host/Port: <code><?php echo esc_html($email_profile_host); ?>:<?php echo esc_html($email_profile_port); ?></code>. Verify profile ID, SMTP credentials, and recipient email.</p></div>
 			<?php endif; ?>
 
 			<form method="post" action="options.php" class="overseek-admin__form">
@@ -785,6 +794,7 @@ class OverSeek_Admin
 					'<p>This is a sender profile test from OverSeek WooCommerce plugin.</p>',
 					array('Content-Type: text/html; charset=UTF-8')
 				) ? 'pass' : 'failed';
+				$mailer_debug = OverSeek_Email_Relay_Profiles::get_last_mailer_debug();
 			} finally {
 				$cleanup_scope();
 			}
@@ -798,6 +808,14 @@ class OverSeek_Admin
 			);
 		}
 
+		if (!isset($mailer_debug) || !is_array($mailer_debug)) {
+			$mailer_debug = array(
+				'mailer' => '',
+				'host' => '',
+				'port' => '',
+			);
+		}
+
 		$redirect = add_query_arg(
 			array(
 				'page' => 'overseek',
@@ -805,6 +823,9 @@ class OverSeek_Admin
 				'overseek_email_profile_requested' => isset($debug['requested_profile_id']) ? (string) $debug['requested_profile_id'] : '',
 				'overseek_email_profile_resolved' => isset($debug['resolved_profile_id']) ? (string) $debug['resolved_profile_id'] : '',
 				'overseek_email_profile_from' => isset($debug['from_email']) ? (string) $debug['from_email'] : '',
+				'overseek_email_profile_mailer' => isset($mailer_debug['mailer']) ? (string) $mailer_debug['mailer'] : '',
+				'overseek_email_profile_host' => isset($mailer_debug['host']) ? (string) $mailer_debug['host'] : '',
+				'overseek_email_profile_port' => isset($mailer_debug['port']) ? (string) $mailer_debug['port'] : '',
 			),
 			admin_url('admin.php')
 		);
