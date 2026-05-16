@@ -115,7 +115,7 @@ describe('CustomersService', () => {
 
     describe('searchCustomers', () => {
         it('applies suppression status overlays and unsubscribed counts', async () => {
-            mockSearch.mockResolvedValueOnce({
+            const pagedResponse = {
                 hits: {
                     hits: [
                         {
@@ -150,12 +150,33 @@ describe('CustomersService', () => {
                         buckets: [{ key: 'SUBSCRIBED', doc_count: 2 }]
                     }
                 }
-            });
+            };
 
-            mockEmailUnsubscribeFindMany.mockResolvedValueOnce([
-                { email: 'alice@example.com', scope: 'MARKETING' }
-            ]);
-            mockEmailUnsubscribeCount.mockResolvedValueOnce(1);
+            mockSearch
+                .mockResolvedValueOnce(pagedResponse)
+                .mockResolvedValueOnce({
+                    hits: { total: { value: 2 } },
+                    aggregations: {
+                        contact_statuses: {
+                            buckets: [{ key: 'SUBSCRIBED', doc_count: 2 }]
+                        }
+                    }
+                })
+                .mockResolvedValueOnce({
+                    hits: { total: { value: 1 }, hits: [] }
+                });
+
+            mockEmailUnsubscribeFindMany.mockImplementation(async (args: any) => {
+                if (args?.where?.scope) {
+                    return [{ email: 'alice@example.com' }];
+                }
+
+                if (args?.where?.email?.in) {
+                    return [{ email: 'alice@example.com', scope: 'MARKETING' }];
+                }
+
+                return [];
+            });
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'ALL', []);
 
@@ -178,32 +199,42 @@ describe('CustomersService', () => {
                 return [];
             });
 
-            mockSearch.mockResolvedValueOnce({
-                hits: {
-                    hits: [
-                        {
-                            _id: 'account-123_customer-1',
-                            _source: {
-                                id: 'customer-1',
-                                email: 'alice@example.com',
-                                firstName: 'Alice',
-                                lastName: 'A',
-                                ordersCount: 1,
-                                totalSpent: 10,
-                                rawData: {}
+            mockSearch
+                .mockResolvedValueOnce({
+                    hits: {
+                        hits: [
+                            {
+                                _id: 'account-123_customer-1',
+                                _source: {
+                                    id: 'customer-1',
+                                    email: 'alice@example.com',
+                                    firstName: 'Alice',
+                                    lastName: 'A',
+                                    ordersCount: 1,
+                                    totalSpent: 10,
+                                    rawData: {}
+                                }
                             }
+                        ],
+                        total: { value: 1 }
+                    },
+                    aggregations: {
+                        contact_statuses: {
+                            buckets: []
                         }
-                    ],
-                    total: { value: 1 }
-                },
-                aggregations: {
-                    contact_statuses: {
-                        buckets: []
                     }
-                }
-            });
-
-            mockEmailUnsubscribeCount.mockResolvedValueOnce(1);
+                })
+                .mockResolvedValueOnce({
+                    hits: { total: { value: 1 } },
+                    aggregations: {
+                        contact_statuses: {
+                            buckets: []
+                        }
+                    }
+                })
+                .mockResolvedValueOnce({
+                    hits: { total: { value: 1 }, hits: [] }
+                });
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'UNSUBSCRIBED', []);
             const searchPayload = mockSearch.mock.calls[0][0];

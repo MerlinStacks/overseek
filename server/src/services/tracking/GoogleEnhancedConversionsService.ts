@@ -17,6 +17,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { redisClient } from '../../utils/redis';
 import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
 import { getCredentials } from '../ads/types';
 import type { ConversionPlatformService } from './ConversionForwarder';
@@ -26,6 +27,9 @@ const MAX_RETRIES = 3;
 const MAX_CART_ITEMS = 20;
 const NON_RETRYABLE_PREFIX = 'NON_RETRYABLE:';
 const QUOTA_COOLDOWN_FALLBACK_MS = 60 * 60 * 1000;
+const QUOTA_COOLDOWN_REDIS_PREFIX = 'tracking:google:quota-cooldown-until';
+const REQUEST_PACING_REDIS_PREFIX = 'tracking:google:request-next-allowed-ms';
+const REQUEST_PACING_INTERVAL_MS = 1500;
 
 type NormalizedBasketItem = {
     productId: string;
@@ -104,11 +108,12 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             ? this.buildEnhancementPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid)
             : this.buildConversionPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid);
 
-        if (this.isQuotaCooldownActive(customerId)) {
+        const cooldownUntil = await this.getActiveQuotaCooldownUntil(customerId);
+        if (cooldownUntil) {
             Logger.warn('[GoogleEnhanced] Upload skipped due to active quota cooldown', {
                 accountId,
                 customerId,
-                retryAt: new Date(this.getQuotaCooldownUntil(customerId)).toISOString(),
+                retryAt: new Date(cooldownUntil).toISOString(),
             });
             return;
         }
@@ -388,11 +393,12 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
         Logger.warn(`[GoogleEnhanced] Retrying ${allToRetry.length} conversions`, { accountId });
 
-        if (this.isQuotaCooldownActive(adAccount.externalId)) {
+        const cooldownUntil = await this.getActiveQuotaCooldownUntil(adAccount.externalId);
+        if (cooldownUntil) {
             Logger.warn('[GoogleEnhanced] Retry skipped due to active quota cooldown', {
                 accountId,
                 customerId: adAccount.externalId,
-                retryAt: new Date(this.getQuotaCooldownUntil(adAccount.externalId)).toISOString(),
+                retryAt: new Date(cooldownUntil).toISOString(),
             });
             return { attempted: 0, recovered: 0 };
         }
@@ -463,6 +469,8 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
+                await this.enforcePerCustomerRequestPacing(customerId);
+
                 const headers: Record<string, string> = {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${accessToken}`,
@@ -531,7 +539,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                 if (response.status === 429 || response.status >= 500) {
                     if (response.status === 429) {
                         const retryAfterMs = this.extractRetryAfterMs(response, responseBody);
-                        this.setQuotaCooldown(customerId, retryAfterMs);
+                        await this.setQuotaCooldown(customerId, retryAfterMs);
                     }
                     if (attempt < MAX_RETRIES) {
                         await this.backoff(attempt);
@@ -643,12 +651,58 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         return QUOTA_COOLDOWN_FALLBACK_MS;
     }
 
-    private setQuotaCooldown(customerId: string, durationMs: number): void {
+    private quotaCooldownRedisKey(customerId: string): string {
+        const key = customerId.replace(/-/g, '');
+        return `${QUOTA_COOLDOWN_REDIS_PREFIX}:${key}`;
+    }
+
+    private requestPacingRedisKey(customerId: string): string {
+        const key = customerId.replace(/-/g, '');
+        return `${REQUEST_PACING_REDIS_PREFIX}:${key}`;
+    }
+
+    private async enforcePerCustomerRequestPacing(customerId: string): Promise<void> {
+        const key = this.requestPacingRedisKey(customerId);
+
+        try {
+            const raw = await redisClient.get(key);
+            const nextAllowedAt = raw ? Number(raw) : 0;
+            if (Number.isFinite(nextAllowedAt) && nextAllowedAt > Date.now()) {
+                const waitMs = Math.max(nextAllowedAt - Date.now(), 1);
+                await new Promise((resolve) => setTimeout(resolve, waitMs));
+            }
+
+            const newNextAllowedAt = Date.now() + REQUEST_PACING_INTERVAL_MS;
+            await redisClient.set(
+                key,
+                String(newNextAllowedAt),
+                'PX',
+                REQUEST_PACING_INTERVAL_MS * 4,
+            );
+        } catch (error: any) {
+            Logger.warn('[GoogleEnhanced] Request pacing fallback to in-process timing', {
+                customerId,
+                error: error.message,
+            });
+            await new Promise((resolve) => setTimeout(resolve, REQUEST_PACING_INTERVAL_MS));
+        }
+    }
+
+    private async setQuotaCooldown(customerId: string, durationMs: number): Promise<void> {
         const key = customerId.replace(/-/g, '');
         const cooldownUntil = Date.now() + Math.max(durationMs, 1000);
         const current = GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.get(key) || 0;
         if (cooldownUntil > current) {
             GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.set(key, cooldownUntil);
+            try {
+                const ttlMs = Math.max(cooldownUntil - Date.now(), 1000);
+                await redisClient.set(this.quotaCooldownRedisKey(customerId), String(cooldownUntil), 'PX', ttlMs);
+            } catch (error: any) {
+                Logger.warn('[GoogleEnhanced] Failed to persist quota cooldown to Redis', {
+                    customerId,
+                    error: error.message,
+                });
+            }
             Logger.warn('[GoogleEnhanced] Quota cooldown activated', {
                 customerId,
                 retryAt: new Date(cooldownUntil).toISOString(),
@@ -657,20 +711,44 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         }
     }
 
-    private getQuotaCooldownUntil(customerId: string): number {
+    private getInMemoryQuotaCooldownUntil(customerId: string): number {
         const key = customerId.replace(/-/g, '');
         return GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.get(key) || 0;
     }
 
-    private isQuotaCooldownActive(customerId: string): boolean {
-        const cooldownUntil = this.getQuotaCooldownUntil(customerId);
-        if (!cooldownUntil) return false;
-        if (Date.now() >= cooldownUntil) {
-            const key = customerId.replace(/-/g, '');
-            GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.delete(key);
-            return false;
+    private async getActiveQuotaCooldownUntil(customerId: string): Promise<number> {
+        const normalized = customerId.replace(/-/g, '');
+        const inMemoryCooldownUntil = this.getInMemoryQuotaCooldownUntil(customerId);
+        if (inMemoryCooldownUntil > Date.now()) {
+            return inMemoryCooldownUntil;
         }
-        return true;
+
+        if (inMemoryCooldownUntil) {
+            GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.delete(normalized);
+        }
+
+        try {
+            const raw = await redisClient.get(this.quotaCooldownRedisKey(customerId));
+            const redisCooldownUntil = raw ? Number(raw) : 0;
+
+            if (!Number.isFinite(redisCooldownUntil) || redisCooldownUntil <= 0) {
+                return 0;
+            }
+
+            if (redisCooldownUntil <= Date.now()) {
+                await redisClient.del(this.quotaCooldownRedisKey(customerId));
+                return 0;
+            }
+
+            GoogleEnhancedConversionsService.quotaCooldownUntilMsByCustomer.set(normalized, redisCooldownUntil);
+            return redisCooldownUntil;
+        } catch (error: any) {
+            Logger.warn('[GoogleEnhanced] Failed to read quota cooldown from Redis', {
+                customerId,
+                error: error.message,
+            });
+            return 0;
+        }
     }
 
     private async logDelivery(accountId: string, eventName: string, eventId: string, payload: Record<string, any>): Promise<string> {

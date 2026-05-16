@@ -75,6 +75,32 @@ export async function retryFailedConversions(): Promise<{
         let attempted = 0;
         let recovered = 0;
 
+        // Google retry path is account-scoped and already bulk-processes deliveries.
+        // Running it once per failed row causes repeated replays and request bursts.
+        if (platform === 'GOOGLE') {
+            const accountIds = [...new Set(deliveries.map(d => d.accountId))];
+
+            for (const accountId of accountIds) {
+                try {
+                    const { GoogleEnhancedConversionsService } = await import('./GoogleEnhancedConversionsService');
+                    const service = new GoogleEnhancedConversionsService();
+                    const result = await service.retryFailedDeliveries(accountId, MAX_AGE_HOURS);
+                    attempted += result.attempted;
+                    recovered += result.recovered;
+                } catch (error: any) {
+                    Logger.error(`[ConversionRetry] Google retry failed for account ${accountId}`, {
+                        accountId,
+                        error: error.message,
+                    });
+                }
+            }
+
+            platformBreakdown[platform] = { attempted, recovered };
+            totalAttempted += attempted;
+            totalRecovered += recovered;
+            continue;
+        }
+
         for (const delivery of deliveries) {
             attempted++;
             try {
@@ -116,15 +142,6 @@ async function retryDelivery(
         attempts: number;
     },
 ): Promise<boolean> {
-    // Google Ads has its own dedicated bulk-retry with OAuth refresh
-    if (delivery.platform === 'GOOGLE') {
-        const { GoogleEnhancedConversionsService } = await import('./GoogleEnhancedConversionsService');
-        const service = new GoogleEnhancedConversionsService();
-        const result = await service.retryFailedDeliveries(delivery.accountId, MAX_AGE_HOURS);
-        // retryFailedDeliveries is a bulk operation — if it recovered anything, count as success
-        return result.recovered > 0;
-    }
-
     // Find the platform config from AccountFeature
     const config = await getPlatformConfig(delivery.accountId, delivery.platform);
     if (!config) {

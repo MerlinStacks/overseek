@@ -85,6 +85,10 @@ RUN --mount=type=cache,target=/root/.npm \
     && npm config set registry https://registry.npmjs.org/ \
     && npm install --workspace=server --legacy-peer-deps --omit=dev --prefer-offline --no-audit
 
+# Install Playwright Chromium browser binary in the image so canonical
+# invoice rendering works across deploys/redeploys without runtime installs.
+RUN cd server && npx playwright install --with-deps chromium
+
 # Copy required shared package for runtime imports
 COPY --from=builder /app/packages/overseek-core/dist /app/packages/overseek-core/dist
 COPY --from=builder /app/packages/overseek-core/package.json /app/packages/overseek-core/package.json

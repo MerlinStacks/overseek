@@ -174,27 +174,35 @@ export class CustomersService {
         advancedFilters: AdvancedFilterGroup[] = []
     ) {
         const from = (page - 1) * limit;
-        const requiresSuppressionScope = status === 'UNSUBSCRIBED';
-
-        const unsubscribedEmails = requiresSuppressionScope
-            ? await prisma.emailUnsubscribe.findMany({
+        const unsubscribedEmails = await prisma.emailUnsubscribe.findMany({
                 where: {
                     accountId,
                     scope: { in: ['MARKETING', 'ALL'] }
                 },
                 select: { email: true },
                 distinct: ['email']
-            })
-            : [];
+            });
 
         const unsubscribedEmailList = unsubscribedEmails.map((row) => row.email.toLowerCase());
 
-        const must: any[] = [
+        const baseMust: any[] = [
             { term: { accountId } },
             { range: { ordersCount: { gt: 0 } } }
         ];
 
-        if (requiresSuppressionScope) {
+        if (query) {
+            baseMust.push({
+                multi_match: {
+                    query,
+                    fields: ['firstName', 'lastName', 'email'],
+                    fuzziness: 'AUTO'
+                }
+            });
+        }
+
+        const statusMust = [...baseMust];
+
+        if (status === 'UNSUBSCRIBED') {
             if (unsubscribedEmailList.length === 0) {
                 return {
                     customers: [],
@@ -213,24 +221,12 @@ export class CustomersService {
                 };
             }
 
-            must.push({
+            statusMust.push({
                 terms: {
                     'email.keyword': unsubscribedEmailList
                 }
             });
         }
-
-        if (query) {
-            must.push({
-                multi_match: {
-                    query,
-                    fields: ['firstName', 'lastName', 'email'],
-                    fuzziness: 'AUTO'
-                }
-            });
-        }
-
-        const statusMust = [...must];
 
         if (status !== 'ALL' && status !== 'UNSUBSCRIBED') {
             if (status === 'SUBSCRIBED') {
@@ -269,7 +265,8 @@ export class CustomersService {
         }
 
         try {
-            const response = await esClient.search({
+            const [response, allStatusAggs, unsubscribedUniverse] = await Promise.all([
+                esClient.search({
                 index: 'customers',
                 query: {
                     bool: { must: statusMust }
@@ -280,16 +277,46 @@ export class CustomersService {
                     { 'firstName.keyword': { order: 'asc', unmapped_type: 'keyword' } },
                     { 'lastName.keyword': { order: 'asc', unmapped_type: 'keyword' } }
                 ],
-                track_total_hits: true,
-                aggs: {
-                    contact_statuses: {
-                        terms: {
-                            field: 'rawData.contactStatus.keyword',
-                            size: 10
+                track_total_hits: true
+            }),
+                esClient.search({
+                    index: 'customers',
+                    query: {
+                        bool: { must: baseMust }
+                    },
+                    from: 0,
+                    size: 0,
+                    track_total_hits: true,
+                    aggs: {
+                        contact_statuses: {
+                            terms: {
+                                field: 'rawData.contactStatus.keyword',
+                                size: 10
+                            }
                         }
                     }
-                }
-            });
+                }),
+                unsubscribedEmailList.length > 0
+                    ? esClient.search({
+                        index: 'customers',
+                        query: {
+                            bool: {
+                                must: [
+                                    ...baseMust,
+                                    {
+                                        terms: {
+                                            'email.keyword': unsubscribedEmailList
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        from: 0,
+                        size: 0,
+                        track_total_hits: true
+                    })
+                    : Promise.resolve({ hits: { total: { value: 0 } } } as any)
+            ]);
 
             const hits = response.hits.hits.map(hit => ({
                 id: hit._id,
@@ -330,7 +357,8 @@ export class CustomersService {
             });
 
             const total = (response.hits.total as any).value || 0;
-            const buckets = (response.aggregations as any)?.contact_statuses?.buckets || [];
+            const allTotal = (allStatusAggs.hits.total as any).value || 0;
+            const buckets = (allStatusAggs.aggregations as any)?.contact_statuses?.buckets || [];
             const rawCounts = buckets.reduce((acc: Record<string, number>, bucket: { key: string; doc_count: number }) => {
                 acc[bucket.key] = bucket.doc_count;
                 return acc;
@@ -341,16 +369,11 @@ export class CustomersService {
                 + (rawCounts.UNSUBSCRIBED || 0)
                 + (rawCounts.SOFT_BOUNCED || 0)
                 + (rawCounts.COMPLAINT || 0);
-            const missingStatusCount = Math.max(total - knownStatusesTotal, 0);
-            const unsubscribedCount = await prisma.emailUnsubscribe.count({
-                where: {
-                    accountId,
-                    scope: { in: ['MARKETING', 'ALL'] }
-                }
-            });
+            const missingStatusCount = Math.max(allTotal - knownStatusesTotal, 0);
+            const unsubscribedCount = (unsubscribedUniverse.hits.total as any).value || 0;
 
             const statusCounts = {
-                ALL: total,
+                ALL: allTotal,
                 UNVERIFIED: rawCounts.UNVERIFIED || 0,
                 SUBSCRIBED: Math.max(((rawCounts.SUBSCRIBED || 0) + missingStatusCount) - unsubscribedCount, 0),
                 BOUNCED: rawCounts.BOUNCED || 0,
