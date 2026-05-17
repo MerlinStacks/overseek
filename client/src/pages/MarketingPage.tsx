@@ -2,7 +2,7 @@
  * MarketingPage - Campaigns, Ad Performance, and Ad Accounts management.
  * Flows/Automations moved to dedicated FlowsPage.
  */
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { Logger } from '../utils/logger';
 import { useSearchParams } from 'react-router-dom';
 import { AdsView } from '../components/marketing/AdsView';
@@ -11,8 +11,7 @@ import { CampaignsList } from '../components/marketing/CampaignsList';
 import { AdIntelligencePanel } from '../components/marketing/AdIntelligencePanel';
 import { Mail, Megaphone, BarChart2, Zap } from 'lucide-react';
 
-// Lazy-load EmailDesignEditor to prevent react-email-editor from polluting React singleton
-const EmailDesignEditor = lazy(() => import('../components/marketing/EmailDesignEditor').then(m => ({ default: m.EmailDesignEditor })));
+import { MarketingEmailDesigner } from '../components/marketing/MarketingEmailDesigner';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useToast } from '../context/ToastContext';
@@ -25,6 +24,8 @@ type EditorMode = 'email' | null;
 interface EditingItem {
     id: string;
     name: string;
+    subject?: string;
+    designJson?: unknown;
     description?: string;
 }
 
@@ -46,6 +47,7 @@ export function MarketingPage() {
     // Editor State
     const [editorMode, setEditorMode] = useState<EditorMode>(null);
     const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
+    const [loadingEditorDesign, setLoadingEditorDesign] = useState(false);
 
     // Sync tab changes to URL
     useEffect(() => {
@@ -68,9 +70,33 @@ export function MarketingPage() {
         ...adTabs,
     ];
 
-    const handleEditCampaign = (id: string, name: string) => {
-        setEditingItem({ id, name });
+    const handleEditCampaign = async (id: string, name: string, subject?: string) => {
+        setEditingItem({ id, name, subject });
         setEditorMode('email');
+
+        if (!currentAccount) return;
+        setLoadingEditorDesign(true);
+        try {
+            const response = await fetch(`/api/marketing/campaigns/${id}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount.id,
+                },
+            });
+            if (!response.ok) return;
+            const campaign = await response.json() as { designJson?: unknown; subject?: string; name?: string };
+            setEditingItem({
+                id,
+                name: campaign.name || name,
+                subject: campaign.subject || subject,
+                designJson: campaign.designJson,
+            });
+        } catch (error) {
+            Logger.error('Failed to load campaign design', { error });
+            toast.error('Opened editor with a blank design because the saved design could not be loaded');
+        } finally {
+            setLoadingEditorDesign(false);
+        }
     };
 
 
@@ -103,13 +129,18 @@ export function MarketingPage() {
 
     if (editorMode === 'email') {
         return (
-            <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="text-gray-500">Loading email editor...</div></div>}>
-                <EmailDesignEditor
-                    initialDesign={undefined} // Could fetch and pass existing design
+            <>
+                {loadingEditorDesign && (
+                    <div className="fixed inset-x-0 top-0 z-[70] bg-indigo-600 px-4 py-2 text-center text-sm font-medium text-white shadow-lg">
+                        Loading saved campaign design...
+                    </div>
+                )}
+                <MarketingEmailDesigner
+                    initialDesign={editingItem?.designJson}
                     onSave={handleSaveEmail}
                     onCancel={handleCloseEditor}
                 />
-            </Suspense>
+            </>
         );
     }
 
