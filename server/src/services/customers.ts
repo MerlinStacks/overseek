@@ -188,16 +188,19 @@ export class CustomersService {
             unsubscribedEmails.map((row) => [row.email.toLowerCase(), row.scope])
         );
         const unsubscribedCustomerRows = unsubscribedEmailList.length > 0
-            ? await prisma.$queryRaw<Array<{ id: string }>>`
-                SELECT DISTINCT "id"
+            ? await prisma.$queryRaw<Array<{ wooId: number | null }>>`
+                SELECT DISTINCT "wooId"
                 FROM "WooCustomer"
                 WHERE "accountId" = ${accountId}
                   AND "ordersCount" > 0
+                  AND "wooId" IS NOT NULL
                   AND lower("email") = ANY(${unsubscribedEmailList}::text[])
             `
             : [];
         const unsubscribedCustomerIdList = unsubscribedCustomerRows
-            .map((row) => String(row.id || '').trim())
+            .map((row) => row.wooId)
+            .filter((wooId): wooId is number => typeof wooId === 'number' && Number.isFinite(wooId))
+            .map((wooId) => String(wooId))
             .filter(Boolean);
 
         const baseMust: any[] = [

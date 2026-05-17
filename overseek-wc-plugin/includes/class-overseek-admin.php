@@ -106,14 +106,6 @@ class OverSeek_Admin
 			'type' => 'string',
 			'sanitize_callback' => 'sanitize_text_field',
 		));
-		register_setting('overseek_options_group', 'overseek_email_relay_profiles', array(
-			'type' => 'string',
-			'sanitize_callback' => array('OverSeek_Email_Relay_Profiles', 'sanitize_profiles_option'),
-		));
-		register_setting('overseek_options_group', 'overseek_email_relay_default_profile', array(
-			'type' => 'string',
-			'sanitize_callback' => array('OverSeek_Email_Relay_Profiles', 'sanitize_default_profile_option'),
-		));
 		register_setting('overseek_options_group', 'overseek_enable_processing_invoice_sync', array(
 			'type' => 'string',
 			'sanitize_callback' => array($this, 'sanitize_checkbox'),
@@ -182,9 +174,6 @@ class OverSeek_Admin
 		$connection_config  = (string) get_option('overseek_connection_config', '');
 		$relay_api_key      = (string) get_option('overseek_relay_api_key', '');
 		$webhook_auth_token = (string) get_option('overseek_webhook_auth_token', '');
-		$email_relay_profiles = OverSeek_Email_Relay_Profiles::get_profiles_json_for_admin();
-		$email_relay_profiles_pretty = $email_relay_profiles !== '' ? $email_relay_profiles : '[]';
-		$email_relay_default_profile = (string) get_option('overseek_email_relay_default_profile', '');
 		$retention          = (int) get_option('overseek_cookie_retention_days', 365);
 		$invoice_retention  = (int) get_option('overseek_invoice_retention_days', 30);
 		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 25);
@@ -208,27 +197,6 @@ class OverSeek_Admin
 			: '';
 		$test_notice        = isset($_GET['overseek_bot_shield_test'])
 			? sanitize_text_field(wp_unslash((string) $_GET['overseek_bot_shield_test']))
-			: '';
-		$email_profile_test = isset($_GET['overseek_email_profile_test'])
-			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_test']))
-			: '';
-		$email_profile_requested = isset($_GET['overseek_email_profile_requested'])
-			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_requested']))
-			: '';
-		$email_profile_resolved = isset($_GET['overseek_email_profile_resolved'])
-			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_resolved']))
-			: '';
-		$email_profile_from = isset($_GET['overseek_email_profile_from'])
-			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_from']))
-			: '';
-		$email_profile_mailer = isset($_GET['overseek_email_profile_mailer'])
-			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_mailer']))
-			: '';
-		$email_profile_host = isset($_GET['overseek_email_profile_host'])
-			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_host']))
-			: '';
-		$email_profile_port = isset($_GET['overseek_email_profile_port'])
-			? sanitize_text_field(wp_unslash((string) $_GET['overseek_email_profile_port']))
 			: '';
 		?>
 		<div class="wrap overseek-admin">
@@ -265,7 +233,6 @@ class OverSeek_Admin
 			</div>
 
 			<?php settings_errors('overseek_connection_config'); ?>
-			<?php settings_errors('overseek_email_relay_profiles'); ?>
 			<?php if (isset($_GET['settings-updated']) && $_GET['settings-updated'] === 'true') : ?>
 				<div class="notice notice-success is-dismissible"><p>OverSeek settings saved successfully.</p></div>
 			<?php endif; ?>
@@ -278,11 +245,6 @@ class OverSeek_Admin
 				<div class="notice notice-success is-dismissible"><p>Bot Shield test passed: cached patterns are available and matcher is operational.</p></div>
 			<?php elseif ($test_notice === 'warn') : ?>
 				<div class="notice notice-warning is-dismissible"><p>Bot Shield test warning: no cached patterns available yet.</p></div>
-			<?php endif; ?>
-			<?php if ($email_profile_test === 'pass') : ?>
-				<div class="notice notice-success is-dismissible"><p>Email sender profile test sent successfully. Requested profile: <code><?php echo esc_html($email_profile_requested); ?></code>. Resolved profile: <code><?php echo esc_html($email_profile_resolved); ?></code>. From: <code><?php echo esc_html($email_profile_from); ?></code>. Mailer: <code><?php echo esc_html($email_profile_mailer); ?></code>. Host/Port: <code><?php echo esc_html($email_profile_host); ?>:<?php echo esc_html($email_profile_port); ?></code>.</p></div>
-			<?php elseif ($email_profile_test === 'failed') : ?>
-				<div class="notice notice-error is-dismissible"><p>Email sender profile test failed. Requested profile: <code><?php echo esc_html($email_profile_requested); ?></code>. Resolved profile: <code><?php echo esc_html($email_profile_resolved); ?></code>. From: <code><?php echo esc_html($email_profile_from); ?></code>. Mailer: <code><?php echo esc_html($email_profile_mailer); ?></code>. Host/Port: <code><?php echo esc_html($email_profile_host); ?>:<?php echo esc_html($email_profile_port); ?></code>. Verify profile ID, SMTP credentials, and recipient email.</p></div>
 			<?php endif; ?>
 
 			<form method="post" action="options.php" class="overseek-admin__form">
@@ -435,7 +397,7 @@ class OverSeek_Admin
 							</div>
 						</div>
 
-					<?php $this->render_toggle_field('overseek_enable_processing_invoice_sync', 'Enable processing-order invoice sync', 'Calls OverSeek when an order enters processing, stores PDF in private uploads, and attaches it to processing emails.', '1'); ?>
+					<?php $this->render_toggle_field('overseek_enable_processing_invoice_sync', 'Enable processing-order invoice sync', 'Calls OverSeek when an order enters processing and stores invoice PDFs in private uploads for retrieval via OverSeek.', '1'); ?>
 
 						<label class="overseek-admin__field" for="overseek_invoice_retention_days">
 							<span class="overseek-admin__label">Private invoice retention</span>
@@ -488,53 +450,8 @@ class OverSeek_Admin
 							<p>Use this URL in CK Order Workflow for artwork proof lifecycle forwarding.</p>
 						</div>
 
-						<label class="overseek-admin__field" for="overseek_email_relay_default_profile">
-							<span class="overseek-admin__label">Default sender profile ID (optional)</span>
-							<input id="overseek_email_relay_default_profile" type="text" name="overseek_email_relay_default_profile" value="<?php echo esc_attr($email_relay_default_profile); ?>" spellcheck="false" placeholder="support-team" />
-							<span class="overseek-admin__hint">Used when payload does not include <code>relay_profile_id</code>. Leave empty to keep WooCommerce/plugin defaults.</span>
-						</label>
-
-						<label class="overseek-admin__field" for="overseek_email_relay_profiles">
-							<span class="overseek-admin__label">Sender profiles JSON (optional)</span>
-							<textarea id="overseek_email_relay_profiles" name="overseek_email_relay_profiles" rows="10" spellcheck="false" class="overseek-admin__textarea--hidden" placeholder='[{"id":"support-team","name":"Support Team","from_name":"Support Team","from_email":"support@example.com","reply_to":"help@example.com","smtp_host":"smtp.example.com","smtp_port":587,"smtp_secure":"tls","smtp_auth":true,"smtp_username":"support@example.com","smtp_password":"app-password","smtp_from_force":true}]'><?php echo esc_textarea($email_relay_profiles_pretty); ?></textarea>
-							<span class="overseek-admin__hint">Profiles apply only to OverSeek relay requests. Normal WooCommerce and other plugin email flows are unchanged unless they call this relay endpoint and select a profile.</span>
-						</label>
-
-						<div class="overseek-admin__profiles" data-relay-profiles-editor>
-							<div class="overseek-admin__profiles-header">
-								<strong>Sender Profiles</strong>
-								<button type="button" class="button button-secondary" data-add-profile>Add profile</button>
-							</div>
-							<div class="overseek-admin__profiles-list" data-profiles-list></div>
-							<details>
-								<summary>Advanced: edit JSON directly</summary>
-								<textarea rows="8" spellcheck="false" data-profiles-json-editor><?php echo esc_textarea($email_relay_profiles_pretty); ?></textarea>
-							</details>
-						</div>
-
-						<div class="overseek-admin__test-form">
-							<?php wp_nonce_field('overseek_test_email_relay_profile', 'overseek_test_email_relay_profile_nonce'); ?>
-							<label class="overseek-admin__field" for="overseek_test_profile_id">
-								<span class="overseek-admin__label">Test profile ID</span>
-								<input id="overseek_test_profile_id" type="text" name="overseek_test_profile_id" value="<?php echo esc_attr($email_relay_default_profile); ?>" spellcheck="false" placeholder="support-team" />
-							</label>
-							<label class="overseek-admin__field" for="overseek_test_profile_to">
-								<span class="overseek-admin__label">Test recipient email</span>
-								<input id="overseek_test_profile_to" type="text" name="overseek_test_profile_to" value="<?php echo esc_attr((string) wp_get_current_user()->user_email); ?>" spellcheck="false" />
-							</label>
-							<p>
-								<button
-									type="submit"
-									class="button button-secondary"
-									name="action"
-									value="overseek_test_email_relay_profile"
-									formaction="<?php echo esc_url(admin_url('admin-post.php')); ?>"
-								>
-									Send Test With Profile
-								</button>
-							</p>
-						</div>
-					</section>
+					<p class="overseek-admin__hint">Sender profiles have been removed. OverSeek email flows now control sender identity and delivery upstream.</p>
+				</section>
 
 					<section class="overseek-admin__card overseek-admin__tab-panel" data-tab-panel="privacy" hidden>
 						<div class="overseek-admin__card-header">
@@ -767,70 +684,4 @@ class OverSeek_Admin
 		exit;
 	}
 
-	/**
-	 * Send a scoped test email using selected relay profile.
-	 *
-	 * @return void
-	 */
-	public function handle_test_email_relay_profile()
-	{
-		if (!current_user_can('manage_options')) {
-			wp_die(esc_html__('You do not have permission to access this page.', 'overseek-wc'));
-		}
-
-		check_admin_referer('overseek_test_email_relay_profile', 'overseek_test_email_relay_profile_nonce');
-
-		$profile_id = isset($_POST['overseek_test_profile_id']) ? sanitize_key((string) wp_unslash($_POST['overseek_test_profile_id'])) : '';
-		$to = isset($_POST['overseek_test_profile_to']) ? sanitize_email((string) wp_unslash($_POST['overseek_test_profile_to'])) : '';
-		$result = 'failed';
-
-		if ($profile_id !== '' && is_email($to)) {
-			$cleanup_scope = OverSeek_Email_Relay_Profiles::begin_relay_scope(array('relay_profile_id' => $profile_id));
-			try {
-				$debug = OverSeek_Email_Relay_Profiles::get_scope_debug();
-				$result = wp_mail(
-					$to,
-					'[OverSeek] Sender Profile Test',
-					'<p>This is a sender profile test from OverSeek WooCommerce plugin.</p>',
-					array('Content-Type: text/html; charset=UTF-8')
-				) ? 'pass' : 'failed';
-				$mailer_debug = OverSeek_Email_Relay_Profiles::get_last_mailer_debug();
-			} finally {
-				$cleanup_scope();
-			}
-		}
-
-		if (!isset($debug) || !is_array($debug)) {
-			$debug = array(
-				'requested_profile_id' => $profile_id,
-				'resolved_profile_id' => '',
-				'from_email' => '',
-			);
-		}
-
-		if (!isset($mailer_debug) || !is_array($mailer_debug)) {
-			$mailer_debug = array(
-				'mailer' => '',
-				'host' => '',
-				'port' => '',
-			);
-		}
-
-		$redirect = add_query_arg(
-			array(
-				'page' => 'overseek',
-				'overseek_email_profile_test' => $result,
-				'overseek_email_profile_requested' => isset($debug['requested_profile_id']) ? (string) $debug['requested_profile_id'] : '',
-				'overseek_email_profile_resolved' => isset($debug['resolved_profile_id']) ? (string) $debug['resolved_profile_id'] : '',
-				'overseek_email_profile_from' => isset($debug['from_email']) ? (string) $debug['from_email'] : '',
-				'overseek_email_profile_mailer' => isset($mailer_debug['mailer']) ? (string) $mailer_debug['mailer'] : '',
-				'overseek_email_profile_host' => isset($mailer_debug['host']) ? (string) $mailer_debug['host'] : '',
-				'overseek_email_profile_port' => isset($mailer_debug['port']) ? (string) $mailer_debug['port'] : '',
-			),
-			admin_url('admin.php')
-		);
-
-		wp_safe_redirect($redirect);
-		exit;
-	}
 }

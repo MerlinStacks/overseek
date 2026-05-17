@@ -455,25 +455,31 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     return reply.code(400).send({ error: 'Missing required fields: to, body' });
                 }
 
-                const normalizedTo = to.replace(/[^\d+]/g, '');
-                const smsDigits = normalizedTo.startsWith('+') ? normalizedTo.slice(1) : normalizedTo;
+                const normalizedInput = to.replace(/[^\d+]/g, '');
+                const smsDigits = normalizedInput.startsWith('+') ? normalizedInput.slice(1) : normalizedInput;
                 if (smsDigits.length < 10 || smsDigits.length > 15) {
                     return reply.code(400).send({ error: 'Invalid phone number format' });
                 }
+
+                const smsSettings = await TwilioService.getSettings(accountId);
+                if (!smsSettings?.enabled) {
+                    return reply.code(400).send({ error: 'SMS settings not configured or disabled for this account.' });
+                }
+                const normalizedTo = TwilioService.normalizeToE164(to.trim(), smsSettings.fromNumber);
 
                 const conversation = await prisma.conversation.create({
                     data: {
                         accountId,
                         channel: 'SMS',
                         status: 'OPEN',
-                        externalConversationId: to.trim(),
+                        externalConversationId: normalizedTo,
                         assignedTo: userId
                     }
                 });
 
                 const plainBody = toSmsPlainText(body);
                 await chatService.addMessage(conversation.id, plainBody, 'AGENT', userId, false, accountId);
-                await TwilioService.sendSms(accountId, to.trim(), plainBody);
+                await TwilioService.sendSms(accountId, normalizedTo, plainBody);
 
                 Logger.info('Composed and sent new SMS', { conversationId: conversation.id, to });
                 return { success: true, conversationId: conversation.id };

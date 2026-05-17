@@ -40,7 +40,6 @@ class OverSeek_Main
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-admin.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-frontend.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-api.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-email-relay-profiles.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crypto-utils.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-http-utils.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-config-provider.php';
@@ -72,6 +71,8 @@ class OverSeek_Main
 	 */
 	private function init_hooks(): void
 	{
+		$this->cleanup_legacy_options();
+
 		// Initialize Admin.
 		$admin = new OverSeek_Admin();
 		add_action('admin_menu', [$admin, 'add_menu_page']);
@@ -79,7 +80,6 @@ class OverSeek_Main
 		add_action('admin_enqueue_scripts', [$admin, 'enqueue_assets']);
 		add_action('admin_post_overseek_sync_blocked_agents', [$admin, 'handle_sync_blocked_agents']);
 		add_action('admin_post_overseek_test_bot_shield', [$admin, 'handle_test_bot_shield']);
-		add_action('admin_post_overseek_test_email_relay_profile', [$admin, 'handle_test_email_relay_profile']);
 
 		// Initialize Frontend.
 		$frontend = new OverSeek_Frontend();
@@ -88,7 +88,6 @@ class OverSeek_Main
 		// Initialize API.
 		$api = new OverSeek_API();
 		add_action('rest_api_init', [$api, 'register_routes']);
-		new OverSeek_Email_Relay_Profiles();
 
 		new OverSeek_Cart_Recovery();
 		new OverSeek_Order_Invoices();
@@ -115,5 +114,16 @@ class OverSeek_Main
 		// Initialize Web Vitals Collector.
 		// Not gated by tracking toggle — performance data is independent of behavioural analytics.
 		new OverSeek_Web_Vitals();
+	}
+
+	private function cleanup_legacy_options(): void
+	{
+		if ( get_option( 'overseek_email_relay_profiles', null ) !== null ) {
+			delete_option( 'overseek_email_relay_profiles' );
+		}
+
+		if ( get_option( 'overseek_email_relay_default_profile', null ) !== null ) {
+			delete_option( 'overseek_email_relay_default_profile' );
+		}
 	}
 }

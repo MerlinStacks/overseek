@@ -180,7 +180,7 @@ describe('CustomersService', () => {
 
                 return [];
             });
-            mockQueryRaw.mockResolvedValueOnce([{ id: 'customer-1' }]);
+            mockQueryRaw.mockResolvedValueOnce([{ wooId: 123 }]);
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'ALL', []);
 
@@ -202,7 +202,7 @@ describe('CustomersService', () => {
 
                 return [];
             });
-            mockQueryRaw.mockResolvedValueOnce([{ id: 'customer-1' }]);
+            mockQueryRaw.mockResolvedValueOnce([{ wooId: 123 }]);
 
             mockSearch
                 .mockResolvedValueOnce({
@@ -245,7 +245,7 @@ describe('CustomersService', () => {
             const searchPayload = mockSearch.mock.calls[0][0];
             const mustClauses = searchPayload.query.bool.must as Array<any>;
 
-            expect(mustClauses.some((clause) => clause.terms?.['id.keyword']?.includes('customer-1'))).toBe(true);
+            expect(mustClauses.some((clause) => clause.terms?.['id.keyword']?.includes('123'))).toBe(true);
             expect(result.customers).toHaveLength(1);
             expect(result.customers[0].contactStatus).toBe('UNSUBSCRIBED');
         });

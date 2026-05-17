@@ -427,13 +427,10 @@ class OverSeek_API {
 			$attachment_paths = $this->prepare_attachments( $params['attachments'] );
 		}
 
-		$cleanup_scope = OverSeek_Email_Relay_Profiles::begin_relay_scope( $params );
 		try {
 			// Send via wp_mail (with attachments if any).
 			$sent = wp_mail( $to, $subject, $html, $headers, $attachment_paths );
 		} finally {
-			$cleanup_scope();
-
 			// Cleanup temp attachment files.
 			foreach ( $attachment_paths as $path ) {
 				if ( is_string( $path ) && file_exists( $path ) ) {
@@ -469,59 +466,7 @@ class OverSeek_API {
 	 * @return WP_REST_Response
 	 */
 	public function tracking_email_events_callback( WP_REST_Request $request ): WP_REST_Response {
-		$params = $this->get_request_body( $request );
-
-		$event = isset( $params['event'] ) && is_array( $params['event'] ) ? $params['event'] : null;
-		if ( null === $event ) {
-			return new WP_REST_Response( [
-				'success' => false,
-				'error'   => 'Missing top-level event object',
-			], 400 );
-		}
-
-		$account_id = (string) get_option( 'overseek_account_id', '' );
-		$api_url = untrailingslashit( (string) get_option( 'overseek_api_url', '' ) );
-		if ( '' === $account_id || '' === $api_url ) {
-			return new WP_REST_Response( [
-				'success' => false,
-				'error'   => 'OverSeek connection is not configured',
-			], 503 );
-		}
-
-		$target_url = $api_url . '/api/tracking-email-events/' . rawurlencode( $account_id );
-		$headers = [
-			'Content-Type' => 'application/json',
-			'User-Agent'   => 'OverSeek-WC-Plugin/' . OVERSEEK_WC_VERSION,
-		];
-
-		$webhook_token = (string) get_option( 'overseek_webhook_auth_token', '' );
-		if ( '' !== $webhook_token ) {
-			$headers['Authorization'] = 'Bearer ' . $webhook_token;
-		}
-
-		$response = wp_remote_post( $target_url, [
-			'timeout' => 10,
-			'headers' => $headers,
-			'body'    => wp_json_encode( [ 'event' => $event ] ),
-		] );
-
-		if ( is_wp_error( $response ) ) {
-			return new WP_REST_Response( [
-				'success' => false,
-				'error'   => $response->get_error_message(),
-			], 502 );
-		}
-
-		$status_code = (int) wp_remote_retrieve_response_code( $response );
-		$decoded = OverSeek_HTTP_Utils::decode_json_response( $response );
-		$ok = $status_code >= 200 && $status_code < 300;
-
-		return new WP_REST_Response( [
-			'success'            => $ok,
-			'forwarded'          => $ok,
-			'upstreamStatusCode' => $status_code,
-			'upstream'           => $decoded,
-		], $ok ? 202 : 502 );
+		return $this->forward_event_to_overseek( $request, '/api/tracking-email-events/' );
 	}
 
 	/**
@@ -533,6 +478,17 @@ class OverSeek_API {
 	 * @return WP_REST_Response
 	 */
 	public function artwork_events_callback( WP_REST_Request $request ): WP_REST_Response {
+		return $this->forward_event_to_overseek( $request, '/api/artwork-events/' );
+	}
+
+	/**
+	 * Forward an event payload to an OverSeek upstream endpoint.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @param string          $endpoint_prefix API endpoint prefix ending with slash.
+	 * @return WP_REST_Response
+	 */
+	private function forward_event_to_overseek( WP_REST_Request $request, string $endpoint_prefix ): WP_REST_Response {
 		$params = $this->get_request_body( $request );
 
 		$event = isset( $params['event'] ) && is_array( $params['event'] ) ? $params['event'] : null;
@@ -552,7 +508,7 @@ class OverSeek_API {
 			], 503 );
 		}
 
-		$target_url = $api_url . '/api/artwork-events/' . rawurlencode( $account_id );
+		$target_url = $api_url . $endpoint_prefix . rawurlencode( $account_id );
 		$headers = [
 			'Content-Type' => 'application/json',
 			'User-Agent'   => 'OverSeek-WC-Plugin/' . OVERSEEK_WC_VERSION,

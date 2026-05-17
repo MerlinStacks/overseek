@@ -6,6 +6,36 @@ const TWILIO_API_BASE = 'https://api.twilio.com/2010-04-01';
 const MAX_SMS_LENGTH = 1600; // Limit to 10 segments
 
 export class TwilioService {
+
+    private static normalizeE164(value: string): string {
+        const trimmed = String(value || '').trim();
+        if (!trimmed) return '';
+        const compact = trimmed.replace(/[\s()-]/g, '');
+        if (compact.startsWith('+')) return `+${compact.slice(1).replace(/\D/g, '')}`;
+        if (compact.startsWith('00')) return `+${compact.slice(2).replace(/\D/g, '')}`;
+        return compact.replace(/\D/g, '');
+    }
+
+    private static inferCountryCode(fromNumber: string): string {
+        const normalized = this.normalizeE164(fromNumber);
+        if (normalized.startsWith('+61')) return '+61';
+        if (normalized.startsWith('+64')) return '+64';
+        if (normalized.startsWith('+44')) return '+44';
+        if (normalized.startsWith('+1')) return '+1';
+        const match = normalized.match(/^\+(\d{1,3})/);
+        return match ? `+${match[1]}` : '+1';
+    }
+
+    static normalizeToE164(input: string, fromNumber: string): string {
+        const raw = this.normalizeE164(input);
+        if (!raw) return '';
+        if (raw.startsWith('+')) return raw;
+
+        const cc = this.inferCountryCode(fromNumber);
+        if (raw.startsWith('0')) return `${cc}${raw.slice(1)}`;
+        if (cc === '+1' && raw.length === 10) return `+1${raw}`;
+        return `${cc}${raw}`;
+    }
     
     /**
      * Send an SMS message via Twilio
@@ -24,13 +54,17 @@ export class TwilioService {
         }
 
         const { accountSid, authToken, fromNumber } = settings;
+        const normalizedTo = this.normalizeToE164(to, fromNumber);
+        if (!normalizedTo || normalizedTo.replace(/\D/g, '').length < 10) {
+            throw new Error('Invalid phone number format');
+        }
 
         // Basic Auth
         const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
 
         const formData = new URLSearchParams();
         formData.append('From', fromNumber);
-        formData.append('To', to);
+        formData.append('To', normalizedTo);
         formData.append('Body', body);
 
         try {

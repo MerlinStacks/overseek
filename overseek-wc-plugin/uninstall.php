@@ -17,6 +17,39 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
+/**
+ * Recursively remove a directory and its contents.
+ */
+function overseek_uninstall_remove_dir(string $dir): void
+{
+    if ($dir === '' || !is_dir($dir)) {
+        return;
+    }
+
+    $items = scandir($dir);
+    if (!is_array($items)) {
+        return;
+    }
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $path = trailingslashit($dir) . $item;
+        if (is_dir($path)) {
+            overseek_uninstall_remove_dir($path);
+            continue;
+        }
+
+        if (file_exists($path)) {
+            wp_delete_file($path);
+        }
+    }
+
+    @rmdir($dir);
+}
+
 // ─── Options ────────────────────────────────────────────────────────────────
 // All wp_options rows created by the plugin.
 $options = array(
@@ -31,8 +64,6 @@ $options = array(
     'overseek_cookie_retention_days',
     'overseek_relay_api_key',
     'overseek_webhook_auth_token',
-    'overseek_email_relay_profiles',
-    'overseek_email_relay_default_profile',
     'overseek_enable_processing_invoice_sync',
     'overseek_invoice_retention_days',
 );
@@ -69,13 +100,29 @@ if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil')
     if ($wpdb->get_var("SHOW TABLES LIKE '{$orders_meta_table}'") === $orders_meta_table) {
         $wpdb->query(
             "DELETE FROM {$orders_meta_table}
-             WHERE meta_key IN ('_overseek_tracked', '_overseek_pixel_tracked', '_overseek_event_id', '_overseek_invoice_private_path', '_overseek_invoice_file_name', '_overseek_invoice_ref', '_overseek_invoice_generated_at', '_overseek_invoice_status', '_overseek_invoice_renderer', '_overseek_invoice_diagnostic_reason')"
+             WHERE meta_key IN ('_overseek_tracked', '_overseek_pixel_tracked', '_overseek_event_id', '_overseek_invoice_private_path', '_overseek_invoice_file_name', '_overseek_invoice_ref', '_overseek_invoice_generated_at', '_overseek_invoice_status', '_overseek_invoice_error', '_overseek_invoice_renderer', '_overseek_invoice_diagnostic_reason', '_overseek_invoice_retry_count')"
         );
     }
 } else {
     // Legacy: meta stored in postmeta
     $wpdb->query(
         "DELETE FROM {$wpdb->postmeta}
-         WHERE meta_key IN ('_overseek_tracked', '_overseek_pixel_tracked', '_overseek_event_id', '_overseek_invoice_private_path', '_overseek_invoice_file_name', '_overseek_invoice_ref', '_overseek_invoice_generated_at', '_overseek_invoice_status', '_overseek_invoice_renderer', '_overseek_invoice_diagnostic_reason')"
+         WHERE meta_key IN ('_overseek_tracked', '_overseek_pixel_tracked', '_overseek_event_id', '_overseek_invoice_private_path', '_overseek_invoice_file_name', '_overseek_invoice_ref', '_overseek_invoice_generated_at', '_overseek_invoice_status', '_overseek_invoice_error', '_overseek_invoice_renderer', '_overseek_invoice_diagnostic_reason', '_overseek_invoice_retry_count')"
     );
+}
+
+// Remove retained private invoice files created by this plugin.
+$uploads = wp_upload_dir();
+$basedir = isset($uploads['basedir']) ? (string) $uploads['basedir'] : '';
+if ($basedir !== '') {
+    $invoice_dir = trailingslashit($basedir) . 'overseek-private/invoices';
+    overseek_uninstall_remove_dir($invoice_dir);
+
+    $parent_dir = trailingslashit($basedir) . 'overseek-private';
+    if (is_dir($parent_dir)) {
+        $remaining = scandir($parent_dir);
+        if (is_array($remaining) && count($remaining) <= 2) {
+            @rmdir($parent_dir);
+        }
+    }
 }

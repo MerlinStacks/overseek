@@ -1118,7 +1118,7 @@ export class InvoiceService {
 
                 if (itemConfig.type === 'order_table' && pageIndex === 0 && primaryTopBottomPx > 0) {
                     const anchoredTableStartY = marginTop + (primaryTopBottomPx * pxToPt) + 12;
-                    itemY = Math.max(itemY, anchoredTableStartY);
+                    itemY = anchoredTableStartY;
                 }
                 const itemHeight = bounds.h;
                 const renderedHeight = renderBlock(itemConfig, itemX, itemWidth, itemY, itemHeight);

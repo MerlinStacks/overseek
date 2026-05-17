@@ -43,7 +43,6 @@ class OverSeek_Order_Invoices
         add_action('woocommerce_order_status_processing', [$this, 'handle_processing_order'], 20, 1);
         add_action('woocommerce_new_order', [$this, 'handle_new_order'], 20, 1);
         add_action(self::PROCESSING_HOOK, [$this, 'process_processing_order'], 10, 1);
-        add_filter('woocommerce_email_attachments', [$this, 'attach_invoice_to_processing_email'], 10, 3);
         add_action(self::CLEANUP_HOOK, [$this, 'cleanup_private_invoices']);
 
         if (!wp_next_scheduled(self::CLEANUP_HOOK)) {
@@ -373,36 +372,6 @@ class OverSeek_Order_Invoices
         return true;
     }
 
-    public function attach_invoice_to_processing_email(array $attachments, string $email_id, $order): array
-    {
-        if (!get_option('overseek_enable_processing_invoice_sync', '1')) {
-            return $attachments;
-        }
-
-        if ($email_id !== 'customer_processing_order') {
-            return $attachments;
-        }
-
-        if (!$order instanceof WC_Order) {
-            return $attachments;
-        }
-
-        if ((string) $order->get_meta(self::META_INVOICE_PATH) === '') {
-            if ((string) $order->get_meta(self::META_INVOICE_STATUS) === 'pending') {
-                $this->schedule_processing_retry((int) $order->get_id(), 30);
-                return $attachments;
-            }
-            $this->generate_invoice_for_order($order, 6);
-        }
-
-        $path = (string) $order->get_meta(self::META_INVOICE_PATH);
-        if ($path !== '' && file_exists($path) && is_readable($path)) {
-            $attachments[] = $path;
-        }
-
-        return $attachments;
-    }
-
     public function cleanup_private_invoices(): void
     {
         $private_dir = $this->ensure_private_invoice_dir();
@@ -443,7 +412,7 @@ class OverSeek_Order_Invoices
 
         $htaccess = trailingslashit($dir) . '.htaccess';
         if (!file_exists($htaccess)) {
-            file_put_contents($htaccess, "Deny from all\n");
+            file_put_contents($htaccess, "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n");
         }
 
         $index = trailingslashit($dir) . 'index.php';

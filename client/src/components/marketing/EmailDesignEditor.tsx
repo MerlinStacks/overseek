@@ -13,7 +13,7 @@ import {
     Undo2,
     X,
 } from 'lucide-react';
-import { registerDynamicSidebarBlocks, registerWooCommerceTools, getWooCommerceMergeTags } from '../../lib/unlayerWooCommerceTools';
+import { getWooCommerceMergeTags } from '../../lib/unlayerWooCommerceTools';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
@@ -51,7 +51,6 @@ const MAX_SAVED_SECTION_PRESETS = 12;
 export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCancel }) => {
     const emailEditorRef = useRef<EditorRef>(null);
     const autosaveTimeoutRef = useRef<number | null>(null);
-    const toolsRegisteredRef = useRef(false);
     const editorShellRef = useRef<HTMLDivElement | null>(null);
 
     const { token, user } = useAuth();
@@ -747,55 +746,51 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         ];
     }, [rowToStaticHtml]);
 
-    const refreshDynamicSavedBlocks = useCallback((headers: SavedRowPreset[], footers: SavedRowPreset[]) => {
-        const editor = emailEditorRef.current?.editor;
-        if (!editor) return;
-        registerDynamicSidebarBlocks(
-            editor as unknown as Parameters<typeof registerDynamicSidebarBlocks>[0],
-            buildDynamicSidebarBlocks(headers, footers)
-        );
-    }, [buildDynamicSidebarBlocks]);
+    const buildCustomJsToolBundle = useCallback((blocks: Array<{ name: string; label: string; icon: string; html: string }>) => {
+        const serialized = JSON.stringify(blocks);
+        return `
+            (function () {
+              var blocks = ${serialized};
+              if (!window.unlayer || typeof window.unlayer.registerTool !== 'function' || typeof window.unlayer.createViewer !== 'function') {
+                return;
+              }
 
-    const registerEditorTools = useCallback((editorInstance: unknown) => {
-        if (toolsRegisteredRef.current) return;
-        const toolHost = editorInstance as {
-            registerTool?: (config: Record<string, unknown>) => void;
-            createViewer?: (config: { render: (values: Record<string, unknown>) => string }) => unknown;
-            setMergeTags?: (tags: unknown) => void;
-        };
-        if (typeof toolHost.registerTool !== 'function' || typeof toolHost.createViewer !== 'function') {
-            return;
-        }
+              function registerStaticSectionTool(name, label, icon, html) {
+                window.unlayer.registerTool({
+                  name: name,
+                  label: label,
+                  icon: icon || 'fa-bookmark',
+                  supportedDisplayModes: ['email'],
+                  options: {},
+                  values: {},
+                  renderer: {
+                    Viewer: window.unlayer.createViewer({
+                      render: function () { return html; }
+                    }),
+                    exporters: {
+                      email: function () { return html; }
+                    },
+                    head: {
+                      css: function () { return ''; },
+                      js: function () { return ''; }
+                    }
+                  }
+                });
+              }
 
-        const parseSavedRows = (key: string): SavedRowPreset[] => {
-            const raw = localStorage.getItem(key);
-            if (!raw) return [];
-            try {
-                const parsed = JSON.parse(raw) as SavedRowPreset[];
-                return Array.isArray(parsed) ? parsed : [];
-            } catch {
-                return [];
-            }
-        };
-
-        const storedHeaders = parseSavedRows(SAVED_HEADERS_KEY);
-        const storedFooters = parseSavedRows(SAVED_FOOTERS_KEY);
-        const dynamicSidebarBlocks = buildDynamicSidebarBlocks(storedHeaders, storedFooters);
-
-        registerWooCommerceTools(
-            toolHost as Parameters<typeof registerWooCommerceTools>[0],
-            { dynamicSidebarBlocks }
-        );
-        toolHost.setMergeTags?.(getWooCommerceMergeTags());
-        toolsRegisteredRef.current = true;
-    }, [buildDynamicSidebarBlocks]);
+              for (var i = 0; i < blocks.length; i += 1) {
+                var b = blocks[i];
+                registerStaticSectionTool(b.name, b.label, b.icon, b.html);
+              }
+            })();
+        `;
+    }, []);
 
     const onReady = () => {
         setLoading(false);
 
         const editor = emailEditorRef.current?.editor;
         if (editor) {
-            registerEditorTools(editor);
             editor.addEventListener('design:updated', () => {
                 setHasUnsavedChanges(true);
                 queueDraftSave();
@@ -823,9 +818,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         }
     };
 
-    const onLoad = (unlayer: unknown) => {
-        registerEditorTools(emailEditorRef.current?.editor ?? unlayer);
-    };
+    const onLoad = () => {};
 
     const restoreDraft = () => {
         const editor = emailEditorRef.current?.editor;
@@ -928,12 +921,10 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                 const next = [nextItem, ...savedHeaders].slice(0, MAX_SAVED_SECTION_PRESETS);
                 setSavedHeaders(next);
                 persistSavedRows(SAVED_HEADERS_KEY, next);
-                refreshDynamicSavedBlocks(next, savedFooters);
             } else {
                 const next = [nextItem, ...savedFooters].slice(0, MAX_SAVED_SECTION_PRESETS);
                 setSavedFooters(next);
                 persistSavedRows(SAVED_FOOTERS_KEY, next);
-                refreshDynamicSavedBlocks(savedHeaders, next);
             }
         });
     };
@@ -974,14 +965,25 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
             const next = savedHeaders.filter((item) => item.id !== id);
             setSavedHeaders(next);
             persistSavedRows(SAVED_HEADERS_KEY, next);
-            refreshDynamicSavedBlocks(next, savedFooters);
             return;
         }
         const next = savedFooters.filter((item) => item.id !== id);
         setSavedFooters(next);
         persistSavedRows(SAVED_FOOTERS_KEY, next);
-        refreshDynamicSavedBlocks(savedHeaders, next);
     };
+
+    const nativeSidebarBlocks = useMemo(() => {
+        const staticBlocks = [
+            ...textStylePresets.map((preset) => ({ name: `woo_text_${preset.id}`, label: preset.name, icon: 'fa-font', html: rowToStaticHtml(preset.row) })),
+            ...starterLayouts.map((layout) => ({ name: `woo_layout_${layout.id}`, label: layout.label, icon: 'fa-th-large', html: typeof layout.design === 'object' ? rowToStaticHtml((layout.design as { body?: { rows?: Record<string, unknown>[] } }).body?.rows?.[0] || {}) : '<div></div>' })),
+            ...defaultHeaderPresets.map((preset) => ({ name: `woo_default_header_${preset.id}`, label: preset.name, icon: 'fa-window-maximize', html: rowToStaticHtml(preset.row) })),
+            ...defaultFooterPresets.map((preset) => ({ name: `woo_default_footer_${preset.id}`, label: preset.name, icon: 'fa-window-minimize', html: rowToStaticHtml(preset.row) })),
+        ];
+        const savedBlocks = buildDynamicSidebarBlocks(savedHeaders, savedFooters);
+        return [...staticBlocks, ...savedBlocks];
+    }, [buildDynamicSidebarBlocks, defaultFooterPresets, defaultHeaderPresets, savedFooters, savedHeaders, starterLayouts, textStylePresets, rowToStaticHtml]);
+
+    const customJsBundle = useMemo(() => buildCustomJsToolBundle(nativeSidebarBlocks), [buildCustomJsToolBundle, nativeSidebarBlocks]);
 
     const sendTestEmail = async (targetEmail?: string) => {
         const recipient = (targetEmail || testEmail).trim();
@@ -1458,6 +1460,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                     spellChecker: true
                                 }
                             },
+                            customJS: [customJsBundle],
                             mergeTags: getWooCommerceMergeTags(),
                             displayMode: 'email',
                             tools: {

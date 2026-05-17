@@ -63,21 +63,33 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
     // Twilio Webhook
     fastify.post('/webhook', async (request, reply) => {
         const params = await parseWebhookParams(request);
-        const { From, Body, AccountSid } = params;
+        const { From, To, Body, AccountSid } = params;
 
-        if (!From || !Body || !AccountSid) {
+        if (!From || !Body) {
             Logger.warn('[SMS Webhook] Missing required params', { params });
             return reply.status(400).send({ error: 'Invalid request' });
         }
 
         try {
-            // 1. Find Account by Twilio AccountSid
-            const settings = await prisma.smsSettings.findFirst({
-                where: { accountSid: AccountSid }
-            });
+            const normalizedFrom = TwilioService.normalizeToE164(From, To || From);
+            const normalizedTo = To ? TwilioService.normalizeToE164(To, To) : '';
+
+            // 1. Find Account by Twilio AccountSid, fallback to destination number match
+            let settings = AccountSid
+                ? await prisma.smsSettings.findFirst({ where: { accountSid: AccountSid, enabled: true } })
+                : null;
+
+            if (!settings && normalizedTo) {
+                const allEnabled = await prisma.smsSettings.findMany({ where: { enabled: true } });
+                settings = allEnabled.find(s => TwilioService.normalizeToE164(s.fromNumber, s.fromNumber) === normalizedTo) || null;
+            }
 
             if (!settings) {
-                Logger.warn('[SMS Webhook] Unknown AccountSid', { AccountSid });
+                Logger.warn('[SMS Webhook] Unable to resolve account from webhook', {
+                    AccountSid,
+                    To,
+                    normalizedTo
+                });
                 return reply.status(404).send({ error: 'Account not found' });
             }
 
@@ -94,7 +106,7 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
                 where: {
                     accountId: settings.accountId,
                     channel: 'SMS',
-                    externalConversationId: From,
+                    externalConversationId: normalizedFrom,
                     status: 'OPEN'
                 }
             });
@@ -113,7 +125,7 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
                     where: { id: conversation.id },
                     data: {
                         channel: 'SMS',
-                        externalConversationId: From,
+                        externalConversationId: normalizedFrom,
                         // Try to link to WooCustomer if phone matches?
                         // This would require searching WooCustomers by phone.
                     }
