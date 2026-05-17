@@ -552,6 +552,13 @@ export class InvoiceService {
                 return { minX, maxX };
             }, { minX: Number.POSITIVE_INFINITY, maxX: 0 });
 
+            const primaryTopTypes = new Set(['header', 'customer_details', 'order_details']);
+            const primaryTopBottomPx = normalizedEntries.reduce((max: number, entry: any) => {
+                if (!primaryTopTypes.has(String(entry?.itemConfig?.type || ''))) return max;
+                const bounds = toItemBounds(entry.normalizedGridItem);
+                return Math.max(max, bounds.yPx + bounds.hPx);
+            }, 0);
+
             const contentWidthPx = Number.isFinite(contentBoundsPx.minX)
                 ? Math.max(1, contentBoundsPx.maxX - contentBoundsPx.minX)
                 : DESIGN_WIDTH_PX;
@@ -1107,7 +1114,12 @@ export class InvoiceService {
                 const maxWidthAvailable = Math.max(20, maxPageX - itemX);
                 const itemWidth = Math.max(20, Math.min(scaledWPt, maxWidthAvailable));
                 const flowOffset = pageFlowOffset.get(pageIndex) || 0;
-                const itemY = marginTop + localY + flowOffset;
+                let itemY = marginTop + localY + flowOffset;
+
+                if (itemConfig.type === 'order_table' && pageIndex === 0 && primaryTopBottomPx > 0) {
+                    const anchoredTableStartY = marginTop + (primaryTopBottomPx * pxToPt) + 12;
+                    itemY = Math.max(itemY, anchoredTableStartY);
+                }
                 const itemHeight = bounds.h;
                 const renderedHeight = renderBlock(itemConfig, itemX, itemWidth, itemY, itemHeight);
 

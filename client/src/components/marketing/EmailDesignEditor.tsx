@@ -758,6 +758,15 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
 
     const registerEditorTools = useCallback((editorInstance: unknown) => {
         if (toolsRegisteredRef.current) return;
+        const toolHost = editorInstance as {
+            registerTool?: (config: Record<string, unknown>) => void;
+            createViewer?: (config: { render: (values: Record<string, unknown>) => string }) => unknown;
+            setMergeTags?: (tags: unknown) => void;
+        };
+        if (typeof toolHost.registerTool !== 'function' || typeof toolHost.createViewer !== 'function') {
+            return;
+        }
+
         const parseSavedRows = (key: string): SavedRowPreset[] => {
             const raw = localStorage.getItem(key);
             if (!raw) return [];
@@ -774,10 +783,10 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         const dynamicSidebarBlocks = buildDynamicSidebarBlocks(storedHeaders, storedFooters);
 
         registerWooCommerceTools(
-            editorInstance as Parameters<typeof registerWooCommerceTools>[0],
+            toolHost as Parameters<typeof registerWooCommerceTools>[0],
             { dynamicSidebarBlocks }
         );
-        (editorInstance as { setMergeTags?: (tags: unknown) => void }).setMergeTags?.(getWooCommerceMergeTags());
+        toolHost.setMergeTags?.(getWooCommerceMergeTags());
         toolsRegisteredRef.current = true;
     }, [buildDynamicSidebarBlocks]);
 
@@ -786,6 +795,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
 
         const editor = emailEditorRef.current?.editor;
         if (editor) {
+            registerEditorTools(editor);
             editor.addEventListener('design:updated', () => {
                 setHasUnsavedChanges(true);
                 queueDraftSave();
@@ -814,7 +824,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
     };
 
     const onLoad = (unlayer: unknown) => {
-        registerEditorTools(unlayer);
+        registerEditorTools(emailEditorRef.current?.editor ?? unlayer);
     };
 
     const restoreDraft = () => {

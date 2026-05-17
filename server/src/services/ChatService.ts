@@ -12,7 +12,6 @@ import { EmailIngestion, IncomingEmailData } from './EmailIngestion';
 import { BlockedContactService } from './BlockedContactService';
 import { AutomationEngine } from './AutomationEngine';
 import { EventBus, EVENTS } from './events';
-import { TwilioService } from './TwilioService';
 import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
 import type { Prisma } from '@prisma/client';
 
@@ -308,22 +307,6 @@ export class ChatService {
         const message = await prisma.message.create({
             data: { conversationId, content, senderType, senderId, isInternal }
         });
-
-        // Handle Outbound SMS (Agent replies)
-        if (senderType === 'AGENT' && !isInternal && conversation.channel === 'SMS') {
-            try {
-                const to = conversation.externalConversationId; // Phone number stored here
-                if (to) {
-                    await TwilioService.sendSms(conversation.accountId, to, content);
-                } else {
-                    Logger.warn('[ChatService] Cannot send SMS, no phone number found', { conversationId });
-                }
-            } catch (error) {
-                Logger.error('[ChatService] Failed to send outbound SMS', { error, conversationId });
-                // We still return the message, but maybe we should mark it as failed?
-                // For now, we'll just log the error.
-            }
-        }
 
         // Get the email to check for blocked status
         const contactEmail = conversation.wooCustomer?.email || conversation.guestEmail;

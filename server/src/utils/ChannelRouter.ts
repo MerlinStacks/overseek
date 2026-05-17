@@ -53,6 +53,18 @@ function parseEmailContent(content: string, conversationTitle?: string | null) {
     return { subject, body };
 }
 
+function toPlainText(content: string): string {
+    return content
+        .replace(/<br\s*\/?\s*>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .trim();
+}
+
 /**
  * Routes a message to the appropriate external channel (Email, Facebook, Instagram, TikTok, SMS).
  */
@@ -152,7 +164,7 @@ export async function routeMessageToChannel(
         }
 
         if (externalId) {
-            await TwilioService.sendSms(accountId, externalId, content.replace(/<[^>]*>/g, ''));
+            await TwilioService.sendSms(accountId, externalId, toPlainText(content));
             Logger.info('[ChannelRouter] SMS sent', { to: externalId });
         }
     }

@@ -6,6 +6,25 @@ import { Logger } from '../utils/logger';
 import { requireAuthFastify } from '../middleware/auth';
 
 export const createSmsRoutes = (chatService: ChatService) => async (fastify: FastifyInstance) => {
+
+    const parseWebhookParams = async (request: any): Promise<Record<string, string>> => {
+        const body = request.body;
+        if (body && typeof body === 'object' && !Array.isArray(body)) {
+            return body as Record<string, string>;
+        }
+        if (typeof body === 'string') {
+            return Object.fromEntries(new URLSearchParams(body).entries());
+        }
+
+        const raw = await new Promise<string>((resolve, reject) => {
+            let data = '';
+            request.raw.setEncoding('utf8');
+            request.raw.on('data', (chunk: string) => { data += chunk; });
+            request.raw.on('end', () => resolve(data));
+            request.raw.on('error', reject);
+        });
+        return Object.fromEntries(new URLSearchParams(raw).entries());
+    };
     
     // Get SMS Settings
     fastify.get('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
@@ -43,7 +62,7 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
 
     // Twilio Webhook
     fastify.post('/webhook', async (request, reply) => {
-        const params = request.body as any;
+        const params = await parseWebhookParams(request);
         const { From, Body, AccountSid } = params;
 
         if (!From || !Body || !AccountSid) {
