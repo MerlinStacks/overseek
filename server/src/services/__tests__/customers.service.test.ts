@@ -5,6 +5,7 @@ import { CustomersService } from '../customers';
 const mockFindFirst = vi.fn();
 const mockFindMany = vi.fn();
 const mockUpdate = vi.fn();
+const mockWooCustomerCount = vi.fn();
 const mockQueryRaw = vi.fn();
 const mockEmailUnsubscribeFindFirst = vi.fn();
 const mockEmailUnsubscribeFindMany = vi.fn();
@@ -16,6 +17,7 @@ vi.mock('../../utils/prisma', () => ({
             findFirst: (...args: any[]) => mockFindFirst(...args),
             findMany: (...args: any[]) => mockFindMany(...args),
             update: (...args: any[]) => mockUpdate(...args),
+            count: (...args: any[]) => mockWooCustomerCount(...args),
         },
         wooOrder: {
             findMany: vi.fn().mockResolvedValue([]),
@@ -67,6 +69,7 @@ describe('CustomersService', () => {
         mockEmailUnsubscribeFindFirst.mockResolvedValue(null);
         mockEmailUnsubscribeFindMany.mockResolvedValue([]);
         mockEmailUnsubscribeCount.mockResolvedValue(0);
+        mockWooCustomerCount.mockResolvedValue(0);
         mockQueryRaw.mockResolvedValue([]);
     });
 
@@ -164,9 +167,6 @@ describe('CustomersService', () => {
                             buckets: [{ key: 'SUBSCRIBED', doc_count: 2 }]
                         }
                     }
-                })
-                .mockResolvedValueOnce({
-                    hits: { total: { value: 1 }, hits: [] }
                 });
 
             mockEmailUnsubscribeFindMany.mockImplementation(async (args: any) => {
@@ -202,33 +202,23 @@ describe('CustomersService', () => {
 
                 return [];
             });
-            mockQueryRaw.mockResolvedValueOnce([{ wooId: 123 }]);
+            mockQueryRaw
+                .mockResolvedValueOnce([{ wooId: 123 }])
+                .mockResolvedValueOnce([{
+                    id: 'customer-db-1',
+                    wooId: 123,
+                    email: 'alice@example.com',
+                    firstName: 'Alice',
+                    lastName: 'A',
+                    totalSpent: 10,
+                    ordersCount: 1,
+                    rawData: {},
+                    createdAt: new Date('2025-01-01T00:00:00.000Z')
+                }])
+                .mockResolvedValueOnce([{ count: BigInt(1) }]);
+            mockWooCustomerCount.mockResolvedValueOnce(2);
 
             mockSearch
-                .mockResolvedValueOnce({
-                    hits: {
-                        hits: [
-                            {
-                                _id: 'account-123_customer-1',
-                                _source: {
-                                    id: 'customer-1',
-                                    email: 'alice@example.com',
-                                    firstName: 'Alice',
-                                    lastName: 'A',
-                                    ordersCount: 1,
-                                    totalSpent: 10,
-                                    rawData: {}
-                                }
-                            }
-                        ],
-                        total: { value: 1 }
-                    },
-                    aggregations: {
-                        contact_statuses: {
-                            buckets: []
-                        }
-                    }
-                })
                 .mockResolvedValueOnce({
                     hits: { total: { value: 1 } },
                     aggregations: {
@@ -236,18 +226,13 @@ describe('CustomersService', () => {
                             buckets: []
                         }
                     }
-                })
-                .mockResolvedValueOnce({
-                    hits: { total: { value: 1 }, hits: [] }
                 });
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'UNSUBSCRIBED', []);
-            const searchPayload = mockSearch.mock.calls[0][0];
-            const mustClauses = searchPayload.query.bool.must as Array<any>;
 
-            expect(mustClauses.some((clause) => clause.terms?.['id.keyword']?.includes('123'))).toBe(true);
             expect(result.customers).toHaveLength(1);
             expect(result.customers[0].contactStatus).toBe('UNSUBSCRIBED');
+            expect(result.statusCounts.UNSUBSCRIBED).toBe(1);
         });
     });
 });

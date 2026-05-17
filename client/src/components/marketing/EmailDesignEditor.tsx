@@ -13,7 +13,7 @@ import {
     Undo2,
     X,
 } from 'lucide-react';
-import { getWooCommerceMergeTags } from '../../lib/unlayerWooCommerceTools';
+import { getWooCommerceMergeTags, registerWooCommerceTools } from '../../lib/unlayerWooCommerceTools';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
@@ -38,6 +38,11 @@ interface SavedRowPreset {
     html?: string;
 }
 
+interface UnlayerBlockProviderEditor {
+    registerProvider?: (type: 'blocks', provider: (params: unknown, done: (blocks: unknown[]) => void) => void) => void;
+    reloadProvider?: (type: 'blocks') => void;
+}
+
 const DRAFT_STORAGE_KEY = 'overseek-email-builder-draft';
 const HISTORY_STORAGE_KEY = 'overseek-email-builder-history';
 const RECENT_TEST_RECIPIENTS_KEY = 'overseek-email-builder-recent-recipients';
@@ -47,11 +52,9 @@ const MAX_HISTORY_SNAPSHOTS = 8;
 const MAX_TEST_RECIPIENTS = 6;
 const MAX_SAVED_SECTION_PRESETS = 12;
 
-
 export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCancel }) => {
     const emailEditorRef = useRef<EditorRef>(null);
     const autosaveTimeoutRef = useRef<number | null>(null);
-    const editorShellRef = useRef<HTMLDivElement | null>(null);
 
     const { token, user } = useAuth();
     const { currentAccount } = useAccount();
@@ -163,38 +166,6 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         setShowChecklistPanel(false);
         setShowReusablePanel(false);
         setShowHistoryPanel((value) => !value);
-    }, []);
-
-    const ensureMobilePreviewButton = useCallback((): boolean => {
-        const root = editorShellRef.current;
-        if (!root) return false;
-
-        if (root.querySelector('[data-overseek-mobile-preview="true"]')) {
-            return true;
-        }
-
-        const buttons = Array.from(root.querySelectorAll('button'));
-        const desktopButton = buttons.find((button) => {
-            const label = `${button.getAttribute('title') || ''} ${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`.toLowerCase();
-            return label.includes('desktop');
-        });
-
-        if (!desktopButton || !desktopButton.parentElement) return false;
-
-        const mobileButton = desktopButton.cloneNode(true) as HTMLButtonElement;
-        mobileButton.setAttribute('data-overseek-mobile-preview', 'true');
-        mobileButton.setAttribute('title', 'Mobile');
-        mobileButton.setAttribute('aria-label', 'Mobile preview');
-        mobileButton.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>';
-        mobileButton.onclick = (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const editor = emailEditorRef.current?.editor as { showPreview?: (mode?: 'desktop' | 'mobile') => void } | null;
-            editor?.showPreview?.('mobile');
-        };
-
-        desktopButton.parentElement.appendChild(mobileButton);
-        return true;
     }, []);
 
     const toggleReusablePanel = useCallback(() => {
@@ -627,6 +598,48 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         }
     ]), [appName, logoUrl, primaryColor]);
 
+    const createNativeBlock = useCallback((
+        id: string,
+        name: string,
+        category: string,
+        row: Record<string, unknown>,
+        tags: string[] = []
+    ) => ({
+        id,
+        name,
+        category,
+        tags,
+        data: row,
+    }), []);
+
+    const buildNativeBlocks = useCallback((headers = savedHeaders, footers = savedFooters) => {
+        const starterBlocks = starterLayouts.flatMap((layout) => {
+            const rows = (layout.design as { body?: { rows?: Record<string, unknown>[] } }).body?.rows || [];
+            return rows.map((row, index) => createNativeBlock(
+                `${layout.id}-${index + 1}`,
+                rows.length > 1 ? `${layout.label} ${index + 1}` : layout.label,
+                'Starter Layouts',
+                row,
+                ['starter', 'layout']
+            ));
+        });
+
+        return [
+            ...textStylePresets.map((preset) => createNativeBlock(preset.id, preset.name, 'Text Block Styles', preset.row, ['text', 'style'])),
+            ...starterBlocks,
+            ...defaultHeaderPresets.map((preset) => createNativeBlock(preset.id, preset.name, 'Headers', preset.row, ['header'])),
+            ...headers.map((preset) => createNativeBlock(preset.id, preset.name, 'Saved Headers', preset.row, ['header', 'saved'])),
+            ...defaultFooterPresets.map((preset) => createNativeBlock(preset.id, preset.name, 'Footers', preset.row, ['footer'])),
+            ...footers.map((preset) => createNativeBlock(preset.id, preset.name, 'Saved Footers', preset.row, ['footer', 'saved'])),
+        ];
+    }, [createNativeBlock, defaultFooterPresets, defaultHeaderPresets, savedFooters, savedHeaders, starterLayouts, textStylePresets]);
+
+    const refreshNativeBlocks = useCallback(() => {
+        const editor = emailEditorRef.current?.editor as (UnlayerBlockProviderEditor | undefined);
+        if (typeof editor?.reloadProvider !== 'function') return;
+        editor.reloadProvider('blocks');
+    }, []);
+
     const clearAutosaveTimeout = () => {
         if (autosaveTimeoutRef.current) {
             window.clearTimeout(autosaveTimeoutRef.current);
@@ -727,84 +740,28 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         });
     }, []);
 
-    const buildDynamicSidebarBlocks = useCallback((headers: SavedRowPreset[], footers: SavedRowPreset[]) => {
-        const toSafeSlug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-
-        return [
-            ...headers.map((preset) => ({
-                name: `woo_saved_header_${toSafeSlug(preset.id)}`,
-                label: `Saved Header: ${preset.name}`,
-                icon: 'fa-window-maximize',
-                html: preset.html || rowToStaticHtml(preset.row),
-            })),
-            ...footers.map((preset) => ({
-                name: `woo_saved_footer_${toSafeSlug(preset.id)}`,
-                label: `Saved Footer: ${preset.name}`,
-                icon: 'fa-window-minimize',
-                html: preset.html || rowToStaticHtml(preset.row),
-            })),
-        ];
-    }, [rowToStaticHtml]);
-
-    const buildCustomJsToolBundle = useCallback((blocks: Array<{ name: string; label: string; icon: string; html: string }>) => {
-        const serialized = JSON.stringify(blocks);
-        return `
-            (function () {
-              var blocks = ${serialized};
-              if (!window.unlayer || typeof window.unlayer.registerTool !== 'function' || typeof window.unlayer.createViewer !== 'function') {
-                return;
-              }
-
-              function registerStaticSectionTool(name, label, icon, html) {
-                window.unlayer.registerTool({
-                  name: name,
-                  label: label,
-                  icon: icon || 'fa-bookmark',
-                  supportedDisplayModes: ['email'],
-                  options: {},
-                  values: {},
-                  renderer: {
-                    Viewer: window.unlayer.createViewer({
-                      render: function () { return html; }
-                    }),
-                    exporters: {
-                      email: function () { return html; }
-                    },
-                    head: {
-                      css: function () { return ''; },
-                      js: function () { return ''; }
-                    }
-                  }
-                });
-              }
-
-              for (var i = 0; i < blocks.length; i += 1) {
-                var b = blocks[i];
-                registerStaticSectionTool(b.name, b.label, b.icon, b.html);
-              }
-            })();
-        `;
-    }, []);
 
     const onReady = () => {
         setLoading(false);
 
         const editor = emailEditorRef.current?.editor;
         if (editor) {
+            const blockEditor = editor as typeof editor & UnlayerBlockProviderEditor;
+            if (typeof blockEditor.registerProvider === 'function') {
+                blockEditor.registerProvider('blocks', (_params, done) => {
+                    done(buildNativeBlocks(
+                        loadSavedRows(SAVED_HEADERS_KEY),
+                        loadSavedRows(SAVED_FOOTERS_KEY)
+                    ));
+                });
+            }
+            registerWooCommerceTools(editor as unknown as Parameters<typeof registerWooCommerceTools>[0]);
+            editor.setMergeTags(getWooCommerceMergeTags());
             editor.addEventListener('design:updated', () => {
                 setHasUnsavedChanges(true);
                 queueDraftSave();
             });
         }
-
-        let attempts = 0;
-        const maxAttempts = 15;
-        const injectButton = () => {
-            attempts += 1;
-            if (ensureMobilePreviewButton() || attempts >= maxAttempts) return;
-            window.setTimeout(injectButton, 250);
-        };
-        window.setTimeout(injectButton, 250);
 
         if (initialDesign && emailEditorRef.current?.editor) {
             const readyEditor = emailEditorRef.current.editor;
@@ -921,10 +878,12 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                 const next = [nextItem, ...savedHeaders].slice(0, MAX_SAVED_SECTION_PRESETS);
                 setSavedHeaders(next);
                 persistSavedRows(SAVED_HEADERS_KEY, next);
+                refreshNativeBlocks();
             } else {
                 const next = [nextItem, ...savedFooters].slice(0, MAX_SAVED_SECTION_PRESETS);
                 setSavedFooters(next);
                 persistSavedRows(SAVED_FOOTERS_KEY, next);
+                refreshNativeBlocks();
             }
         });
     };
@@ -965,25 +924,14 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
             const next = savedHeaders.filter((item) => item.id !== id);
             setSavedHeaders(next);
             persistSavedRows(SAVED_HEADERS_KEY, next);
+            refreshNativeBlocks();
             return;
         }
         const next = savedFooters.filter((item) => item.id !== id);
         setSavedFooters(next);
         persistSavedRows(SAVED_FOOTERS_KEY, next);
+        refreshNativeBlocks();
     };
-
-    const nativeSidebarBlocks = useMemo(() => {
-        const staticBlocks = [
-            ...textStylePresets.map((preset) => ({ name: `woo_text_${preset.id}`, label: preset.name, icon: 'fa-font', html: rowToStaticHtml(preset.row) })),
-            ...starterLayouts.map((layout) => ({ name: `woo_layout_${layout.id}`, label: layout.label, icon: 'fa-th-large', html: typeof layout.design === 'object' ? rowToStaticHtml((layout.design as { body?: { rows?: Record<string, unknown>[] } }).body?.rows?.[0] || {}) : '<div></div>' })),
-            ...defaultHeaderPresets.map((preset) => ({ name: `woo_default_header_${preset.id}`, label: preset.name, icon: 'fa-window-maximize', html: rowToStaticHtml(preset.row) })),
-            ...defaultFooterPresets.map((preset) => ({ name: `woo_default_footer_${preset.id}`, label: preset.name, icon: 'fa-window-minimize', html: rowToStaticHtml(preset.row) })),
-        ];
-        const savedBlocks = buildDynamicSidebarBlocks(savedHeaders, savedFooters);
-        return [...staticBlocks, ...savedBlocks];
-    }, [buildDynamicSidebarBlocks, defaultFooterPresets, defaultHeaderPresets, savedFooters, savedHeaders, starterLayouts, textStylePresets, rowToStaticHtml]);
-
-    const customJsBundle = useMemo(() => buildCustomJsToolBundle(nativeSidebarBlocks), [buildCustomJsToolBundle, nativeSidebarBlocks]);
 
     const sendTestEmail = async (targetEmail?: string) => {
         const recipient = (targetEmail || testEmail).trim();
@@ -1244,7 +1192,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                         </button>
                         <button
                             onClick={toggleReusablePanel}
-                            className="hidden items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
                             <Bookmark size={16} />
                             <span className="hidden sm:inline">Reusable</span>
@@ -1284,8 +1232,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     </div>
                 </div>
 
-                <div ref={editorShellRef} className="relative bg-slate-100" style={{ height: 'calc(100vh - 82px)' }}>
-
+                <div className="relative bg-slate-100" style={{ height: 'calc(100vh - 82px)' }}>
                     {showTestEmailPanel && (
                         <div className="absolute left-2 right-2 top-2 z-30 w-auto rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-sm md:left-auto md:right-4 md:top-4 md:w-[340px]">
                             <p className="text-sm font-semibold text-slate-900">Send a quick test</p>
@@ -1460,7 +1407,6 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                                     spellChecker: true
                                 }
                             },
-                            customJS: [customJsBundle],
                             mergeTags: getWooCommerceMergeTags(),
                             displayMode: 'email',
                             tools: {

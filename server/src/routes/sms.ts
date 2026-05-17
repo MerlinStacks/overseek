@@ -7,6 +7,14 @@ import { requireAuthFastify } from '../middleware/auth';
 
 export const createSmsRoutes = (chatService: ChatService) => async (fastify: FastifyInstance) => {
 
+    fastify.addContentTypeParser(
+        /^application\/x-www-form-urlencoded(?:;.*)?$/,
+        { parseAs: 'string' },
+        (_request, body, done) => {
+            done(null, body);
+        }
+    );
+
     const parseWebhookParams = async (request: any): Promise<Record<string, string>> => {
         const body = request.body;
         if (body && typeof body === 'object' && !Array.isArray(body)) {

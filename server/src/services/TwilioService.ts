@@ -10,10 +10,20 @@ export class TwilioService {
     private static normalizeE164(value: string): string {
         const trimmed = String(value || '').trim();
         if (!trimmed) return '';
-        const compact = trimmed.replace(/[\s()-]/g, '');
-        if (compact.startsWith('+')) return `+${compact.slice(1).replace(/\D/g, '')}`;
-        if (compact.startsWith('00')) return `+${compact.slice(2).replace(/\D/g, '')}`;
-        return compact.replace(/\D/g, '');
+
+        // Twilio can provide values like "sms:+614..." or include formatting.
+        const noPrefix = trimmed.replace(/^[a-zA-Z]+:/, '');
+        const cleaned = noPrefix.replace(/[^\d+]/g, '');
+        if (!cleaned) return '';
+
+        const plusIndex = cleaned.indexOf('+');
+        if (plusIndex !== -1) {
+            const digits = cleaned.slice(plusIndex + 1).replace(/\D/g, '');
+            return digits ? `+${digits}` : '';
+        }
+
+        if (cleaned.startsWith('00')) return `+${cleaned.slice(2).replace(/\D/g, '')}`;
+        return cleaned.replace(/\D/g, '');
     }
 
     private static inferCountryCode(fromNumber: string): string {

@@ -1,6 +1,7 @@
 import { esClient } from '../utils/elastic';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { Prisma } from '@prisma/client';
 
 type ContactStatus = 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
 
@@ -221,32 +222,126 @@ export class CustomersService {
         const statusMust = [...baseMust];
 
         if (status === 'UNSUBSCRIBED') {
-            if (unsubscribedCustomerIdList.length === 0) {
-                return {
-                    customers: [],
-                    total: 0,
-                    page,
-                    totalPages: 0,
-                    statusCounts: {
-                        ALL: 0,
-                        UNVERIFIED: 0,
-                        SUBSCRIBED: 0,
-                        BOUNCED: 0,
-                        UNSUBSCRIBED: 0,
-                        SOFT_BOUNCED: 0,
-                        COMPLAINT: 0
-                    }
-                };
-            }
+            const searchClause = query
+                ? Prisma.sql`AND (
+                    "firstName" ILIKE ${`%${query}%`}
+                    OR "lastName" ILIKE ${`%${query}%`}
+                    OR "email" ILIKE ${`%${query}%`}
+                )`
+                : Prisma.empty;
 
-            statusMust.push({
-                terms: {
-                    'id.keyword': unsubscribedCustomerIdList
+            const [unsubscribedCustomers, unsubscribedTotalRows, allCustomerCount, allStatusAggs] = await Promise.all([
+                unsubscribedEmailList.length > 0
+                    ? prisma.$queryRaw<Array<{
+                        id: string;
+                        wooId: number;
+                        email: string;
+                        firstName: string | null;
+                        lastName: string | null;
+                        totalSpent: Prisma.Decimal;
+                        ordersCount: number;
+                        rawData: Prisma.JsonValue;
+                        createdAt: Date;
+                    }>>`
+                        SELECT "id", "wooId", "email", "firstName", "lastName", "totalSpent", "ordersCount", "rawData", "createdAt"
+                        FROM "WooCustomer"
+                        WHERE "accountId" = ${accountId}
+                          AND "ordersCount" > 0
+                          AND lower("email") = ANY(${unsubscribedEmailList}::text[])
+                          ${searchClause}
+                        ORDER BY "firstName" ASC NULLS LAST, "lastName" ASC NULLS LAST
+                        LIMIT ${limit}
+                        OFFSET ${from}
+                    `
+                    : Promise.resolve([]),
+                unsubscribedEmailList.length > 0
+                    ? prisma.$queryRaw<Array<{ count: bigint }>>`
+                        SELECT COUNT(DISTINCT "id") AS count
+                        FROM "WooCustomer"
+                        WHERE "accountId" = ${accountId}
+                          AND "ordersCount" > 0
+                          AND lower("email") = ANY(${unsubscribedEmailList}::text[])
+                          ${searchClause}
+                    `
+                    : Promise.resolve([{ count: BigInt(0) }]),
+                prisma.wooCustomer.count({
+                    where: {
+                        accountId,
+                        ordersCount: { gt: 0 },
+                        ...(query
+                            ? {
+                                OR: [
+                                    { firstName: { contains: query, mode: 'insensitive' as const } },
+                                    { lastName: { contains: query, mode: 'insensitive' as const } },
+                                    { email: { contains: query, mode: 'insensitive' as const } }
+                                ]
+                            }
+                            : {})
+                    }
+                }),
+                esClient.search({
+                    index: 'customers',
+                    query: {
+                        bool: { must: baseMust }
+                    },
+                    from: 0,
+                    size: 0,
+                    track_total_hits: true,
+                    aggs: {
+                        contact_statuses: {
+                            terms: {
+                                field: 'rawData.contactStatus.keyword',
+                                size: 10
+                            }
+                        }
+                    }
+                }).catch(() => null)
+            ]);
+
+            const unsubscribedTotal = Number(unsubscribedTotalRows[0]?.count || 0);
+            const buckets = (allStatusAggs?.aggregations as any)?.contact_statuses?.buckets || [];
+            const rawCounts = buckets.reduce((acc: Record<string, number>, bucket: { key: string; doc_count: number }) => {
+                acc[bucket.key] = bucket.doc_count;
+                return acc;
+            }, {});
+            const knownStatusesTotal = (rawCounts.UNVERIFIED || 0)
+                + (rawCounts.SUBSCRIBED || 0)
+                + (rawCounts.BOUNCED || 0)
+                + (rawCounts.UNSUBSCRIBED || 0)
+                + (rawCounts.SOFT_BOUNCED || 0)
+                + (rawCounts.COMPLAINT || 0);
+            const missingStatusCount = Math.max(allCustomerCount - knownStatusesTotal, 0);
+
+            return {
+                customers: unsubscribedCustomers.map((customer) => ({
+                    id: String(customer.wooId),
+                    wooId: customer.wooId,
+                    email: customer.email,
+                    firstName: customer.firstName || '',
+                    lastName: customer.lastName || '',
+                    totalSpent: Number(customer.totalSpent),
+                    ordersCount: customer.ordersCount,
+                    dateCreated: customer.createdAt,
+                    rawData: customer.rawData,
+                    contactStatus: 'UNSUBSCRIBED' as ContactStatus
+                })),
+                total: unsubscribedTotal,
+                page,
+                totalPages: Math.ceil(unsubscribedTotal / limit),
+                statusCounts: {
+                    ALL: allCustomerCount,
+                    UNVERIFIED: rawCounts.UNVERIFIED || 0,
+                    SUBSCRIBED: Math.max(((rawCounts.SUBSCRIBED || 0) + missingStatusCount) - unsubscribedTotal, 0),
+                    BOUNCED: rawCounts.BOUNCED || 0,
+                    UNSUBSCRIBED: unsubscribedTotal,
+                    SOFT_BOUNCED: rawCounts.SOFT_BOUNCED || 0,
+                    COMPLAINT: rawCounts.COMPLAINT || 0
                 }
-            });
+            };
+
         }
 
-        if (status !== 'ALL' && status !== 'UNSUBSCRIBED') {
+        if (status !== 'ALL') {
             if (status === 'SUBSCRIBED') {
                 statusMust.push({
                     bool: {
@@ -283,7 +378,7 @@ export class CustomersService {
         }
 
         try {
-            const [response, allStatusAggs, unsubscribedUniverse] = await Promise.all([
+            const [response, allStatusAggs] = await Promise.all([
                 esClient.search({
                 index: 'customers',
                 query: {
@@ -313,27 +408,7 @@ export class CustomersService {
                             }
                         }
                     }
-                }),
-                unsubscribedCustomerIdList.length > 0
-                    ? esClient.search({
-                        index: 'customers',
-                        query: {
-                            bool: {
-                                must: [
-                                    ...baseMust,
-                                    {
-                                        terms: {
-                                            'id.keyword': unsubscribedCustomerIdList
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        from: 0,
-                        size: 0,
-                        track_total_hits: true
-                    })
-                    : Promise.resolve({ hits: { total: { value: 0 } } } as any)
+                })
             ]);
 
             const hits = response.hits.hits.map(hit => ({
@@ -368,7 +443,7 @@ export class CustomersService {
                 + (rawCounts.SOFT_BOUNCED || 0)
                 + (rawCounts.COMPLAINT || 0);
             const missingStatusCount = Math.max(allTotal - knownStatusesTotal, 0);
-            const unsubscribedCount = (unsubscribedUniverse.hits.total as any).value || 0;
+            const unsubscribedCount = unsubscribedCustomerIdList.length;
 
             const statusCounts = {
                 ALL: allTotal,

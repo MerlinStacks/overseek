@@ -465,6 +465,8 @@ export class InvoiceService {
             const marginLeft = 0;
             const marginTop = 0;
             const pageHeight = doc.page.height;
+            const printableMarginX = 48;
+            const printableWidth = pageWidth - (printableMarginX * 2);
             const DESIGN_WIDTH_PX = 794;
             const GRID_COLS = 12;
             const GRID_ROW_HEIGHT_PX = 30;
@@ -1110,15 +1112,36 @@ export class InvoiceService {
                 const scaledWPt = bounds.wPx * pxToPt * fitScaleX;
                 const rawItemX = scaledXPt;
                 const maxPageX = marginLeft + pageWidth;
-                const itemX = Math.max(marginLeft, Math.min(rawItemX, maxPageX - 20));
+                let itemX = Math.max(marginLeft, Math.min(rawItemX, maxPageX - 20));
                 const maxWidthAvailable = Math.max(20, maxPageX - itemX);
-                const itemWidth = Math.max(20, Math.min(scaledWPt, maxWidthAvailable));
+                let itemWidth = Math.max(20, Math.min(scaledWPt, maxWidthAvailable));
                 const flowOffset = pageFlowOffset.get(pageIndex) || 0;
                 let itemY = marginTop + localY + flowOffset;
+
+                if (itemConfig.type === 'header') {
+                    itemX = printableMarginX;
+                    itemWidth = printableWidth;
+                } else if (itemConfig.type === 'customer_details') {
+                    itemX = printableMarginX;
+                    itemWidth = Math.floor((printableWidth - 24) / 2);
+                } else if (itemConfig.type === 'order_details') {
+                    itemX = printableMarginX + Math.ceil((printableWidth + 24) / 2);
+                    itemWidth = Math.floor((printableWidth - 24) / 2);
+                } else if (itemConfig.type === 'order_table') {
+                    itemX = printableMarginX;
+                    itemWidth = printableWidth;
+                } else if (itemConfig.type === 'footer') {
+                    itemX = printableMarginX;
+                    itemWidth = printableWidth;
+                }
 
                 if (itemConfig.type === 'order_table' && pageIndex === 0 && primaryTopBottomPx > 0) {
                     const anchoredTableStartY = marginTop + (primaryTopBottomPx * pxToPt) + 12;
                     itemY = anchoredTableStartY;
+                }
+
+                if (itemConfig.type === 'header' && itemY < 32) {
+                    itemY = 32;
                 }
                 const itemHeight = bounds.h;
                 const renderedHeight = renderBlock(itemConfig, itemX, itemWidth, itemY, itemHeight);
