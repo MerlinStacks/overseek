@@ -9,6 +9,7 @@ import {
     Mail,
     Save,
     Send,
+    Smartphone,
     Trash2,
     Undo2,
     X,
@@ -51,6 +52,7 @@ const SAVED_FOOTERS_KEY = 'overseek-email-builder-saved-footers';
 const MAX_HISTORY_SNAPSHOTS = 8;
 const MAX_TEST_RECIPIENTS = 6;
 const MAX_SAVED_SECTION_PRESETS = 12;
+const UNLAYER_SCRIPT_URL = 'https://editor.unlayer.com/embed.js';
 
 export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCancel }) => {
     const emailEditorRef = useRef<EditorRef>(null);
@@ -166,6 +168,11 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
         setShowChecklistPanel(false);
         setShowReusablePanel(false);
         setShowHistoryPanel((value) => !value);
+    }, []);
+
+    const openMobilePreview = useCallback(() => {
+        const editor = emailEditorRef.current?.editor as { showPreview?: (mode?: 'desktop' | 'mobile') => void } | undefined;
+        editor?.showPreview?.('mobile');
     }, []);
 
     const toggleReusablePanel = useCallback(() => {
@@ -1198,6 +1205,14 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                             <span className="hidden sm:inline">Reusable</span>
                         </button>
                         <button
+                            onClick={openMobilePreview}
+                            disabled={loading}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <Smartphone size={16} />
+                            <span className="hidden sm:inline">Mobile Preview</span>
+                        </button>
+                        <button
                             onClick={toggleTestPanel}
                             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
@@ -1379,6 +1394,7 @@ export const EmailDesignEditor: React.FC<Props> = ({ initialDesign, onSave, onCa
                     <div className="h-full">
                         <EmailEditor
                             ref={emailEditorRef}
+                            scriptUrl={UNLAYER_SCRIPT_URL}
                             onLoad={onLoad}
                             onReady={onReady}
                             minHeight={'calc(100vh - 82px)'}

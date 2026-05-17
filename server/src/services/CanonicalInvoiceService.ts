@@ -151,7 +151,9 @@ export class CanonicalInvoiceService {
             let generatedPath = '';
             let rendererUsed = 'pdfkit-primary';
 
-            const generated = await invoiceService.generateInvoicePdf(data.accountId, data.orderId, data.templateId);
+            const generated = await invoiceService.generateInvoicePdf(data.accountId, data.orderId, data.templateId, {
+                layoutMode: 'operational-a4',
+            });
             generatedPath = generated.absolutePath;
             rendererUsed = 'pdfkit-primary';
 

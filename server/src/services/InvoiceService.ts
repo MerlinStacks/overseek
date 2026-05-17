@@ -279,11 +279,18 @@ export class InvoiceService {
      * Generates a PDF for an order based on a template.
      * Uses pdfkit to generate a professional PDF invoice.
      */
-    async generateInvoicePdf(accountId: string, orderId: string, templateId: string): Promise<{ relativeUrl: string, absolutePath: string }> {
+    async generateInvoicePdf(
+        accountId: string,
+        orderId: string,
+        templateId: string,
+        options: { layoutMode?: 'template' | 'operational-a4' } = {}
+    ): Promise<{ relativeUrl: string, absolutePath: string }> {
+        const layoutMode = options.layoutMode || 'template';
         Logger.warn('[InvoiceService] Using non-canonical server PDF renderer (PDFKit)', {
             accountId,
             orderId,
-            templateId
+            templateId,
+            layoutMode
         });
 
         // 1. Fetch Order Data with account scoping.
@@ -380,7 +387,7 @@ export class InvoiceService {
         const fileName = `invoice-${order.number}-${Date.now()}.pdf`;
         const filePath = path.join(INVOICE_DIR, fileName);
 
-        await this.createPdf(filePath, order, billing, lineItems, template, normalizedLayout, invoiceContext);
+        await this.createPdf(filePath, order, billing, lineItems, template, normalizedLayout, invoiceContext, { layoutMode });
 
         Logger.info(`Invoice PDF saved`, { filePath });
 
@@ -408,7 +415,8 @@ export class InvoiceService {
             paymentTermsDays: number;
             paymentUrl?: string;
             paymentQrBuffer?: Buffer | null;
-        }
+        },
+        options: { layoutMode?: 'template' | 'operational-a4' } = {}
     ): Promise<void> {
         return new Promise((resolve, reject) => {
             const doc = new PDFDocument({ margin: 0, size: 'A4' });
@@ -1098,8 +1106,58 @@ export class InvoiceService {
                 return blockHeight;
             };
 
-            // Render each grid item using designer coordinates (x/y/w) to preserve layout.
-            normalizedEntries.forEach((entry: any) => {
+            const getItemByType = (type: string) => items.find((item: any) => item.type === type);
+            const headerConfig = getItemByType('header');
+            const customerDetailsConfig = getItemByType('customer_details');
+            const orderDetailsConfig = getItemByType('order_details');
+            const orderTableConfig = getItemByType('order_table');
+            const footerConfig = getItemByType('footer');
+
+            if (options.layoutMode === 'operational-a4' && (headerConfig || customerDetailsConfig || orderDetailsConfig || orderTableConfig)) {
+                Logger.warn('[InvoiceService] Rendering operational A4 invoice layout', {
+                    accountId: order.accountId,
+                    orderId: order.id,
+                    pageWidth,
+                    pageHeight,
+                    printableMarginX,
+                    printableWidth,
+                });
+
+                const topY = 32;
+                const sectionGap = 24;
+                const columnGap = 24;
+                const halfWidth = Math.floor((printableWidth - columnGap) / 2);
+
+                const headerHeight = headerConfig
+                    ? renderBlock(headerConfig, printableMarginX, printableWidth, topY, 92)
+                    : 0;
+
+                const detailsY = topY + Math.max(92, headerHeight) + 20;
+                const customerHeight = customerDetailsConfig
+                    ? renderBlock(customerDetailsConfig, printableMarginX, halfWidth, detailsY, 140)
+                    : 0;
+                const orderDetailsHeight = orderDetailsConfig
+                    ? renderBlock(orderDetailsConfig, printableMarginX + halfWidth + columnGap, halfWidth, detailsY, 160)
+                    : 0;
+
+                const tableY = detailsY + Math.max(customerHeight, orderDetailsHeight, 120) + sectionGap;
+                const tableHeight = orderTableConfig
+                    ? renderBlock(orderTableConfig, printableMarginX, printableWidth, tableY, pageHeight - tableY - 90)
+                    : 0;
+
+                if (footerConfig) {
+                    const footerY = Math.max(pageHeight - 90, tableY + Math.max(0, tableHeight) + 24);
+                    if (footerY > pageHeight - 50) {
+                        doc.addPage();
+                        currentPageIndex += 1;
+                        renderBlock(footerConfig, printableMarginX, printableWidth, pageHeight - 90, 70);
+                    } else {
+                        renderBlock(footerConfig, printableMarginX, printableWidth, footerY, 70);
+                    }
+                }
+            } else {
+                // Render each grid item using designer coordinates for non-standard templates.
+                normalizedEntries.forEach((entry: any) => {
                 const itemConfig = entry.itemConfig;
                 const normalizedGridItem = entry.normalizedGridItem;
                 const bounds = toItemBounds(normalizedGridItem);
@@ -1150,7 +1208,8 @@ export class InvoiceService {
                 if (overflow > 0) {
                     pageFlowOffset.set(pageIndex, flowOffset + overflow + 4);
                 }
-            });
+                });
+            }
 
             // Register handlers before ending doc to avoid race condition
             stream.on('finish', resolve);

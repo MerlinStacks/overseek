@@ -358,7 +358,9 @@ export class ChatService {
 
         // Only handle autoreplies and push notifications for non-blocked customers
         if (senderType === 'CUSTOMER' && !isBlocked) {
-            await this.handleAutoReply(conversation);
+            if (conversation.channel !== 'SMS') {
+                await this.handleAutoReply(conversation);
+            }
 
             // Emit event for NotificationEngine to handle push
             EventBus.emit(EVENTS.CHAT.MESSAGE_RECEIVED, {
