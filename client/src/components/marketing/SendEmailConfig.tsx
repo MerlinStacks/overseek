@@ -5,7 +5,7 @@
 import { useRef, useState, type RefObject } from 'react';
 import { Search, Copy, X } from 'lucide-react';
 import { RichTextEditor } from '../common/RichTextEditor';
-import { EmailDesignEditor } from './EmailDesignEditor';
+import { MarketingEmailDesigner } from './MarketingEmailDesigner';
 import { EmailTemplateSelectorModal } from './flow/EmailTemplateSelectorModal';
 import { SaveAsTemplateModal } from './flow/SaveAsTemplateModal';
 import { EmailPreviewModal } from './flow/EmailPreviewModal';
@@ -558,7 +558,7 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
             )}
 
             {showVisualBuilder && (
-                <EmailDesignEditor
+                <MarketingEmailDesigner
                     initialDesign={config.designJson}
                     onSave={handleVisualBuilderSave}
                     onCancel={() => setShowVisualBuilder(false)}
