@@ -67,6 +67,7 @@ export class ChatService {
                         // Only fetch fields needed for display
                         wooCustomer: {
                             select: {
+                                id: true,
                                 firstName: true,
                                 lastName: true,
                                 email: true,

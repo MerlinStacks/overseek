@@ -12,6 +12,7 @@ export interface InboxMessage {
 }
 
 interface InboxWooCustomer {
+    id?: string;
     firstName?: string;
     lastName?: string;
     email?: string;

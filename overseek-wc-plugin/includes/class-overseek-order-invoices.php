@@ -27,6 +27,8 @@ class OverSeek_Order_Invoices
     private const META_INVOICE_RENDERER = '_overseek_invoice_renderer';
     private const META_INVOICE_DIAGNOSTIC_REASON = '_overseek_invoice_diagnostic_reason';
     private const META_INVOICE_RETRY_COUNT = '_overseek_invoice_retry_count';
+    private const META_INVOICE_RENDERER_VERSION = '_overseek_invoice_renderer_version';
+    private const CURRENT_RENDERER_VERSION = 'operational-a4-v2';
 
     private string $api_url;
     private string $account_id;
@@ -174,15 +176,24 @@ class OverSeek_Order_Invoices
             $existing_path = (string) $order->get_meta(self::META_INVOICE_PATH);
             if ($existing_path !== '') {
                 if (file_exists($existing_path) && is_readable($existing_path)) {
-                    if ((string) $order->get_meta(self::META_INVOICE_STATUS) === '') {
+                    $renderer_version = (string) $order->get_meta(self::META_INVOICE_RENDERER_VERSION);
+                    if ($renderer_version === self::CURRENT_RENDERER_VERSION) {
+                        if ((string) $order->get_meta(self::META_INVOICE_STATUS) === '') {
+                            $order->update_meta_data(self::META_INVOICE_STATUS, 'ready');
+                            $order->save();
+                        }
+                        return true;
+                    }
+
+                    if ((string) $order->get_meta(self::META_INVOICE_STATUS) === 'ready') {
                         $order->update_meta_data(self::META_INVOICE_STATUS, 'ready');
                         $order->save();
                     }
-                    return true;
                 }
 
                 $order->delete_meta_data(self::META_INVOICE_PATH);
                 $order->delete_meta_data(self::META_INVOICE_FILE);
+                $order->delete_meta_data(self::META_INVOICE_RENDERER_VERSION);
                 $order->save();
             }
         }
@@ -351,6 +362,7 @@ class OverSeek_Order_Invoices
 
         $order->update_meta_data(self::META_INVOICE_PATH, $file_path);
         $order->update_meta_data(self::META_INVOICE_FILE, $file_name);
+        $order->update_meta_data(self::META_INVOICE_RENDERER_VERSION, self::CURRENT_RENDERER_VERSION);
         if ($invoice_ref !== '') {
             $order->update_meta_data(self::META_INVOICE_REF, $invoice_ref);
         }
@@ -431,7 +443,11 @@ class OverSeek_Order_Invoices
         }
 
         $path = (string) $order->get_meta(self::META_INVOICE_PATH);
-        return $path !== '' && file_exists($path) && is_readable($path);
+        $renderer_version = (string) $order->get_meta(self::META_INVOICE_RENDERER_VERSION);
+        return $renderer_version === self::CURRENT_RENDERER_VERSION
+            && $path !== ''
+            && file_exists($path)
+            && is_readable($path);
     }
 
     public function user_can_access_invoice(WC_Order $order, ?int $user_id = null): bool

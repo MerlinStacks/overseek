@@ -4,6 +4,7 @@ import { Logger } from '../../utils/logger';
 import { SalesForecastService } from './SalesForecast';
 import { CustomReportService, CustomReportConfig } from './CustomReport';
 import { REVENUE_STATUSES } from '../../constants/orderStatus';
+import type { Prisma } from '@prisma/client';
 
 /**
  * Sales Analytics Service
@@ -20,42 +21,49 @@ export class SalesAnalytics {
         try {
             const account = await prisma.account.findUnique({ where: { id: accountId } });
             const useInclusive = account?.revenueTaxInclusive ?? true;
-            const revenueField = useInclusive ? 'total' : 'net_sales';
+            const statuses = [...new Set(REVENUE_STATUSES.map(status => status.toLowerCase()))];
+            const dateCreated: Prisma.DateTimeFilter = {};
 
-            const must: any[] = [
-                { term: { accountId } },
-                { terms: { 'status': REVENUE_STATUSES } }
-            ];
-
-            if (startDate || endDate) {
-                let finalEndDate = endDate;
-                if (finalEndDate && !finalEndDate.includes('T')) {
-                    finalEndDate = `${finalEndDate}T23:59:59.999`;
-                }
-
-                must.push({
-                    range: {
-                        date_created: {
-                            gte: startDate,
-                            lte: finalEndDate
-                        }
-                    }
-                });
+            if (startDate) {
+                dateCreated.gte = new Date(startDate.includes('T') ? startDate : `${startDate}T00:00:00.000Z`);
             }
 
-            const response = await esClient.search({
-                index: 'orders',
-                size: 0,
-                query: { bool: { must } },
-                aggs: {
-                    total_sales: { sum: { field: revenueField } },
-                    order_count: { value_count: { field: 'id' } }
-                }
+            if (endDate) {
+                dateCreated.lte = new Date(endDate.includes('T') ? endDate : `${endDate}T23:59:59.999Z`);
+            }
+
+            const where: Prisma.WooOrderWhereInput = {
+                accountId,
+                status: { in: statuses },
+                ...(Object.keys(dateCreated).length > 0 ? { dateCreated } : {})
+            };
+
+            if (useInclusive) {
+                const [sales, count] = await Promise.all([
+                    prisma.wooOrder.aggregate({ where, _sum: { total: true } }),
+                    prisma.wooOrder.count({ where })
+                ]);
+
+                return {
+                    total: Number(sales._sum.total || 0),
+                    count
+                };
+            }
+
+            const orders = await prisma.wooOrder.findMany({
+                where,
+                select: { total: true, rawData: true }
             });
-            const aggs = response.aggregations as any;
+
+            const total = orders.reduce((sum, order) => {
+                const rawData = order.rawData as { total_tax?: unknown };
+                const tax = Number(rawData?.total_tax ?? 0);
+                return sum + Number(order.total) - (Number.isFinite(tax) ? tax : 0);
+            }, 0);
+
             return {
-                total: aggs?.total_sales?.value || 0,
-                count: aggs?.order_count?.value || 0
+                total,
+                count: orders.length
             };
         } catch (error) {
             Logger.error('Analytics Total Sales Error', { error });

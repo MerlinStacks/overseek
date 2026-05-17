@@ -104,7 +104,7 @@ export function ContactPanel({ conversation, messageCount, onSelectConversation 
     const customer = conversation?.wooCustomer;
 
 
-    const fetchCustomerOrders = useCallback(async (wooCustomerId: number, signal?: AbortSignal) => {
+    const fetchCustomerOrders = useCallback(async (wooCustomerId: number, customerId?: string, signal?: AbortSignal) => {
         setIsLoadingOrders(true);
         try {
             const headers = {
@@ -115,7 +115,9 @@ export function ContactPanel({ conversation, messageCount, onSelectConversation 
             // Fetch orders and conversations in parallel
             const [ordersRes, convsRes] = await Promise.all([
                 fetch(`/api/orders?customerId=${wooCustomerId}&limit=5`, { headers, signal }),
-                fetch(`/api/chat/conversations?wooCustomerId=${wooCustomerId}&limit=100&sort=updated`, { headers, signal })
+                customerId
+                    ? fetch(`/api/chat/conversations?wooCustomerId=${encodeURIComponent(customerId)}&limit=100&sort=updated`, { headers, signal })
+                    : Promise.resolve(null)
             ]);
 
             if (ordersRes.ok) {
@@ -123,7 +125,7 @@ export function ContactPanel({ conversation, messageCount, onSelectConversation 
                 setRecentOrders((ordersData as { orders?: Order[] }).orders || []);
             }
 
-            if (convsRes.ok) {
+            if (convsRes?.ok) {
                 const convsData: unknown = await convsRes.json();
                 const source = Array.isArray(convsData)
                     ? convsData
@@ -190,16 +192,16 @@ export function ContactPanel({ conversation, messageCount, onSelectConversation 
     useEffect(() => {
         const controller = new AbortController();
         if (customer?.wooId && token && currentAccount?.id) {
-            fetchCustomerOrders(customer.wooId, controller.signal);
-        } else if (conversation?.guestEmail && token && currentAccount?.id) {
-            fetchOrdersByEmail(conversation.guestEmail, controller.signal);
+            fetchCustomerOrders(customer.wooId, customer.id, controller.signal);
+        } else if ((customer?.email || conversation?.guestEmail) && token && currentAccount?.id) {
+            fetchOrdersByEmail(customer?.email || conversation?.guestEmail || '', controller.signal);
         } else {
             setRecentOrders([]);
             setPreviousConversations([]);
             setHasMorePreviousConversations(false);
         }
         return () => controller.abort();
-    }, [customer?.wooId, conversation?.guestEmail, token, currentAccount?.id, fetchCustomerOrders, fetchOrdersByEmail]);
+    }, [customer?.id, customer?.wooId, customer?.email, conversation?.guestEmail, token, currentAccount?.id, fetchCustomerOrders, fetchOrdersByEmail]);
 
     if (!conversation) return null;
 

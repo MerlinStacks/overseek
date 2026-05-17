@@ -7,6 +7,7 @@ import { Logger } from '../utils/logger';
 import { InvoiceService } from './InvoiceService';
 
 const invoiceService = new InvoiceService();
+const OPERATIONAL_A4_RENDERER_VERSION = 'operational-a4-v2';
 
 function isCanonicalRenderer(renderer: string | null | undefined): boolean {
     return renderer === 'pdfkit-primary'
@@ -22,7 +23,9 @@ function normalizeTemplateVersion(layout: any): string {
 
 function getLayoutHash(layout: any): string {
     const serialized = typeof layout === 'string' ? layout : JSON.stringify(layout ?? {});
-    return createHash('sha256').update(serialized).digest('hex');
+    return createHash('sha256')
+        .update(`${OPERATIONAL_A4_RENDERER_VERSION}:${serialized}`)
+        .digest('hex');
 }
 
 export class CanonicalInvoiceService {
