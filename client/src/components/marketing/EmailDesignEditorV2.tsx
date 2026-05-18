@@ -105,6 +105,13 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [invoiceLogoUrl, setInvoiceLogoUrl] = useState('');
 
     const html = useMemo(() => compileEmailDesignV2(design), [design]);
+    const iframePreviewHtml = useMemo(() => {
+        const baseHref = typeof window !== 'undefined' ? window.location.origin : '';
+        if (!baseHref) return html;
+        return html.includes('<head>')
+            ? html.replace('<head>', `<head><base href="${baseHref}/">`)
+            : html;
+    }, [html]);
     const selectedSection = design.document.sections.find((section) => section.id === selectedSectionId) || design.document.sections[0];
     const selectedBlock = selectedSection?.columns.flatMap((column) => column.blocks).find((block) => block.id === selectedBlockId) || null;
     const groupedIssues = groupPreflightIssues(issues);
@@ -671,7 +678,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                 <div className="mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700" style={{ width: previewMode === 'mobile' ? 390 : Math.min(design.document.theme.contentWidth, 920), maxWidth: '100%' }}>
                                     <iframe
                                         title="Compiled email HTML preview"
-                                        srcDoc={html}
+                                        srcDoc={iframePreviewHtml}
                                         className="h-[78vh] w-full bg-white"
                                         sandbox="allow-popups allow-popups-to-escape-sandbox"
                                     />

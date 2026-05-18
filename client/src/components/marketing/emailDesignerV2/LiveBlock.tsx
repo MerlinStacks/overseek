@@ -364,6 +364,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         textAlign: align,
         direction: 'ltr',
         unicodeBidi: 'normal',
+        writingMode: 'horizontal-tb',
         fontSize: size,
         lineHeight: block.props.lineHeight || 1.6,
         color: block.props.color || theme.textColor,
@@ -372,7 +373,10 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
     }), [align, block.props.color, block.props.lineHeight, block.props.padding, size, theme.textColor]);
 
     const syncHtml = () => {
-        const nextHtml = editorRef.current?.innerHTML || '';
+        const editor = editorRef.current;
+        if (!editor) return;
+        normalizeEditorDirection(editor);
+        const nextHtml = sanitizeRtlHtml(editor.innerHTML);
         onUpdate((draft) => {
             if (draft.type === 'text') draft.props.html = nextHtml;
         });
@@ -416,6 +420,9 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                 suppressContentEditableWarning
                 dir="ltr"
                 onFocus={() => setIsFocused(true)}
+                onFocusCapture={() => {
+                    if (editorRef.current) normalizeEditorDirection(editorRef.current);
+                }}
                 onBlur={() => {
                     requestAnimationFrame(() => {
                         const active = document.activeElement;
@@ -594,4 +601,24 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
             )}
         </div>
     );
+}
+
+function normalizeEditorDirection(editor: HTMLDivElement): void {
+    editor.setAttribute('dir', 'ltr');
+    editor.style.direction = 'ltr';
+    editor.style.unicodeBidi = 'normal';
+    editor.style.writingMode = 'horizontal-tb';
+
+    editor.querySelectorAll<HTMLElement>('*').forEach((node) => {
+        if (node.getAttribute('dir')?.toLowerCase() === 'rtl') node.removeAttribute('dir');
+        if (node.style.direction === 'rtl') node.style.direction = 'ltr';
+        if (node.style.unicodeBidi === 'bidi-override') node.style.unicodeBidi = 'normal';
+    });
+}
+
+function sanitizeRtlHtml(html: string): string {
+    return html
+        .replace(/\sdir=(['"])rtl\1/gi, '')
+        .replace(/direction\s*:\s*rtl\s*;?/gi, 'direction:ltr;')
+        .replace(/unicode-bidi\s*:\s*bidi-override\s*;?/gi, 'unicode-bidi:normal;');
 }

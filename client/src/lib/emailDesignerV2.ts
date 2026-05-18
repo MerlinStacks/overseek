@@ -549,6 +549,18 @@ export function compileEmailDesignV2(envelope: EmailDesignV2Envelope): string {
 </html>`;
 }
 
+function toAbsoluteUrl(url: string): string {
+    const value = url.trim();
+    if (!value) return value;
+    if (/^(https?:|mailto:|tel:|data:|cid:)/i.test(value)) return value;
+    if (typeof window === 'undefined' || !window.location?.origin) return value;
+    try {
+        return new URL(value, `${window.location.origin}/`).toString();
+    } catch {
+        return value;
+    }
+}
+
 function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
     const visibilityClass = getVisibilityClass(section.visibility);
     const columns = section.columns.length > 0 ? section.columns : [{ id: createEmailDesignId('column'), width: 100, blocks: [] }];
@@ -565,8 +577,9 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'siteLogo') {
         const props = block.props;
+        const logoSrc = toAbsoluteUrl(props.src || '');
         const content = props.src
-            ? `<img src="${escapeHtml(props.src)}" alt="${escapeHtml(props.alt || props.fallbackText || 'Logo')}" width="${props.width || 160}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`
+            ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(props.alt || props.fallbackText || 'Logo')}" width="${props.width || 160}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`
             : `<h1 style="margin:0;color:${theme.textColor};font-size:28px;line-height:1.25;">${escapeHtml(props.fallbackText || props.alt || 'Your Store')}</h1>`;
         return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${content}</div>`;
     }
@@ -578,14 +591,15 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'image') {
         const props = block.props;
-        const image = `<img src="${escapeHtml(props.src)}" alt="${escapeHtml(props.alt || '')}" width="${props.width || 560}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`;
-        const linked = props.href ? `<a href="${escapeHtml(props.href)}">${image}</a>` : image;
+        const imageSrc = toAbsoluteUrl(props.src || '');
+        const image = `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(props.alt || '')}" width="${props.width || 560}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`;
+        const linked = props.href ? `<a href="${escapeHtml(toAbsoluteUrl(props.href))}">${image}</a>` : image;
         return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${linked}</div>`;
     }
 
     if (block.type === 'button') {
         const props = block.props;
-        return `<div class="${visibilityClass}" style="padding:${props.padding || '16px 0'};text-align:${props.align || 'center'};"><a href="${escapeHtml(props.href || '{{store_url}}')}" style="display:inline-block;background:${props.backgroundColor || theme.primaryColor};color:${props.color || '#ffffff'};text-decoration:${props.textDecoration || 'none'};border-radius:${props.borderRadius ?? theme.borderRadius}px;padding:12px 20px;font-weight:${props.fontWeight || 700};font-size:${props.fontSize || 14}px;font-style:${props.fontStyle || 'normal'};">${escapeHtml(props.label || 'Button')}</a></div>`;
+        return `<div class="${visibilityClass}" style="padding:${props.padding || '16px 0'};text-align:${props.align || 'center'};"><a href="${escapeHtml(toAbsoluteUrl(props.href || '{{store_url}}'))}" style="display:inline-block;background:${props.backgroundColor || theme.primaryColor};color:${props.color || '#ffffff'};text-decoration:${props.textDecoration || 'none'};border-radius:${props.borderRadius ?? theme.borderRadius}px;padding:12px 20px;font-weight:${props.fontWeight || 700};font-size:${props.fontSize || 14}px;font-style:${props.fontStyle || 'normal'};">${escapeHtml(props.label || 'Button')}</a></div>`;
     }
 
     if (block.type === 'list') {
@@ -608,9 +622,10 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         const productImage = props.productImage || '{{product.image}}';
         const productPrice = props.productPrice || '{{product.price}}';
         const productDescription = props.productDescription || '{{product.description}}';
-        const productUrl = props.productUrl || props.buttonHref || '{{store_url}}';
+        const productUrl = toAbsoluteUrl(props.productUrl || props.buttonHref || '{{store_url}}');
+        const productImageSrc = toAbsoluteUrl(productImage);
         return `<div class="${visibilityClass}" style="padding:18px 0;text-align:center;">
-            ${props.showImage ? `<img src="${escapeHtml(productImage)}" alt="${escapeHtml(productName)}" width="220" style="display:block;max-width:100%;height:auto;border-radius:10px;margin:0 auto 14px;" />` : ''}
+            ${props.showImage ? `<img src="${escapeHtml(productImageSrc)}" alt="${escapeHtml(productName)}" width="220" style="display:block;max-width:100%;height:auto;border-radius:10px;margin:0 auto 14px;" />` : ''}
             <h3 style="margin:0 0 8px;color:${theme.textColor};font-size:20px;line-height:1.3;">${escapeHtml(productName)}</h3>
             ${props.showDescription ? `<p style="margin:0 0 10px;color:#64748b;line-height:1.6;">${escapeHtml(productDescription)}</p>` : ''}
             ${props.showPrice ? `<p style="margin:0 0 14px;color:${theme.primaryColor};font-weight:700;">${escapeHtml(productPrice)}</p>` : ''}
@@ -633,13 +648,13 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'social') {
         const props = block.props;
-        const links = props.links.map((link) => renderSocialIconLink(link.label, link.href, link.iconStyle || props.iconStyle || 'solid', props.color || theme.primaryColor)).join('');
+        const links = props.links.map((link) => renderSocialIconLink(link.label, toAbsoluteUrl(link.href), link.iconStyle || props.iconStyle || 'solid', props.color || theme.primaryColor)).join('');
         return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.5;">${links}</div>`;
     }
 
     if (block.type === 'menu') {
         const props = block.props;
-        const links = props.links.map((link) => `<a href="${escapeHtml(link.href)}" style="display:inline-block;margin:0 10px;color:${props.color || theme.primaryColor};text-decoration:none;font-weight:600;">${escapeHtml(link.label)}</a>`).join('');
+        const links = props.links.map((link) => `<a href="${escapeHtml(toAbsoluteUrl(link.href))}" style="display:inline-block;margin:0 10px;color:${props.color || theme.primaryColor};text-decoration:none;font-weight:600;">${escapeHtml(link.label)}</a>`).join('');
         return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.5;">${links}</div>`;
     }
 

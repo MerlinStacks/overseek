@@ -53,6 +53,21 @@ export function evaluateEmailPreflight({ html, subject = '', emailCategory = 'MA
         issues.push({ id: 'alt', severity: 'warning', message: 'Some images are missing alt text.' });
     }
 
+    const hasNonAbsoluteImageUrl = imageTags.some((img) => {
+        const srcMatch = img.match(/src\s*=\s*['"]([^'"]+)['"]/i);
+        if (!srcMatch) return false;
+        const src = srcMatch[1].trim();
+        if (!src) return true;
+        return !/^(https?:|data:|cid:)/i.test(src);
+    });
+    if (hasNonAbsoluteImageUrl) {
+        issues.push({
+            id: 'image-absolute-url',
+            severity: 'warning',
+            message: 'Some images use non-absolute URLs. Use public HTTPS image URLs for reliable inbox rendering.'
+        });
+    }
+
     const suspiciousWords = ['free!!!', 'guaranteed', 'act now', 'buy now', 'risk free'];
     const hasSpamWord = suspiciousWords.some((word) => lower.includes(word));
     if (hasSpamWord) {

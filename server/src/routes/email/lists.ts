@@ -57,6 +57,12 @@ const BulkUnsubscribeSchema = z.object({
     message: 'Provide at least one email via emails or payload'
 });
 
+const SuppressionListQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    q: z.string().optional()
+});
+
 function extractEmailsFromPayload(payload: string): string[] {
     return payload
         .split(/[\s,;\n\r\t]+/)
@@ -300,6 +306,78 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
             invalidCount: invalidEmails.length,
             invalidEmails: invalidEmails.slice(0, 20)
         };
+    });
+
+    fastify.get('/suppressions', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
+
+        const parsed = SuppressionListQuerySchema.safeParse(request.query || {});
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid query parameters' });
+
+        const { page, limit, q } = parsed.data;
+        const from = (page - 1) * limit;
+        const search = q?.trim().toLowerCase() || '';
+
+        const whereClause = {
+            accountId,
+            ...(search
+                ? {
+                    email: {
+                        contains: search,
+                        mode: 'insensitive' as const
+                    }
+                }
+                : {})
+        };
+
+        const [rows, total] = await Promise.all([
+            prisma.emailUnsubscribe.findMany({
+                where: whereClause,
+                orderBy: { createdAt: 'desc' },
+                skip: from,
+                take: limit,
+                select: {
+                    id: true,
+                    email: true,
+                    scope: true,
+                    reason: true,
+                    createdAt: true
+                }
+            }),
+            prisma.emailUnsubscribe.count({ where: whereClause })
+        ]);
+
+        return {
+            suppressions: rows,
+            total,
+            page,
+            totalPages: Math.max(1, Math.ceil(total / limit))
+        };
+    });
+
+    fastify.delete<{ Params: { email: string } }>('/suppressions/:email', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account context required' });
+
+        const email = decodeURIComponent(request.params.email || '').trim().toLowerCase();
+        const isValid = z.string().email().safeParse(email).success;
+        if (!isValid) {
+            return reply.code(400).send({ error: 'Invalid email address' });
+        }
+
+        const result = await prisma.emailUnsubscribe.deleteMany({
+            where: {
+                accountId,
+                email: { equals: email, mode: 'insensitive' }
+            }
+        });
+
+        if (result.count === 0) {
+            return reply.code(404).send({ error: 'Suppression not found' });
+        }
+
+        return { success: true, removed: result.count };
     });
 };
 

@@ -188,6 +188,35 @@ export function EmailLogPanel() {
         }
     };
 
+    const clearSuppressionForRecipient = async (recipientEmail: string) => {
+        if (!currentAccount || !token) return;
+        const normalized = recipientEmail.trim().toLowerCase();
+        if (!normalized || !confirm(`Remove suppression for ${normalized}?`)) return;
+
+        setBusyLogId(`suppression:${normalized}`);
+        try {
+            const res = await fetch(`/api/email/suppressions/${encodeURIComponent(normalized)}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Failed to remove suppression');
+            }
+
+            toast.success(`Suppression removed for ${normalized}`);
+            await fetchLogs();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to remove suppression');
+        } finally {
+            setBusyLogId(null);
+        }
+    };
+
     const totalPages = Math.ceil(total / limit);
     const currentPage = Math.floor(offset / limit) + 1;
     const queuedCount = logs.filter((log) => log.status === 'PENDING_RETRY').length;
@@ -372,6 +401,17 @@ export function EmailLogPanel() {
                                                     className="rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-50"
                                                 >
                                                     Retry send
+                                                </button>
+                                            </div>
+                                        )}
+                                        {log.status === 'SKIPPED' && log.errorMessage?.toLowerCase().includes('recipient is unsubscribed') && (
+                                            <div className="col-span-2 flex flex-wrap gap-2 pt-2">
+                                                <button
+                                                    onClick={() => clearSuppressionForRecipient(log.to)}
+                                                    disabled={busyLogId === `suppression:${log.to.trim().toLowerCase()}`}
+                                                    className="rounded-lg border border-indigo-300 px-3 py-1.5 text-sm text-indigo-700 transition-colors hover:bg-indigo-50 disabled:opacity-50"
+                                                >
+                                                    Re-subscribe recipient
                                                 </button>
                                             </div>
                                         )}
