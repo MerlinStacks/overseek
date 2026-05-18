@@ -38,4 +38,5 @@ export const EMAIL_MERGE_TAGS: MergeTagDefinition[] = [
     { category: 'cart', label: 'Cart Items Table', value: '{{cart.itemsTable}}' },
     { category: 'general', label: 'Store URL', value: '{{store_url}}' },
     { category: 'general', label: 'Unsubscribe URL', value: '{{unsubscribe_url}}' },
+    { category: 'general', label: 'Email Preferences URL', value: '{{preferences_url}}' },
 ];

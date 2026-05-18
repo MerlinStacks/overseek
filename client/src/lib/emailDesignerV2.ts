@@ -561,6 +561,10 @@ function toAbsoluteUrl(url: string): string {
     }
 }
 
+function isEmailImageSource(url: string): boolean {
+    return /^(https?:|data:|cid:)/i.test(url.trim());
+}
+
 function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
     const visibilityClass = getVisibilityClass(section.visibility);
     const columns = section.columns.length > 0 ? section.columns : [{ id: createEmailDesignId('column'), width: 100, blocks: [] }];
@@ -578,7 +582,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     if (block.type === 'siteLogo') {
         const props = block.props;
         const logoSrc = toAbsoluteUrl(props.src || '');
-        const content = props.src
+        const content = logoSrc && isEmailImageSource(logoSrc)
             ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(props.alt || props.fallbackText || 'Logo')}" width="${props.width || 160}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`
             : `<h1 style="margin:0;color:${theme.textColor};font-size:28px;line-height:1.25;">${escapeHtml(props.fallbackText || props.alt || 'Your Store')}</h1>`;
         return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${content}</div>`;
@@ -592,6 +596,9 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     if (block.type === 'image') {
         const props = block.props;
         const imageSrc = toAbsoluteUrl(props.src || '');
+        if (!isEmailImageSource(imageSrc)) {
+            return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};color:${theme.mutedTextColor};font-size:13px;">Image source unavailable</div>`;
+        }
         const image = `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(props.alt || '')}" width="${props.width || 560}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`;
         const linked = props.href ? `<a href="${escapeHtml(toAbsoluteUrl(props.href))}">${image}</a>` : image;
         return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${linked}</div>`;

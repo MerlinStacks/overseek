@@ -97,6 +97,10 @@ export class EmailService {
         return `${this.buildApiBaseUrl()}/api/email/unsubscribe/${trackingId}`;
     }
 
+    private buildPreferencesUrl(trackingId: string): string {
+        return `${this.buildApiBaseUrl()}/api/email/preferences/${trackingId}`;
+    }
+
     private async enforceSendingLimits(accountId: string): Promise<{ allowed: boolean; reason?: string }> {
         const settings = await this.getEmailSettings(accountId);
 
@@ -316,10 +320,17 @@ export class EmailService {
         const unsubscribeUrl = emailCategory === 'MARKETING'
             ? this.buildUnsubscribeHeaderUrl(trackingId)
             : null;
+        const preferencesUrl = emailCategory === 'MARKETING'
+            ? this.buildPreferencesUrl(trackingId)
+            : null;
 
-        const htmlWithMergeTagUrls = unsubscribeUrl
-            ? htmlWithTracking.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl)
-            : htmlWithTracking;
+        let htmlWithMergeTagUrls = htmlWithTracking;
+        if (unsubscribeUrl) {
+            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl);
+        }
+        if (preferencesUrl) {
+            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{preferences_url\}\}/g, preferencesUrl);
+        }
 
         // Try HTTP relay first if configured
         if (emailAccount.relayEndpoint && emailAccount.relayApiKey) {

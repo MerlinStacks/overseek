@@ -71,6 +71,7 @@ interface BillingData {
 
 interface ShippingLineData {
     method_title?: string;
+    methodTitle?: string;
 }
 
 interface InvoiceLineItemData {
@@ -217,7 +218,11 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                     ? new Date(data.date_created).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
                     : 'N/A';
                 const paymentMethod = data?.payment_method_title || data?.payment_method || 'N/A';
-                const shippingMethod = data?.shipping_lines?.[0]?.method_title || data?.shipping_method || 'N/A';
+                const shippingMethod =
+                    data?.shipping_lines?.[0]?.method_title
+                    || data?.shipping_lines?.[0]?.methodTitle
+                    || data?.shipping_method
+                    || 'N/A';
 
                 return (
                     <div className="py-3">

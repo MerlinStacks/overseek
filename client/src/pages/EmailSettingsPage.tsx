@@ -21,6 +21,7 @@ const buildDefaultEmailFooterHtml = (accountName: string) => `<p>You are receivi
 const EMAIL_FOOTER_MERGE_TAGS = [
     { label: 'Store URL', value: '{{store_url}}' },
     { label: 'Unsubscribe URL', value: '{{unsubscribe_url}}' },
+    { label: 'Email Preferences URL', value: '{{preferences_url}}' },
     { label: 'Customer First Name', value: '{{customer.firstName}}' },
     { label: 'Customer Last Name', value: '{{customer.lastName}}' },
     { label: 'Customer Email', value: '{{customer.email}}' },

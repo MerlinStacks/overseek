@@ -73,6 +73,12 @@ const MAX_TEST_RECIPIENTS = 5;
 const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'X', 'Twitter', 'LinkedIn', 'Pinterest'];
 const SOCIAL_ICON_STYLES: SocialIconStyle[] = ['solid', 'outline', 'glyph'];
 
+function isEmailSafeImageUrl(value: string): boolean {
+    const candidate = value.trim();
+    if (!candidate) return false;
+    return /^(https?:|data:|cid:)/i.test(candidate);
+}
+
 export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initialPreviewText = '', onSave, onCancel }: Props) {
     const { token, user } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
@@ -121,7 +127,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const isInvoiceDownloadBlock = selectedBlock?.type === 'button' && (selectedBlock.props.href || '').trim() === '{{order.invoiceUrl}}';
     const hideRightSidebar = (selectedBlock?.type === 'text' || selectedBlock?.type === 'footer' || isInvoiceDownloadBlock) && !isUtilityPanel;
 
-    const brandLogoUrl = invoiceLogoUrl || currentAccount?.appearance?.logoUrl || '';
+    const appearanceLogoUrl = currentAccount?.appearance?.logoUrl || '';
+    const brandLogoUrl = isEmailSafeImageUrl(invoiceLogoUrl) ? invoiceLogoUrl : appearanceLogoUrl;
     const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
     const accountFooterHtml = currentAccount?.appearance?.emailFooterHtml || createAccountFooterHtml(accountName);
 

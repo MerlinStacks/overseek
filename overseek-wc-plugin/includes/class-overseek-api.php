@@ -375,7 +375,7 @@ class OverSeek_API {
 		// Validate required fields.
 		$to = isset( $params['to'] ) ? sanitize_email( $params['to'] ) : '';
 		$subject = isset( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
-		$html = isset( $params['html'] ) ? wp_kses_post( $params['html'] ) : '';
+		$html = ( isset( $params['html'] ) && is_string( $params['html'] ) ) ? $params['html'] : '';
 
 		if ( empty( $to ) || ! is_email( $to ) ) {
 			return new WP_REST_Response( [ 'success' => false, 'error' => 'Invalid or missing "to" address' ], 400 );

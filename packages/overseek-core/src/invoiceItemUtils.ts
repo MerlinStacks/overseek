@@ -102,7 +102,14 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
   const customMeta =
     item.meta_data?.filter((entry) => {
       const key = String(entry.key || entry.name || '');
-      if (key && isExcludedInvoiceMetaKey(key)) return false;
+      const displayLabel = String(entry.display_key || '').trim();
+
+      if (key && isExcludedInvoiceMetaKey(key)) {
+        const labelLooksInternal = !displayLabel
+          || isExcludedInvoiceMetaKey(displayLabel)
+          || /^wcpa/i.test(displayLabel);
+        if (labelLooksInternal) return false;
+      }
       if (key.startsWith('pa_')) return false;
 
       const rawValue = entry.display_value ?? entry.value;

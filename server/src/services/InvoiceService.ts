@@ -736,7 +736,13 @@ export class InvoiceService {
                     case 'order_details': {
                         doc.fontSize(9);
                         const rawData = order.rawData as any || {};
-                        const shippingMethod = rawData.shipping_lines?.[0]?.method_title || 'N/A';
+                        const shippingMethod =
+                            rawData.shipping_lines?.[0]?.method_title
+                            || rawData.shipping_lines?.[0]?.methodTitle
+                            || rawData.shipping_method
+                            || rawData.shipping_method_title
+                            || order.shippingMethod
+                            || 'N/A';
                         const paymentMethod = rawData.payment_method_title || order.paymentMethod || 'N/A';
                         // Use WooCommerce's date_created for consistency with client-side rendering
                         const orderDate = rawData.date_created

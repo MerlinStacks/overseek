@@ -437,7 +437,13 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                 dir="ltr"
                 onFocus={() => setIsFocused(true)}
                 onFocusCapture={() => {
-                    if (editorRef.current) normalizeEditorDirection(editorRef.current);
+                    if (editorRef.current) {
+                        normalizeEditorDirection(editorRef.current);
+                        const cleanedHtml = sanitizeRtlHtml(editorRef.current.innerHTML);
+                        if (cleanedHtml !== editorRef.current.innerHTML) {
+                            editorRef.current.innerHTML = cleanedHtml;
+                        }
+                    }
                 }}
                 onBlur={() => {
                     requestAnimationFrame(() => {
@@ -630,6 +636,15 @@ function normalizeEditorDirection(editor: HTMLDivElement): void {
         if (node.style.direction === 'rtl') node.style.direction = 'ltr';
         if (node.style.unicodeBidi === 'bidi-override') node.style.unicodeBidi = 'plaintext';
     });
+
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    let current = walker.nextNode();
+    while (current) {
+        const textNode = current as Text;
+        const cleaned = textNode.data.replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '');
+        if (cleaned !== textNode.data) textNode.data = cleaned;
+        current = walker.nextNode();
+    }
 }
 
 function sanitizeRtlHtml(html: string): string {

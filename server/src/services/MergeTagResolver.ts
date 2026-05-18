@@ -20,6 +20,8 @@ interface MergeTagContext {
     link_trigger?: string;
     storeUrl?: string;
     store_url?: string;
+    preferencesUrl?: string;
+    preferences_url?: string;
 }
 
 /**
@@ -35,6 +37,8 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     result = result.replace(/\{\{store_url\}\}/g, storeUrl);
     const linkTriggerUrl = normalizeStoreUrl(context.linkTriggerUrl || context.link_trigger) || storeUrl;
     result = result.replace(/\{\{link_trigger\}\}/g, linkTriggerUrl);
+    const preferencesUrl = context.preferencesUrl || context.preferences_url || '';
+    result = result.replace(/\{\{preferences_url\}\}/g, preferencesUrl);
 
     // Order merge tags
     if (context.order) {
