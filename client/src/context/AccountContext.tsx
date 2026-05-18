@@ -20,6 +20,7 @@ interface Account {
         primaryColor?: string;
         appName?: string;
         socialLinks?: Array<{ label: string; href: string }>;
+        emailFooterHtml?: string;
     };
     goldPrice?: number;
     goldPriceCurrency?: string;

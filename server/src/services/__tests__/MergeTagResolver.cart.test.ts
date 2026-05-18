@@ -2,6 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { resolveMergeTags } from '../MergeTagResolver';
 
 describe('MergeTagResolver cart merge tags', () => {
+    it('renders link trigger merge tag with provided URL', () => {
+        const html = resolveMergeTags(
+            '<a href="{{link_trigger}}">Trigger</a>',
+            {
+                linkTriggerUrl: 'https://example.com/trigger-path'
+            }
+        );
+
+        expect(html).toContain('https://example.com/trigger-path');
+    });
+
+    it('falls back link trigger merge tag to store URL', () => {
+        const html = resolveMergeTags(
+            '<a href="{{link_trigger}}">Trigger</a>',
+            {
+                storeUrl: 'https://store.example.com'
+            }
+        );
+
+        expect(html).toContain('https://store.example.com');
+    });
+
     it('renders cart recovery merge tags', () => {
         const html = resolveMergeTags(
             'Resume here: {{cart.recoveryUrl}} total {{cart.total}} {{cart.currency}}',
@@ -36,5 +58,21 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).toContain('WINBACK-1234');
         expect(html).toContain('15%');
         expect(html).toContain('1 May 2026');
+    });
+
+    it('renders invoice download merge tags', () => {
+        const html = resolveMergeTags(
+            '<a href="{{order.invoiceUrl}}">Invoice</a> {{invoice_url}} {{pdf_url}}',
+            {
+                order: {
+                    invoice_url: 'https://example.com/wp-json/overseek/v1/invoices/download?order_id=1234'
+                }
+            }
+        );
+
+        expect(html).toContain('https://example.com/wp-json/overseek/v1/invoices/download?order_id=1234');
+        expect(html).not.toContain('{{order.invoiceUrl}}');
+        expect(html).not.toContain('{{invoice_url}}');
+        expect(html).not.toContain('{{pdf_url}}');
     });
 });

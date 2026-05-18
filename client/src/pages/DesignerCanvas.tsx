@@ -1,7 +1,7 @@
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText, Rows, Plus, QrCode } from 'lucide-react';
+import { GripVertical, Image as ImageIcon, Type, Table, DollarSign, User, LayoutTemplate, Heading, FileText, Rows, Plus, QrCode, Upload } from 'lucide-react';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
@@ -160,11 +160,19 @@ export function DesignerCanvas({ layout, items, selectedId, onLayoutChange, onSe
                                 }}
                             />
                         ) : (
-                            <div className="text-slate-400 flex flex-col items-center gap-2">
-                                <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                                    <ImageIcon size={24} className="text-purple-500" />
+                            <div className="mx-2 w-full h-[92%] rounded-md border border-slate-400 bg-slate-200/80 px-3 py-4 text-center">
+                                <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-900">
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-900">
+                                        <Upload size={18} strokeWidth={2.1} />
+                                    </div>
+                                    <p className="text-sm font-semibold">Add Image</p>
+                                    <p className="text-xs leading-4 text-slate-700">
+                                        Select files from your library or <span className="text-blue-700 underline underline-offset-2">Insert From URL</span>
+                                    </p>
+                                    <div className="mt-1 rounded-md border border-blue-600 bg-white px-4 py-1.5 text-xs font-semibold text-blue-700">
+                                        Upload Image
+                                    </div>
                                 </div>
-                                <span className="text-xs font-medium">Add Image</span>
                             </div>
                         )}
                         {/* Error state overlay */}

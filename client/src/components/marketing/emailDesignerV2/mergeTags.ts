@@ -1,0 +1,41 @@
+export interface MergeTagDefinition {
+    category: 'customer' | 'order' | 'product' | 'coupon' | 'cart' | 'general';
+    label: string;
+    value: string;
+}
+
+export const EMAIL_MERGE_TAGS: MergeTagDefinition[] = [
+    { category: 'customer', label: 'Customer First Name', value: '{{customer.firstName}}' },
+    { category: 'customer', label: 'Customer Last Name', value: '{{customer.lastName}}' },
+    { category: 'customer', label: 'Customer Email', value: '{{customer.email}}' },
+    { category: 'customer', label: 'Customer Phone', value: '{{customer.phone}}' },
+    { category: 'order', label: 'Order Number', value: '{{order.number}}' },
+    { category: 'order', label: 'Order Date', value: '{{order.date}}' },
+    { category: 'order', label: 'Order Status', value: '{{order.status}}' },
+    { category: 'order', label: 'Payment Method', value: '{{order.paymentMethod}}' },
+    { category: 'order', label: 'Order Subtotal', value: '{{order.subtotal}}' },
+    { category: 'order', label: 'Order Shipping Total', value: '{{order.shippingTotal}}' },
+    { category: 'order', label: 'Order Discount Total', value: '{{order.discountTotal}}' },
+    { category: 'order', label: 'Order Total', value: '{{order.total}}' },
+    { category: 'order', label: 'Customer Note', value: '{{order.customerNote}}' },
+    { category: 'order', label: 'Billing Address', value: '{{order.billingAddress}}' },
+    { category: 'order', label: 'Shipping Address', value: '{{order.shippingAddress}}' },
+    { category: 'order', label: 'Order Items Table', value: '{{order.itemsTable}}' },
+    { category: 'order', label: 'Downloads Table', value: '{{order.downloads}}' },
+    { category: 'order', label: 'Invoice Download URL', value: '{{order.invoiceUrl}}' },
+    { category: 'product', label: 'Product Name', value: '{{product.name}}' },
+    { category: 'product', label: 'Product Price', value: '{{product.price}}' },
+    { category: 'product', label: 'Product Image', value: '{{product.image}}' },
+    { category: 'product', label: 'Product Description', value: '{{product.description}}' },
+    { category: 'coupon', label: 'Coupon Code', value: '{{coupon.code}}' },
+    { category: 'coupon', label: 'Coupon Discount', value: '{{coupon.discount}}' },
+    { category: 'coupon', label: 'Coupon Description', value: '{{coupon.description}}' },
+    { category: 'coupon', label: 'Coupon Expiry', value: '{{coupon.expiry}}' },
+    { category: 'cart', label: 'Cart Recovery URL', value: '{{cart.recoveryUrl}}' },
+    { category: 'cart', label: 'Cart Checkout URL', value: '{{cart.checkoutUrl}}' },
+    { category: 'cart', label: 'Cart Total', value: '{{cart.total}}' },
+    { category: 'cart', label: 'Cart Currency', value: '{{cart.currency}}' },
+    { category: 'cart', label: 'Cart Items Table', value: '{{cart.itemsTable}}' },
+    { category: 'general', label: 'Store URL', value: '{{store_url}}' },
+    { category: 'general', label: 'Unsubscribe URL', value: '{{unsubscribe_url}}' },
+];

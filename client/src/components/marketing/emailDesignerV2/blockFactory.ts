@@ -1,7 +1,7 @@
-import { Box, Code2, ImageIcon, List, Menu, Minus, PanelTop, RectangleHorizontal, Share2, Smartphone, Ticket, Type } from 'lucide-react';
+import { Box, Code2, Download, ImageIcon, List, Menu, Minus, PanelTop, RectangleHorizontal, Share2, Ticket, Type } from 'lucide-react';
 import { createEmailDesignId, type EmailBlock } from '../../../lib/emailDesignerV2';
 
-export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'coupon';
+export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'coupon' | 'invoiceDownload';
 
 export interface PaletteItem {
     key: PaletteKey;
@@ -20,12 +20,14 @@ export const paletteItems: PaletteItem[] = [
     { key: 'menu', label: 'Menu', group: 'General', icon: Menu },
     { key: 'social', label: 'Social', group: 'General', icon: Share2 },
     { key: 'rawHtml', label: 'HTML', group: 'General', icon: Code2 },
-    { key: 'footer', label: 'Footer', group: 'General', icon: Smartphone },
     { key: 'product', label: 'Product', group: 'WooCommerce', icon: Box },
     { key: 'coupon', label: 'Coupon', group: 'WooCommerce', icon: Ticket },
+    { key: 'invoiceDownload', label: 'Invoice Download', group: 'WooCommerce', icon: Download },
 ];
 
 export const defaultSocialLinks = [{ label: 'Facebook', href: '#' }, { label: 'Instagram', href: '#' }, { label: 'TikTok', href: '#' }];
+
+export const createAccountFooterHtml = (accountName: string) => `<p>You are receiving this email from ${accountName}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
 
 export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     const id = createEmailDesignId(type);
@@ -41,12 +43,12 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     if (type === 'address') return { id, type, props: { title: 'Shipping address', source: 'shipping' } };
     if (type === 'coupon') return { id, type, props: { headline: 'Your exclusive offer', code: '{{coupon.code}}', description: '{{coupon.description}}' } };
     if (type === 'menu') return { id, type, props: { links: [{ label: 'Shop', href: '{{store_url}}' }, { label: 'Account', href: '{{store_url}}/account' }, { label: 'Contact', href: '{{store_url}}/contact' }], align: 'center' } };
-    if (type === 'social') return { id, type, props: { links: defaultSocialLinks, align: 'center' } };
-    if (type === 'footer') return { id, type, props: { text: 'You are receiving this email from Your Store.', unsubscribeLabel: 'Unsubscribe', unsubscribeUrl: '{{unsubscribe_url}}', align: 'center' } };
+    if (type === 'social') return { id, type, props: { links: defaultSocialLinks, align: 'center', iconStyle: 'solid' } };
+    if (type === 'footer') return { id, type, props: { html: createAccountFooterHtml('Your Store'), align: 'center' } };
     return { id, type: 'rawHtml', props: { html: '<div style="padding:16px;">Custom HTML</div>' } };
 };
 
-export const createPaletteBlock = (key: PaletteKey, accountName: string, logoUrl = '', socialLinks = defaultSocialLinks): EmailBlock => {
+export const createPaletteBlock = (key: PaletteKey, accountName: string, logoUrl = '', socialLinks = defaultSocialLinks, footerHtml = ''): EmailBlock => {
     if (key === 'siteLogo') {
         return { id: createEmailDesignId('siteLogo'), type: 'siteLogo', props: { src: logoUrl, alt: `${accountName} logo`, width: 160, align: 'center', fallbackText: accountName } };
     }
@@ -54,9 +56,20 @@ export const createPaletteBlock = (key: PaletteKey, accountName: string, logoUrl
     if (key === 'menu') return createBlock('menu');
     if (key === 'social') {
         const usableSocialLinks = socialLinks.filter((link) => link.label.trim() && link.href.trim());
-        return { id: createEmailDesignId('social'), type: 'social', props: { links: usableSocialLinks.length ? usableSocialLinks : defaultSocialLinks, align: 'center' } };
+        return { id: createEmailDesignId('social'), type: 'social', props: { links: usableSocialLinks.length ? usableSocialLinks : defaultSocialLinks, align: 'center', iconStyle: 'solid' } };
     }
-    if (key === 'footer') return { id: createEmailDesignId('footer'), type: 'footer', props: { text: `You are receiving this email from ${accountName}.`, unsubscribeLabel: 'Unsubscribe', unsubscribeUrl: '{{unsubscribe_url}}', align: 'center' } };
+    if (key === 'invoiceDownload') {
+        return {
+            id: createEmailDesignId('button'),
+            type: 'button',
+            props: {
+                label: 'Download Invoice',
+                href: '{{order.invoiceUrl}}',
+                align: 'center',
+            },
+        };
+    }
+    if (key === 'footer') return { id: createEmailDesignId('footer'), type: 'footer', props: { html: footerHtml || createAccountFooterHtml(accountName), align: 'center' } };
     if (key === 'rawHtml') return createBlock('rawHtml');
     return createBlock(key);
 };

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react';
-import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Monitor, Pencil, Save, Search, Send, Settings, Smartphone, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Monitor, Pencil, Save, Search, Send, Settings, Smartphone, Trash2, Upload, X } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
+import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
 import {
     compileEmailDesignV2,
@@ -13,11 +14,13 @@ import {
     type EmailDeviceVisibility,
     type EmailSection,
     type EmailStackMode,
+    type SocialIconStyle,
 } from '../../lib/emailDesignerV2';
-import { createBlock, createPaletteBlock, paletteItems, type PaletteKey } from './emailDesignerV2/blockFactory';
+import { createAccountFooterHtml, createBlock, createPaletteBlock, paletteItems, type PaletteKey } from './emailDesignerV2/blockFactory';
 import { EmailDropCanvas } from './emailDesignerV2/EmailDropCanvas';
 import { PaletteGrid } from './emailDesignerV2/PaletteGrid';
-import { ProductPicker, productToBlockProps } from './emailDesignerV2/ProductPicker';
+import { ProductPicker } from './emailDesignerV2/ProductPicker';
+import { productToBlockProps } from './emailDesignerV2/productBlockProps';
 
 interface Props {
     initialDesign?: unknown;
@@ -67,6 +70,8 @@ const cloneDesign = (design: EmailDesignV2Envelope): EmailDesignV2Envelope => (
 
 const RECENT_TEST_RECIPIENTS_KEY = 'overseek-email-builder-v2-test-recipients';
 const MAX_TEST_RECIPIENTS = 5;
+const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'X', 'Twitter', 'LinkedIn', 'Pinterest'];
+const SOCIAL_ICON_STYLES: SocialIconStyle[] = ['solid', 'outline', 'glyph'];
 
 export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initialPreviewText = '', onSave, onCancel }: Props) {
     const { token, user } = useAuth();
@@ -106,6 +111,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const saveStatus = saving ? 'Saving...' : hasUnsavedChanges ? 'Autosaved draft' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
 
     const brandLogoUrl = invoiceLogoUrl || currentAccount?.appearance?.logoUrl || '';
+    const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
+    const accountFooterHtml = currentAccount?.appearance?.emailFooterHtml || createAccountFooterHtml(accountName);
 
     const setDirtyDesign = useCallback((updater: (draft: EmailDesignV2Envelope) => void) => {
         setDesign((current) => {
@@ -133,10 +140,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         setSnapshots(next);
     }, []);
 
-    const addSection = (columns = 1) => {
-        addStructurePreset(Array.from({ length: columns }, () => Math.floor(100 / columns)));
-    };
-
     const addStructurePreset = (widths: number[]) => {
         setDirtyDesign((draft) => {
             const section: EmailSection = {
@@ -158,14 +161,14 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         });
     };
 
-    const addPaletteBlock = (sectionId: string, key: PaletteKey, insertIndex?: number) => {
-        const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
+    const addPaletteBlock = (sectionId: string, key: PaletteKey, insertIndex?: number, columnId?: string) => {
         const logoUrl = brandLogoUrl;
         const socialLinks = currentAccount?.appearance?.socialLinks || [];
-        const block = createPaletteBlock(key, accountName, logoUrl, socialLinks);
+        const block = createPaletteBlock(key, accountName, logoUrl, socialLinks, accountFooterHtml);
         setDirtyDesign((draft) => {
             const section = draft.document.sections.find((item) => item.id === sectionId);
-            const blocks = section?.columns[0]?.blocks;
+            const column = columnId ? section?.columns.find((item) => item.id === columnId) : section?.columns[0];
+            const blocks = column?.blocks;
             if (!blocks) return;
             if (typeof insertIndex === 'number') blocks.splice(insertIndex, 0, block);
             else blocks.push(block);
@@ -174,7 +177,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         });
     };
 
-    const moveBlock = (blockId: string, targetSectionId: string, targetIndex?: number) => {
+    const moveBlock = (blockId: string, targetSectionId: string, targetIndex?: number, columnId?: string) => {
         setDirtyDesign((draft) => {
             let movingBlock: EmailBlock | null = null;
             for (const section of draft.document.sections) {
@@ -187,7 +190,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
             }
             if (!movingBlock) return;
             const targetSection = draft.document.sections.find((section) => section.id === targetSectionId);
-            const blocks = targetSection?.columns[0]?.blocks;
+            const targetColumn = columnId ? targetSection?.columns.find((item) => item.id === columnId) : targetSection?.columns[0];
+            const blocks = targetColumn?.blocks;
             if (!blocks) return;
             const nextIndex = typeof targetIndex === 'number' ? Math.min(targetIndex, blocks.length) : blocks.length;
             blocks.splice(nextIndex, 0, movingBlock);
@@ -196,14 +200,15 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         });
     };
 
-    const handleDropOnSection = (event: DragEvent, sectionId: string, insertIndex?: number) => {
+    const handleDropOnSection = (event: DragEvent, sectionId: string, insertIndex?: number, columnId?: string) => {
         event.preventDefault();
+        event.stopPropagation();
         const structureWidths = event.dataTransfer.getData('application/x-overseek-structure');
         const paletteKey = event.dataTransfer.getData('application/x-overseek-block') as PaletteKey;
         const blockId = event.dataTransfer.getData('application/x-overseek-existing-block');
         if (structureWidths) addStructurePreset(JSON.parse(structureWidths) as number[]);
-        else if (paletteKey) addPaletteBlock(sectionId, paletteKey, insertIndex);
-        else if (blockId) moveBlock(blockId, sectionId, insertIndex);
+        else if (paletteKey) addPaletteBlock(sectionId, paletteKey, insertIndex, columnId);
+        else if (blockId) moveBlock(blockId, sectionId, insertIndex, columnId);
     };
 
     const updateSection = (key: keyof EmailSection, value: string) => {
@@ -251,6 +256,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 for (const column of section.columns) {
                     const index = column.blocks.findIndex((item) => item.id === blockId);
                     if (index < 0) continue;
+                    if (column.blocks[index]?.type === 'footer') return;
                     const duplicated = typeof structuredClone === 'function' ? structuredClone(column.blocks[index]) : JSON.parse(JSON.stringify(column.blocks[index]));
                     duplicated.id = createEmailDesignId(duplicated.type);
                     column.blocks.splice(index + 1, 0, duplicated);
@@ -266,7 +272,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         setDirtyDesign((draft) => {
             for (const section of draft.document.sections) {
                 for (const column of section.columns) {
-                    column.blocks = column.blocks.filter((block) => block.id !== blockId);
+                    column.blocks = column.blocks.filter((block) => block.id !== blockId || block.type === 'footer');
                 }
             }
             if (selectedBlockId === blockId) setSelectedBlockId(null);
@@ -278,7 +284,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         setDirtyDesign((draft) => {
             for (const section of draft.document.sections) {
                 for (const column of section.columns) {
-                    column.blocks = column.blocks.filter((block) => block.id !== selectedBlockId);
+                    column.blocks = column.blocks.filter((block) => block.id !== selectedBlockId || block.type === 'footer');
                 }
             }
             setSelectedBlockId(null);
@@ -314,7 +320,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     };
 
     const applyStarterLayout = (type: 'promo' | 'product' | 'cart' | 'followup' | 'coupon') => {
-        const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
         const logoUrl = brandLogoUrl;
         const heroCopy: Record<typeof type, string> = {
             promo: '<h2>Something new just landed</h2><p>Give customers a clear reason to click with a focused offer and one strong call to action.</p>',
@@ -357,7 +362,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     padding: '18px 28px',
                     visibility: 'all',
                     stackMode: 'stack',
-                    columns: [{ id: createEmailDesignId('column'), width: 100, blocks: [createPaletteBlock('footer', accountName)] }],
+                    columns: [{ id: createEmailDesignId('column'), width: 100, blocks: [createPaletteBlock('footer', accountName, '', [], accountFooterHtml)] }],
                 },
             ];
             setSelectedSectionId(draft.document.sections[1]?.id || draft.document.sections[0]?.id || '');
@@ -482,6 +487,25 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
             return changed ? next : current;
         });
     }, [brandLogoUrl]);
+
+    useEffect(() => {
+        if (!accountFooterHtml) return;
+        setDesign((current) => {
+            const next = cloneDesign(current);
+            let changed = false;
+            for (const section of next.document.sections) {
+                for (const column of section.columns) {
+                    for (const block of column.blocks) {
+                        if (block.type === 'footer' && block.props.html !== accountFooterHtml) {
+                            block.props.html = accountFooterHtml;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            return changed ? next : current;
+        });
+    }, [accountFooterHtml]);
 
     useEffect(() => {
         const handler = (event: BeforeUnloadEvent) => {
@@ -613,31 +637,45 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         <div className="mx-auto mb-3 flex max-w-4xl items-center justify-between gap-3">
                             <p className="text-sm text-slate-600 dark:text-slate-300">Live email canvas. Drag blocks into place and edit content directly.</p>
                         </div>
-                        <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onOpenSettings={() => { setActivePanel('settings'); }} onDropOnSection={handleDropOnSection} />
+                        <ErrorBoundary
+                            onReset={() => {
+                                setSelectedSectionId((prev) => prev || design.document.sections[0]?.id || '');
+                                setSelectedBlockId(null);
+                            }}
+                        >
+                            <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onOpenSettings={() => { setActivePanel('settings'); }} onDropOnSection={handleDropOnSection} />
+                        </ErrorBoundary>
                     </main>
 
                     <aside className="min-h-0 overflow-auto border-l border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                        {activePanel === 'checklist' && <ChecklistPanel issues={issues} groupedIssues={groupedIssues} />}
-                        {activePanel === 'history' && <HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); setHasUnsavedChanges(true); }} />}
-                        {activePanel === 'test' && (
-                            <div className="space-y-3">
-                                <p className="font-semibold text-slate-900 dark:text-white">Send test email</p>
-                                <Field label="Recipient" value={testEmail} onChange={setTestEmail} type="email" />
-                                {recentRecipients.length > 0 && (
-                                    <div className="flex flex-wrap gap-2">
-                                        {recentRecipients.map((recipient) => (
-                                            <button key={recipient} onClick={() => setTestEmail(recipient)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:bg-slate-800 dark:text-slate-300">{recipient}</button>
-                                        ))}
-                                    </div>
-                                )}
-                                {testStatus && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{testStatus}</p>}
-                                {missingEmailAccount && <button onClick={() => { window.location.href = '/settings?tab=email'; }} className="inline-flex w-full items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">Set up email account</button>}
-                                <button onClick={sendTestEmail} disabled={sendingTest} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">{sendingTest ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}Send test</button>
-                            </div>
-                        )}
-                        {!['checklist', 'history', 'test'].includes(activePanel) && (
-                            <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} />
-                        )}
+                        <ErrorBoundary
+                            onReset={() => {
+                                setSelectedBlockId(null);
+                                setActivePanel('blocks');
+                            }}
+                        >
+                            {activePanel === 'checklist' && <ChecklistPanel issues={issues} groupedIssues={groupedIssues} />}
+                            {activePanel === 'history' && <HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); setHasUnsavedChanges(true); }} />}
+                            {activePanel === 'test' && (
+                                <div className="space-y-3">
+                                    <p className="font-semibold text-slate-900 dark:text-white">Send test email</p>
+                                    <Field label="Recipient" value={testEmail} onChange={setTestEmail} type="email" />
+                                    {recentRecipients.length > 0 && (
+                                        <div className="flex flex-wrap gap-2">
+                                            {recentRecipients.map((recipient) => (
+                                                <button key={recipient} onClick={() => setTestEmail(recipient)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:bg-slate-800 dark:text-slate-300">{recipient}</button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {testStatus && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{testStatus}</p>}
+                                    {missingEmailAccount && <button onClick={() => { window.location.href = '/settings?tab=email'; }} className="inline-flex w-full items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">Set up email account</button>}
+                                    <button onClick={sendTestEmail} disabled={sendingTest} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">{sendingTest ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}Send test</button>
+                                </div>
+                            )}
+                            {!['checklist', 'history', 'test'].includes(activePanel) && (
+                                <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete={selectedBlock?.type !== 'footer'} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
+                            )}
+                        </ErrorBoundary>
                     </aside>
                 </div>
             </div>
@@ -686,14 +724,31 @@ function SelectField({ label, value, options, onChange }: { label: string; value
     );
 }
 
-function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, onSelectBlock, onDropOnSection, onSaveSocialDefaults }: { block: EmailBlock | null; sections: EmailSection[]; selectedSectionId: string; onUpdate: (updater: (block: EmailBlock) => void) => void; onDelete: () => void; onSelectBlock: (id: string) => void; onDropOnSection: (event: DragEvent, sectionId: string, insertIndex?: number) => void; onSaveSocialDefaults: (links: Array<{ label: string; href: string }>) => void }) {
+function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, canDelete, onSelectBlock, onDropOnSection, onSaveSocialDefaults, token, accountId }: { block: EmailBlock | null; sections: EmailSection[]; selectedSectionId: string; onUpdate: (updater: (block: EmailBlock) => void) => void; onDelete: () => void; canDelete: boolean; onSelectBlock: (id: string) => void; onDropOnSection: (event: DragEvent, sectionId: string, insertIndex?: number, columnId?: string) => void; onSaveSocialDefaults: (links: Array<{ label: string; href: string }>) => void; token?: string; accountId?: string }) {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+    const [showUrlInput, setShowUrlInput] = useState(false);
+    const [urlDraft, setUrlDraft] = useState('');
+
+    useEffect(() => {
+        if (block?.type === 'image') {
+            setUrlDraft(block.props.src || '');
+        }
+        setUploadError(null);
+    }, [block]);
+
     if (!block) {
         const section = sections.find((item) => item.id === selectedSectionId);
+        const blockEntries: Array<{ block: EmailBlock; index: number; columnId: string }> = [];
+        for (const column of section?.columns || []) {
+            column.blocks.forEach((item, index) => blockEntries.push({ block: item, index, columnId: column.id }));
+        }
         return (
             <div className="space-y-3">
                 <p className="font-semibold text-slate-900 dark:text-white">Blocks in section</p>
-                {section?.columns.flatMap((column) => column.blocks).length ? section.columns.flatMap((column) => column.blocks).map((item, index) => (
-                    <button key={item.id} draggable onDragStart={(event) => event.dataTransfer.setData('application/x-overseek-existing-block', item.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => onDropOnSection(event, selectedSectionId, index)} onClick={() => onSelectBlock(item.id)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800">
+                {blockEntries.length ? blockEntries.map(({ block: item, index, columnId }) => (
+                    <button key={item.id} draggable onDragStart={(event) => event.dataTransfer.setData('application/x-overseek-existing-block', item.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => onDropOnSection(event, selectedSectionId, index, columnId)} onClick={() => onSelectBlock(item.id)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800">
                         <span className="inline-flex items-center gap-2"><GripVertical size={14} className="text-slate-400" />{getEmailDesignV2BlockLabel(item)}</span> <Eye size={14} />
                     </button>
                 )) : <p className="text-sm text-slate-500">Select a block or add one from the left panel.</p>}
@@ -704,16 +759,109 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, o
     const patchProps = (props: Record<string, unknown>) => onUpdate((draft) => { Object.assign(draft.props, props); });
     const setVisibility = (value: string) => onUpdate((draft) => { draft.visibility = value as EmailDeviceVisibility; });
 
+    const handleImageUpload = async (file: File) => {
+        if (!token || !accountId) {
+            setUploadError('Authentication required');
+            return;
+        }
+
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            setUploadError('Invalid file type. Use PNG, JPG, GIF, SVG, or WebP.');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            setUploadError('File too large. Maximum size is 5MB.');
+            return;
+        }
+
+        setUploadError(null);
+        setIsUploading(true);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/api/invoices/templates/upload-image', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'X-Account-ID': accountId,
+                },
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const payload = await response.json();
+                throw new Error(payload?.error || 'Upload failed');
+            }
+
+            const payload = await response.json();
+            if (!payload?.url) {
+                throw new Error('Upload failed');
+            }
+            patchProps({ src: payload.url });
+            setUrlDraft(payload.url);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to upload image';
+            setUploadError(message);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
                 <p className="font-semibold text-slate-900 dark:text-white">{getEmailDesignV2BlockLabel(block)}</p>
-                <button onClick={onDelete} className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50"><Trash2 size={14} /></button>
+                {canDelete && <button onClick={onDelete} className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50"><Trash2 size={14} /></button>}
             </div>
             <SelectField label="Visibility" value={block.visibility || 'all'} options={['all', 'desktop', 'mobile']} onChange={setVisibility} />
             {block.type === 'siteLogo' && <><Field label="Logo URL" value={block.props.src} onChange={(value) => patchProps({ src: value })} /><Field label="Fallback text" value={block.props.fallbackText || ''} onChange={(value) => patchProps({ fallbackText: value })} /></>}
             {block.type === 'text' && <TextArea label="HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
-            {block.type === 'image' && <><Field label="Image URL" value={block.props.src} onChange={(value) => patchProps({ src: value })} /><Field label="Alt text" value={block.props.alt} onChange={(value) => patchProps({ alt: value })} /><Field label="Link" value={block.props.href || ''} onChange={(value) => patchProps({ href: value })} /></>}
+            {block.type === 'image' && <>
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
+                    className="hidden"
+                    onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) handleImageUpload(file);
+                        event.currentTarget.value = '';
+                    }}
+                />
+                <div className="rounded-lg border border-slate-300 bg-slate-200 px-4 py-6 text-center">
+                    <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-900 text-slate-900">
+                        <Upload size={18} />
+                    </div>
+                    <p className="text-sm font-semibold text-slate-900">Add Image</p>
+                    <p className="mt-1 text-xs text-slate-700">Select files from your library or <button type="button" onClick={() => setShowUrlInput((current) => !current)} className="font-medium text-blue-700 underline underline-offset-2">Insert From URL</button></p>
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="mt-3 inline-flex items-center justify-center rounded-md border border-blue-600 bg-white px-4 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {isUploading ? 'Uploading...' : 'Upload Image'}
+                    </button>
+                </div>
+                {showUrlInput && (
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                        <Field label="Image URL" value={urlDraft} onChange={setUrlDraft} />
+                        <button
+                            type="button"
+                            onClick={() => patchProps({ src: urlDraft.trim() })}
+                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                            Use URL
+                        </button>
+                    </div>
+                )}
+                {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+                <Field label="Alt text" value={block.props.alt} onChange={(value) => patchProps({ alt: value })} />
+                <Field label="Link" value={block.props.href || ''} onChange={(value) => patchProps({ href: value })} />
+            </>}
             {block.type === 'button' && <><Field label="Label" value={block.props.label} onChange={(value) => patchProps({ label: value })} /><Field label="URL" value={block.props.href} onChange={(value) => patchProps({ href: value })} /></>}
             {block.type === 'list' && <ListEditor items={block.props.items} onChange={(items) => patchProps({ items })} />}
             {block.type === 'spacer' && <Field label="Height" type="number" value={String(block.props.height)} onChange={(value) => patchProps({ height: Number(value) || 0 })} />}
@@ -722,8 +870,9 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, o
             {block.type === 'orderSummary' && <Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} />}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
-            {(block.type === 'menu' || block.type === 'social') && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={block.type === 'social' ? () => onSaveSocialDefaults(block.props.links) : undefined} />}
-            {block.type === 'footer' && <><Field label="Footer text" value={block.props.text} onChange={(value) => patchProps({ text: value })} /><Field label="Unsubscribe label" value={block.props.unsubscribeLabel} onChange={(value) => patchProps({ unsubscribeLabel: value })} /><Field label="Unsubscribe URL" value={block.props.unsubscribeUrl} onChange={(value) => patchProps({ unsubscribeUrl: value })} /></>}
+            {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
+            {block.type === 'social' && <><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
+            {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Appearance and is locked in the designer.</div>}
             {block.type === 'rawHtml' && <TextArea label="Raw HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
         </div>
     );
@@ -747,6 +896,37 @@ function LinkListEditor({ links, onChange, onSaveDefaults }: { links: Array<{ la
             ))}
             <button onClick={() => onChange([...links, { label: 'New Link', href: '{{store_url}}' }])} className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Add link</button>
             {onSaveDefaults && <button onClick={onSaveDefaults} className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Save as account social defaults</button>}
+        </div>
+    );
+}
+
+function SocialLinksEditor({ links, onChange, onSaveDefaults }: { links: Array<{ label: string; href: string; iconStyle?: SocialIconStyle }>; onChange: (links: Array<{ label: string; href: string; iconStyle?: SocialIconStyle }>) => void; onSaveDefaults: () => void }) {
+    const updateLink = (index: number, key: 'label' | 'href' | 'iconStyle', value: string) => {
+        const next = links.map((link, itemIndex) => {
+            if (itemIndex !== index) return link;
+            if (key === 'iconStyle' && value === 'default') {
+                const rest = { ...link };
+                delete rest.iconStyle;
+                return rest;
+            }
+            return { ...link, [key]: value };
+        });
+        onChange(next);
+    };
+
+    return (
+        <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Social Profiles</p>
+            {links.map((link, index) => (
+                <div key={index} className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                    <SelectField label="Platform" value={link.label} options={SOCIAL_PLATFORMS.includes(link.label) ? SOCIAL_PLATFORMS : [link.label, ...SOCIAL_PLATFORMS]} onChange={(value) => updateLink(index, 'label', value)} />
+                    <SelectField label="Icon style" value={link.iconStyle || 'default'} options={['default', ...SOCIAL_ICON_STYLES]} onChange={(value) => updateLink(index, 'iconStyle', value)} />
+                    <Field label="URL" value={link.href} onChange={(value) => updateLink(index, 'href', value)} />
+                    <button onClick={() => onChange(links.filter((_, itemIndex) => itemIndex !== index))} className="text-xs font-medium text-red-600 hover:text-red-700">Remove profile</button>
+                </div>
+            ))}
+            <button onClick={() => onChange([...links, { label: 'Facebook', href: '#', iconStyle: 'solid' }])} className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Add social profile</button>
+            <button onClick={onSaveDefaults} className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Save as account social defaults</button>
         </div>
     );
 }

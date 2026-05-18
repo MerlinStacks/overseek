@@ -16,6 +16,8 @@ interface MergeTagContext {
     store?: {
         url?: string;
     };
+    linkTriggerUrl?: string;
+    link_trigger?: string;
     storeUrl?: string;
     store_url?: string;
 }
@@ -31,6 +33,8 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         context.store?.url || context.storeUrl || context.store_url || context.order?.storeUrl || context.order?.store_url
     );
     result = result.replace(/\{\{store_url\}\}/g, storeUrl);
+    const linkTriggerUrl = normalizeStoreUrl(context.linkTriggerUrl || context.link_trigger) || storeUrl;
+    result = result.replace(/\{\{link_trigger\}\}/g, linkTriggerUrl);
 
     // Order merge tags
     if (context.order) {
@@ -56,6 +60,16 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
 
         // Downloads
         result = result.replace(/\{\{order\.downloads\}\}/g, renderDownloadsTable(order.downloads || []));
+
+        const invoiceUrl =
+            order.invoiceUrl
+            || order.invoice_url
+            || order.pdfUrl
+            || order.pdf_url
+            || '';
+        result = result.replace(/\{\{order\.invoiceUrl\}\}/g, invoiceUrl);
+        result = result.replace(/\{\{invoice_url\}\}/g, invoiceUrl);
+        result = result.replace(/\{\{pdf_url\}\}/g, invoiceUrl);
     }
 
     // Customer merge tags
