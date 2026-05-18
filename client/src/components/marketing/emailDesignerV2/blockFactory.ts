@@ -1,4 +1,4 @@
-import { Box, Code2, Download, ImageIcon, List, Menu, Minus, PanelTop, RectangleHorizontal, Share2, Ticket, Type } from 'lucide-react';
+import { Box, Code2, Download, ImageIcon, List, Menu, Minus, PanelTop, RectangleHorizontal, Share2, Smartphone, Ticket, Type } from 'lucide-react';
 import { createEmailDesignId, type EmailBlock } from '../../../lib/emailDesignerV2';
 
 export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'coupon' | 'invoiceDownload';
@@ -20,6 +20,7 @@ export const paletteItems: PaletteItem[] = [
     { key: 'menu', label: 'Menu', group: 'General', icon: Menu },
     { key: 'social', label: 'Social', group: 'General', icon: Share2 },
     { key: 'rawHtml', label: 'HTML', group: 'General', icon: Code2 },
+    { key: 'footer', label: 'Footer', group: 'General', icon: Smartphone },
     { key: 'product', label: 'Product', group: 'WooCommerce', icon: Box },
     { key: 'coupon', label: 'Coupon', group: 'WooCommerce', icon: Ticket },
     { key: 'invoiceDownload', label: 'Invoice Download', group: 'WooCommerce', icon: Download },

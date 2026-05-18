@@ -3,7 +3,6 @@ import { Image as ImageIcon } from 'lucide-react';
 import {
     buildInvoiceNumber,
     formatInvoiceCurrency,
-    formatInvoiceDate,
     mergeInvoiceSettings,
     resolveInvoiceTemplateString
 } from '../../../../packages/overseek-core/src/invoiceRenderModel';
@@ -177,9 +176,6 @@ interface InvoiceRendererProps {
 export function InvoiceRenderer({ layout, items, data, settings, readOnly = true, pageMode = 'single' }: InvoiceRendererProps) {
     const mergedSettings = mergeInvoiceSettings(settings || {});
     const invoiceNumber = buildInvoiceNumber(mergedSettings);
-    const invoiceIssueDate = new Date();
-    const invoiceDueDate = new Date(invoiceIssueDate);
-    invoiceDueDate.setDate(invoiceDueDate.getDate() + Number(mergedSettings.compliance.paymentTermsDays || 14));
 
     // Helper to render content - clean print-ready styling
     const renderContent = (itemConfig: InvoiceItem) => {
@@ -188,7 +184,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
         switch (itemConfig.type) {
             case 'header':
                 return (
-                    <div className="h-full flex items-center gap-6 py-2">
+                    <div className="h-full flex items-center gap-6 overflow-hidden">
                         {/* Logo Section - Left */}
                         <div className="w-32 h-full flex items-center justify-start flex-shrink-0">
                             {itemConfig.logo ? (
@@ -229,18 +225,6 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                     <div className="py-3">
                         <table className="w-full text-sm table-fixed">
                             <tbody>
-                                <tr>
-                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Invoice Number:</td>
-                                    <td className="font-semibold text-black">{invoiceNumber}</td>
-                                </tr>
-                                <tr>
-                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Invoice Date:</td>
-                                    <td className="font-semibold text-black">{formatInvoiceDate(invoiceIssueDate, mergedSettings)}</td>
-                                </tr>
-                                <tr>
-                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Due Date:</td>
-                                    <td className="font-semibold text-black">{formatInvoiceDate(invoiceDueDate, mergedSettings)}</td>
-                                </tr>
                                 <tr>
                                     <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Order Number:</td>
                                     <td className="font-semibold text-black">{orderNumber}</td>

@@ -109,6 +109,9 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const groupedIssues = groupPreflightIssues(issues);
     const visiblePaletteItems = paletteItems.filter((item) => item.label.toLowerCase().includes(blockSearch.trim().toLowerCase()));
     const saveStatus = saving ? 'Saving...' : hasUnsavedChanges ? 'Autosaved draft' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
+    const isUtilityPanel = activePanel === 'checklist' || activePanel === 'history' || activePanel === 'test';
+    const isInvoiceDownloadBlock = selectedBlock?.type === 'button' && (selectedBlock.props.href || '').trim() === '{{order.invoiceUrl}}';
+    const hideRightSidebar = (selectedBlock?.type === 'text' || isInvoiceDownloadBlock) && !isUtilityPanel;
 
     const brandLogoUrl = invoiceLogoUrl || currentAccount?.appearance?.logoUrl || '';
     const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
@@ -556,7 +559,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     </div>
                 </header>
 
-                <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[324px_1fr_360px]">
+                <div className={`grid min-h-0 flex-1 grid-cols-1 ${hideRightSidebar ? 'lg:grid-cols-[324px_1fr]' : 'lg:grid-cols-[324px_1fr_360px]'}`}>
                     <aside className="flex min-h-0 flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                         <div className="m-3 grid grid-cols-3 rounded-lg bg-slate-100 p-1 text-sm dark:bg-slate-800">
                             {(['structure', 'blocks', 'layouts'] as BuilderTab[]).map((tab) => (
@@ -647,7 +650,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         </ErrorBoundary>
                     </main>
 
-                    <aside className="min-h-0 overflow-auto border-l border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                    {!hideRightSidebar && <aside className="min-h-0 overflow-auto border-l border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                         <ErrorBoundary
                             onReset={() => {
                                 setSelectedBlockId(null);
@@ -676,7 +679,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                 <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete={selectedBlock?.type !== 'footer'} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
                             )}
                         </ErrorBoundary>
-                    </aside>
+                    </aside>}
                 </div>
             </div>
         </div>
@@ -862,7 +865,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                 <Field label="Alt text" value={block.props.alt} onChange={(value) => patchProps({ alt: value })} />
                 <Field label="Link" value={block.props.href || ''} onChange={(value) => patchProps({ href: value })} />
             </>}
-            {block.type === 'button' && <><Field label="Label" value={block.props.label} onChange={(value) => patchProps({ label: value })} /><Field label="URL" value={block.props.href} onChange={(value) => patchProps({ href: value })} /></>}
+            {block.type === 'button' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Button content and styles are edited directly from the inline toolbar on the canvas.</div>}
             {block.type === 'list' && <ListEditor items={block.props.items} onChange={(items) => patchProps({ items })} />}
             {block.type === 'spacer' && <Field label="Height" type="number" value={String(block.props.height)} onChange={(value) => patchProps({ height: Number(value) || 0 })} />}
             {block.type === 'divider' && <Field label="Color" value={block.props.color || ''} onChange={(value) => patchProps({ color: value })} />}

@@ -744,9 +744,6 @@ export class InvoiceService {
                             : formatDate(order.createdAt);
 
                         const detailsData = [
-                            ['Invoice Number:', invoiceContext?.number || 'N/A'],
-                            ['Invoice Date:', invoiceContext?.issueDate || orderDate],
-                            ['Due Date:', invoiceContext?.dueDate || orderDate],
                             ['Order Number:', order.number],
                             ['Order Date:', orderDate],
                             ['Payment Method:', paymentMethod],

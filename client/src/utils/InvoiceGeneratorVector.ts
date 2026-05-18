@@ -3,7 +3,6 @@ import autoTable from 'jspdf-autotable';
 import {
     buildInvoiceNumber,
     formatInvoiceCurrency,
-    formatInvoiceDate,
     mergeInvoiceSettings,
     resolveInvoiceTemplateString,
 } from '../../../packages/overseek-core/src/invoiceRenderModel';
@@ -156,9 +155,6 @@ export async function generateVectorInvoicePDF(
     const rowSpanPx = GRID_ROW_HEIGHT_PX + GRID_MARGIN_Y_PX;
 
     const invoiceNumber = buildInvoiceNumber(mergedSettings);
-    const issueDate = new Date();
-    const dueDate = new Date(issueDate);
-    dueDate.setDate(dueDate.getDate() + Number(mergedSettings.compliance.paymentTermsDays || 14));
 
     const orderNumber = order.number || order.order_number || order.id || 'N/A';
     const orderDate = order.date_created
@@ -352,9 +348,6 @@ export async function generateVectorInvoicePDF(
 
         if (item.type === 'order_details') {
             const lines = [
-                `Invoice Number: ${invoiceNumber}`,
-                `Invoice Date: ${formatInvoiceDate(issueDate, mergedSettings)}`,
-                `Due Date: ${formatInvoiceDate(dueDate, mergedSettings)}`,
                 `Order Number: ${orderNumber}`,
                 `Order Date: ${orderDate}`,
                 `Payment Method: ${order.payment_method_title || order.payment_method || 'N/A'}`,

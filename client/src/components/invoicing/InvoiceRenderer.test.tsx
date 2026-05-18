@@ -12,7 +12,7 @@ describe('InvoiceRenderer', () => {
         vi.useRealTimers();
     });
 
-    it('renders invoice metadata, payment block, and legal footer from settings', () => {
+    it('renders order metadata, payment block, and legal footer from settings', () => {
         const layout = [
             { i: 'order', x: 0, y: 0, w: 6, h: 2 },
             { i: 'payment', x: 6, y: 0, w: 6, h: 2 },
@@ -50,7 +50,10 @@ describe('InvoiceRenderer', () => {
             />
         );
 
-        expect(screen.getByText(/Invoice Number:/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Invoice Number:/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Invoice Date:/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Due Date:/i)).not.toBeInTheDocument();
+        expect(screen.getByText(/Order Number:/i)).toBeInTheDocument();
         expect(screen.getAllByText(/INV-01234/i).length).toBeGreaterThan(0);
         expect(screen.getByText(/Pay now:/i)).toBeInTheDocument();
         expect(screen.getByText(/ABN 12 345 678 901/i)).toBeInTheDocument();

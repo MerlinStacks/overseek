@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal footer from settings 1`] = `
+exports[`InvoiceRenderer > renders order metadata, payment block, and legal footer from settings 1`] = `
 <div>
   <div
     class="max-w-[210mm] mx-auto bg-white shadow-2xl rounded-sm ring-1 ring-slate-200/50"
@@ -24,42 +24,6 @@ exports[`InvoiceRenderer > renders invoice metadata, payment block, and legal fo
               class="w-full text-sm table-fixed"
             >
               <tbody>
-                <tr>
-                  <td
-                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                  >
-                    Invoice Number:
-                  </td>
-                  <td
-                    class="font-semibold text-black"
-                  >
-                    INV-01234
-                  </td>
-                </tr>
-                <tr>
-                  <td
-                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                  >
-                    Invoice Date:
-                  </td>
-                  <td
-                    class="font-semibold text-black"
-                  >
-                    26/04/2026
-                  </td>
-                </tr>
-                <tr>
-                  <td
-                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
-                  >
-                    Due Date:
-                  </td>
-                  <td
-                    class="font-semibold text-black"
-                  >
-                    03/05/2026
-                  </td>
-                </tr>
                 <tr>
                   <td
                     class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"

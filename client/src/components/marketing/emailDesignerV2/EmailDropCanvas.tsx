@@ -28,11 +28,9 @@ export function EmailDropCanvas({ theme, previewMode, sections, selectedSectionI
             <div className="mx-auto overflow-hidden shadow-xl" style={emailStyle}>
                 {sections.map((section) => {
                     const sectionStyle: CSSProperties = { background: section.backgroundColor || theme.contentBackgroundColor, padding: section.padding || '0' };
-                    const totalBlocks = section.columns.reduce((count, column) => count + column.blocks.length, 0);
                     return (
                         <section key={section.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { setDropTarget(null); onDropOnSection(event, section.id); }} onClick={() => onSelectSection(section.id)} className={`group/section relative transition ${selectedSectionId === section.id ? 'outline outline-2 outline-indigo-400' : 'outline outline-1 outline-transparent hover:outline-indigo-200'}`} style={sectionStyle}>
                             <div className="pointer-events-none absolute left-2 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 opacity-0 shadow-sm transition group-hover/section:opacity-100">{section.name || 'Section'}</div>
-                            {totalBlocks === 0 && <div className="mb-2 rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-sm text-slate-400">Drag a block into any column</div>}
                             <div className="flex gap-3">
                                 {section.columns.map((column) => (
                                     <div key={column.id} style={{ width: `${column.width}%` }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { setDropTarget(null); onDropOnSection(event, section.id, undefined, column.id); }} className="min-h-16 rounded-lg border border-dashed border-slate-200 p-2">

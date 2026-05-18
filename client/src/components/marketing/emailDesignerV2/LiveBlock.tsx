@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { AlignCenter, AlignLeft, AlignRight, Bold, Italic, Link2, List, ListOrdered, Strikethrough, Underline } from 'lucide-react';
+import { AlignCenter, AlignLeft, AlignRight, Bold, Copy, Italic, Link2, List, ListOrdered, Search, Strikethrough, Underline, X } from 'lucide-react';
 import { getSocialIconSvg } from '../../../lib/emailDesignerV2';
 import type { EmailBlock, EmailDesignTheme, SocialIconStyle } from '../../../lib/emailDesignerV2';
-import { EMAIL_MERGE_TAGS } from './mergeTags';
+import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './mergeTags';
+
+const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: string }> = [
+    { id: 'customer', label: 'Customer' },
+    { id: 'order', label: 'Order' },
+    { id: 'product', label: 'Product' },
+    { id: 'coupon', label: 'Coupon' },
+    { id: 'cart', label: 'Cart' },
+    { id: 'general', label: 'General' },
+];
 
 export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme: EmailDesignTheme; onUpdate: (updater: (block: EmailBlock) => void) => void }) {
     if (block.type === 'siteLogo') {
@@ -65,7 +74,13 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
 
 function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailBlock, { type: 'button' }>; theme: EmailDesignTheme; onUpdate: (updater: (block: EmailBlock) => void) => void }) {
     const [isFocused, setIsFocused] = useState(false);
+    const [showMergeTagModal, setShowMergeTagModal] = useState(false);
+    const [mergeTagSearch, setMergeTagSearch] = useState('');
+    const [mergeTagCategory, setMergeTagCategory] = useState<MergeTagDefinition['category']>('customer');
     const editorRef = useRef<HTMLSpanElement | null>(null);
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const textColorRef = useRef<HTMLInputElement | null>(null);
+    const backgroundColorRef = useRef<HTMLInputElement | null>(null);
     const fontSize = block.props.fontSize || 14;
     const fontWeight = block.props.fontWeight || 700;
     const fontStyle = block.props.fontStyle || 'normal';
@@ -85,8 +100,22 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
         });
     };
 
+    const visibleMergeTags = EMAIL_MERGE_TAGS.filter((tag) => {
+        if (tag.category !== mergeTagCategory) return false;
+        const term = mergeTagSearch.trim().toLowerCase();
+        if (!term) return true;
+        return tag.label.toLowerCase().includes(term) || tag.value.toLowerCase().includes(term);
+    });
+
+    const insertMergeTag = (value: string) => {
+        editorRef.current?.focus();
+        document.execCommand('insertText', false, value);
+        syncLabel();
+        setShowMergeTagModal(false);
+    };
+
     return (
-        <div className="relative">
+        <div ref={wrapperRef} className="relative">
             <div style={{ padding: block.props.padding || '16px 0', textAlign: block.props.align || 'center' }}>
                 <span
                     ref={editorRef}
@@ -94,8 +123,12 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                     suppressContentEditableWarning
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => {
-                        setIsFocused(false);
-                        syncLabel();
+                        requestAnimationFrame(() => {
+                            const active = document.activeElement;
+                            if (wrapperRef.current?.contains(active)) return;
+                            setIsFocused(false);
+                            syncLabel();
+                        });
                     }}
                     onInput={syncLabel}
                     style={{
@@ -120,7 +153,6 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                     <select
                         className="rounded border border-slate-500 bg-slate-800 px-2 py-1 text-xs"
                         value={String(fontSize)}
-                        onMouseDown={(event) => event.preventDefault()}
                         onChange={(event) => {
                             const nextSize = Number(event.target.value);
                             onUpdate((draft) => {
@@ -140,29 +172,52 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                     <button type="button" className="rounded p-1.5 hover:bg-slate-700" onMouseDown={(event) => event.preventDefault()} onClick={() => toggleDecoration('underline')} title="Underline"><Underline size={14} /></button>
                     <button type="button" className="rounded p-1.5 hover:bg-slate-700" onMouseDown={(event) => event.preventDefault()} onClick={() => toggleDecoration('line-through')} title="Strikethrough"><Strikethrough size={14} /></button>
 
-                    <label className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-slate-500 bg-slate-800">
-                        <span className="h-4 w-4 rounded-full border border-slate-300" style={{ backgroundColor: block.props.color || '#ffffff' }} />
-                        <input
-                            type="color"
-                            className="sr-only"
-                            value={block.props.color || '#ffffff'}
-                            onChange={(event) => {
-                                const value = event.target.value;
-                                onUpdate((draft) => {
-                                    if (draft.type === 'button') draft.props.color = value;
-                                });
-                            }}
-                        />
-                    </label>
+                    <div className="flex items-center gap-1 rounded border border-slate-600 bg-slate-800/70 px-1.5 py-1" title="Text color">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-300">Text</span>
+                        <button type="button" className="flex h-5 w-5 items-center justify-center rounded border border-slate-500 bg-slate-800" onMouseDown={(event) => event.preventDefault()} onClick={() => textColorRef.current?.click()}>
+                            <span className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: block.props.color || '#ffffff' }} />
+                        </button>
+                    </div>
+                    <input
+                        ref={textColorRef}
+                        type="color"
+                        className="sr-only"
+                        value={block.props.color || '#ffffff'}
+                        onChange={(event) => {
+                            const value = event.target.value;
+                            onUpdate((draft) => {
+                                if (draft.type === 'button') draft.props.color = value;
+                            });
+                        }}
+                    />
+
+                    <div className="flex items-center gap-1 rounded border border-slate-600 bg-slate-800/70 px-1.5 py-1" title="Button color">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-300">Button</span>
+                        <button type="button" className="flex h-5 w-5 items-center justify-center rounded border border-slate-500 bg-slate-800" onMouseDown={(event) => event.preventDefault()} onClick={() => backgroundColorRef.current?.click()}>
+                            <span className="h-3 w-3 rounded border border-slate-300" style={{ backgroundColor: block.props.backgroundColor || theme.primaryColor }} />
+                        </button>
+                    </div>
+                    <input
+                        ref={backgroundColorRef}
+                        type="color"
+                        className="sr-only"
+                        value={block.props.backgroundColor || theme.primaryColor}
+                        onChange={(event) => {
+                            const value = event.target.value;
+                            onUpdate((draft) => {
+                                if (draft.type === 'button') draft.props.backgroundColor = value;
+                            });
+                        }}
+                    />
 
                     <button
                         type="button"
                         className="rounded border border-slate-500 px-2 py-1 text-xs hover:bg-slate-700"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => {
-                            editorRef.current?.focus();
-                            document.execCommand('insertText', false, '{{customer.firstName}}');
-                            syncLabel();
+                            setMergeTagSearch('');
+                            setMergeTagCategory('customer');
+                            setShowMergeTagModal(true);
                         }}
                     >
                         Merge Tag
@@ -196,6 +251,75 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                     >
                         <Link2 size={14} />
                     </button>
+                </div>
+            )}
+
+            {showMergeTagModal && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-xs">
+                    <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                        <div className="flex items-center gap-4 border-b border-gray-200 px-5 py-4">
+                            <h3 className="text-2xl font-medium text-gray-900">Merge Tags</h3>
+                            <div className="ml-auto flex w-full max-w-xs items-center gap-2 rounded-lg border border-gray-300 px-3 py-2">
+                                <Search className="h-4 w-4 text-gray-400" />
+                                <input
+                                    value={mergeTagSearch}
+                                    onChange={(event) => setMergeTagSearch(event.target.value)}
+                                    placeholder="Search by name"
+                                    className="w-full border-0 text-sm text-gray-700 outline-none"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowMergeTagModal(false)}
+                                className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                aria-label="Close merge tag modal"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="grid h-[520px] grid-cols-[180px_1fr]">
+                            <div className="border-r border-gray-200 bg-gray-50">
+                                {MERGE_TAG_CATEGORIES.map((category) => (
+                                    <button
+                                        key={category.id}
+                                        type="button"
+                                        onClick={() => setMergeTagCategory(category.id)}
+                                        className={`flex w-full items-center px-4 py-3 text-left text-sm ${
+                                            mergeTagCategory === category.id
+                                                ? 'bg-white font-medium text-gray-900'
+                                                : 'text-gray-600 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        {category.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="overflow-y-auto">
+                                {visibleMergeTags.length === 0 ? (
+                                    <div className="p-8 text-sm text-gray-500">No merge tags found for that search.</div>
+                                ) : (
+                                    visibleMergeTags.map((tag) => (
+                                        <div key={tag.value} className="flex items-center gap-4 border-b border-gray-100 px-6 py-3">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-medium text-gray-900">{tag.label}</p>
+                                            </div>
+                                            <code className="min-w-[220px] text-xs text-gray-500">{tag.value}</code>
+                                            <button
+                                                type="button"
+                                                onClick={() => insertMergeTag(tag.value)}
+                                                className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                                title="Insert merge tag"
+                                            >
+                                                <Copy className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
@@ -238,6 +362,8 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
     const textStyle = useMemo<CSSProperties>(() => ({
         padding: block.props.padding || '8px 0',
         textAlign: align,
+        direction: 'ltr',
+        unicodeBidi: 'normal',
         fontSize: size,
         lineHeight: block.props.lineHeight || 1.6,
         color: block.props.color || theme.textColor,
@@ -288,6 +414,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                 ref={editorRef}
                 contentEditable
                 suppressContentEditableWarning
+                dir="ltr"
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => {
                     requestAnimationFrame(() => {
