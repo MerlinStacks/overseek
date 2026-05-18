@@ -17,7 +17,7 @@ import { ListNode, ListItemNode } from '@lexical/list';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 
 import { editorTheme } from './themes/editorTheme';
-import { ToolbarPlugin, type ToolbarFeature } from './plugins/ToolbarPlugin';
+import { ToolbarPlugin, type MergeTagOption, type ToolbarFeature } from './plugins/ToolbarPlugin';
 import { OnChangePlugin } from './plugins/OnChangePlugin';
 import { InitialValuePlugin } from './plugins/InitialValuePlugin';
 import { EnterSubmitPlugin } from './plugins/EnterSubmitPlugin';
@@ -47,6 +47,8 @@ export interface RichTextEditorProps {
     className?: string;
     /** Optional right-side controls rendered in the toolbar row */
     toolbarRightSlot?: ReactNode;
+    /** Optional merge tags for insertion dropdown */
+    mergeTags?: MergeTagOption[];
 }
 
 // Default features per variant
@@ -75,6 +77,7 @@ export function RichTextEditor({
     disableEnterSubmit = false,
     className = '',
     toolbarRightSlot,
+    mergeTags,
 }: RichTextEditorProps) {
     // Memoize features to prevent re-renders
     const enabledFeatures = useMemo(
@@ -115,7 +118,7 @@ export function RichTextEditor({
             <LexicalComposer initialConfig={initialConfig}>
                 {/* Toolbar - position depends on variant */}
                 {variant !== 'compact' && (
-                    <ToolbarPlugin features={enabledFeatures} rightSlot={toolbarRightSlot} />
+                    <ToolbarPlugin features={enabledFeatures} rightSlot={toolbarRightSlot} mergeTags={mergeTags} />
                 )}
 
                 <div className="rte-editor-container">
@@ -128,7 +131,7 @@ export function RichTextEditor({
 
                 {/* Toolbar at bottom for compact variant */}
                 {variant === 'compact' && (
-                    <ToolbarPlugin features={enabledFeatures} rightSlot={toolbarRightSlot} />
+                    <ToolbarPlugin features={enabledFeatures} rightSlot={toolbarRightSlot} mergeTags={mergeTags} />
                 )}
 
                 {/* Plugins */}

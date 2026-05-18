@@ -9,6 +9,15 @@ import { useToast } from '../../context/ToastContext';
 import { RichTextEditor } from '../common/RichTextEditor';
 
 const buildDefaultEmailFooterHtml = (accountName: string) => `<p>You are receiving this email from ${accountName}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
+const EMAIL_FOOTER_MERGE_TAGS = [
+    { label: 'Store URL', value: '{{store_url}}' },
+    { label: 'Unsubscribe URL', value: '{{unsubscribe_url}}' },
+    { label: 'Customer First Name', value: '{{customer.firstName}}' },
+    { label: 'Customer Last Name', value: '{{customer.lastName}}' },
+    { label: 'Customer Email', value: '{{customer.email}}' },
+    { label: 'Order Number', value: '{{order.number}}' },
+    { label: 'Order Total', value: '{{order.total}}' },
+];
 
 /**
  * Email Settings page - manages unified email accounts with SMTP/IMAP.
@@ -27,11 +36,6 @@ export function EmailSettings() {
     const [syncResult, setSyncResult] = useState<{ success: boolean; message?: string; checked?: number } | null>(null);
     const [emailFooterHtml, setEmailFooterHtml] = useState('');
     const [isSavingFooter, setIsSavingFooter] = useState(false);
-    const [suppressions, setSuppressions] = useState<Array<{ id: string; email: string; scope: 'MARKETING' | 'ALL'; reason: string | null; createdAt: string }>>([]);
-    const [isLoadingSuppressions, setIsLoadingSuppressions] = useState(false);
-    const [suppressionQuery, setSuppressionQuery] = useState('');
-    const [suppressionPage, setSuppressionPage] = useState(1);
-    const [suppressionTotalPages, setSuppressionTotalPages] = useState(1);
 
     const [editingAccount, setEditingAccount] = useState<Partial<EmailAccount> | null>(null);
 
@@ -62,50 +66,11 @@ export function EmailSettings() {
         }
     }, [currentAccount, token, toast]);
 
-    const fetchSuppressions = useCallback(async (page = 1, query = '') => {
-        if (!currentAccount || !token) return;
-        setIsLoadingSuppressions(true);
-        try {
-            const params = new URLSearchParams();
-            params.set('page', String(page));
-            params.set('limit', '10');
-            if (query.trim()) params.set('q', query.trim());
-
-            const res = await fetch(`/api/email/suppressions?${params.toString()}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
-            });
-
-            if (!res.ok) {
-                const payload = await res.json().catch(() => null) as { error?: string } | null;
-                throw new Error(payload?.error || 'Failed to load suppressed contacts');
-            }
-
-            const data = await res.json() as {
-                suppressions: Array<{ id: string; email: string; scope: 'MARKETING' | 'ALL'; reason: string | null; createdAt: string }>;
-                page: number;
-                totalPages: number;
-            };
-
-            setSuppressions(data.suppressions || []);
-            setSuppressionPage(data.page || 1);
-            setSuppressionTotalPages(data.totalPages || 1);
-        } catch (error) {
-            Logger.error('Failed to load suppressions', { error });
-            toast.error(error instanceof Error ? error.message : 'Failed to load suppressed contacts.');
-        } finally {
-            setIsLoadingSuppressions(false);
-        }
-    }, [currentAccount, token, toast]);
-
     useEffect(() => {
         if (currentAccount && token) {
             fetchAccounts();
-            fetchSuppressions(1, '');
         }
-    }, [currentAccount, token, fetchAccounts, fetchSuppressions]);
+    }, [currentAccount, token, fetchAccounts]);
 
     useEffect(() => {
         if (!currentAccount) return;
@@ -265,32 +230,6 @@ export function EmailSettings() {
         }
     };
 
-    const handleRemoveSuppression = async (email: string) => {
-        if (!currentAccount || !token) return;
-        if (!confirm(`Remove suppression for ${email}?`)) return;
-
-        try {
-            const res = await fetch(`/api/email/suppressions/${encodeURIComponent(email)}`, {
-                method: 'DELETE',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
-            });
-
-            if (!res.ok) {
-                const payload = await res.json().catch(() => null) as { error?: string } | null;
-                throw new Error(payload?.error || 'Failed to remove suppression');
-            }
-
-            toast.success('Suppression removed. This contact can receive marketing emails again.');
-            await fetchSuppressions(suppressionPage, suppressionQuery);
-        } catch (error) {
-            Logger.error('Failed to remove suppression', { error });
-            toast.error(error instanceof Error ? error.message : 'Failed to remove suppression.');
-        }
-    };
-
     if (isLoading) return <div>Loading...</div>;
 
     return (
@@ -306,7 +245,8 @@ export function EmailSettings() {
                         onChange={setEmailFooterHtml}
                         placeholder="<p>You are receiving this email from Your Store...</p>"
                         variant="standard"
-                        features={['bold', 'italic', 'underline', 'link', 'list']}
+                        features={['bold', 'italic', 'underline', 'link', 'list', 'align', 'mergeTag']}
+                        mergeTags={EMAIL_FOOTER_MERGE_TAGS}
                     />
                     <div className="flex justify-end">
                         <button
@@ -385,75 +325,6 @@ export function EmailSettings() {
                 />
             )}
 
-            {!editingAccount && (
-                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 space-y-4">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div>
-                            <h3 className="font-medium text-gray-900">Suppressed Contacts</h3>
-                            <p className="text-sm text-gray-500">Contacts blocked from marketing sends. Remove to allow sending again.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <input
-                                value={suppressionQuery}
-                                onChange={(e) => setSuppressionQuery(e.target.value)}
-                                placeholder="Search email"
-                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            />
-                            <button
-                                onClick={() => fetchSuppressions(1, suppressionQuery)}
-                                className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-                            >
-                                Search
-                            </button>
-                        </div>
-                    </div>
-
-                    {isLoadingSuppressions ? (
-                        <div className="text-sm text-gray-500">Loading suppressed contacts...</div>
-                    ) : suppressions.length === 0 ? (
-                        <div className="text-sm text-gray-500">No suppressed contacts found.</div>
-                    ) : (
-                        <div className="space-y-2">
-                            {suppressions.map((entry) => (
-                                <div key={entry.id} className="flex items-center justify-between border border-gray-200 rounded-lg p-3 gap-3">
-                                    <div className="min-w-0">
-                                        <div className="text-sm font-medium text-gray-900 break-all">{entry.email}</div>
-                                        <div className="text-xs text-gray-500">
-                                            Scope: {entry.scope} {entry.reason ? `| ${entry.reason}` : ''}
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => handleRemoveSuppression(entry.email)}
-                                        className="px-3 py-1.5 rounded-md border border-red-300 text-red-700 hover:bg-red-50 text-sm"
-                                    >
-                                        Remove
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {suppressionTotalPages > 1 && (
-                        <div className="flex items-center justify-end gap-2">
-                            <button
-                                onClick={() => fetchSuppressions(Math.max(1, suppressionPage - 1), suppressionQuery)}
-                                disabled={suppressionPage <= 1 || isLoadingSuppressions}
-                                className="px-3 py-1.5 rounded-md border border-gray-300 text-sm disabled:opacity-50"
-                            >
-                                Prev
-                            </button>
-                            <span className="text-sm text-gray-600">Page {suppressionPage} of {suppressionTotalPages}</span>
-                            <button
-                                onClick={() => fetchSuppressions(Math.min(suppressionTotalPages, suppressionPage + 1), suppressionQuery)}
-                                disabled={suppressionPage >= suppressionTotalPages || isLoadingSuppressions}
-                                className="px-3 py-1.5 rounded-md border border-gray-300 text-sm disabled:opacity-50"
-                            >
-                                Next
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
         </div>
     );
 }

@@ -26,6 +26,9 @@ import {
     List,
     ListOrdered,
     Smile,
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -37,11 +40,19 @@ export type ToolbarFeature =
     | 'list'
     | 'heading'
     | 'emoji'
-    | 'image';
+    | 'image'
+    | 'align'
+    | 'mergeTag';
+
+export interface MergeTagOption {
+    label: string;
+    value: string;
+}
 
 interface ToolbarPluginProps {
     features: ToolbarFeature[];
     rightSlot?: ReactNode;
+    mergeTags?: MergeTagOption[];
 }
 
 // Common emojis for quick access
@@ -51,7 +62,7 @@ const EMOJI_LIST = [
     '📦', '🚚', '💳', '📧', '📞', '🛒', '💰', '🎁',
 ];
 
-export function ToolbarPlugin({ features, rightSlot }: ToolbarPluginProps) {
+export function ToolbarPlugin({ features, rightSlot, mergeTags = [] }: ToolbarPluginProps) {
     const [editor] = useLexicalComposerContext();
     const [isBold, setIsBold] = useState(false);
     const [isItalic, setIsItalic] = useState(false);
@@ -140,6 +151,19 @@ export function ToolbarPlugin({ features, rightSlot }: ToolbarPluginProps) {
 
     const insertBulletList = () => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
     const insertNumberedList = () => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+    const formatAlignment = (value: 'left' | 'center' | 'right') => {
+        editor.update(() => {
+            const selection = $getSelection();
+            if (!$isRangeSelection(selection)) return;
+            const anchorNode = selection.anchor.getNode();
+            const element = anchorNode.getTopLevelElementOrThrow();
+            element.setFormat(value);
+        });
+    };
+
+    const alignLeft = () => formatAlignment('left');
+    const alignCenter = () => formatAlignment('center');
+    const alignRight = () => formatAlignment('right');
 
     // Insert emoji at cursor position
     const insertEmoji = (emoji: string) => {
@@ -153,6 +177,14 @@ export function ToolbarPlugin({ features, rightSlot }: ToolbarPluginProps) {
     };
 
     const has = (feature: ToolbarFeature) => features.includes(feature);
+
+    const insertMergeTag = (value: string) => {
+        if (!value) return;
+        editor.update(() => {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection)) selection.insertText(value);
+        });
+    };
 
     return (
         <>
@@ -233,6 +265,40 @@ export function ToolbarPlugin({ features, rightSlot }: ToolbarPluginProps) {
                             >
                                 <ListOrdered size={16} />
                             </button>
+                        </div>
+                    )}
+
+                    {has('align') && (
+                        <div className="rte-toolbar-group">
+                            <button type="button" onClick={alignLeft} className="rte-toolbar-btn" title="Align Left" aria-label="Align Left">
+                                <AlignLeft size={16} />
+                            </button>
+                            <button type="button" onClick={alignCenter} className="rte-toolbar-btn" title="Align Center" aria-label="Align Center">
+                                <AlignCenter size={16} />
+                            </button>
+                            <button type="button" onClick={alignRight} className="rte-toolbar-btn" title="Align Right" aria-label="Align Right">
+                                <AlignRight size={16} />
+                            </button>
+                        </div>
+                    )}
+
+                    {has('mergeTag') && mergeTags.length > 0 && (
+                        <div className="rte-toolbar-group">
+                            <select
+                                className="rte-toolbar-select"
+                                defaultValue=""
+                                onChange={(event) => {
+                                    const value = event.target.value;
+                                    insertMergeTag(value);
+                                    event.currentTarget.value = '';
+                                }}
+                                aria-label="Insert merge tag"
+                            >
+                                <option value="">Merge Tags</option>
+                                {mergeTags.map((tag) => (
+                                    <option key={tag.value} value={tag.value}>{tag.label}</option>
+                                ))}
+                            </select>
                         </div>
                     )}
 

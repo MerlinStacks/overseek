@@ -363,7 +363,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         padding: block.props.padding || '8px 0',
         textAlign: align,
         direction: 'ltr',
-        unicodeBidi: 'normal',
+        unicodeBidi: 'plaintext',
         writingMode: 'horizontal-tb',
         fontSize: size,
         lineHeight: block.props.lineHeight || 1.6,
@@ -398,9 +398,13 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
             setIsStrike(Boolean(document.queryCommandState('strikeThrough')));
             setIsBulletList(Boolean(document.queryCommandState('insertUnorderedList')));
             setIsNumberList(Boolean(document.queryCommandState('insertOrderedList')));
-            if (document.queryCommandState('justifyCenter')) setTextAlign('center');
-            else if (document.queryCommandState('justifyRight')) setTextAlign('right');
-            else setTextAlign('left');
+            const editor = editorRef.current;
+            if (editor) {
+                const computed = window.getComputedStyle(editor).textAlign;
+                if (computed === 'center') setTextAlign('center');
+                else if (computed === 'right' || computed === 'end') setTextAlign('right');
+                else setTextAlign('left');
+            }
         };
 
         refreshToolbarState();
@@ -411,6 +415,18 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
     }, [isFocused]);
 
     const buttonClass = (active = false) => `rounded p-1.5 transition ${active ? 'bg-slate-200 text-slate-900 ring-1 ring-slate-300' : 'hover:bg-slate-700'}`;
+
+    const applyBlockAlign = (nextAlign: 'left' | 'center' | 'right') => {
+        setTextAlign(nextAlign);
+        onUpdate((draft) => {
+            if (draft.type === 'text') draft.props.align = nextAlign;
+        });
+        if (editorRef.current) {
+            editorRef.current.style.textAlign = nextAlign;
+            normalizeEditorDirection(editorRef.current);
+        }
+        syncHtml();
+    };
 
     return (
         <div ref={wrapperRef} className="relative">
@@ -516,9 +532,9 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                     <button type="button" className={buttonClass(isStrike)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('strikeThrough')} title="Strikethrough"><Strikethrough size={14} /></button>
                     <button type="button" className={buttonClass(isBulletList)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('insertUnorderedList')} title="Bullet list"><List size={14} /></button>
                     <button type="button" className={buttonClass(isNumberList)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('insertOrderedList')} title="Numbered list"><ListOrdered size={14} /></button>
-                    <button type="button" className={buttonClass(textAlign === 'left')} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('justifyLeft')} title="Align left"><AlignLeft size={14} /></button>
-                    <button type="button" className={buttonClass(textAlign === 'center')} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('justifyCenter')} title="Align center"><AlignCenter size={14} /></button>
-                    <button type="button" className={buttonClass(textAlign === 'right')} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('justifyRight')} title="Align right"><AlignRight size={14} /></button>
+                    <button type="button" className={buttonClass(textAlign === 'left')} onMouseDown={(event) => event.preventDefault()} onClick={() => applyBlockAlign('left')} title="Align left"><AlignLeft size={14} /></button>
+                    <button type="button" className={buttonClass(textAlign === 'center')} onMouseDown={(event) => event.preventDefault()} onClick={() => applyBlockAlign('center')} title="Align center"><AlignCenter size={14} /></button>
+                    <button type="button" className={buttonClass(textAlign === 'right')} onMouseDown={(event) => event.preventDefault()} onClick={() => applyBlockAlign('right')} title="Align right"><AlignRight size={14} /></button>
                     <button
                         type="button"
                         className={buttonClass(false)}
@@ -606,19 +622,20 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
 function normalizeEditorDirection(editor: HTMLDivElement): void {
     editor.setAttribute('dir', 'ltr');
     editor.style.direction = 'ltr';
-    editor.style.unicodeBidi = 'normal';
+    editor.style.unicodeBidi = 'plaintext';
     editor.style.writingMode = 'horizontal-tb';
 
     editor.querySelectorAll<HTMLElement>('*').forEach((node) => {
         if (node.getAttribute('dir')?.toLowerCase() === 'rtl') node.removeAttribute('dir');
         if (node.style.direction === 'rtl') node.style.direction = 'ltr';
-        if (node.style.unicodeBidi === 'bidi-override') node.style.unicodeBidi = 'normal';
+        if (node.style.unicodeBidi === 'bidi-override') node.style.unicodeBidi = 'plaintext';
     });
 }
 
 function sanitizeRtlHtml(html: string): string {
     return html
+        .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
         .replace(/\sdir=(['"])rtl\1/gi, '')
         .replace(/direction\s*:\s*rtl\s*;?/gi, 'direction:ltr;')
-        .replace(/unicode-bidi\s*:\s*bidi-override\s*;?/gi, 'unicode-bidi:normal;');
+        .replace(/unicode-bidi\s*:\s*bidi-override\s*;?/gi, 'unicode-bidi:plaintext;');
 }

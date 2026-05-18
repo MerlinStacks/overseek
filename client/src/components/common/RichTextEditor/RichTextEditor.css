@@ -138,6 +138,22 @@
     cursor: not-allowed;
 }
 
+.rte-toolbar-select {
+    height: 32px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #374151;
+    font-size: 12px;
+    padding: 0 8px;
+}
+
+.rte-toolbar-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
 /* ========== Text Formatting ========== */
 .rte-bold {
     font-weight: 700;
