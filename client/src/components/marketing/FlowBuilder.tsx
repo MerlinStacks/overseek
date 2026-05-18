@@ -100,9 +100,10 @@ interface Props {
     onUndoRedoHandlersChange?: (handlers: { undo: () => void; redo: () => void }) => void;
     invalidNodeIds?: string[];
     flowId?: string;
+    onViewNodeAnalytics?: (nodeId: string) => void;
 }
 
-const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, isSaveDisabled = false, isSaving = false, onFlowChange, onUndoRedoStateChange, onUndoRedoHandlersChange, invalidNodeIds = [], flowId }) => {
+const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, isSaveDisabled = false, isSaving = false, onFlowChange, onUndoRedoStateChange, onUndoRedoHandlersChange, invalidNodeIds = [], flowId, onViewNodeAnalytics }) => {
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -726,11 +727,12 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     onAddConditionBranch: node.type === 'condition' ? handleOpenConditionBranchPopup : undefined,
                     onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
+                    onViewAnalytics: onViewNodeAnalytics,
                     density: flowDensity,
                 },
             };
         });
-    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, handleOpenConditionBranchPopup, onNodeCopy, onNodeDelete, flowDensity]);
+    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, handleOpenConditionBranchPopup, onNodeCopy, onNodeDelete, onViewNodeAnalytics, flowDensity]);
 
     return (
             <div className="h-full w-full relative">

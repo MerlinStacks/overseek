@@ -261,6 +261,30 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get<{ Params: { id: string; nodeId: string }; Querystring: { status?: string; page?: string; perPage?: string } }>(
+        '/automations/:id/nodes/:nodeId/analytics',
+        async (request, reply) => {
+            try {
+                const page = request.query.page ? parseInt(request.query.page, 10) : 1;
+                const perPage = request.query.perPage ? parseInt(request.query.perPage, 10) : 10;
+                return await service.getAutomationNodeAnalytics(
+                    request.params.id,
+                    request.user!.accountId!,
+                    request.params.nodeId,
+                    request.query.status,
+                    page,
+                    perPage
+                );
+            } catch (e) {
+                const message = (e as Error).message;
+                if (message === 'Automation not found') {
+                    return reply.code(404).send({ error: message });
+                }
+                return reply.code(500).send({ error: e });
+            }
+        }
+    );
+
     fastify.delete<{ Params: { id: string } }>('/automations/:id', async (request, reply) => {
         try {
             await service.deleteAutomation(request.params.id, request.user!.accountId!);

@@ -68,7 +68,7 @@ export class AutomationEngine {
         });
 
         for (const automation of automations) {
-            const passesFilters = this.checkTriggerFilters(automation, data);
+            const passesFilters = await this.checkTriggerFilters(automation, data);
 
             if (passesFilters) {
                 await this.enroll(automation, data);
@@ -120,6 +120,7 @@ export class AutomationEngine {
             triggerEntityType,
             triggerEntityId,
             dedupeKey,
+            dedupeScope: triggerEntityType === 'ORDER' ? 'ANY' : 'ACTIVE',
             dedupeLookbackHours: this.getDedupeLookbackHours(automation, data),
             frequencyCapHours: this.getFrequencyCapHours(automation)
         });
@@ -376,7 +377,7 @@ export class AutomationEngine {
     /**
      * Check if data meets trigger filters.
      */
-    private checkTriggerFilters(automation: MarketingAutomation, data: any): boolean {
+    private async checkTriggerFilters(automation: MarketingAutomation, data: any): Promise<boolean> {
         const flow = automation.flowDefinition as unknown as FlowDefinition;
         if (!flow?.nodes) return true;
 
@@ -393,6 +394,10 @@ export class AutomationEngine {
             ?? (config.filterByValue ? config.filterValue : undefined);
         const filterOperator = config.filterOperator || 'gte';
 
+        if (config.filterByValue && minOrderValue === undefined) {
+            return false;
+        }
+
         if (minOrderValue !== undefined && Number.isFinite(orderTotal)) {
             const threshold = Number(minOrderValue);
             if (Number.isFinite(threshold)) {
@@ -407,6 +412,10 @@ export class AutomationEngine {
                     return false;
                 }
             }
+        }
+
+        if (minOrderValue !== undefined && !Number.isFinite(orderTotal)) {
+            return false;
         }
 
         const orderItems = data.line_items || data?.cart?.items || data?.order?.line_items || [];
@@ -429,18 +438,23 @@ export class AutomationEngine {
             if (!hasConfiguredProduct) {
                 return false;
             }
+        } else if (config.filterByProduct) {
+            return false;
         }
 
         if (config.filterByCategory && config.filterCategoryId) {
             const targetCategoryId = String(config.filterCategoryId);
-            const hasConfiguredCategory = orderItems.some((item: any) => {
-                const categories = Array.isArray(item?.categories) ? item.categories : [];
-                return categories.some((category: any) => String(category?.id ?? category?.term_id ?? '') === targetCategoryId);
-            });
+            const hasConfiguredCategory = await this.orderContainsCategory(
+                automation.accountId,
+                orderItems,
+                targetCategoryId
+            );
 
             if (!hasConfiguredCategory) {
                 return false;
             }
+        } else if (config.filterByCategory) {
+            return false;
         }
 
         if (config.tagName && data?.tagName && String(config.tagName) !== String(data.tagName)) {
@@ -462,6 +476,39 @@ export class AutomationEngine {
         }
 
         return true;
+    }
+
+    private async orderContainsCategory(accountId: string, orderItems: any[], targetCategoryId: string): Promise<boolean> {
+        const itemHasCategory = (item: any) => {
+            const categories = Array.isArray(item?.categories) ? item.categories : [];
+            return categories.some((category: any) => String(category?.id ?? category?.term_id ?? '') === targetCategoryId);
+        };
+
+        if (orderItems.some(itemHasCategory)) {
+            return true;
+        }
+
+        const productIds = Array.from(new Set(orderItems
+            .map((item: any) => Number(item?.product_id ?? item?.productId ?? item?.id))
+            .filter((productId: number) => Number.isFinite(productId) && productId > 0)));
+
+        if (productIds.length === 0) {
+            return false;
+        }
+
+        const products = await prisma.wooProduct.findMany({
+            where: {
+                accountId,
+                wooId: { in: productIds }
+            },
+            select: { rawData: true }
+        });
+
+        return products.some((product) => {
+            const rawData = product.rawData as any;
+            const categories = Array.isArray(rawData?.categories) ? rawData.categories : [];
+            return categories.some((category: any) => String(category?.id ?? category?.term_id ?? '') === targetCategoryId);
+        });
     }
 
     private getTriggerEntityId(data: any): string | undefined {

@@ -2,7 +2,7 @@
  * FlowsPage - Dedicated page for automation flows (formerly "Automations" tab).
  * Part of the Growth menu in the sidebar.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Redo2, Undo2 } from 'lucide-react';
 import type { Edge, Node } from '@xyflow/react';
 import { useSearchParams } from 'react-router-dom';
@@ -270,6 +270,35 @@ interface RunEventRow {
     createdAt: string;
 }
 
+type NodeAnalyticsStatus = 'completed' | 'skipped' | 'failed';
+
+interface NodeAnalyticsResponse {
+    nodeId: string;
+    status: NodeAnalyticsStatus;
+    counts: Record<NodeAnalyticsStatus, number>;
+    pagination: {
+        page: number;
+        perPage: number;
+        total: number;
+        totalPages: number;
+    };
+    contacts: Array<{
+        id: string;
+        enrollmentId: string;
+        name: string;
+        email: string;
+        outcome?: string | null;
+        occurredAt: string;
+        triggerEntityId?: string | null;
+        journey: Array<{
+            nodeId?: string | null;
+            eventType: string;
+            outcome?: string | null;
+            createdAt: string;
+        }>;
+    }>;
+}
+
 function formatRunMetadataValue(value: unknown): string | null {
     if (typeof value === 'string' && value.trim()) return value;
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
@@ -345,6 +374,12 @@ export function FlowsPage() {
     const [isClosingEditor, setIsClosingEditor] = useState(false);
     const [undoRedoState, setUndoRedoState] = useState({ canUndo: false, canRedo: false });
     const [invalidNodeIds, setInvalidNodeIds] = useState<string[]>([]);
+    const [nodeAnalyticsNodeId, setNodeAnalyticsNodeId] = useState<string | null>(null);
+    const [nodeAnalyticsStatus, setNodeAnalyticsStatus] = useState<NodeAnalyticsStatus>('completed');
+    const [nodeAnalyticsPage, setNodeAnalyticsPage] = useState(1);
+    const [nodeAnalytics, setNodeAnalytics] = useState<NodeAnalyticsResponse | null>(null);
+    const [isNodeAnalyticsLoading, setIsNodeAnalyticsLoading] = useState(false);
+    const [expandedJourneyEnrollmentId, setExpandedJourneyEnrollmentId] = useState<string | null>(null);
 
     const baselineFlowRef = useRef<string>('');
     const autosaveTimerRef = useRef<number | null>(null);
@@ -355,6 +390,20 @@ export function FlowsPage() {
         setToastType(type);
         setToastVisible(true);
     };
+
+    const getNodeLabel = useCallback((nodeId: string | null) => {
+        if (!nodeId) return 'Node';
+        const node = editingFlowData?.flowDefinition?.nodes?.find((candidate) => candidate.id === nodeId);
+        const data = node?.data as { label?: string; config?: { subject?: string; actionType?: string } } | undefined;
+        return data?.label || data?.config?.subject || data?.config?.actionType || `Node ${nodeId}`;
+    }, [editingFlowData?.flowDefinition?.nodes]);
+
+    const openNodeAnalytics = useCallback((nodeId: string) => {
+        setNodeAnalyticsNodeId(nodeId);
+        setNodeAnalyticsStatus('completed');
+        setNodeAnalyticsPage(1);
+        setExpandedJourneyEnrollmentId(null);
+    }, []);
 
     const getDraftKey = useCallback((flowId: string) => {
         if (!currentAccount?.id) return null;
@@ -577,6 +626,40 @@ export function FlowsPage() {
 
         loadAutomationInsights();
     }, [currentAccount, editingItem, isEditing, token]);
+
+    useEffect(() => {
+        const loadNodeAnalytics = async () => {
+            if (!editingItem || !currentAccount || !token || !nodeAnalyticsNodeId) return;
+
+            setIsNodeAnalyticsLoading(true);
+            try {
+                const params = new URLSearchParams({
+                    status: nodeAnalyticsStatus,
+                    page: String(nodeAnalyticsPage),
+                    perPage: '10'
+                });
+                const res = await fetch(`/api/marketing/automations/${editingItem.id}/nodes/${nodeAnalyticsNodeId}/analytics?${params.toString()}`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    }
+                });
+
+                if (!res.ok) {
+                    throw new Error('Failed to load node analytics');
+                }
+
+                setNodeAnalytics(await res.json());
+            } catch (error) {
+                Logger.error('Failed to load node analytics', { error });
+                showToast('Failed to load node analytics.');
+            } finally {
+                setIsNodeAnalyticsLoading(false);
+            }
+        };
+
+        loadNodeAnalytics();
+    }, [currentAccount, editingItem, nodeAnalyticsNodeId, nodeAnalyticsPage, nodeAnalyticsStatus, token]);
 
     const handleSaveFlow = async (flow: FlowDefinition) => {
         if (!editingItem || !currentAccount || !token) {
@@ -939,11 +1022,141 @@ export function FlowsPage() {
                                 }}
                                 invalidNodeIds={invalidNodeIds}
                                 flowId={editingItem?.id}
+                                onViewNodeAnalytics={openNodeAnalytics}
                             />
                         </ErrorBoundary>
                     </div>
                 </div>
                 <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
+                <Modal
+                    isOpen={Boolean(nodeAnalyticsNodeId)}
+                    onClose={() => {
+                        setNodeAnalyticsNodeId(null);
+                        setNodeAnalytics(null);
+                    }}
+                    title={`${getNodeLabel(nodeAnalyticsNodeId)} Analytics`}
+                    maxWidth="max-w-4xl"
+                >
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
+                            {(['completed', 'skipped', 'failed'] as NodeAnalyticsStatus[]).map((status) => {
+                                const count = nodeAnalytics?.counts?.[status] ?? 0;
+                                const isActive = nodeAnalyticsStatus === status;
+                                return (
+                                    <button
+                                        key={status}
+                                        type="button"
+                                        onClick={() => {
+                                            setNodeAnalyticsStatus(status);
+                                            setNodeAnalyticsPage(1);
+                                            setExpandedJourneyEnrollmentId(null);
+                                        }}
+                                        className={`flex items-center justify-between gap-2 px-4 py-3 text-sm font-medium capitalize transition-colors ${isActive
+                                            ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-300'
+                                            : 'text-slate-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-slate-800/70'}`}
+                                    >
+                                        <span>{status}</span>
+                                        <span className={`rounded-full px-2 py-0.5 text-xs ${isActive ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'}`}>
+                                            {count.toLocaleString()}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                            <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
+                                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+                                    <tr>
+                                        <th className="px-4 py-3 font-semibold">Name</th>
+                                        <th className="px-4 py-3 font-semibold">Email</th>
+                                        <th className="px-4 py-3 font-semibold">{nodeAnalyticsStatus === 'completed' ? 'Completed On' : nodeAnalyticsStatus === 'skipped' ? 'Skipped On' : 'Failed On'}</th>
+                                        <th className="px-4 py-3 font-semibold">Outcome</th>
+                                        <th className="px-4 py-3 font-semibold text-right">Journey</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-800">
+                                    {isNodeAnalyticsLoading && (
+                                        <tr>
+                                            <td colSpan={5} className="px-4 py-10 text-center text-slate-500">Loading node analytics...</td>
+                                        </tr>
+                                    )}
+                                    {!isNodeAnalyticsLoading && nodeAnalytics?.contacts.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="px-4 py-10 text-center text-slate-500">No contacts found for this node and status.</td>
+                                        </tr>
+                                    )}
+                                    {!isNodeAnalyticsLoading && nodeAnalytics?.contacts.map((contact) => (
+                                        <Fragment key={contact.id}>
+                                            <tr className="text-slate-700 dark:text-slate-200">
+                                                <td className="px-4 py-3 font-medium text-blue-700 dark:text-blue-300">{contact.name}</td>
+                                                <td className="px-4 py-3 break-all">{contact.email}</td>
+                                                <td className="px-4 py-3">{new Date(contact.occurredAt).toLocaleDateString()}</td>
+                                                <td className="px-4 py-3 text-xs text-slate-500">{contact.outcome || 'Completed'}</td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setExpandedJourneyEnrollmentId((current) => current === contact.enrollmentId ? null : contact.enrollmentId)}
+                                                        className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
+                                                    >
+                                                        View Journey
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            {expandedJourneyEnrollmentId === contact.enrollmentId && (
+                                                <tr key={`${contact.id}-journey`}>
+                                                    <td colSpan={5} className="bg-slate-50 px-4 py-3 dark:bg-slate-900/50">
+                                                        <div className="space-y-2">
+                                                            {contact.journey.map((event, index) => (
+                                                                <div key={`${contact.id}-journey-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                                                    <span className="font-medium text-slate-900 dark:text-slate-100">
+                                                                        {event.eventType}{event.outcome ? ` · ${event.outcome}` : ''}
+                                                                    </span>
+                                                                    <span>{event.nodeId ? `Node ${event.nodeId} · ` : ''}{new Date(event.createdAt).toLocaleString()}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </Fragment>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
+                            <div>
+                                Page {nodeAnalytics?.pagination.page ?? nodeAnalyticsPage} of {nodeAnalytics?.pagination.totalPages ?? 1}
+                                {nodeAnalytics && ` · Viewing ${nodeAnalytics.contacts.length} of ${nodeAnalytics.pagination.total.toLocaleString()} results`}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={nodeAnalyticsPage <= 1 || isNodeAnalyticsLoading}
+                                    onClick={() => {
+                                        setExpandedJourneyEnrollmentId(null);
+                                        setNodeAnalyticsPage((page) => Math.max(1, page - 1));
+                                    }}
+                                    className="rounded-lg border border-slate-200 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700"
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!nodeAnalytics || nodeAnalyticsPage >= nodeAnalytics.pagination.totalPages || isNodeAnalyticsLoading}
+                                    onClick={() => {
+                                        setExpandedJourneyEnrollmentId(null);
+                                        setNodeAnalyticsPage((page) => page + 1);
+                                    }}
+                                    className="rounded-lg border border-slate-200 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </Modal>
                 <Modal
                     isOpen={Boolean(recoveryPrompt)}
                     onClose={() => setRecoveryPrompt(null)}

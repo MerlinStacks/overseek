@@ -1,6 +1,29 @@
 import { prisma } from '../utils/prisma';
 
 export class AutomationAnalyticsService {
+    private getNodeOutcomeWhere(status: string) {
+        if (status === 'failed') {
+            return {
+                OR: [
+                    { outcome: { contains: 'FAILED' } },
+                    { outcome: 'EMAIL_NOT_CONFIGURED' }
+                ]
+            };
+        }
+
+        if (status === 'skipped') {
+            return { outcome: { contains: 'SKIPPED' } };
+        }
+
+        return {
+            NOT: [
+                { outcome: { contains: 'FAILED' } },
+                { outcome: { contains: 'SKIPPED' } },
+                { outcome: 'EMAIL_NOT_CONFIGURED' }
+            ]
+        };
+    }
+
     async getAutomationAnalytics(accountId: string, automationId: string) {
         const [enrollmentGroups, eventGroups, goalAggregate, recentRuns, runEventGroups, nodeEvents] = await Promise.all([
             prisma.automationEnrollment.groupBy({
@@ -195,6 +218,107 @@ export class AutomationAnalyticsService {
                 createdAt: true
             }
         });
+    }
+
+    async getNodeAnalytics(accountId: string, automationId: string, nodeId: string, status = 'completed', page = 1, perPage = 10) {
+        const safePage = Math.max(1, page);
+        const safePerPage = Math.min(100, Math.max(1, perPage));
+        const normalizedStatus = ['completed', 'skipped', 'failed'].includes(status) ? status : 'completed';
+        const baseWhere = {
+            accountId,
+            automationId,
+            nodeId,
+            eventType: 'NODE_EXECUTED'
+        };
+        const statusWhere = this.getNodeOutcomeWhere(normalizedStatus);
+
+        const [completed, skipped, failed, total, events] = await Promise.all([
+            prisma.automationRunEvent.count({ where: { ...baseWhere, ...this.getNodeOutcomeWhere('completed') } }),
+            prisma.automationRunEvent.count({ where: { ...baseWhere, ...this.getNodeOutcomeWhere('skipped') } }),
+            prisma.automationRunEvent.count({ where: { ...baseWhere, ...this.getNodeOutcomeWhere('failed') } }),
+            prisma.automationRunEvent.count({ where: { ...baseWhere, ...statusWhere } }),
+            prisma.automationRunEvent.findMany({
+                where: { ...baseWhere, ...statusWhere },
+                orderBy: { createdAt: 'desc' },
+                skip: (safePage - 1) * safePerPage,
+                take: safePerPage,
+                select: {
+                    id: true,
+                    enrollmentId: true,
+                    outcome: true,
+                    metadata: true,
+                    createdAt: true,
+                    enrollment: {
+                        select: {
+                            email: true,
+                            contextData: true,
+                            triggerEntityId: true
+                        }
+                    }
+                }
+            })
+        ]);
+
+        const enrollmentIds = Array.from(new Set(events.map((event) => event.enrollmentId)));
+        const journeyEvents = enrollmentIds.length > 0
+            ? await prisma.automationRunEvent.findMany({
+                where: {
+                    accountId,
+                    automationId,
+                    enrollmentId: { in: enrollmentIds }
+                },
+                orderBy: { createdAt: 'asc' },
+                select: {
+                    enrollmentId: true,
+                    nodeId: true,
+                    eventType: true,
+                    outcome: true,
+                    createdAt: true
+                }
+            })
+            : [];
+
+        const journeysByEnrollment = journeyEvents.reduce<Record<string, typeof journeyEvents>>((accumulator, event) => {
+            accumulator[event.enrollmentId] = accumulator[event.enrollmentId] || [];
+            accumulator[event.enrollmentId].push(event);
+            return accumulator;
+        }, {});
+
+        const contacts = events.map((event) => {
+            const context = (event.enrollment.contextData as Record<string, any> | null) || {};
+            const billing = context.billing || {};
+            const firstName = context.first_name || context.firstName || billing.first_name || billing.firstName || '';
+            const lastName = context.last_name || context.lastName || billing.last_name || billing.lastName || '';
+            const name = [firstName, lastName].filter(Boolean).join(' ').trim()
+                || context.name
+                || billing.name
+                || event.enrollment.email;
+
+            return {
+                id: event.id,
+                enrollmentId: event.enrollmentId,
+                name,
+                email: event.enrollment.email,
+                outcome: event.outcome,
+                occurredAt: event.createdAt,
+                triggerEntityId: event.enrollment.triggerEntityId,
+                metadata: event.metadata,
+                journey: journeysByEnrollment[event.enrollmentId] || []
+            };
+        });
+
+        return {
+            nodeId,
+            status: normalizedStatus,
+            counts: { completed, skipped, failed },
+            pagination: {
+                page: safePage,
+                perPage: safePerPage,
+                total,
+                totalPages: Math.max(1, Math.ceil(total / safePerPage))
+            },
+            contacts
+        };
     }
 }
 

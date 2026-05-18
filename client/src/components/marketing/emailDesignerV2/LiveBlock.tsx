@@ -26,34 +26,37 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
     }
     if (block.type === 'list') {
         const Tag = block.props.ordered ? 'ol' : 'ul';
-        return <div style={{ padding: block.props.padding || '8px 0', color: block.props.color || theme.textColor }}><Tag style={{ margin: 0, paddingLeft: 22, lineHeight: 1.6 }}>{block.props.items.map((item, index) => <li key={index} contentEditable suppressContentEditableWarning onBlur={(event) => {
-            const nextItem = event.currentTarget.textContent || '';
+        return <div style={{ padding: block.props.padding || '8px 0', color: block.props.color || theme.textColor }}><Tag style={{ margin: 0, paddingLeft: 22, lineHeight: 1.6 }}>{block.props.items.map((item, index) => <li key={index} contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+            normalizeEditorDirection(event.currentTarget);
+            const nextItem = sanitizeRtlText(event.currentTarget.textContent || '');
             onUpdate((draft) => {
                 if (draft.type === 'list') draft.props.items[index] = nextItem;
             });
-        }} style={{ margin: '0 0 6px', outline: 'none' }}>{item}</li>)}</Tag></div>;
+        }} style={{ margin: '0 0 6px', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{item}</li>)}</Tag></div>;
     }
     if (block.type === 'image') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center' }}><img src={block.props.src} alt={block.props.alt || ''} width={block.props.width || 560} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /></div>;
     }
     if (block.type === 'coupon') {
-        return <div style={{ padding: 18, margin: '8px 0', background: '#eef2ff', border: `1px dashed ${theme.primaryColor}`, borderRadius: theme.borderRadius, textAlign: 'center' }}><p contentEditable suppressContentEditableWarning onBlur={(event) => {
-            const nextHeadline = event.currentTarget.textContent || '';
+        return <div style={{ padding: 18, margin: '8px 0', background: '#eef2ff', border: `1px dashed ${theme.primaryColor}`, borderRadius: theme.borderRadius, textAlign: 'center' }}><p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+            normalizeEditorDirection(event.currentTarget);
+            const nextHeadline = sanitizeRtlText(event.currentTarget.textContent || '');
             onUpdate((draft) => {
                 if (draft.type === 'coupon') draft.props.headline = nextHeadline;
             });
-        }} style={{ margin: '0 0 6px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none' }}>{block.props.headline}</p><p style={{ margin: '0 0 8px', color: theme.primaryColor, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>{block.props.code || '{{coupon.code}}'}</p><p style={{ margin: 0, color: theme.mutedTextColor, lineHeight: 1.5 }}>{block.props.description || '{{coupon.description}}'}</p></div>;
+        }} style={{ margin: '0 0 6px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{block.props.headline}</p><p style={{ margin: '0 0 8px', color: theme.primaryColor, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>{block.props.code || '{{coupon.code}}'}</p><p style={{ margin: 0, color: theme.mutedTextColor, lineHeight: 1.5 }}>{block.props.description || '{{coupon.description}}'}</p></div>;
     }
     if (block.type === 'social') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => { const iconStyle = link.iconStyle || block.props.iconStyle || 'solid'; return <span key={`${link.label}-${index}`} style={getSocialPreviewStyle(iconStyle, block.props.color || theme.primaryColor)} title={link.label}><span dangerouslySetInnerHTML={{ __html: getSocialIconSvg(link.label, iconStyle, block.props.color || theme.primaryColor) }} /></span>; })}</div>;
     }
     if (block.type === 'menu') {
-        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => <span key={`${link.label}-${index}`} contentEditable suppressContentEditableWarning onBlur={(event) => {
-            const nextLabel = event.currentTarget.textContent || link.label;
+        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => <span key={`${link.label}-${index}`} contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+            normalizeEditorDirection(event.currentTarget);
+            const nextLabel = sanitizeRtlText(event.currentTarget.textContent || link.label);
             onUpdate((draft) => {
                 if (draft.type === block.type) draft.props.links[index].label = nextLabel;
             });
-        }} style={{ display: 'inline-block', margin: '0 10px', color: block.props.color || theme.primaryColor, fontWeight: 600, outline: 'none' }}>{link.label}</span>)}</div>;
+        }} style={{ display: 'inline-block', margin: '0 10px', color: block.props.color || theme.primaryColor, fontWeight: 600, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{link.label}</span>)}</div>;
     }
     if (block.type === 'footer') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 12, lineHeight: 1.6, color: block.props.color || theme.mutedTextColor }} dangerouslySetInnerHTML={{ __html: block.props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>' }} />;
@@ -87,7 +90,9 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
     const textDecoration = block.props.textDecoration || 'none';
 
     const syncLabel = () => {
-        const nextLabel = editorRef.current?.textContent || 'Button';
+        const editor = editorRef.current;
+        if (editor) normalizeEditorDirection(editor);
+        const nextLabel = sanitizeRtlText(editor?.textContent || 'Button');
         onUpdate((draft) => {
             if (draft.type === 'button') draft.props.label = nextLabel;
         });
@@ -121,7 +126,11 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    onFocus={() => setIsFocused(true)}
+                    dir="ltr"
+                    onFocus={() => {
+                        setIsFocused(true);
+                        if (editorRef.current) normalizeEditorDirection(editorRef.current);
+                    }}
                     onBlur={() => {
                         requestAnimationFrame(() => {
                             const active = document.activeElement;
@@ -141,6 +150,9 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                         fontStyle,
                         textDecoration,
                         fontSize,
+                        direction: 'ltr',
+                        unicodeBidi: 'plaintext',
+                        writingMode: 'horizontal-tb',
                         outline: 'none',
                     }}
                 >
@@ -624,7 +636,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
     );
 }
 
-function normalizeEditorDirection(editor: HTMLDivElement): void {
+function normalizeEditorDirection(editor: HTMLElement): void {
     editor.setAttribute('dir', 'ltr');
     editor.style.direction = 'ltr';
     editor.style.unicodeBidi = 'plaintext';
@@ -652,4 +664,8 @@ function sanitizeRtlHtml(html: string): string {
         .replace(/\sdir=(['"])rtl\1/gi, '')
         .replace(/direction\s*:\s*rtl\s*;?/gi, 'direction:ltr;')
         .replace(/unicode-bidi\s*:\s*bidi-override\s*;?/gi, 'unicode-bidi:plaintext;');
+}
+
+function sanitizeRtlText(text: string): string {
+    return text.replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '');
 }

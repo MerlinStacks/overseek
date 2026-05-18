@@ -33,8 +33,17 @@ export interface EmailDesignTheme {
 export interface EmailSection {
     id: string;
     name?: string;
+    backgroundType?: 'solid';
     backgroundColor?: string;
     padding?: string;
+    borderStyle?: 'none' | 'solid' | 'dashed' | 'dotted';
+    borderColor?: string;
+    borderWidth?: number;
+    borderRadius?: [number, number, number, number];
+    displayCondition?: {
+        enabled: boolean;
+        expression: string;
+    };
     visibility?: EmailDeviceVisibility;
     stackMode?: EmailStackMode;
     columns: EmailColumn[];
@@ -568,12 +577,20 @@ function isEmailImageSource(url: string): boolean {
 function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
     const visibilityClass = getVisibilityClass(section.visibility);
     const columns = section.columns.length > 0 ? section.columns : [{ id: createEmailDesignId('column'), width: 100, blocks: [] }];
+    const borderStyle = section.borderStyle || 'none';
+    const borderWidth = section.borderWidth || 0;
+    const borderColor = section.borderColor || '#e2e8f0';
+    const radius = section.borderRadius || [0, 0, 0, 0];
     const columnHtml = columns.map((column, index) => {
         const stackClass = getStackClass(section.stackMode, index, columns.length);
         return `<td class="${stackClass}" width="${column.width}%" valign="top" style="vertical-align:top;width:${column.width}%;">${column.blocks.map((block) => renderBlock(block, theme)).join('')}</td>`;
     }).join('');
 
-    return `<tr class="${visibilityClass}"><td style="background:${section.backgroundColor || theme.contentBackgroundColor};padding:${section.padding || '0'};"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${columnHtml}</tr></table></td></tr>`;
+    const borderDeclaration = borderStyle === 'none' || borderWidth <= 0 ? 'border:none;' : `border:${borderWidth}px ${borderStyle} ${borderColor};`;
+    const rowHtml = `<tr class="${visibilityClass}"><td style="background:${section.backgroundColor || theme.contentBackgroundColor};padding:${section.padding || '0'};${borderDeclaration}border-radius:${radius[0]}px ${radius[1]}px ${radius[2]}px ${radius[3]}px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${columnHtml}</tr></table></td></tr>`;
+    const conditionExpression = section.displayCondition?.enabled ? section.displayCondition.expression.trim() : '';
+    if (!conditionExpression) return rowHtml;
+    return `{{#if ${conditionExpression}}}${rowHtml}{{/if}}`;
 }
 
 function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {

@@ -8,7 +8,7 @@ import { Clock, Split, Eye } from 'lucide-react';
 import { NodeWrapper } from './NodeWrapper';
 import {
     NodeStats, OnAddStepCallback, OnCopyNodeCallback, OnDeleteNodeCallback,
-    getTriggerIcon, getTriggerLabel, getActionIcon, getActionLabel, getActionGradient
+    OnViewNodeAnalyticsCallback, getTriggerIcon, getTriggerLabel, getActionIcon, getActionLabel, getActionGradient
 } from './flowNodeUtils';
 
 interface FlowNodeConfig {
@@ -33,6 +33,7 @@ interface FlowNodeData {
     onAddConditionBranch?: (nodeId: string, sourceHandle: 'true' | 'false', position: { x: number; y: number }) => void;
     onCopy?: OnCopyNodeCallback;
     onDelete?: OnDeleteNodeCallback;
+    onViewAnalytics?: OnViewNodeAnalyticsCallback;
     onSettingsClick?: () => void;
     density?: 'compact' | 'comfortable';
 }
@@ -89,6 +90,7 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
+    const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
     const isExitNode = config?.actionType === 'EXIT';
     const actionLabel = getActionLabel(config);
@@ -119,7 +121,14 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                     ? <div className="text-xs text-slate-600 truncate mt-1.5 max-w-[240px]">{config.subject}</div>
                     : <div className="text-xs text-slate-500 mt-1.5">Set up this step in the sidebar.</div>}
                 {config?.actionType === 'SEND_EMAIL' && (
-                    <button className="mt-2.5 inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors">
+                    <button
+                        type="button"
+                        className="mt-2.5 inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onViewAnalytics?.(id);
+                        }}
+                    >
                         <Eye size={12} />View Analytics
                     </button>
                 )}

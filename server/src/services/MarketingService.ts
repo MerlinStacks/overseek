@@ -699,6 +699,17 @@ export class MarketingService {
         return automationAnalyticsService.listRunEvents(accountId, id, limit);
     }
 
+    async getAutomationNodeAnalytics(id: string, accountId: string, nodeId: string, status = 'completed', page = 1, perPage = 10) {
+        const automation = await prisma.marketingAutomation.findFirst({
+            where: { id, accountId },
+            select: { id: true }
+        });
+        if (!automation) {
+            throw new Error('Automation not found');
+        }
+        return automationAnalyticsService.getNodeAnalytics(accountId, id, nodeId, status, page, perPage);
+    }
+
     // -------------------
     // Templates
     // -------------------

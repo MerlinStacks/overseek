@@ -13,6 +13,7 @@ interface CreateEnrollmentInput {
     triggerEntityType?: string;
     triggerEntityId?: string;
     dedupeKey?: string;
+    dedupeScope?: 'ACTIVE' | 'ANY';
     dedupeLookbackHours?: number;
     frequencyCapHours?: number;
 }
@@ -70,7 +71,9 @@ export class AutomationEnrollmentService {
                                 gte: new Date(Date.now() - input.dedupeLookbackHours * 60 * 60 * 1000)
                             }
                         }
-                        : { status: 'ACTIVE' })
+                        : input.dedupeScope === 'ANY'
+                            ? {}
+                            : { status: 'ACTIVE' })
                 }
             })
             : null;

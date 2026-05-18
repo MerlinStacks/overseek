@@ -37,7 +37,7 @@ describe('evaluateEmailPreflight', () => {
 
     it('returns no issues for clean transactional email', () => {
         const issues = evaluateEmailPreflight({
-            html: '<p>Thanks for your order.</p><img src="hero.jpg" alt="Hero" /><a href="https://example.com">Track order</a>',
+            html: '<p>Thanks for your order.</p><img src="https://cdn.example.com/hero.jpg" alt="Hero" /><a href="https://example.com">Track order</a>',
             subject: 'Your receipt',
             emailCategory: 'TRANSACTIONAL',
         });

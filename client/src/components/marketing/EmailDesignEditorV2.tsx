@@ -73,6 +73,33 @@ const MAX_TEST_RECIPIENTS = 5;
 const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'X', 'Twitter', 'LinkedIn', 'Pinterest'];
 const SOCIAL_ICON_STYLES: SocialIconStyle[] = ['solid', 'outline', 'glyph'];
 
+function parseBoxSpacing(value: string): [number, number, number, number] {
+    const parts = value.trim().split(/\s+/).map((part) => Number(part.replace('px', '')) || 0);
+    if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]];
+    if (parts.length === 2) return [parts[0], parts[1], parts[0], parts[1]];
+    if (parts.length === 3) return [parts[0], parts[1], parts[2], parts[1]];
+    return [parts[0] || 0, parts[1] || 0, parts[2] || 0, parts[3] || 0];
+}
+
+function toBoxSpacing(values: [number, number, number, number]): string {
+    return values.map((value) => `${Math.max(0, Math.round(value))}px`).join(' ');
+}
+
+function normalizeColumnWidths(section: EmailSection) {
+    if (section.columns.length === 0) return;
+    const total = section.columns.reduce((sum, column) => sum + Math.max(1, column.width || 0), 0);
+    let running = 0;
+    section.columns.forEach((column, index) => {
+        if (index === section.columns.length - 1) {
+            column.width = Math.max(1, 100 - running);
+            return;
+        }
+        const next = Math.max(1, Math.round((Math.max(1, column.width || 0) / total) * 100));
+        column.width = next;
+        running += next;
+    });
+}
+
 function isEmailSafeImageUrl(value: string): boolean {
     const candidate = value.trim();
     if (!candidate) return false;
@@ -126,6 +153,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const isUtilityPanel = activePanel === 'checklist' || activePanel === 'history' || activePanel === 'test';
     const isInvoiceDownloadBlock = selectedBlock?.type === 'button' && (selectedBlock.props.href || '').trim() === '{{order.invoiceUrl}}';
     const hideRightSidebar = (selectedBlock?.type === 'text' || selectedBlock?.type === 'footer' || isInvoiceDownloadBlock) && !isUtilityPanel;
+    const hideOnDesktop = selectedSection?.visibility === 'mobile';
+    const hideOnMobile = selectedSection?.visibility === 'desktop';
 
     const appearanceLogoUrl = currentAccount?.appearance?.logoUrl || '';
     const brandLogoUrl = isEmailSafeImageUrl(invoiceLogoUrl) ? invoiceLogoUrl : appearanceLogoUrl;
@@ -251,6 +280,80 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         });
     };
 
+    const updateSelectedSection = (updater: (section: EmailSection) => void) => {
+        setDirtyDesign((draft) => {
+            const section = draft.document.sections.find((item) => item.id === selectedSectionId);
+            if (!section) return;
+            updater(section);
+        });
+    };
+
+    const updateSectionPaddingSide = (sideIndex: number, value: string) => {
+        updateSelectedSection((section) => {
+            const next = parseBoxSpacing(section.padding || '0');
+            next[sideIndex] = Number(value) || 0;
+            section.padding = toBoxSpacing(next);
+        });
+    };
+
+    const updateSectionBorderRadiusSide = (sideIndex: number, value: string) => {
+        updateSelectedSection((section) => {
+            const current = section.borderRadius || [0, 0, 0, 0];
+            const next: [number, number, number, number] = [current[0], current[1], current[2], current[3]];
+            next[sideIndex] = Number(value) || 0;
+            section.borderRadius = next;
+        });
+    };
+
+    const updateSectionColumnWidth = (columnId: string, value: string) => {
+        updateSelectedSection((section) => {
+            const width = Math.max(5, Math.min(100, Number(value) || 0));
+            const column = section.columns.find((item) => item.id === columnId);
+            if (!column) return;
+            column.width = width;
+            normalizeColumnWidths(section);
+        });
+    };
+
+    const addSectionColumn = () => {
+        updateSelectedSection((section) => {
+            const nextCount = section.columns.length + 1;
+            const width = Math.max(10, Math.floor(100 / nextCount));
+            section.columns.push({ id: createEmailDesignId('column'), width, blocks: [] });
+            normalizeColumnWidths(section);
+        });
+    };
+
+    const removeSectionColumn = (columnId: string) => {
+        updateSelectedSection((section) => {
+            if (section.columns.length <= 1) return;
+            const index = section.columns.findIndex((item) => item.id === columnId);
+            if (index < 0) return;
+            const removed = section.columns[index];
+            const fallbackIndex = index === 0 ? 1 : index - 1;
+            const fallback = section.columns[fallbackIndex];
+            if (removed?.blocks?.length && fallback) {
+                fallback.blocks.unshift(...removed.blocks);
+            }
+            section.columns = section.columns.filter((item) => item.id !== columnId);
+            normalizeColumnWidths(section);
+        });
+    };
+
+    const setSectionHideOnDesktop = (checked: boolean) => {
+        updateSelectedSection((section) => {
+            if (checked) section.visibility = 'mobile';
+            else if (section.visibility === 'mobile') section.visibility = 'all';
+        });
+    };
+
+    const setSectionHideOnMobile = (checked: boolean) => {
+        updateSelectedSection((section) => {
+            if (checked) section.visibility = 'desktop';
+            else if (section.visibility === 'desktop') section.visibility = 'all';
+        });
+    };
+
     const updateBlock = (updater: (block: EmailBlock) => void) => {
         if (!selectedBlockId) return;
         setDirtyDesign((draft) => {
@@ -321,13 +424,18 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         });
     };
 
-    const deleteSelectedSection = () => {
-        if (!selectedSection || design.document.sections.length <= 1) return;
+    const deleteSectionById = (sectionId: string) => {
+        if (design.document.sections.length <= 1) return;
         setDirtyDesign((draft) => {
-            draft.document.sections = draft.document.sections.filter((section) => section.id !== selectedSection.id);
+            draft.document.sections = draft.document.sections.filter((section) => section.id !== sectionId);
             setSelectedSectionId(draft.document.sections[0]?.id || '');
             setSelectedBlockId(null);
         });
+    };
+
+    const deleteSelectedSection = () => {
+        if (!selectedSection) return;
+        deleteSectionById(selectedSection.id);
     };
 
     const saveSocialLinksAsDefaults = async (links: Array<{ label: string; href: string }>) => {
@@ -642,10 +750,62 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                             <div className="min-h-0 flex-1 overflow-auto px-3 pb-4 space-y-3">
                                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Section settings</p>
                                 <Field label="Name" value={selectedSection.name || ''} onChange={(value) => updateSection('name', value)} />
-                                <Field label="Background" value={selectedSection.backgroundColor || ''} onChange={(value) => updateSection('backgroundColor', value)} />
-                                <Field label="Padding" value={selectedSection.padding || ''} onChange={(value) => updateSection('padding', value)} />
-                                <SelectField label="Visibility" value={selectedSection.visibility || 'all'} options={['all', 'desktop', 'mobile']} onChange={(value) => updateSection('visibility', value)} />
+                                <SelectField label="Background type" value={selectedSection.backgroundType || 'solid'} options={['solid']} onChange={(value) => updateSelectedSection((section) => { section.backgroundType = value as 'solid'; })} />
+                                <ColorField label="Background color" value={selectedSection.backgroundColor || '#ffffff'} onChange={(value) => updateSection('backgroundColor', value)} />
+                                <SelectField label="Border style" value={selectedSection.borderStyle || 'none'} options={['none', 'solid', 'dashed', 'dotted']} onChange={(value) => updateSelectedSection((section) => { section.borderStyle = value as EmailSection['borderStyle']; })} />
+                                {(selectedSection.borderStyle || 'none') !== 'none' && (
+                                    <>
+                                        <ColorField label="Border color" value={selectedSection.borderColor || '#e2e8f0'} onChange={(value) => updateSelectedSection((section) => { section.borderColor = value; })} />
+                                        <Field label="Border width" type="number" value={String(selectedSection.borderWidth ?? 1)} onChange={(value) => updateSelectedSection((section) => { section.borderWidth = Math.max(1, Number(value) || 1); })} />
+                                    </>
+                                )}
+                                <FourSideField label="Border radius" values={selectedSection.borderRadius || [0, 0, 0, 0]} onChange={updateSectionBorderRadiusSide} />
+                                <FourSideField label="Padding" values={parseBoxSpacing(selectedSection.padding || '0')} onChange={updateSectionPaddingSide} />
+                                <ToggleField label="Hide on desktop" checked={hideOnDesktop} onChange={setSectionHideOnDesktop} />
+                                <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={setSectionHideOnMobile} />
                                 <SelectField label="Mobile stack" value={selectedSection.stackMode || 'stack'} options={['stack', 'reverse', 'none']} onChange={(value) => updateSection('stackMode', value)} />
+                                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Display condition</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => updateSelectedSection((section) => {
+                                                const current = section.displayCondition?.enabled ?? false;
+                                                section.displayCondition = {
+                                                    enabled: !current,
+                                                    expression: section.displayCondition?.expression || 'customer.isVip',
+                                                };
+                                            })}
+                                            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
+                                        >
+                                            {selectedSection.displayCondition?.enabled ? 'Remove condition' : 'Add condition'}
+                                        </button>
+                                    </div>
+                                    {selectedSection.displayCondition?.enabled && (
+                                        <Field
+                                            label="Condition expression"
+                                            value={selectedSection.displayCondition.expression || ''}
+                                            onChange={(value) => updateSelectedSection((section) => {
+                                                section.displayCondition = { enabled: true, expression: value };
+                                            })}
+                                        />
+                                    )}
+                                </div>
+                                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Columns</p>
+                                        <button onClick={addSectionColumn} disabled={selectedSection.columns.length >= 4} className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200">Add column</button>
+                                    </div>
+                                    {selectedSection.columns.map((column, index) => (
+                                        <div key={column.id} className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                                            <div className="mb-1 flex items-center justify-between">
+                                                <span className="text-xs text-slate-600 dark:text-slate-300">Column {index + 1}</span>
+                                                <button onClick={() => removeSectionColumn(column.id)} disabled={selectedSection.columns.length <= 1} className="text-xs text-red-600 disabled:opacity-40">Remove</button>
+                                            </div>
+                                            <Field label="Width %" type="number" value={String(column.width)} onChange={(value) => updateSectionColumnWidth(column.id, value)} />
+                                        </div>
+                                    ))}
+                                </div>
                                 <button onClick={deleteSelectedSection} disabled={design.document.sections.length <= 1} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"><Trash2 size={14} />Delete section</button>
                             </div>
                         )}
@@ -678,7 +838,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                     setSelectedBlockId(null);
                                 }}
                             >
-                                <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onOpenSettings={() => { setActivePanel('settings'); }} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                                <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => { setActivePanel('settings'); }} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
                             </ErrorBoundary>
                         ) : (
                             <div className="mx-auto w-full rounded-3xl border border-slate-300 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
@@ -735,6 +895,52 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
             <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+        </label>
+    );
+}
+
+function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+    return (
+        <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+            <div className="flex gap-2">
+                <input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-800" />
+                <input value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            </div>
+        </label>
+    );
+}
+
+function FourSideField({ label, values, onChange }: { label: string; values: [number, number, number, number]; onChange: (index: number, value: string) => void }) {
+    const sideLabels = ['Top', 'Right', 'Bottom', 'Left'];
+    return (
+        <div className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+            <div className="grid grid-cols-4 gap-2">
+                {values.map((value, index) => (
+                    <label key={`${label}-${sideLabels[index]}`} className="block">
+                        <span className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">{sideLabels[index]}</span>
+                        <input type="number" value={String(value)} onChange={(event) => onChange(index, event.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    </label>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+    return (
+        <label className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+            <span className="text-sm text-slate-700 dark:text-slate-200">{label}</span>
+            <button
+                type="button"
+                role="switch"
+                aria-checked={checked}
+                onClick={() => onChange(!checked)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${checked ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+            >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${checked ? 'translate-x-5' : 'translate-x-1'}`} />
+            </button>
         </label>
     );
 }

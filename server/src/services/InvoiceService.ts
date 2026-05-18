@@ -717,81 +717,74 @@ export class InvoiceService {
                         const shippingAddress = shipping || {};
                         const showShippingAddress = hasAddressFields(shippingAddress) && isAddressDifferent(billing || {}, shippingAddress);
 
-                        doc.font('Helvetica-Bold').fontSize(8).fillColor('black');
-                        doc.text('BILL TO', x, startY);
-                        doc.font('Helvetica').fontSize(9).fillColor('black');
-                        let custY = startY + 14;
-                        if (billing.first_name || billing.last_name) {
-                            doc.font('Helvetica-Bold').fillColor('black').text(`${billing.first_name || ''} ${billing.last_name || ''}`, x, custY);
-                            doc.font('Helvetica').fillColor('black');
-                            custY += 12;
-                        }
-                        if (billing.company) {
-                            doc.text(billing.company, x, custY);
-                            custY += 12;
-                        }
-                        if (billing.address_1) {
-                            doc.text(billing.address_1, x, custY);
-                            custY += 12;
-                        }
-                        if (billing.address_2) {
-                            doc.text(billing.address_2, x, custY);
-                            custY += 12;
-                        }
-                        if (billing.city || billing.state || billing.postcode) {
-                            doc.text(`${billing.city || ''}${billing.city && billing.state ? ', ' : ''}${billing.state || ''} ${billing.postcode || ''}`, x, custY);
-                            custY += 12;
-                        }
-                        if (billing.country) {
-                            doc.text(billing.country, x, custY);
-                            custY += 12;
-                        }
-                        if (billing.email) {
-                            doc.fillColor('black').text(billing.email, x, custY);
-                            doc.fillColor('black');
-                            custY += 12;
-                        }
-                        if (billing.phone) {
-                            doc.text(billing.phone, x, custY);
-                            custY += 12;
-                        }
+                        const headingFontSize = showShippingAddress ? 7 : 8;
+                        const bodyFontSize = showShippingAddress ? 8 : 9;
+                        const lineStep = showShippingAddress ? 10 : 12;
+
+                        const renderAddressBlock = (
+                            heading: string,
+                            address: Record<string, unknown>,
+                            columnX: number,
+                            includeContact: boolean
+                        ) => {
+                            doc.font('Helvetica-Bold').fontSize(headingFontSize).fillColor('black');
+                            doc.text(heading, columnX, startY);
+
+                            let y = startY + 12;
+                            doc.font('Helvetica').fontSize(bodyFontSize).fillColor('black');
+
+                            if (address.first_name || address.last_name) {
+                                doc.font('Helvetica-Bold').fillColor('black').text(`${address.first_name || ''} ${address.last_name || ''}`, columnX, y);
+                                doc.font('Helvetica').fillColor('black');
+                                y += lineStep;
+                            }
+                            if (address.company) {
+                                doc.text(String(address.company), columnX, y);
+                                y += lineStep;
+                            }
+                            if (address.address_1) {
+                                doc.text(String(address.address_1), columnX, y);
+                                y += lineStep;
+                            }
+                            if (address.address_2) {
+                                doc.text(String(address.address_2), columnX, y);
+                                y += lineStep;
+                            }
+                            if (address.city || address.state || address.postcode) {
+                                doc.text(`${address.city || ''}${address.city && address.state ? ', ' : ''}${address.state || ''} ${address.postcode || ''}`, columnX, y);
+                                y += lineStep;
+                            }
+                            if (address.country) {
+                                doc.text(String(address.country), columnX, y);
+                                y += lineStep;
+                            }
+                            if (includeContact && address.email) {
+                                doc.fillColor('black').text(String(address.email), columnX, y);
+                                doc.fillColor('black');
+                                y += lineStep;
+                            }
+                            if (includeContact && address.phone) {
+                                doc.text(String(address.phone), columnX, y);
+                                y += lineStep;
+                            }
+
+                            return y;
+                        };
 
                         if (showShippingAddress) {
-                            custY += 8;
-                            doc.font('Helvetica-Bold').fontSize(8).fillColor('black');
-                            doc.text('SHIP TO', x, custY);
-                            custY += 14;
-                            doc.font('Helvetica').fontSize(9).fillColor('black');
+                            const gap = 14;
+                            const colWidth = Math.max(110, (width - gap) / 2);
+                            const rightColX = x + colWidth + gap;
 
-                            if (shippingAddress.first_name || shippingAddress.last_name) {
-                                doc.font('Helvetica-Bold').fillColor('black').text(`${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}`, x, custY);
-                                doc.font('Helvetica').fillColor('black');
-                                custY += 12;
-                            }
-                            if (shippingAddress.company) {
-                                doc.text(shippingAddress.company, x, custY);
-                                custY += 12;
-                            }
-                            if (shippingAddress.address_1) {
-                                doc.text(shippingAddress.address_1, x, custY);
-                                custY += 12;
-                            }
-                            if (shippingAddress.address_2) {
-                                doc.text(shippingAddress.address_2, x, custY);
-                                custY += 12;
-                            }
-                            if (shippingAddress.city || shippingAddress.state || shippingAddress.postcode) {
-                                doc.text(`${shippingAddress.city || ''}${shippingAddress.city && shippingAddress.state ? ', ' : ''}${shippingAddress.state || ''} ${shippingAddress.postcode || ''}`, x, custY);
-                                custY += 12;
-                            }
-                            if (shippingAddress.country) {
-                                doc.text(shippingAddress.country, x, custY);
-                                custY += 12;
-                            }
+                            const billEndY = renderAddressBlock('BILL TO', billing || {}, x, true);
+                            const shipEndY = renderAddressBlock('SHIP TO', shippingAddress, rightColX, false);
+                            blockHeight = Math.max(billEndY, shipEndY) - startY + 8;
+                        } else {
+                            const billEndY = renderAddressBlock('BILL TO', billing || {}, x, true);
+                            blockHeight = billEndY - startY + 8;
                         }
 
                         doc.fillColor('black').font('Helvetica').fontSize(10);
-                        blockHeight = custY - startY + 8;
                         break;
                     }
 

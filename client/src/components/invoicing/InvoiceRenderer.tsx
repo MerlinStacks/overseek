@@ -324,41 +324,68 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
                 return (
                     <div className="py-2">
-                        <div className="text-xs uppercase tracking-wider text-black mb-2 font-semibold">Bill To</div>
-                        {hasCustomerData ? (
-                            <div className="space-y-0.5 text-sm text-black">
-                                {(billing.first_name || billing.last_name) && (
-                                    <div className="font-semibold">{billing.first_name} {billing.last_name}</div>
-                                )}
-                                {billing.company && <div>{billing.company}</div>}
-                                {billing.address_1 && <div>{billing.address_1}</div>}
-                                {billing.address_2 && <div>{billing.address_2}</div>}
-                                {(billing.city || billing.state || billing.postcode) && (
-                                    <div>{billing.city}{billing.city && billing.state ? ', ' : ''}{billing.state} {billing.postcode}</div>
-                                )}
-                                {billing.country && <div>{billing.country}</div>}
-                                {billing.email && <div className="text-blue-700 mt-1">{billing.email}</div>}
-                                {billing.phone && <div>{billing.phone}</div>}
-                            </div>
-                        ) : (
-                            <div className="text-slate-400 italic text-sm">Customer details will appear here</div>
-                        )}
-                        {shouldShowShipping && (
-                            <div className="mt-4">
-                                <div className="text-xs uppercase tracking-wider text-black mb-2 font-semibold">Ship To</div>
-                                <div className="space-y-0.5 text-sm text-black">
-                                    {(shipping.first_name || shipping.last_name) && (
-                                        <div className="font-semibold">{shipping.first_name} {shipping.last_name}</div>
+                        {shouldShowShipping ? (
+                            <div className="grid grid-cols-2 gap-4 text-black">
+                                <div>
+                                    <div className="text-[11px] uppercase tracking-wider mb-2 font-semibold">Bill To</div>
+                                    {hasCustomerData ? (
+                                        <div className="space-y-0.5 text-[13px] leading-snug">
+                                            {(billing.first_name || billing.last_name) && (
+                                                <div className="font-semibold">{billing.first_name} {billing.last_name}</div>
+                                            )}
+                                            {billing.company && <div>{billing.company}</div>}
+                                            {billing.address_1 && <div>{billing.address_1}</div>}
+                                            {billing.address_2 && <div>{billing.address_2}</div>}
+                                            {(billing.city || billing.state || billing.postcode) && (
+                                                <div>{billing.city}{billing.city && billing.state ? ', ' : ''}{billing.state} {billing.postcode}</div>
+                                            )}
+                                            {billing.country && <div>{billing.country}</div>}
+                                            {billing.email && <div className="text-blue-700 mt-1">{billing.email}</div>}
+                                            {billing.phone && <div>{billing.phone}</div>}
+                                        </div>
+                                    ) : (
+                                        <div className="text-slate-400 italic text-sm">Customer details will appear here</div>
                                     )}
-                                    {shipping.company && <div>{shipping.company}</div>}
-                                    {shipping.address_1 && <div>{shipping.address_1}</div>}
-                                    {shipping.address_2 && <div>{shipping.address_2}</div>}
-                                    {(shipping.city || shipping.state || shipping.postcode) && (
-                                        <div>{shipping.city}{shipping.city && shipping.state ? ', ' : ''}{shipping.state} {shipping.postcode}</div>
-                                    )}
-                                    {shipping.country && <div>{shipping.country}</div>}
+                                </div>
+
+                                <div>
+                                    <div className="text-[11px] uppercase tracking-wider mb-2 font-semibold">Ship To</div>
+                                    <div className="space-y-0.5 text-[13px] leading-snug">
+                                        {(shipping.first_name || shipping.last_name) && (
+                                            <div className="font-semibold">{shipping.first_name} {shipping.last_name}</div>
+                                        )}
+                                        {shipping.company && <div>{shipping.company}</div>}
+                                        {shipping.address_1 && <div>{shipping.address_1}</div>}
+                                        {shipping.address_2 && <div>{shipping.address_2}</div>}
+                                        {(shipping.city || shipping.state || shipping.postcode) && (
+                                            <div>{shipping.city}{shipping.city && shipping.state ? ', ' : ''}{shipping.state} {shipping.postcode}</div>
+                                        )}
+                                        {shipping.country && <div>{shipping.country}</div>}
+                                    </div>
                                 </div>
                             </div>
+                        ) : (
+                            <>
+                                <div className="text-xs uppercase tracking-wider text-black mb-2 font-semibold">Bill To</div>
+                                {hasCustomerData ? (
+                                    <div className="space-y-0.5 text-sm text-black">
+                                        {(billing.first_name || billing.last_name) && (
+                                            <div className="font-semibold">{billing.first_name} {billing.last_name}</div>
+                                        )}
+                                        {billing.company && <div>{billing.company}</div>}
+                                        {billing.address_1 && <div>{billing.address_1}</div>}
+                                        {billing.address_2 && <div>{billing.address_2}</div>}
+                                        {(billing.city || billing.state || billing.postcode) && (
+                                            <div>{billing.city}{billing.city && billing.state ? ', ' : ''}{billing.state} {billing.postcode}</div>
+                                        )}
+                                        {billing.country && <div>{billing.country}</div>}
+                                        {billing.email && <div className="text-blue-700 mt-1">{billing.email}</div>}
+                                        {billing.phone && <div>{billing.phone}</div>}
+                                    </div>
+                                ) : (
+                                    <div className="text-slate-400 italic text-sm">Customer details will appear here</div>
+                                )}
+                            </>
                         )}
                     </div>
                 );
