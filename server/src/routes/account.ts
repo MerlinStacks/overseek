@@ -85,7 +85,9 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 openRouterApiKey, aiModel, appearance,
                 goldPrice, refreshGoldPrice,
                 goldPrice18ct, goldPrice9ct, goldPrice18ctWhite, goldPrice9ctWhite, goldPriceMargin,
-                revenueTaxInclusive
+                revenueTaxInclusive,
+                autoSendInvoiceOnNewOrder,
+                invoiceRecipientEmail
             } = request.body as any;
             const userId = request.user!.id;
 
@@ -96,6 +98,13 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
 
             const data: any = { name, domain, sitemapUrl, wooUrl, wooConsumerKey, openRouterApiKey, aiModel, appearance };
             if (typeof revenueTaxInclusive === 'boolean') data.revenueTaxInclusive = revenueTaxInclusive;
+            if (typeof autoSendInvoiceOnNewOrder === 'boolean') data.autoSendInvoiceOnNewOrder = autoSendInvoiceOnNewOrder;
+            if (invoiceRecipientEmail !== undefined) {
+                const cleanedInvoiceRecipientEmail = typeof invoiceRecipientEmail === 'string'
+                    ? invoiceRecipientEmail.trim().toLowerCase()
+                    : '';
+                data.invoiceRecipientEmail = cleanedInvoiceRecipientEmail || null;
+            }
             if (wooConsumerSecret?.trim()) data.wooConsumerSecret = wooConsumerSecret;
             if (webhookSecret !== undefined) data.webhookSecret = webhookSecret?.trim() || null;
 

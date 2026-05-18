@@ -19,7 +19,9 @@ export function GeneralSettings() {
         wooUrl: '',
         wooConsumerKey: '',
         wooConsumerSecret: '',
-        revenueTaxInclusive: true
+        revenueTaxInclusive: true,
+        autoSendInvoiceOnNewOrder: false,
+        invoiceRecipientEmail: ''
     });
 
     useEffect(() => {
@@ -31,7 +33,9 @@ export function GeneralSettings() {
                 wooUrl: currentAccount.wooUrl || '',
                 wooConsumerKey: currentAccount.wooConsumerKey || '',
                 wooConsumerSecret: '', // Don't show existing secret for security, only if updating
-                revenueTaxInclusive: currentAccount.revenueTaxInclusive ?? true
+                revenueTaxInclusive: currentAccount.revenueTaxInclusive ?? true,
+                autoSendInvoiceOnNewOrder: currentAccount.autoSendInvoiceOnNewOrder ?? false,
+                invoiceRecipientEmail: currentAccount.invoiceRecipientEmail || ''
             });
         }
     }, [currentAccount]);
@@ -52,6 +56,14 @@ export function GeneralSettings() {
         }
         if (formData.sitemapUrl && !isValidUrl(formData.sitemapUrl)) {
             toast.error('Please enter a valid Sitemap URL (must start with http:// or https://).');
+            return false;
+        }
+        if (formData.autoSendInvoiceOnNewOrder && !formData.invoiceRecipientEmail.trim()) {
+            toast.error('Invoice recipient email is required when auto-send is enabled.');
+            return false;
+        }
+        if (formData.invoiceRecipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.invoiceRecipientEmail.trim())) {
+            toast.error('Please enter a valid invoice recipient email address.');
             return false;
         }
         return true;
@@ -248,6 +260,44 @@ export function GeneralSettings() {
                             <p className="text-xs text-gray-500 mt-1">
                                 If enabled, revenue metrics in dashboards and reports will include tax. If disabled, tax will be deducted.
                             </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-6">
+                    <h3 className="text-sm font-medium text-gray-900 mb-4">Order Invoice Email</h3>
+                    <div className="space-y-4 max-w-2xl">
+                        <div className="flex items-start gap-3">
+                            <div className="flex items-center h-5">
+                                <input
+                                    type="checkbox"
+                                    id="autoSendInvoiceOnNewOrder"
+                                    name="autoSendInvoiceOnNewOrder"
+                                    checked={formData.autoSendInvoiceOnNewOrder}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="autoSendInvoiceOnNewOrder" className="text-sm font-medium text-gray-700">
+                                    Send invoice PDF on new orders
+                                </label>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Automatically generates the invoice PDF and emails it to the address below whenever a new order arrives.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Email</label>
+                            <input
+                                type="email"
+                                name="invoiceRecipientEmail"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
+                                placeholder="billing@yourstore.com"
+                                value={formData.invoiceRecipientEmail}
+                                onChange={handleChange}
+                            />
                         </div>
                     </div>
                 </div>

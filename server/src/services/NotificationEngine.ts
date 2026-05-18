@@ -11,6 +11,9 @@ import { Prisma } from '@prisma/client';
 import { Logger } from '../utils/logger';
 import { PushNotificationService } from './PushNotificationService';
 import { getIO } from '../socket';
+import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
+import { EmailService } from './EmailService';
+import { InvoiceService } from './InvoiceService';
 
 interface NotificationConfig {
     accountId: string;
@@ -37,6 +40,8 @@ interface NotificationConfig {
 
 export class NotificationEngine {
     private static initialized = false;
+    private static readonly emailService = new EmailService();
+    private static readonly invoiceService = new InvoiceService();
 
     /**
      * Initialize the notification engine by subscribing to all notification-worthy events.
@@ -162,6 +167,101 @@ export class NotificationEngine {
             },
             payload: { orderId: order.id, orderNumber, total }
         });
+
+        await this.sendInvoiceEmailIfEnabled({
+            accountId,
+            order,
+            orderNumber,
+            total
+        });
+    }
+
+    private static async sendInvoiceEmailIfEnabled(args: {
+        accountId: string;
+        order: any;
+        orderNumber: string | number;
+        total: number;
+    }): Promise<void> {
+        const { accountId, order, orderNumber, total } = args;
+
+        try {
+            const account = await prisma.account.findUnique({
+                where: { id: accountId },
+                select: {
+                    autoSendInvoiceOnNewOrder: true,
+                    invoiceRecipientEmail: true,
+                    name: true
+                }
+            });
+
+            if (!account?.autoSendInvoiceOnNewOrder || !account.invoiceRecipientEmail) {
+                return;
+            }
+
+            const defaultEmailAccount = await getDefaultEmailAccount(accountId);
+            if (!defaultEmailAccount) {
+                Logger.warn('[NotificationEngine] Invoice email skipped: no sending email account configured', {
+                    accountId,
+                    orderId: order.id
+                });
+                return;
+            }
+
+            const template = await prisma.invoiceTemplate.findFirst({
+                where: { accountId },
+                orderBy: { createdAt: 'desc' },
+                select: { id: true }
+            });
+
+            if (!template) {
+                Logger.warn('[NotificationEngine] Invoice email skipped: no invoice template found', {
+                    accountId,
+                    orderId: order.id
+                });
+                return;
+            }
+
+            const { absolutePath } = await this.invoiceService.generateInvoicePdf(accountId, String(order.id), template.id);
+            const recipientName = order.billing?.first_name
+                ? `${order.billing.first_name} ${order.billing.last_name || ''}`.trim()
+                : null;
+            const subject = `Invoice for Order #${orderNumber}`;
+            const orderTotalText = Number.isFinite(total) ? total.toFixed(2) : String(order.total || '0.00');
+            const safeStoreName = account.name || 'Your Store';
+
+            const html = `
+                <p>Hello,</p>
+                <p>A new order was received in ${safeStoreName}.</p>
+                <p><strong>Order #:</strong> ${orderNumber}<br />
+                <strong>Customer:</strong> ${recipientName || 'Guest'}<br />
+                <strong>Total:</strong> $${orderTotalText}</p>
+                <p>The invoice PDF is attached to this email.</p>
+            `;
+
+            await this.emailService.sendEmail(
+                accountId,
+                defaultEmailAccount.id,
+                account.invoiceRecipientEmail,
+                subject,
+                html,
+                [{
+                    filename: `Invoice-${orderNumber}.pdf`,
+                    path: absolutePath,
+                    contentType: 'application/pdf'
+                }],
+                {
+                    source: 'ORDER_INVOICE',
+                    sourceId: String(order.id),
+                    category: 'TRANSACTIONAL'
+                }
+            );
+        } catch (error) {
+            Logger.error('[NotificationEngine] Failed to send invoice email for new order', {
+                accountId,
+                orderId: order?.id,
+                error
+            });
+        }
     }
 
     /**

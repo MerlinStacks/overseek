@@ -106,7 +106,7 @@ export function MarketingPage() {
         setEditingItem(null);
     };
 
-    const handleSaveEmail = async (html: string, design: unknown) => {
+    const handleSaveEmail = async (html: string, design: unknown, meta?: { subject: string }) => {
         if (!editingItem || !currentAccount) return;
         try {
             await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
@@ -116,7 +116,7 @@ export function MarketingPage() {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id
                 },
-                body: JSON.stringify({ content: html, designJson: design })
+                body: JSON.stringify({ content: html, designJson: design, subject: meta?.subject ?? editingItem.subject ?? '' })
             });
             toast.success('Design saved!');
         } catch (err) {
@@ -137,6 +137,7 @@ export function MarketingPage() {
                 )}
                 <MarketingEmailDesigner
                     initialDesign={editingItem?.designJson}
+                    initialSubject={editingItem?.subject}
                     onSave={handleSaveEmail}
                     onCancel={handleCloseEditor}
                 />

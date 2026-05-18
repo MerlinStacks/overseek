@@ -31,6 +31,8 @@ interface Account {
     weightUnit?: string;
     dimensionUnit?: string;
     revenueTaxInclusive?: boolean;
+    autoSendInvoiceOnNewOrder?: boolean;
+    invoiceRecipientEmail?: string | null;
 }
 
 interface AccountContextType {

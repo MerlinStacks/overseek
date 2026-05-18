@@ -166,6 +166,7 @@ export const createEmailDesignId = (prefix: string) => `${prefix}-${Date.now()}-
 
 export function createDefaultEmailDesignV2(options?: {
     title?: string;
+    previewText?: string;
     primaryColor?: string;
     logoUrl?: string;
     appName?: string;
@@ -179,7 +180,8 @@ export function createDefaultEmailDesignV2(options?: {
         version: 1,
         document: {
             meta: {
-                title: options?.title || 'Untitled email',
+                title: options?.title || '',
+                previewText: options?.previewText || '',
                 category: 'MARKETING',
             },
             theme: {
@@ -270,11 +272,24 @@ export function createDefaultEmailDesignV2(options?: {
 
 export function createEmailDesignV2FromUnknown(value: unknown, options?: {
     title?: string;
+    previewText?: string;
     primaryColor?: string;
     logoUrl?: string;
     appName?: string;
 }): EmailDesignV2Envelope {
-    if (isEmailDesignV2(value)) return value;
+    if (isEmailDesignV2(value)) {
+        return {
+            ...value,
+            document: {
+                ...value.document,
+                meta: {
+                    ...value.document.meta,
+                    title: value.document.meta.title || options?.title || '',
+                    previewText: value.document.meta.previewText || options?.previewText || '',
+                },
+            },
+        };
+    }
 
     const migrated = migrateUnlayerDesign(value, options);
     if (migrated) return migrated;
@@ -284,6 +299,7 @@ export function createEmailDesignV2FromUnknown(value: unknown, options?: {
 
 function migrateUnlayerDesign(value: unknown, options?: {
     title?: string;
+    previewText?: string;
     primaryColor?: string;
     logoUrl?: string;
     appName?: string;

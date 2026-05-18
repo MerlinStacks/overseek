@@ -117,9 +117,13 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
         setShowTemplateSelector(false);
     };
 
-    const handleVisualBuilderSave = (html: string, design: unknown) => {
+    const handleVisualBuilderSave = (html: string, design: unknown, meta?: { subject: string; previewText: string }) => {
         onUpdate('htmlContent', html);
         onUpdate('designJson', design);
+        if (meta) {
+            onUpdate('subject', meta.subject);
+            onUpdate('previewText', meta.previewText);
+        }
         setShowVisualBuilder(false);
     };
 
@@ -560,6 +564,8 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
             {showVisualBuilder && (
                 <MarketingEmailDesigner
                     initialDesign={config.designJson}
+                    initialSubject={config.subject}
+                    initialPreviewText={config.previewText}
                     onSave={handleVisualBuilderSave}
                     onCancel={() => setShowVisualBuilder(false)}
                 />
