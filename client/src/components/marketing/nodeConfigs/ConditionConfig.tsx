@@ -239,6 +239,13 @@ export const OPERATOR_LABELS: Record<string, string> = {
     'between': 'is between',
 };
 
+const OPERATORS_WITHOUT_VALUE = new Set(['is_set', 'not_set']);
+
+const conditionHasRequiredValue = (condition: ConditionRule) => {
+    if (OPERATORS_WITHOUT_VALUE.has(condition.operator)) return true;
+    return String(condition.value ?? '').trim() !== '';
+};
+
 export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpdate }) => {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -250,6 +257,11 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
     const [emailListOptions, setEmailListOptions] = useState<EmailListOption[]>([]);
     const [orderStatusOptions, setOrderStatusOptions] = useState<string[]>(DEFAULT_ORDER_STATUSES);
     const [isLoadingFilterOptions, setIsLoadingFilterOptions] = useState(false);
+
+    useEffect(() => {
+        setActiveGroup(config.group || 'woocommerce');
+        setConditions(config.conditions || [{ field: '', operator: '', value: '' }]);
+    }, [config.group, config.conditions]);
 
     const activeGroupData = CONDITION_GROUPS.find(g => g.id === activeGroup);
     const availableConditions = activeGroupData?.conditions || [];
@@ -734,7 +746,9 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                                         <option key={op} value={op}>{OPERATOR_LABELS[op] || op}</option>
                                     ))}
                                 </select>
-                                {renderConditionValueInput(cond, idx)}
+                                {OPERATORS_WITHOUT_VALUE.has(cond.operator)
+                                    ? <div className="text-xs text-gray-500 px-2 py-1">No value required</div>
+                                    : renderConditionValueInput(cond, idx)}
                             </div>
                             <button
                                 type="button"
@@ -748,13 +762,13 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                 </div>
             )}
 
-            {conditions.filter(c => c.field && c.value).length > 0 && (
+            {conditions.filter((c) => c.field && conditionHasRequiredValue(c)).length > 0 && (
                 <div className="bg-orange-50 p-3 rounded-lg text-sm text-orange-700 border border-orange-200">
                     <strong>Preview:</strong><br />
-                    If {conditions.filter(c => c.field && c.value).map((c, i) => (
+                    If {conditions.filter((c) => c.field && conditionHasRequiredValue(c)).map((c, i) => (
                         <span key={i}>
                             {i > 0 && <span className="font-medium"> {config.matchType === 'any' ? 'OR' : 'AND'} </span>}
-                            {CONDITION_GROUPS.flatMap(g => g.conditions).find(cond => cond.field === c.field)?.label || c.field} {OPERATOR_LABELS[c.operator] || c.operator} "{escapePreviewValue(getConditionValueLabel(c))}"
+                            {CONDITION_GROUPS.flatMap(g => g.conditions).find(cond => cond.field === c.field)?.label || c.field} {OPERATOR_LABELS[c.operator] || c.operator}{OPERATORS_WITHOUT_VALUE.has(c.operator) ? '' : ` "${escapePreviewValue(getConditionValueLabel(c))}"`}
                         </span>
                     ))} {'->'} <span className="text-green-600 font-medium">YES</span><br />
                     Otherwise {'->'} <span className="text-red-600 font-medium">NO</span>

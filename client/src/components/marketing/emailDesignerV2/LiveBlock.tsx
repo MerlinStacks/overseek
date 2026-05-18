@@ -15,8 +15,9 @@ const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: s
 ];
 
 export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme: EmailDesignTheme; onUpdate: (updater: (block: EmailBlock) => void) => void }) {
+    const responsiveStyle: CSSProperties = block.responsive ? { width: '100%', maxWidth: '100%' } : {};
     if (block.type === 'siteLogo') {
-        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center' }}>{block.props.src ? <img src={block.props.src} alt={block.props.alt || block.props.fallbackText || 'Logo'} width={block.props.width || 160} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /> : <h1 style={{ margin: 0, color: theme.textColor, fontSize: 28, lineHeight: 1.25 }}>{block.props.fallbackText || block.props.alt || 'Your Store'}</h1>}</div>;
+        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', ...responsiveStyle }}>{block.props.src ? <img src={block.props.src} alt={block.props.alt || block.props.fallbackText || 'Logo'} width={block.props.width || 160} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /> : <h1 style={{ margin: 0, color: theme.textColor, fontSize: 28, lineHeight: 1.25 }}>{block.props.fallbackText || block.props.alt || 'Your Store'}</h1>}</div>;
     }
     if (block.type === 'text') {
         return <EditableTextBlock block={block} theme={theme} onUpdate={onUpdate} />;
@@ -26,7 +27,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
     }
     if (block.type === 'list') {
         const Tag = block.props.ordered ? 'ol' : 'ul';
-        return <div style={{ padding: block.props.padding || '8px 0', color: block.props.color || theme.textColor }}><Tag style={{ margin: 0, paddingLeft: 22, lineHeight: 1.6 }}>{block.props.items.map((item, index) => <li key={index} contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+        return <div style={{ padding: block.props.padding || '8px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', color: block.props.color || theme.textColor, ...responsiveStyle }}><Tag style={{ margin: 0, paddingLeft: 22, lineHeight: 1.6 }}>{block.props.items.map((item, index) => <li key={index} contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
             normalizeEditorDirection(event.currentTarget);
             const nextItem = sanitizeRtlText(event.currentTarget.textContent || '');
             onUpdate((draft) => {
@@ -35,10 +36,10 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
         }} style={{ margin: '0 0 6px', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{item}</li>)}</Tag></div>;
     }
     if (block.type === 'image') {
-        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center' }}><img src={block.props.src} alt={block.props.alt || ''} width={block.props.width || 560} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /></div>;
+        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', ...responsiveStyle }}><img src={block.props.src} alt={block.props.alt || ''} width={block.props.width || 560} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /></div>;
     }
     if (block.type === 'coupon') {
-        return <div style={{ padding: 18, margin: '8px 0', background: '#eef2ff', border: `1px dashed ${theme.primaryColor}`, borderRadius: theme.borderRadius, textAlign: 'center' }}><p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px', margin: '8px 0', background: '#eef2ff', border: `1px dashed ${theme.primaryColor}`, borderRadius: theme.borderRadius, textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', ...responsiveStyle }}><p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
             normalizeEditorDirection(event.currentTarget);
             const nextHeadline = sanitizeRtlText(event.currentTarget.textContent || '');
             onUpdate((draft) => {
@@ -61,18 +62,22 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
     if (block.type === 'footer') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 12, lineHeight: 1.6, color: block.props.color || theme.mutedTextColor }} dangerouslySetInnerHTML={{ __html: block.props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>' }} />;
     }
-    if (block.type === 'divider') return <div style={{ padding: block.props.padding || '16px 0' }}><div style={{ borderTop: `1px solid ${block.props.color || '#e2e8f0'}`, fontSize: 0, lineHeight: 0 }}>&nbsp;</div></div>;
-    if (block.type === 'spacer') return <div style={{ height: block.props.height, lineHeight: `${block.props.height}px`, fontSize: block.props.height }}>&nbsp;</div>;
+    if (block.type === 'divider') return <div style={{ padding: block.props.padding || '16px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', ...responsiveStyle }}><div style={{ borderTop: `1px solid ${block.props.color || '#e2e8f0'}`, fontSize: 0, lineHeight: 0 }}>&nbsp;</div></div>;
+    if (block.type === 'spacer') return <div style={{ padding: (block.props as { padding?: string }).padding || '8px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', height: block.props.height, lineHeight: `${block.props.height}px`, fontSize: block.props.height, ...responsiveStyle }}>&nbsp;</div>;
     if (block.type === 'product') {
+        const productSelected = Boolean(block.props.productId || block.props.productName);
         const name = block.props.productName || 'Select a product';
         const image = block.props.productImage || '';
         const price = block.props.productPrice || '';
-        const description = block.props.productDescription || 'Choose a WooCommerce product in block settings.';
-        return <div style={{ padding: '18px 0', textAlign: 'center' }}>{block.props.showImage && image && <img src={image} alt={name} width="220" style={{ display: 'block', maxWidth: '100%', height: 'auto', borderRadius: 10, margin: '0 auto 14px' }} />}<h3 style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 20, lineHeight: 1.3 }}>{name}</h3>{block.props.showDescription && <p style={{ margin: '0 0 10px', color: '#64748b', lineHeight: 1.6 }}>{description}</p>}{block.props.showPrice && price && <p style={{ margin: '0 0 14px', color: theme.primaryColor, fontWeight: 700 }}>{price}</p>}<span style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700 }}>{block.props.buttonLabel || 'View Product'}</span></div>;
+        const regularPrice = block.props.productRegularPrice || '';
+        const description = block.props.productDescription || (productSelected ? '' : 'Choose a WooCommerce product in block settings.');
+        const showTitle = block.props.showTitle !== false;
+        const showButton = block.props.showButton !== false;
+        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'center', ...responsiveStyle }}>{block.props.showImage && image && <img src={image} alt={name} width="220" style={{ display: 'block', maxWidth: '100%', height: 'auto', borderRadius: 10, margin: '0 auto 14px' }} />}{showTitle && <h3 style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 20, lineHeight: 1.3 }}>{name}</h3>}{block.props.showDescription && description && <p style={{ margin: '0 0 10px', color: '#64748b', lineHeight: 1.6 }}>{description}</p>}{block.props.showPrice && price && <p style={{ margin: '0 0 8px', color: theme.primaryColor, fontWeight: 700 }}>{price}</p>}{block.props.showRegularPrice && regularPrice && <p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 14, textDecoration: block.props.showPrice && !!price ? 'line-through' : 'none' }}>{regularPrice}</p>}{showButton && <span style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700 }}>{block.props.buttonLabel || 'View Product'}</span>}</div>;
     }
-    if (block.type === 'orderSummary') return <div style={{ padding: '12px 0' }}><h3 style={{ margin: '0 0 12px', color: theme.textColor, fontSize: 18 }}>{block.props.heading || 'Order summary'}</h3><div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, color: theme.mutedTextColor }}>{'{{order.itemsTable}}'}</div>{block.props.showTotals && <p style={{ textAlign: 'right', fontWeight: 700, color: theme.textColor }}>Total: {'{{order.total}}'}</p>}</div>;
-    if (block.type === 'address') return <div style={{ padding: '12px 0' }}><h3 style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 16 }}>{block.props.title}</h3><p style={{ margin: 0, color: theme.mutedTextColor, lineHeight: 1.6 }}>{block.props.source === 'shipping' ? '{{order.shippingAddress}}' : '{{order.billingAddress}}'}</p></div>;
-    return <div dangerouslySetInnerHTML={{ __html: block.props.html }} />;
+    if (block.type === 'orderSummary') return <div style={{ padding: (block.props as { padding?: string }).padding || '12px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }}><h3 style={{ margin: '0 0 12px', color: theme.textColor, fontSize: 18 }}>{block.props.heading || 'Order summary'}</h3><div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, color: theme.mutedTextColor }}>{'{{order.itemsTable}}'}</div>{block.props.showTotals && <p style={{ textAlign: 'right', fontWeight: 700, color: theme.textColor }}>Total: {'{{order.total}}'}</p>}</div>;
+    if (block.type === 'address') return <div style={{ padding: (block.props as { padding?: string }).padding || '12px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }}><h3 style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 16 }}>{block.props.title}</h3><p style={{ margin: 0, color: theme.mutedTextColor, lineHeight: 1.6 }}>{block.props.source === 'shipping' ? '{{order.shippingAddress}}' : '{{order.billingAddress}}'}</p></div>;
+    return <div style={{ padding: (block.props as { padding?: string }).padding || '8px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }} dangerouslySetInnerHTML={{ __html: block.props.html }} />;
 }
 
 function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailBlock, { type: 'button' }>; theme: EmailDesignTheme; onUpdate: (updater: (block: EmailBlock) => void) => void }) {
@@ -439,6 +444,12 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         syncHtml();
     };
 
+    const applyFormatBlock = (nextType: 'p' | 'h1' | 'h2' | 'h3') => {
+        editorRef.current?.focus();
+        document.execCommand('formatBlock', false, `<${nextType}>`);
+        syncHtml();
+    };
+
     return (
         <div ref={wrapperRef} className="relative">
             <div
@@ -483,11 +494,8 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                                 key={item.value}
                                 type="button"
                                 className={`rounded px-1.5 py-1 text-[11px] font-semibold ${blockType === item.value ? 'bg-slate-200 text-slate-900' : 'text-slate-200 hover:bg-slate-700'}`}
-                                onClick={() => {
-                                    editorRef.current?.focus();
-                                    document.execCommand('formatBlock', false, item.value);
-                                    syncHtml();
-                                }}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyFormatBlock(item.value as 'p' | 'h1' | 'h2' | 'h3')}
                                 title={item.value === 'p' ? 'Paragraph' : `Heading ${item.value.slice(1)}`}
                             >
                                 {item.label}

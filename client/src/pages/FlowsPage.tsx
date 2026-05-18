@@ -51,6 +51,12 @@ function areStringArraysEqual(left: string[], right: string[]): boolean {
 }
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);
+const OPERATORS_WITHOUT_VALUE = new Set(['is_set', 'not_set']);
+
+function hasConditionValue(rule: { operator?: unknown; value?: unknown }): boolean {
+    if (OPERATORS_WITHOUT_VALUE.has(String(rule.operator || ''))) return true;
+    return String(rule.value ?? '').trim() !== '';
+}
 
 function getDelayNodeError(config: Record<string, unknown>): string | null {
     const delayMode = String(config.delayMode || 'SPECIFIC_PERIOD').toUpperCase();
@@ -114,12 +120,14 @@ function validateFlowDefinition(flow: FlowDefinition): string | null {
                     && typeof rule === 'object'
                     && (rule as { field?: unknown }).field
                     && (rule as { operator?: unknown }).operator
-                    && (rule as { value?: unknown }).value !== undefined
-                    && (rule as { value?: unknown }).value !== null
-                    && String((rule as { value?: unknown }).value).trim() !== ''
+                    && hasConditionValue(rule as { operator?: unknown; value?: unknown })
                 ))
                 : [];
-            const hasLegacyCondition = Boolean(config.field && config.operator && String(config.value ?? '').trim() !== '');
+            const hasLegacyCondition = Boolean(
+                config.field
+                && config.operator
+                && hasConditionValue(config as { operator?: unknown; value?: unknown })
+            );
             if (conditions.length === 0 && !hasLegacyCondition) {
                 return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" is incomplete.`;
             }
@@ -183,12 +191,14 @@ function getInvalidNodeIds(flow: FlowDefinition): string[] {
                     && typeof rule === 'object'
                     && (rule as { field?: unknown }).field
                     && (rule as { operator?: unknown }).operator
-                    && (rule as { value?: unknown }).value !== undefined
-                    && (rule as { value?: unknown }).value !== null
-                    && String((rule as { value?: unknown }).value).trim() !== ''
+                    && hasConditionValue(rule as { operator?: unknown; value?: unknown })
                 ))
                 : [];
-            const hasLegacyCondition = Boolean(config.field && config.operator && String(config.value ?? '').trim() !== '');
+            const hasLegacyCondition = Boolean(
+                config.field
+                && config.operator
+                && hasConditionValue(config as { operator?: unknown; value?: unknown })
+            );
             if (conditions.length === 0 && !hasLegacyCondition) invalid.add(node.id);
             const trueBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'true');
             const falseBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'false');
@@ -677,6 +687,11 @@ export function FlowsPage() {
             return;
         }
 
+        if (autosaveTimerRef.current) {
+            window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+
         setIsSavingFlow(true);
         try {
             const triggerNode = normalizedFlow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
@@ -717,6 +732,10 @@ export function FlowsPage() {
 
             const draftKey = getDraftKey(editingItem.id);
             if (draftKey) {
+                if (autosaveTimerRef.current) {
+                    window.clearTimeout(autosaveTimerRef.current);
+                    autosaveTimerRef.current = null;
+                }
                 window.localStorage.removeItem(draftKey);
             }
 

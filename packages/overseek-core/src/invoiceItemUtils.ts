@@ -87,17 +87,22 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
 
   if (item.sku) addMeta('SKU', item.sku);
 
-  if (item.variation_id && item.variation_id > 0) {
-    const attrs =
-      item.meta_data?.filter((entry) => entry.key?.startsWith('pa_')) || [];
+  const attrs =
+    item.meta_data?.filter((entry) => {
+      const key = String(entry.key || '').toLowerCase();
+      return key.startsWith('pa_') || key.startsWith('attribute_pa_');
+    }) || [];
 
-    attrs.forEach((attr) => {
-      const label =
-        attr.display_key || (attr.key || '').replace('pa_', '').replace(/_/g, ' ');
-      const rawValue = attr.display_value || attr.value;
-      addMeta(label, stringifyInvoiceValue(rawValue));
-    });
-  }
+  attrs.forEach((attr) => {
+    const fallbackLabel = (attr.key || '')
+      .replace(/^attribute_pa_/i, '')
+      .replace(/^pa_/i, '')
+      .replace(/[_-]/g, ' ')
+      .trim();
+    const label = attr.display_key || fallbackLabel;
+    const rawValue = attr.display_value || attr.value;
+    addMeta(label, stringifyInvoiceValue(rawValue));
+  });
 
   const customMeta =
     item.meta_data?.filter((entry) => {
@@ -110,7 +115,8 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
           || /^wcpa/i.test(displayLabel);
         if (labelLooksInternal) return false;
       }
-      if (key.startsWith('pa_')) return false;
+      const loweredKey = key.toLowerCase();
+      if (loweredKey.startsWith('pa_') || loweredKey.startsWith('attribute_pa_')) return false;
 
       const rawValue = entry.display_value ?? entry.value;
       const value = stringifyInvoiceValue(rawValue).trim();

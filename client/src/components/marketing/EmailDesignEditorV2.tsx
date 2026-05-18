@@ -44,8 +44,8 @@ const DRAFT_STORAGE_KEY = 'overseek-email-builder-v2-draft';
 const HISTORY_STORAGE_KEY = 'overseek-email-builder-v2-history';
 const MAX_HISTORY = 12;
 
-type Panel = 'blocks' | 'settings' | 'checklist' | 'history' | 'test';
 type BuilderTab = 'structure' | 'blocks' | 'layouts' | 'global';
+type LeftSidebarMode = 'builder' | 'blockSettings' | 'checklist' | 'history' | 'test';
 
 interface StructurePreset {
     id: string;
@@ -72,6 +72,14 @@ const RECENT_TEST_RECIPIENTS_KEY = 'overseek-email-builder-v2-test-recipients';
 const MAX_TEST_RECIPIENTS = 5;
 const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'X', 'Twitter', 'LinkedIn', 'Pinterest'];
 const SOCIAL_ICON_STYLES: SocialIconStyle[] = ['solid', 'outline', 'glyph'];
+const PRODUCT_VISIBILITY_FIELDS = [
+    { key: 'showImage', label: 'Image' },
+    { key: 'showTitle', label: 'Title' },
+    { key: 'showDescription', label: 'Description' },
+    { key: 'showPrice', label: 'Price' },
+    { key: 'showRegularPrice', label: 'Regular Price' },
+    { key: 'showButton', label: 'Button' },
+] as const;
 
 function parseBoxSpacing(value: string): [number, number, number, number] {
     const parts = value.trim().split(/\s+/).map((part) => Number(part.replace('px', '')) || 0);
@@ -120,7 +128,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     });
     const [selectedSectionId, setSelectedSectionId] = useState(() => design.document.sections[0]?.id || '');
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-    const [activePanel, setActivePanel] = useState<Panel>('blocks');
+    const [leftSidebarMode, setLeftSidebarMode] = useState<LeftSidebarMode>('builder');
     const [builderTab, setBuilderTab] = useState<BuilderTab>('blocks');
     const [blockSearch, setBlockSearch] = useState('');
     const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
@@ -150,9 +158,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const groupedIssues = groupPreflightIssues(issues);
     const visiblePaletteItems = paletteItems.filter((item) => item.label.toLowerCase().includes(blockSearch.trim().toLowerCase()));
     const saveStatus = saving ? 'Saving...' : hasUnsavedChanges ? 'Autosaved draft' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
-    const isUtilityPanel = activePanel === 'checklist' || activePanel === 'history' || activePanel === 'test';
-    const isInvoiceDownloadBlock = selectedBlock?.type === 'button' && (selectedBlock.props.href || '').trim() === '{{order.invoiceUrl}}';
-    const hideRightSidebar = (selectedBlock?.type === 'text' || selectedBlock?.type === 'footer' || isInvoiceDownloadBlock) && !isUtilityPanel;
     const hideOnDesktop = selectedSection?.visibility === 'mobile';
     const hideOnMobile = selectedSection?.visibility === 'desktop';
 
@@ -510,7 +515,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
 
     const runChecklist = () => {
         setIssues(evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory: design.document.meta.category || 'MARKETING' }));
-        setActivePanel('checklist');
+        setLeftSidebarMode('checklist');
     };
 
     const saveDesign = () => {
@@ -691,20 +696,22 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                             {saveStatus}
                         </span>
                         <button onClick={runChecklist} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><ClipboardList size={16} />Checklist</button>
-                        <button onClick={() => setActivePanel('history')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><History size={16} />History</button>
-                        <button onClick={() => setActivePanel('test')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><Send size={16} />Test</button>
+                        <button onClick={() => setLeftSidebarMode('history')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><History size={16} />History</button>
+                        <button onClick={() => setLeftSidebarMode('test')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><Send size={16} />Test</button>
                         <button onClick={onCancel} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><X size={16} />Close</button>
                         <button onClick={saveDesign} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">{saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}Save</button>
                     </div>
                 </header>
 
-                <div className={`grid min-h-0 flex-1 grid-cols-1 ${hideRightSidebar ? 'lg:grid-cols-[324px_1fr]' : 'lg:grid-cols-[324px_1fr_360px]'}`}>
+                <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[324px_1fr]">
                     <aside className="flex min-h-0 flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                        <div className="m-3 grid grid-cols-3 rounded-lg bg-slate-100 p-1 text-sm dark:bg-slate-800">
-                            {(['structure', 'blocks', 'layouts'] as BuilderTab[]).map((tab) => (
-                                <button key={tab} onClick={() => { setBuilderTab(tab); setActivePanel(tab === 'blocks' ? 'blocks' : 'settings'); }} className={`rounded-md px-3 py-2 capitalize transition ${builderTab === tab ? 'bg-white text-slate-950 shadow-md dark:bg-slate-950 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}>{tab}</button>
-                            ))}
-                        </div>
+                        {leftSidebarMode === 'builder' && (
+                            <>
+                                <div className="m-3 grid grid-cols-3 rounded-lg bg-slate-100 p-1 text-sm dark:bg-slate-800">
+                                    {(['structure', 'blocks', 'layouts'] as BuilderTab[]).map((tab) => (
+                                        <button key={tab} onClick={() => setBuilderTab(tab)} className={`rounded-md px-3 py-2 capitalize transition ${builderTab === tab ? 'bg-white text-slate-950 shadow-md dark:bg-slate-950 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}>{tab}</button>
+                                    ))}
+                                </div>
 
                         {builderTab === 'blocks' && (
                             <div className="min-h-0 flex-1 overflow-auto px-3 pb-4">
@@ -821,10 +828,30 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                 <Field label="Border radius" type="number" value={String(design.document.theme.borderRadius)} onChange={(value) => updateTheme('borderRadius', Number(value) || 0)} />
                             </div>
                         )}
-                        <div className="mt-auto flex border-t border-slate-200 bg-white text-xs dark:border-slate-800 dark:bg-slate-900">
-                            <button onClick={() => setBuilderTab('layouts')} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Settings size={14} />Layout Settings</button>
-                            <button onClick={() => setBuilderTab('global')} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Globe2 size={14} />Global Settings</button>
-                        </div>
+                                <div className="mt-auto flex border-t border-slate-200 bg-white text-xs dark:border-slate-800 dark:bg-slate-900">
+                                    <button onClick={() => setBuilderTab('layouts')} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Settings size={14} />Layout Settings</button>
+                                    <button onClick={() => setBuilderTab('global')} className="flex flex-1 items-center justify-center gap-1 px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"><Globe2 size={14} />Global Settings</button>
+                                </div>
+                            </>
+                        )}
+
+                        {leftSidebarMode === 'blockSettings' && (
+                            <div className="min-h-0 flex-1 overflow-auto p-4">
+                                <div className="mb-3 flex items-center justify-between">
+                                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Block settings</p>
+                                    <button type="button" onClick={() => setLeftSidebarMode('builder')} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100" aria-label="Close block settings"><X size={16} /></button>
+                                </div>
+                                <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete={selectedBlock?.type !== 'footer'} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
+                            </div>
+                        )}
+
+                        {leftSidebarMode === 'checklist' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Preflight checklist" onClose={() => setLeftSidebarMode('builder')} /><ChecklistPanel issues={issues} groupedIssues={groupedIssues} /></div>}
+                        {leftSidebarMode === 'history' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Version history" onClose={() => setLeftSidebarMode('builder')} /><HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); setHasUnsavedChanges(true); }} /></div>}
+                        {leftSidebarMode === 'test' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Send test email" onClose={() => setLeftSidebarMode('builder')} /><div className="space-y-3"><Field label="Recipient" value={testEmail} onChange={setTestEmail} type="email" />
+                            {recentRecipients.length > 0 && <div className="flex flex-wrap gap-2">{recentRecipients.map((recipient) => <button key={recipient} onClick={() => setTestEmail(recipient)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:bg-slate-800 dark:text-slate-300">{recipient}</button>)}</div>}
+                            {testStatus && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{testStatus}</p>}
+                            {missingEmailAccount && <button onClick={() => { window.location.href = '/settings?tab=email'; }} className="inline-flex w-full items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">Set up email account</button>}
+                            <button onClick={sendTestEmail} disabled={sendingTest} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">{sendingTest ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}Send test</button></div></div>}
                     </aside>
 
                     <main className="min-h-0 overflow-auto bg-slate-200/70 p-4 dark:bg-slate-950">
@@ -838,7 +865,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                     setSelectedBlockId(null);
                                 }}
                             >
-                                <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => { setActivePanel('settings'); }} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                                <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
                             </ErrorBoundary>
                         ) : (
                             <div className="mx-auto w-full rounded-3xl border border-slate-300 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
@@ -854,36 +881,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         )}
                     </main>
 
-                    {!hideRightSidebar && <aside className="min-h-0 overflow-auto border-l border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                        <ErrorBoundary
-                            onReset={() => {
-                                setSelectedBlockId(null);
-                                setActivePanel('blocks');
-                            }}
-                        >
-                            {activePanel === 'checklist' && <ChecklistPanel issues={issues} groupedIssues={groupedIssues} />}
-                            {activePanel === 'history' && <HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); setHasUnsavedChanges(true); }} />}
-                            {activePanel === 'test' && (
-                                <div className="space-y-3">
-                                    <p className="font-semibold text-slate-900 dark:text-white">Send test email</p>
-                                    <Field label="Recipient" value={testEmail} onChange={setTestEmail} type="email" />
-                                    {recentRecipients.length > 0 && (
-                                        <div className="flex flex-wrap gap-2">
-                                            {recentRecipients.map((recipient) => (
-                                                <button key={recipient} onClick={() => setTestEmail(recipient)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:bg-slate-800 dark:text-slate-300">{recipient}</button>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {testStatus && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{testStatus}</p>}
-                                    {missingEmailAccount && <button onClick={() => { window.location.href = '/settings?tab=email'; }} className="inline-flex w-full items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">Set up email account</button>}
-                                    <button onClick={sendTestEmail} disabled={sendingTest} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">{sendingTest ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}Send test</button>
-                                </div>
-                            )}
-                            {!['checklist', 'history', 'test'].includes(activePanel) && (
-                                <BlockEditor block={selectedBlock} onUpdate={updateBlock} onDelete={deleteSelectedBlock} canDelete={selectedBlock?.type !== 'footer'} sections={design.document.sections} selectedSectionId={selectedSectionId} onSelectBlock={setSelectedBlockId} onDropOnSection={handleDropOnSection} onSaveSocialDefaults={saveSocialLinksAsDefaults} token={token || undefined} accountId={currentAccount?.id} />
-                            )}
-                        </ErrorBoundary>
-                    </aside>}
                 </div>
             </div>
         </div>
@@ -977,6 +974,15 @@ function SelectField({ label, value, options, onChange }: { label: string; value
     );
 }
 
+function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
+    return (
+        <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">{title}</p>
+            <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100" aria-label={`Close ${title}`}><X size={16} /></button>
+        </div>
+    );
+}
+
 function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, canDelete, onSelectBlock, onDropOnSection, onSaveSocialDefaults, token, accountId }: { block: EmailBlock | null; sections: EmailSection[]; selectedSectionId: string; onUpdate: (updater: (block: EmailBlock) => void) => void; onDelete: () => void; canDelete: boolean; onSelectBlock: (id: string) => void; onDropOnSection: (event: DragEvent, sectionId: string, insertIndex?: number, columnId?: string) => void; onSaveSocialDefaults: (links: Array<{ label: string; href: string }>) => void; token?: string; accountId?: string }) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -1011,6 +1017,9 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
 
     const patchProps = (props: Record<string, unknown>) => onUpdate((draft) => { Object.assign(draft.props, props); });
     const setVisibility = (value: string) => onUpdate((draft) => { draft.visibility = value as EmailDeviceVisibility; });
+    const blockAlign = ((block.props as { align?: 'left' | 'center' | 'right' }).align || 'center') as 'left' | 'center' | 'right';
+    const blockPadding = (block.props as { padding?: string }).padding || '8px 0';
+    const hideOnMobile = (block.visibility || 'all') === 'desktop';
 
     const handleImageUpload = async (file: File) => {
         if (!token || !accountId) {
@@ -1069,6 +1078,14 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                 <p className="font-semibold text-slate-900 dark:text-white">{getEmailDesignV2BlockLabel(block)}</p>
                 {canDelete && <button onClick={onDelete} className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50"><Trash2 size={14} /></button>}
             </div>
+            <SelectField label="Alignment" value={blockAlign} options={['left', 'center', 'right']} onChange={(value) => patchProps({ align: value as 'left' | 'center' | 'right' })} />
+            <FourSideField label="Padding" values={parseBoxSpacing(blockPadding)} onChange={(index, value) => {
+                const next = parseBoxSpacing(blockPadding);
+                next[index] = Math.max(0, Number(value) || 0);
+                patchProps({ padding: toBoxSpacing(next) });
+            }} />
+            <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={(checked) => setVisibility(checked ? 'desktop' : 'all')} />
+            <ToggleField label="Responsive structure" checked={Boolean(block.responsive)} onChange={(checked) => onUpdate((draft) => { draft.responsive = checked; })} />
             <SelectField label="Visibility" value={block.visibility || 'all'} options={['all', 'desktop', 'mobile']} onChange={setVisibility} />
             {block.type === 'siteLogo' && <><Field label="Logo URL" value={block.props.src} onChange={(value) => patchProps({ src: value })} /><Field label="Fallback text" value={block.props.fallbackText || ''} onChange={(value) => patchProps({ fallbackText: value })} /></>}
             {block.type === 'text' && <TextArea label="HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
@@ -1119,7 +1136,40 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'list' && <ListEditor items={block.props.items} onChange={(items) => patchProps({ items })} />}
             {block.type === 'spacer' && <Field label="Height" type="number" value={String(block.props.height)} onChange={(value) => patchProps({ height: Number(value) || 0 })} />}
             {block.type === 'divider' && <Field label="Color" value={block.props.color || ''} onChange={(value) => patchProps({ color: value })} />}
-            {block.type === 'product' && <><ProductPicker onSelect={(product) => patchProps(productToBlockProps(product))} />{block.props.productName && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">Selected: {block.props.productName}</p>}<Field label="Button label" value={block.props.buttonLabel} onChange={(value) => patchProps({ buttonLabel: value })} /><Field label="Button URL" value={block.props.buttonHref} onChange={(value) => patchProps({ buttonHref: value, productUrl: value })} /></>}
+            {block.type === 'product' && <>
+                <ProductPicker onSelect={(product) => patchProps(productToBlockProps(product))} />
+                {block.props.productName && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">Selected: {block.props.productName}</p>}
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Visible Product Fields</p>
+                    <div className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-600 dark:text-slate-200">
+                        {PRODUCT_VISIBILITY_FIELDS
+                            .filter((field) => block.props[field.key] !== false)
+                            .map((field) => field.label)
+                            .join(', ')}
+                    </div>
+                    <div className="space-y-2">
+                        {PRODUCT_VISIBILITY_FIELDS.map((field) => {
+                            const enabled = block.props[field.key] !== false;
+                            return (
+                                <label key={field.key} className="flex items-center justify-between text-sm text-slate-700 dark:text-slate-200">
+                                    <span>{field.label}</span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={enabled}
+                                        onClick={() => patchProps({ [field.key]: !enabled })}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${enabled ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                                    >
+                                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                                    </button>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </div>
+                <Field label="Button label" value={block.props.buttonLabel} onChange={(value) => patchProps({ buttonLabel: value })} />
+                <Field label="Button URL" value={block.props.buttonHref} onChange={(value) => patchProps({ buttonHref: value, productUrl: value })} />
+            </>}
             {block.type === 'orderSummary' && <Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} />}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}

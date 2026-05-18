@@ -75,6 +75,7 @@ export type EmailBlock =
 interface BaseBlock {
     id: string;
     visibility?: EmailDeviceVisibility;
+    responsive?: boolean;
 }
 
 export interface TextBlock extends BaseBlock {
@@ -163,11 +164,15 @@ export interface ProductBlock extends BaseBlock {
         productName?: string;
         productImage?: string;
         productPrice?: string;
+        productRegularPrice?: string;
         productDescription?: string;
         productUrl?: string;
         showImage: boolean;
+        showTitle?: boolean;
         showDescription: boolean;
         showPrice: boolean;
+        showRegularPrice?: boolean;
+        showButton?: boolean;
         buttonLabel: string;
         buttonHref: string;
     };
@@ -537,6 +542,7 @@ export function compileEmailDesignV2(envelope: EmailDesignV2Envelope): string {
       .os-mobile-hidden { display: none !important; }
       .os-mobile-block { display: block !important; width: 100% !important; }
       .os-mobile-reverse { display: table-header-group !important; }
+      .os-responsive-block { display: block !important; width: 100% !important; max-width: 100% !important; }
     }
     @media only screen and (min-width: 641px) {
       .os-desktop-hidden { display: none !important; }
@@ -595,6 +601,7 @@ function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
 
 function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     const visibilityClass = getVisibilityClass(block.visibility);
+    const blockClass = `${visibilityClass}${block.responsive ? `${visibilityClass ? ' ' : ''}os-responsive-block` : ''}`;
 
     if (block.type === 'siteLogo') {
         const props = block.props;
@@ -602,93 +609,98 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         const content = logoSrc && isEmailImageSource(logoSrc)
             ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(props.alt || props.fallbackText || 'Logo')}" width="${props.width || 160}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`
             : `<h1 style="margin:0;color:${theme.textColor};font-size:28px;line-height:1.25;">${escapeHtml(props.fallbackText || props.alt || 'Your Store')}</h1>`;
-        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${content}</div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${content}</div>`;
     }
 
     if (block.type === 'text') {
         const props = block.props;
-        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${props.html}</div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${props.html}</div>`;
     }
 
     if (block.type === 'image') {
         const props = block.props;
         const imageSrc = toAbsoluteUrl(props.src || '');
         if (!isEmailImageSource(imageSrc)) {
-            return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};color:${theme.mutedTextColor};font-size:13px;">Image source unavailable</div>`;
+            return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};color:${theme.mutedTextColor};font-size:13px;">Image source unavailable</div>`;
         }
         const image = `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(props.alt || '')}" width="${props.width || 560}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`;
         const linked = props.href ? `<a href="${escapeHtml(toAbsoluteUrl(props.href))}">${image}</a>` : image;
-        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${linked}</div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${linked}</div>`;
     }
 
     if (block.type === 'button') {
         const props = block.props;
-        return `<div class="${visibilityClass}" style="padding:${props.padding || '16px 0'};text-align:${props.align || 'center'};"><a href="${escapeHtml(toAbsoluteUrl(props.href || '{{store_url}}'))}" style="display:inline-block;background:${props.backgroundColor || theme.primaryColor};color:${props.color || '#ffffff'};text-decoration:${props.textDecoration || 'none'};border-radius:${props.borderRadius ?? theme.borderRadius}px;padding:12px 20px;font-weight:${props.fontWeight || 700};font-size:${props.fontSize || 14}px;font-style:${props.fontStyle || 'normal'};">${escapeHtml(props.label || 'Button')}</a></div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '16px 0'};text-align:${props.align || 'center'};"><a href="${escapeHtml(toAbsoluteUrl(props.href || '{{store_url}}'))}" style="display:inline-block;background:${props.backgroundColor || theme.primaryColor};color:${props.color || '#ffffff'};text-decoration:${props.textDecoration || 'none'};border-radius:${props.borderRadius ?? theme.borderRadius}px;padding:12px 20px;font-weight:${props.fontWeight || 700};font-size:${props.fontSize || 14}px;font-style:${props.fontStyle || 'normal'};">${escapeHtml(props.label || 'Button')}</a></div>`;
     }
 
     if (block.type === 'list') {
         const tag = block.props.ordered ? 'ol' : 'ul';
         const items = block.props.items.map((item) => `<li style="margin:0 0 6px;">${escapeHtml(item)}</li>`).join('');
-        return `<div class="${visibilityClass}" style="padding:${block.props.padding || '8px 0'};color:${block.props.color || theme.textColor};"><${tag} style="margin:0;padding-left:22px;line-height:1.6;">${items}</${tag}></div>`;
+        return `<div class="${blockClass}" style="padding:${block.props.padding || '8px 0'};text-align:${(block.props as { align?: string }).align || 'left'};color:${block.props.color || theme.textColor};"><${tag} style="margin:0;padding-left:22px;line-height:1.6;">${items}</${tag}></div>`;
     }
 
     if (block.type === 'divider') {
-        return `<div class="${visibilityClass}" style="padding:${block.props.padding || '16px 0'};"><div style="border-top:1px solid ${block.props.color || '#e2e8f0'};font-size:0;line-height:0;">&nbsp;</div></div>`;
+        return `<div class="${blockClass}" style="padding:${block.props.padding || '16px 0'};text-align:${(block.props as { align?: string }).align || 'center'};"><div style="border-top:1px solid ${block.props.color || '#e2e8f0'};font-size:0;line-height:0;">&nbsp;</div></div>`;
     }
 
     if (block.type === 'spacer') {
-        return `<div class="${visibilityClass}" style="height:${block.props.height}px;line-height:${block.props.height}px;font-size:${block.props.height}px;">&nbsp;</div>`;
+        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '8px 0'};height:${block.props.height}px;line-height:${block.props.height}px;font-size:${block.props.height}px;text-align:${(block.props as { align?: string }).align || 'center'};">&nbsp;</div>`;
     }
 
     if (block.type === 'product') {
         const props = block.props;
+        const productSelected = Boolean(props.productId || props.productName);
         const productName = props.productName || '{{product.name}}';
         const productImage = props.productImage || '{{product.image}}';
         const productPrice = props.productPrice || '{{product.price}}';
-        const productDescription = props.productDescription || '{{product.description}}';
+        const productRegularPrice = props.productRegularPrice || '{{product.regularPrice}}';
+        const productDescription = props.productDescription || (productSelected ? '' : 'Choose a WooCommerce product in block settings.');
+        const showTitle = props.showTitle !== false;
+        const showButton = props.showButton !== false;
         const productUrl = toAbsoluteUrl(props.productUrl || props.buttonHref || '{{store_url}}');
         const productImageSrc = toAbsoluteUrl(productImage);
-        return `<div class="${visibilityClass}" style="padding:18px 0;text-align:center;">
+        return `<div class="${blockClass}" style="padding:${(props as { padding?: string }).padding || '18px 0'};text-align:${(props as { align?: string }).align || 'center'};">
             ${props.showImage ? `<img src="${escapeHtml(productImageSrc)}" alt="${escapeHtml(productName)}" width="220" style="display:block;max-width:100%;height:auto;border-radius:10px;margin:0 auto 14px;" />` : ''}
-            <h3 style="margin:0 0 8px;color:${theme.textColor};font-size:20px;line-height:1.3;">${escapeHtml(productName)}</h3>
-            ${props.showDescription ? `<p style="margin:0 0 10px;color:#64748b;line-height:1.6;">${escapeHtml(productDescription)}</p>` : ''}
-            ${props.showPrice ? `<p style="margin:0 0 14px;color:${theme.primaryColor};font-weight:700;">${escapeHtml(productPrice)}</p>` : ''}
-            <a href="${escapeHtml(productUrl)}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(props.buttonLabel || 'View Product')}</a>
+            ${showTitle ? `<h3 style="margin:0 0 8px;color:${theme.textColor};font-size:20px;line-height:1.3;">${escapeHtml(productName)}</h3>` : ''}
+            ${props.showDescription && productDescription ? `<p style="margin:0 0 10px;color:#64748b;line-height:1.6;">${escapeHtml(productDescription)}</p>` : ''}
+            ${props.showPrice ? `<p style="margin:0 0 8px;color:${theme.primaryColor};font-weight:700;">${escapeHtml(productPrice)}</p>` : ''}
+            ${props.showRegularPrice ? `<p style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:14px;text-decoration:${props.showPrice && Boolean(productPrice) ? 'line-through' : 'none'};">${escapeHtml(productRegularPrice)}</p>` : ''}
+            ${showButton ? `<a href="${escapeHtml(productUrl)}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(props.buttonLabel || 'View Product')}</a>` : ''}
         </div>`;
     }
 
     if (block.type === 'orderSummary') {
-        return `<div class="${visibilityClass}" style="padding:12px 0;"><h3 style="margin:0 0 12px;color:${theme.textColor};font-size:18px;">${escapeHtml(block.props.heading || 'Order summary')}</h3>{{order.itemsTable}}${block.props.showTotals ? '<p style="text-align:right;font-weight:700;color:#0f172a;">Total: {{order.total}}</p>' : ''}</div>`;
+        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '12px 0'};text-align:${(block.props as { align?: string }).align || 'left'};"><h3 style="margin:0 0 12px;color:${theme.textColor};font-size:18px;">${escapeHtml(block.props.heading || 'Order summary')}</h3>{{order.itemsTable}}${block.props.showTotals ? '<p style="text-align:right;font-weight:700;color:#0f172a;">Total: {{order.total}}</p>' : ''}</div>`;
     }
 
     if (block.type === 'address') {
         const tag = block.props.source === 'shipping' ? '{{order.shippingAddress}}' : '{{order.billingAddress}}';
-        return `<div class="${visibilityClass}" style="padding:12px 0;"><h3 style="margin:0 0 8px;color:${theme.textColor};font-size:16px;">${escapeHtml(block.props.title)}</h3><p style="margin:0;color:${theme.mutedTextColor};line-height:1.6;">${tag}</p></div>`;
+        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '12px 0'};text-align:${(block.props as { align?: string }).align || 'left'};"><h3 style="margin:0 0 8px;color:${theme.textColor};font-size:16px;">${escapeHtml(block.props.title)}</h3><p style="margin:0;color:${theme.mutedTextColor};line-height:1.6;">${tag}</p></div>`;
     }
 
     if (block.type === 'coupon') {
-        return `<div class="${visibilityClass}" style="padding:18px;margin:8px 0;background:#eef2ff;border:1px dashed ${theme.primaryColor};border-radius:${theme.borderRadius}px;text-align:center;"><p style="margin:0 0 6px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline)}</p><p style="margin:0 0 8px;color:${theme.primaryColor};font-size:22px;font-weight:800;letter-spacing:1px;">${escapeHtml(block.props.code || '{{coupon.code}}')}</p><p style="margin:0;color:${theme.mutedTextColor};line-height:1.5;">${escapeHtml(block.props.description || '{{coupon.description}}')}</p></div>`;
+        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#eef2ff;border:1px dashed ${theme.primaryColor};border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'center'};"><p style="margin:0 0 6px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline)}</p><p style="margin:0 0 8px;color:${theme.primaryColor};font-size:22px;font-weight:800;letter-spacing:1px;">${escapeHtml(block.props.code || '{{coupon.code}}')}</p><p style="margin:0;color:${theme.mutedTextColor};line-height:1.5;">${escapeHtml(block.props.description || '{{coupon.description}}')}</p></div>`;
     }
 
     if (block.type === 'social') {
         const props = block.props;
         const links = props.links.map((link) => renderSocialIconLink(link.label, toAbsoluteUrl(link.href), link.iconStyle || props.iconStyle || 'solid', props.color || theme.primaryColor)).join('');
-        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.5;">${links}</div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.5;">${links}</div>`;
     }
 
     if (block.type === 'menu') {
         const props = block.props;
         const links = props.links.map((link) => `<a href="${escapeHtml(toAbsoluteUrl(link.href))}" style="display:inline-block;margin:0 10px;color:${props.color || theme.primaryColor};text-decoration:none;font-weight:600;">${escapeHtml(link.label)}</a>`).join('');
-        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.5;">${links}</div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.5;">${links}</div>`;
     }
 
     if (block.type === 'footer') {
         const props = block.props;
         const html = props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>';
-        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:12px;line-height:1.6;color:${props.color || theme.mutedTextColor};">${html}</div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:12px;line-height:1.6;color:${props.color || theme.mutedTextColor};">${html}</div>`;
     }
 
-    return `<div class="${visibilityClass}">${block.props.html}</div>`;
+    return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '8px 0'};text-align:${(block.props as { align?: string }).align || 'left'};">${block.props.html}</div>`;
 }
 
 export function getSocialPlatform(label: string): SocialPlatform {

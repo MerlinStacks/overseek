@@ -39,7 +39,22 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     if (type === 'list') return { id, type, props: { items: ['First benefit', 'Second benefit', 'Third benefit'], ordered: false } };
     if (type === 'divider') return { id, type, props: { color: '#e2e8f0', padding: '16px 0' } };
     if (type === 'spacer') return { id, type, props: { height: 24 } };
-    if (type === 'product') return { id, type, props: { showImage: true, showDescription: true, showPrice: true, buttonLabel: 'View Product', buttonHref: '{{store_url}}' } };
+    if (type === 'product') {
+        return {
+            id,
+            type,
+            props: {
+                showImage: true,
+                showTitle: true,
+                showDescription: false,
+                showPrice: true,
+                showRegularPrice: true,
+                showButton: true,
+                buttonLabel: 'View Product',
+                buttonHref: '{{store_url}}',
+            },
+        };
+    }
     if (type === 'orderSummary') return { id, type, props: { heading: 'Order summary', showTotals: true } };
     if (type === 'address') return { id, type, props: { title: 'Shipping address', source: 'shipping' } };
     if (type === 'coupon') return { id, type, props: { headline: 'Your exclusive offer', code: '{{coupon.code}}', description: '{{coupon.description}}' } };

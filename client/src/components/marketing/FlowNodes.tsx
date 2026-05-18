@@ -38,6 +38,13 @@ interface FlowNodeData {
     density?: 'compact' | 'comfortable';
 }
 
+const OPERATORS_WITHOUT_VALUE = new Set(['is_set', 'not_set']);
+
+const hasConditionValue = (rule: { operator?: string; value?: string }) => {
+    if (OPERATORS_WITHOUT_VALUE.has(String(rule?.operator || ''))) return true;
+    return String(rule?.value ?? '').trim() !== '';
+};
+
 /**
  * TriggerNode - Entry point for automation flows.
  */
@@ -200,10 +207,10 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
     const density = nodeData.density ?? 'comfortable';
 
     const conditionRules = Array.isArray(config?.conditions)
-        ? config.conditions.filter((rule: { field?: string; operator?: string; value?: string }) => rule?.field && rule?.operator && String(rule?.value ?? '').trim() !== '')
+        ? config.conditions.filter((rule: { field?: string; operator?: string; value?: string }) => rule?.field && rule?.operator && hasConditionValue(rule))
         : [];
     const conditionPreview = conditionRules.length > 0
-        ? `${conditionRules[0].field} ${conditionRules[0].operator} ${conditionRules[0].value}${conditionRules.length > 1 ? ` (+${conditionRules.length - 1})` : ''}`
+        ? `${conditionRules[0].field} ${conditionRules[0].operator}${OPERATORS_WITHOUT_VALUE.has(String(conditionRules[0].operator || '')) ? '' : ` ${conditionRules[0].value}`}${conditionRules.length > 1 ? ` (+${conditionRules.length - 1})` : ''}`
         : (config?.field && config?.operator && String(config?.value ?? '').trim() !== ''
             ? `${config.field} ${config.operator} ${config.value}`
             : 'Configure condition...');

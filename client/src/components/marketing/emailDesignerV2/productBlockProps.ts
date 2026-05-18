@@ -5,6 +5,7 @@ export interface EmailDesignerProduct {
     wooId?: number;
     name: string;
     price?: number | string;
+    regularPrice?: number | string;
     mainImage?: string | null;
     images?: Array<{ src?: string }>;
     permalink?: string;
@@ -14,6 +15,7 @@ export interface EmailDesignerProduct {
         permalink?: string;
         short_description?: string;
         description?: string;
+        regular_price?: number | string;
     };
 }
 
@@ -24,12 +26,14 @@ const getProductDescription = (product: EmailDesignerProduct) => stripTags(produ
 const getProductUrl = (product: EmailDesignerProduct) => product.permalink || product.rawData?.permalink || '{{store_url}}';
 
 export function productToBlockProps(product: EmailDesignerProduct): Partial<ProductBlock['props']> {
+    const regularPrice = product.regularPrice ?? product.rawData?.regular_price;
     return {
         productId: product.id,
         productWooId: product.wooId,
         productName: product.name,
         productImage: getProductImage(product),
         productPrice: product.price !== undefined && product.price !== null ? String(product.price) : '',
+        productRegularPrice: regularPrice !== undefined && regularPrice !== null ? String(regularPrice) : '',
         productDescription: getProductDescription(product),
         productUrl: getProductUrl(product),
         buttonHref: getProductUrl(product),
