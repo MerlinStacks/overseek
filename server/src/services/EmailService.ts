@@ -88,6 +88,11 @@ export class EmailService {
     private injectClickTracking(html: string, trackingId: string): string {
         const clickBase = `${this.buildApiBaseUrl()}/api/email/click/${trackingId}?url=`;
         return html.replace(/<a\b([^>]*?)href=("|')(https?:\/\/[^"']+)(\2)([^>]*)>/gi, (_match, preAttrs, quote, href, _quote2, postAttrs) => {
+            // Preserve ESP/unsubscribe merge tags so downstream providers can expand them.
+            // Tracking unresolved placeholders breaks one-click unsubscribe links.
+            if (href.includes('{{') || href.includes('}}')) {
+                return `<a${preAttrs}href=${quote}${href}${quote}${postAttrs}>`;
+            }
             const trackedHref = `${clickBase}${encodeURIComponent(href)}`;
             return `<a${preAttrs}href=${quote}${trackedHref}${quote}${postAttrs}>`;
         });

@@ -69,6 +69,24 @@ interface BillingData {
     phone?: string;
 }
 
+const ADDRESS_COMPARE_FIELDS: Array<keyof BillingData> = [
+    'first_name',
+    'last_name',
+    'company',
+    'address_1',
+    'address_2',
+    'city',
+    'state',
+    'postcode',
+    'country'
+];
+
+const normalizeAddressValue = (value?: string) => String(value || '').trim().toLowerCase();
+
+const isAddressDifferent = (billing: BillingData, shipping: BillingData) => {
+    return ADDRESS_COMPARE_FIELDS.some((field) => normalizeAddressValue(billing[field]) !== normalizeAddressValue(shipping[field]));
+};
+
 interface ShippingLineData {
     method_title?: string;
     methodTitle?: string;
@@ -90,6 +108,7 @@ interface InvoiceOrderData {
     shipping_lines?: ShippingLineData[];
     shipping_method?: string;
     billing?: BillingData;
+    shipping?: BillingData;
     line_items?: InvoiceLineItemData[];
     total?: string | number;
     total_tax?: string | number;
@@ -299,7 +318,9 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
             case 'customer_details': {
                 const billing = data?.billing || {};
+                const shipping = data?.shipping || {};
                 const hasCustomerData = billing.first_name || billing.email;
+                const shouldShowShipping = isAddressDifferent(billing, shipping) && ADDRESS_COMPARE_FIELDS.some((field) => normalizeAddressValue(shipping[field]).length > 0);
 
                 return (
                     <div className="py-2">
@@ -321,6 +342,23 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                             </div>
                         ) : (
                             <div className="text-slate-400 italic text-sm">Customer details will appear here</div>
+                        )}
+                        {shouldShowShipping && (
+                            <div className="mt-4">
+                                <div className="text-xs uppercase tracking-wider text-black mb-2 font-semibold">Ship To</div>
+                                <div className="space-y-0.5 text-sm text-black">
+                                    {(shipping.first_name || shipping.last_name) && (
+                                        <div className="font-semibold">{shipping.first_name} {shipping.last_name}</div>
+                                    )}
+                                    {shipping.company && <div>{shipping.company}</div>}
+                                    {shipping.address_1 && <div>{shipping.address_1}</div>}
+                                    {shipping.address_2 && <div>{shipping.address_2}</div>}
+                                    {(shipping.city || shipping.state || shipping.postcode) && (
+                                        <div>{shipping.city}{shipping.city && shipping.state ? ', ' : ''}{shipping.state} {shipping.postcode}</div>
+                                    )}
+                                    {shipping.country && <div>{shipping.country}</div>}
+                                </div>
+                            </div>
                         )}
                     </div>
                 );

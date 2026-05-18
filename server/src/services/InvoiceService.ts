@@ -39,6 +39,28 @@ type InvoiceTemplateLayout = {
     }>;
 };
 
+const ADDRESS_COMPARE_FIELDS = [
+    'first_name',
+    'last_name',
+    'company',
+    'address_1',
+    'address_2',
+    'city',
+    'state',
+    'postcode',
+    'country'
+] as const;
+
+const normalizeAddressValue = (value: unknown) => String(value || '').trim().toLowerCase();
+
+const hasAddressFields = (address: Record<string, unknown>) => {
+    return ADDRESS_COMPARE_FIELDS.some((field) => normalizeAddressValue(address[field]).length > 0);
+};
+
+const isAddressDifferent = (billing: Record<string, unknown>, shipping: Record<string, unknown>) => {
+    return ADDRESS_COMPARE_FIELDS.some((field) => normalizeAddressValue(billing[field]) !== normalizeAddressValue(shipping[field]));
+};
+
 
 export class InvoiceService {
     private normalizeLayout(layout: any): InvoiceTemplateLayout {
@@ -323,6 +345,7 @@ export class InvoiceService {
         // 3. Parse raw order data for invoice details
         const rawData = order.rawData as any || {};
         const billing = rawData.billing || {};
+        const shipping = rawData.shipping || {};
         const lineItems = rawData.line_items || [];
 
         const mergedSettings = mergeInvoiceSettings(settings);
@@ -387,7 +410,7 @@ export class InvoiceService {
         const fileName = `invoice-${order.number}-${Date.now()}.pdf`;
         const filePath = path.join(INVOICE_DIR, fileName);
 
-        await this.createPdf(filePath, order, billing, lineItems, template, normalizedLayout, invoiceContext, { layoutMode });
+        await this.createPdf(filePath, order, billing, shipping, lineItems, template, normalizedLayout, invoiceContext, { layoutMode });
 
         Logger.info(`Invoice PDF saved`, { filePath });
 
@@ -405,6 +428,7 @@ export class InvoiceService {
         filePath: string,
         order: any,
         billing: any,
+        shipping: any,
         lineItems: any[],
         template: any,
         normalizedLayout?: InvoiceTemplateLayout,
@@ -690,6 +714,9 @@ export class InvoiceService {
                     }
 
                     case 'customer_details': {
+                        const shippingAddress = shipping || {};
+                        const showShippingAddress = hasAddressFields(shippingAddress) && isAddressDifferent(billing || {}, shippingAddress);
+
                         doc.font('Helvetica-Bold').fontSize(8).fillColor('black');
                         doc.text('BILL TO', x, startY);
                         doc.font('Helvetica').fontSize(9).fillColor('black');
@@ -728,6 +755,41 @@ export class InvoiceService {
                             doc.text(billing.phone, x, custY);
                             custY += 12;
                         }
+
+                        if (showShippingAddress) {
+                            custY += 8;
+                            doc.font('Helvetica-Bold').fontSize(8).fillColor('black');
+                            doc.text('SHIP TO', x, custY);
+                            custY += 14;
+                            doc.font('Helvetica').fontSize(9).fillColor('black');
+
+                            if (shippingAddress.first_name || shippingAddress.last_name) {
+                                doc.font('Helvetica-Bold').fillColor('black').text(`${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}`, x, custY);
+                                doc.font('Helvetica').fillColor('black');
+                                custY += 12;
+                            }
+                            if (shippingAddress.company) {
+                                doc.text(shippingAddress.company, x, custY);
+                                custY += 12;
+                            }
+                            if (shippingAddress.address_1) {
+                                doc.text(shippingAddress.address_1, x, custY);
+                                custY += 12;
+                            }
+                            if (shippingAddress.address_2) {
+                                doc.text(shippingAddress.address_2, x, custY);
+                                custY += 12;
+                            }
+                            if (shippingAddress.city || shippingAddress.state || shippingAddress.postcode) {
+                                doc.text(`${shippingAddress.city || ''}${shippingAddress.city && shippingAddress.state ? ', ' : ''}${shippingAddress.state || ''} ${shippingAddress.postcode || ''}`, x, custY);
+                                custY += 12;
+                            }
+                            if (shippingAddress.country) {
+                                doc.text(shippingAddress.country, x, custY);
+                                custY += 12;
+                            }
+                        }
+
                         doc.fillColor('black').font('Helvetica').fontSize(10);
                         blockHeight = custY - startY + 8;
                         break;
