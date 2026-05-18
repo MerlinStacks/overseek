@@ -19,6 +19,7 @@ interface Account {
         logoUrl?: string;
         primaryColor?: string;
         appName?: string;
+        socialLinks?: Array<{ label: string; href: string }>;
     };
     goldPrice?: number;
     goldPriceCurrency?: string;
@@ -68,6 +69,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
     const userRef = useRef(user);
     userRef.current = user;
+    const accountsRef = useRef(accounts);
+    accountsRef.current = accounts;
+    const currentAccountRef = useRef(currentAccount);
+    currentAccountRef.current = currentAccount;
 
     const permissionsCacheRef = useRef<Map<string, { data: AccountMeData; updatedAt: number }>>(new Map());
 
@@ -79,9 +84,13 @@ export function AccountProvider({ children }: { children: ReactNode }) {
             return;
         }
 
-        // Re-raise the loading gate so guards (e.g. AccountGuard) don't
-        // see accounts=[] + isLoading=false while we fetch.
-        setIsLoading(true);
+        // Only raise the loading gate during initial hydration.
+        // On background refreshes (for example after silent auth refresh),
+        // flipping this to true unmounts guarded pages and can collapse
+        // in-progress editors.
+        if (accountsRef.current.length === 0 && !currentAccountRef.current) {
+            setIsLoading(true);
+        }
 
         try {
             let response = await fetch('/api/accounts', {

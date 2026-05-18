@@ -45,15 +45,20 @@ export interface EmailColumn {
 }
 
 export type EmailBlock =
+    | SiteLogoBlock
     | TextBlock
     | ImageBlock
     | ButtonBlock
+    | ListBlock
     | DividerBlock
     | SpacerBlock
     | ProductBlock
     | OrderSummaryBlock
     | AddressBlock
     | CouponBlock
+    | MenuBlock
+    | SocialBlock
+    | FooterBlock
     | RawHtmlBlock;
 
 interface BaseBlock {
@@ -69,6 +74,18 @@ export interface TextBlock extends BaseBlock {
         size?: number;
         lineHeight?: number;
         color?: string;
+        padding?: string;
+    };
+}
+
+export interface SiteLogoBlock extends BaseBlock {
+    type: 'siteLogo';
+    props: {
+        src: string;
+        alt: string;
+        width?: number;
+        align?: 'left' | 'center' | 'right';
+        fallbackText?: string;
         padding?: string;
     };
 }
@@ -98,6 +115,16 @@ export interface ButtonBlock extends BaseBlock {
     };
 }
 
+export interface ListBlock extends BaseBlock {
+    type: 'list';
+    props: {
+        items: string[];
+        ordered?: boolean;
+        color?: string;
+        padding?: string;
+    };
+}
+
 export interface DividerBlock extends BaseBlock {
     type: 'divider';
     props: {
@@ -116,6 +143,13 @@ export interface SpacerBlock extends BaseBlock {
 export interface ProductBlock extends BaseBlock {
     type: 'product';
     props: {
+        productId?: string;
+        productWooId?: number;
+        productName?: string;
+        productImage?: string;
+        productPrice?: string;
+        productDescription?: string;
+        productUrl?: string;
         showImage: boolean;
         showDescription: boolean;
         showPrice: boolean;
@@ -146,6 +180,38 @@ export interface CouponBlock extends BaseBlock {
         headline: string;
         code: string;
         description: string;
+    };
+}
+
+export interface MenuBlock extends BaseBlock {
+    type: 'menu';
+    props: {
+        links: Array<{ label: string; href: string }>;
+        align?: 'left' | 'center' | 'right';
+        color?: string;
+        padding?: string;
+    };
+}
+
+export interface SocialBlock extends BaseBlock {
+    type: 'social';
+    props: {
+        links: Array<{ label: string; href: string }>;
+        align?: 'left' | 'center' | 'right';
+        color?: string;
+        padding?: string;
+    };
+}
+
+export interface FooterBlock extends BaseBlock {
+    type: 'footer';
+    props: {
+        text: string;
+        unsubscribeLabel: string;
+        unsubscribeUrl: string;
+        align?: 'left' | 'center' | 'right';
+        color?: string;
+        padding?: string;
     };
 }
 
@@ -207,8 +273,8 @@ export function createDefaultEmailDesignV2(options?: {
                         width: 100,
                         blocks: logoUrl ? [{
                             id: createEmailDesignId('image'),
-                            type: 'image',
-                            props: { src: logoUrl, alt: `${appName} logo`, width: 160, align: 'center' },
+                            type: 'siteLogo',
+                            props: { src: logoUrl, alt: `${appName} logo`, width: 160, align: 'center', fallbackText: appName },
                         }] : [{
                             id: createEmailDesignId('text'),
                             type: 'text',
@@ -491,6 +557,14 @@ function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
 function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     const visibilityClass = getVisibilityClass(block.visibility);
 
+    if (block.type === 'siteLogo') {
+        const props = block.props;
+        const content = props.src
+            ? `<img src="${escapeHtml(props.src)}" alt="${escapeHtml(props.alt || props.fallbackText || 'Logo')}" width="${props.width || 160}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`
+            : `<h1 style="margin:0;color:${theme.textColor};font-size:28px;line-height:1.25;">${escapeHtml(props.fallbackText || props.alt || 'Your Store')}</h1>`;
+        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};">${content}</div>`;
+    }
+
     if (block.type === 'text') {
         const props = block.props;
         return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${props.html}</div>`;
@@ -508,6 +582,12 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         return `<div class="${visibilityClass}" style="padding:${props.padding || '16px 0'};text-align:${props.align || 'center'};"><a href="${escapeHtml(props.href || '{{store_url}}')}" style="display:inline-block;background:${props.backgroundColor || theme.primaryColor};color:${props.color || '#ffffff'};text-decoration:none;border-radius:${props.borderRadius ?? theme.borderRadius}px;padding:12px 20px;font-weight:700;font-size:14px;">${escapeHtml(props.label || 'Button')}</a></div>`;
     }
 
+    if (block.type === 'list') {
+        const tag = block.props.ordered ? 'ol' : 'ul';
+        const items = block.props.items.map((item) => `<li style="margin:0 0 6px;">${escapeHtml(item)}</li>`).join('');
+        return `<div class="${visibilityClass}" style="padding:${block.props.padding || '8px 0'};color:${block.props.color || theme.textColor};"><${tag} style="margin:0;padding-left:22px;line-height:1.6;">${items}</${tag}></div>`;
+    }
+
     if (block.type === 'divider') {
         return `<div class="${visibilityClass}" style="padding:${block.props.padding || '16px 0'};"><div style="border-top:1px solid ${block.props.color || '#e2e8f0'};font-size:0;line-height:0;">&nbsp;</div></div>`;
     }
@@ -518,12 +598,17 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'product') {
         const props = block.props;
+        const productName = props.productName || '{{product.name}}';
+        const productImage = props.productImage || '{{product.image}}';
+        const productPrice = props.productPrice || '{{product.price}}';
+        const productDescription = props.productDescription || '{{product.description}}';
+        const productUrl = props.productUrl || props.buttonHref || '{{store_url}}';
         return `<div class="${visibilityClass}" style="padding:18px 0;text-align:center;">
-            ${props.showImage ? '<img src="{{product.image}}" alt="{{product.name}}" width="220" style="display:block;max-width:100%;height:auto;border-radius:10px;margin:0 auto 14px;" />' : ''}
-            <h3 style="margin:0 0 8px;color:${theme.textColor};font-size:20px;line-height:1.3;">{{product.name}}</h3>
-            ${props.showDescription ? '<p style="margin:0 0 10px;color:#64748b;line-height:1.6;">{{product.description}}</p>' : ''}
-            ${props.showPrice ? `<p style="margin:0 0 14px;color:${theme.primaryColor};font-weight:700;">{{product.price}}</p>` : ''}
-            <a href="${escapeHtml(props.buttonHref || '{{store_url}}')}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(props.buttonLabel || 'View Product')}</a>
+            ${props.showImage ? `<img src="${escapeHtml(productImage)}" alt="${escapeHtml(productName)}" width="220" style="display:block;max-width:100%;height:auto;border-radius:10px;margin:0 auto 14px;" />` : ''}
+            <h3 style="margin:0 0 8px;color:${theme.textColor};font-size:20px;line-height:1.3;">${escapeHtml(productName)}</h3>
+            ${props.showDescription ? `<p style="margin:0 0 10px;color:#64748b;line-height:1.6;">${escapeHtml(productDescription)}</p>` : ''}
+            ${props.showPrice ? `<p style="margin:0 0 14px;color:${theme.primaryColor};font-weight:700;">${escapeHtml(productPrice)}</p>` : ''}
+            <a href="${escapeHtml(productUrl)}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(props.buttonLabel || 'View Product')}</a>
         </div>`;
     }
 
@@ -540,7 +625,31 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         return `<div class="${visibilityClass}" style="padding:18px;margin:8px 0;background:#eef2ff;border:1px dashed ${theme.primaryColor};border-radius:${theme.borderRadius}px;text-align:center;"><p style="margin:0 0 6px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline)}</p><p style="margin:0 0 8px;color:${theme.primaryColor};font-size:22px;font-weight:800;letter-spacing:1px;">${escapeHtml(block.props.code || '{{coupon.code}}')}</p><p style="margin:0;color:${theme.mutedTextColor};line-height:1.5;">${escapeHtml(block.props.description || '{{coupon.description}}')}</p></div>`;
     }
 
+    if (block.type === 'menu' || block.type === 'social') {
+        const props = block.props;
+        const links = props.links.map((link) => block.type === 'social'
+            ? `<a href="${escapeHtml(link.href)}" title="${escapeHtml(link.label)}" style="display:inline-block;margin:0 6px;width:34px;height:34px;line-height:34px;border-radius:999px;background:${props.color || theme.primaryColor};color:#ffffff;text-align:center;text-decoration:none;font-weight:700;font-size:13px;">${escapeHtml(getSocialInitial(link.label))}</a>`
+            : `<a href="${escapeHtml(link.href)}" style="display:inline-block;margin:0 10px;color:${props.color || theme.primaryColor};text-decoration:none;font-weight:600;">${escapeHtml(link.label)}</a>`).join('');
+        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.5;">${links}</div>`;
+    }
+
+    if (block.type === 'footer') {
+        const props = block.props;
+        return `<div class="${visibilityClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:12px;line-height:1.6;color:${props.color || theme.mutedTextColor};"><p style="margin:0;">${escapeHtml(props.text)}<br /><a href="${escapeHtml(props.unsubscribeUrl || '{{unsubscribe_url}}')}" style="color:${theme.primaryColor};">${escapeHtml(props.unsubscribeLabel || 'Unsubscribe')}</a></p></div>`;
+    }
+
     return `<div class="${visibilityClass}">${block.props.html}</div>`;
+}
+
+function getSocialInitial(label: string): string {
+    const normalized = label.trim().toLowerCase();
+    if (normalized.includes('facebook')) return 'f';
+    if (normalized.includes('instagram')) return 'IG';
+    if (normalized.includes('tiktok')) return 'TT';
+    if (normalized.includes('youtube')) return 'YT';
+    if (normalized.includes('x') || normalized.includes('twitter')) return 'X';
+    if (normalized.includes('linkedin')) return 'in';
+    return label.trim().slice(0, 2).toUpperCase() || 'S';
 }
 
 function getVisibilityClass(visibility?: EmailDeviceVisibility): string {
@@ -566,15 +675,20 @@ export function escapeHtml(value: string): string {
 
 export function getEmailDesignV2BlockLabel(block: EmailBlock): string {
     const labels: Record<EmailBlock['type'], string> = {
+        siteLogo: 'Site Logo',
         text: 'Text',
         image: 'Image',
         button: 'Button',
+        list: 'List',
         divider: 'Divider',
         spacer: 'Spacer',
         product: 'Product',
         orderSummary: 'Order Summary',
         address: 'Address',
         coupon: 'Coupon',
+        menu: 'Menu',
+        social: 'Social',
+        footer: 'Footer',
         rawHtml: 'Raw HTML',
     };
     return labels[block.type];
