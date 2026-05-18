@@ -1,7 +1,6 @@
 
 import { Image as ImageIcon } from 'lucide-react';
 import {
-    buildInvoiceNumber,
     formatInvoiceCurrency,
     mergeInvoiceSettings,
     resolveInvoiceTemplateString
@@ -175,7 +174,6 @@ interface InvoiceRendererProps {
  */
 export function InvoiceRenderer({ layout, items, data, settings, readOnly = true, pageMode = 'single' }: InvoiceRendererProps) {
     const mergedSettings = mergeInvoiceSettings(settings || {});
-    const invoiceNumber = buildInvoiceNumber(mergedSettings);
 
     // Helper to render content - clean print-ready styling
     const renderContent = (itemConfig: InvoiceItem) => {
@@ -184,7 +182,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
         switch (itemConfig.type) {
             case 'header':
                 return (
-                    <div className="h-full flex items-center gap-6 overflow-hidden">
+                    <div className="h-full flex items-start gap-6 py-1">
                         {/* Logo Section - Left */}
                         <div className="w-32 h-full flex items-center justify-start flex-shrink-0">
                             {itemConfig.logo ? (
@@ -197,7 +195,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                         </div>
                         {/* Business Details Section - Right Aligned with Auto-Fit */}
                         <div
-                            className="flex-1 h-full text-right text-slate-700 overflow-hidden"
+                            className="flex-1 h-full text-right text-black"
                             style={{
                                 containerType: 'size',
                                 fontSize: 'clamp(8px, min(2.2cqw, 3.2cqh), 14px)',
@@ -226,19 +224,19 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                         <table className="w-full text-sm table-fixed">
                             <tbody>
                                 <tr>
-                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Order Number:</td>
+                                    <td className="text-black pr-4 py-1 whitespace-nowrap w-40">Order Number:</td>
                                     <td className="font-semibold text-black">{orderNumber}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Order Date:</td>
+                                    <td className="text-black pr-4 py-1 whitespace-nowrap w-40">Order Date:</td>
                                     <td className="font-semibold text-black">{orderDate}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Payment Method:</td>
+                                    <td className="text-black pr-4 py-1 whitespace-nowrap w-40">Payment Method:</td>
                                     <td className="font-semibold text-black break-words">{paymentMethod}</td>
                                 </tr>
                                 <tr>
-                                    <td className="text-slate-500 pr-4 py-1 whitespace-nowrap w-40">Shipping Method:</td>
+                                    <td className="text-black pr-4 py-1 whitespace-nowrap w-40">Shipping Method:</td>
                                     <td className="font-semibold text-black break-words">{shippingMethod}</td>
                                 </tr>
                             </tbody>
@@ -300,7 +298,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
                 return (
                     <div className="py-2">
-                        <div className="text-xs uppercase tracking-wider text-slate-400 mb-2 font-semibold">Bill To</div>
+                        <div className="text-xs uppercase tracking-wider text-black mb-2 font-semibold">Bill To</div>
                         {hasCustomerData ? (
                             <div className="space-y-0.5 text-sm text-black">
                                 {(billing.first_name || billing.last_name) && (
@@ -372,7 +370,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                                                     {itemMeta.length > 0 && (
                                                         <div className="mt-1 space-y-0.5">
                                                             {itemMeta.map((meta, j) => (
-                                                                <div key={j} className="text-xs text-slate-600">
+                                                                <div key={j} className="text-xs text-black">
                                                                     <span className="font-medium">{meta.label}:</span> {meta.value}
                                                                 </div>
                                                             ))}
@@ -449,28 +447,28 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                             <table className="w-full text-sm">
                                 <tbody>
                                     <tr>
-                                        <td className="py-1.5 text-slate-600">Subtotal</td>
-                                        <td className="py-1.5 text-right text-slate-700 w-28">{formatCurrency(subtotal)}</td>
+                                        <td className="py-1.5 text-black">Subtotal</td>
+                                        <td className="py-1.5 text-right text-black w-28">{formatCurrency(subtotal)}</td>
                                     </tr>
                                     {toNumber(data.shipping_total) > 0 && (
                                         <tr>
-                                            <td className="py-1.5 text-slate-600">Shipping</td>
-                                            <td className="py-1.5 text-right text-slate-700">{formatCurrency(data.shipping_total)}</td>
+                                            <td className="py-1.5 text-black">Shipping</td>
+                                            <td className="py-1.5 text-right text-black">{formatCurrency(data.shipping_total)}</td>
                                         </tr>
                                     )}
                                     {toNumber(data.discount_total) > 0 && (
                                         <tr>
-                                            <td className="py-1.5 text-emerald-600">Discount</td>
-                                            <td className="py-1.5 text-right text-emerald-600">-{formatCurrency(data.discount_total)}</td>
+                                            <td className="py-1.5 text-black">Discount</td>
+                                            <td className="py-1.5 text-right text-black">-{formatCurrency(data.discount_total)}</td>
                                         </tr>
                                     )}
                                     <tr>
-                                        <td className="py-1.5 text-slate-600">Tax</td>
-                                        <td className="py-1.5 text-right text-slate-700">{formatCurrency(data.total_tax)}</td>
+                                        <td className="py-1.5 text-black">Tax</td>
+                                        <td className="py-1.5 text-right text-black">{formatCurrency(data.total_tax)}</td>
                                     </tr>
                                     <tr className="border-t-2 border-slate-300">
-                                        <td className="py-2 font-bold text-slate-800 text-base">Total</td>
-                                        <td className="py-2 text-right font-bold text-slate-800 text-base">{formatCurrency(data.total)}</td>
+                                        <td className="py-2 font-bold text-black text-base">Total</td>
+                                        <td className="py-2 text-right font-bold text-black text-base">{formatCurrency(data.total)}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -486,17 +484,15 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
             case 'payment_block':
                 return (
                     <div className="py-2 border border-cyan-200 rounded-lg bg-cyan-50/40 p-3">
-                        <div className="text-xs uppercase tracking-wider text-cyan-700 font-semibold mb-2">Payment</div>
+                        <div className="text-xs uppercase tracking-wider text-black font-semibold mb-2">Payment</div>
                         {(itemConfig.content || mergedSettings.payment.payNowUrl) ? (
                             <div className="space-y-2">
-                                <div className="text-sm text-cyan-700 break-all">
-                                    {mergedSettings.payment.payNowLabel || 'Pay now'}: {itemConfig.content || mergedSettings.payment.payNowUrl}
-                                </div>
                                 <div className="w-16 h-16 rounded-md border border-cyan-300 bg-white grid grid-cols-4 gap-0.5 p-1">
                                     {Array.from({ length: 16 }).map((_, idx) => (
                                         <div key={idx} className={`${idx % 3 === 0 ? 'bg-cyan-700' : 'bg-cyan-100'} rounded-xs`} />
                                     ))}
                                 </div>
+                                <div className="text-xs text-black">Scan to pay</div>
                             </div>
                         ) : (
                             <div className="text-slate-400 italic text-sm">Set a Pay URL in settings or this block.</div>
@@ -506,10 +502,10 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
 
             case 'footer':
                 return (
-                    <div className="py-3 text-center text-sm text-slate-500 bg-white">
+                    <div className="py-3 text-center text-sm text-black bg-white">
                         <div>{itemConfig.content || 'Thank you for your business!'}</div>
                         {mergedSettings.compliance.legalFooter && (
-                            <div className="mt-1 text-xs text-slate-400 whitespace-pre-wrap">{mergedSettings.compliance.legalFooter}</div>
+                            <div className="mt-1 text-xs text-black whitespace-pre-wrap">{mergedSettings.compliance.legalFooter}</div>
                         )}
                     </div>
                 );

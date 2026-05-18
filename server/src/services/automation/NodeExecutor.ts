@@ -7,7 +7,7 @@
 import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
 import { EmailService } from '../EmailService';
-import { InvoiceService } from '../InvoiceService';
+import { canonicalInvoiceAttachmentService } from '../CanonicalInvoiceAttachmentService';
 import { smsService } from '../SmsService';
 import { campaignTrackingService } from '../CampaignTrackingService';
 import { cartRecoveryService } from '../CartRecoveryService';
@@ -21,7 +21,6 @@ import { renderTemplate } from './FlowNavigator';
 
 export class NodeExecutor {
     private emailService = new EmailService();
-    private invoiceService = new InvoiceService();
 
     /**
      * Execute the logic for a single flow node.
@@ -401,11 +400,24 @@ export class NodeExecutor {
                 return;
             }
 
-            const { relativeUrl, absolutePath } = await this.invoiceService.generateInvoicePdf(
+            let relativeUrl = '';
+            let absolutePath = '';
+            const resolved = await canonicalInvoiceAttachmentService.resolveAbsolutePath(
                 enrollment.automation.accountId,
-                String(orderId),
-                config.templateId
+                String(orderId)
             );
+            absolutePath = resolved.absolutePath || '';
+
+            if (!absolutePath) {
+                Logger.warn('Cannot generate invoice: canonical invoice artifact not ready', {
+                    accountId: enrollment.automation.accountId,
+                    orderId: String(orderId),
+                });
+                return;
+            }
+
+            const filename = absolutePath.split('/').pop() || 'Invoice.pdf';
+            relativeUrl = `/uploads/invoices/${filename}`;
 
             // Update context with invoice attachment
             const newContext = {

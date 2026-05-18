@@ -4,9 +4,6 @@ import { Check, RefreshCw } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { RichTextEditor } from '../common/RichTextEditor';
-
-const buildDefaultEmailFooterHtml = (accountName: string) => `<p>You are receiving this email from ${accountName}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
 
 export function AppearanceSettings() {
     const { currentAccount, refreshAccounts } = useAccount();
@@ -23,8 +20,7 @@ export function AppearanceSettings() {
             { label: 'Facebook', href: '' },
             { label: 'Instagram', href: '' },
             { label: 'TikTok', href: '' },
-        ],
-        emailFooterHtml: buildDefaultEmailFooterHtml('Your Store'),
+        ]
     });
 
     useEffect(() => {
@@ -38,10 +34,7 @@ export function AppearanceSettings() {
                     { label: 'Facebook', href: '' },
                     { label: 'Instagram', href: '' },
                     { label: 'TikTok', href: '' },
-                ],
-                emailFooterHtml: typeof app.emailFooterHtml === 'string' && app.emailFooterHtml.trim()
-                    ? app.emailFooterHtml
-                    : buildDefaultEmailFooterHtml(app.appName || currentAccount.name || 'Your Store'),
+                ]
             });
         }
     }, [currentAccount]);
@@ -86,8 +79,7 @@ export function AppearanceSettings() {
                 { label: 'Facebook', href: '' },
                 { label: 'Instagram', href: '' },
                 { label: 'TikTok', href: '' },
-            ],
-            emailFooterHtml: buildDefaultEmailFooterHtml(settings.appName || currentAccount?.name || 'Your Store'),
+            ]
         });
     };
 
@@ -160,20 +152,6 @@ export function AppearanceSettings() {
                         </div>
                     ))}
                     <button type="button" onClick={() => setSettings((current) => ({ ...current, socialLinks: [...current.socialLinks, { label: 'New Profile', href: '' }] }))} className="text-sm font-medium text-blue-600 hover:text-blue-700">Add social profile</button>
-                </div>
-
-                <div className="md:col-span-2 space-y-2">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email Footer (Rich Text)</label>
-                        <p className="text-xs text-gray-500">Used as a locked footer block in Email Designer v2 for this account. Include <code>{'{{unsubscribe_url}}'}</code> in your markup.</p>
-                    </div>
-                    <RichTextEditor
-                        value={settings.emailFooterHtml}
-                        onChange={(value) => setSettings((current) => ({ ...current, emailFooterHtml: value }))}
-                        placeholder="<p>You are receiving this email from Your Store...</p>"
-                        variant="standard"
-                        features={['bold', 'italic', 'underline', 'link', 'list']}
-                    />
                 </div>
             </div>
 

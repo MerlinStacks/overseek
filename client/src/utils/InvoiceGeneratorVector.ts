@@ -1,7 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
-    buildInvoiceNumber,
     formatInvoiceCurrency,
     mergeInvoiceSettings,
     resolveInvoiceTemplateString,
@@ -153,8 +152,6 @@ export async function generateVectorInvoicePDF(
     const pxToMm = contentWidth / DESIGN_WIDTH_PX;
     const colWidthPx = (DESIGN_WIDTH_PX - (GRID_COLS - 1) * GRID_MARGIN_X_PX) / GRID_COLS;
     const rowSpanPx = GRID_ROW_HEIGHT_PX + GRID_MARGIN_Y_PX;
-
-    const invoiceNumber = buildInvoiceNumber(mergedSettings);
 
     const orderNumber = order.number || order.order_number || order.id || 'N/A';
     const orderDate = order.date_created
@@ -403,7 +400,7 @@ export async function generateVectorInvoicePDF(
 
         if (item.type === 'payment_block') {
             const payText = cleanText(item.content || mergedSettings.payment.payNowUrl || '');
-            if (payText) renderTextBlock(`Payment\n${payText}`, box, { fontSize: '9.5' }, 'left');
+            if (payText) renderTextBlock('Payment\nScan to pay', box, { fontSize: '9.5' }, 'left');
             continue;
         }
 

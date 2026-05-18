@@ -6,13 +6,16 @@ import { EmailAccountForm, type EmailAccount } from './EmailAccountForm';
 import { EmailAccountList } from './EmailAccountList';
 import { RefreshCw } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { RichTextEditor } from '../common/RichTextEditor';
+
+const buildDefaultEmailFooterHtml = (accountName: string) => `<p>You are receiving this email from ${accountName}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
 
 /**
  * Email Settings page - manages unified email accounts with SMTP/IMAP.
  */
 export function EmailSettings() {
     const { token } = useAuth();
-    const { currentAccount } = useAccount();
+    const { currentAccount, refreshAccounts } = useAccount();
     const toast = useToast();
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -22,6 +25,8 @@ export function EmailSettings() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message?: string } | null>(null);
     const [syncResult, setSyncResult] = useState<{ success: boolean; message?: string; checked?: number } | null>(null);
+    const [emailFooterHtml, setEmailFooterHtml] = useState('');
+    const [isSavingFooter, setIsSavingFooter] = useState(false);
 
     const [editingAccount, setEditingAccount] = useState<Partial<EmailAccount> | null>(null);
 
@@ -57,6 +62,38 @@ export function EmailSettings() {
             fetchAccounts();
         }
     }, [currentAccount, token, fetchAccounts]);
+
+    useEffect(() => {
+        if (!currentAccount) return;
+        setEmailFooterHtml(currentAccount.appearance?.emailFooterHtml || buildDefaultEmailFooterHtml(currentAccount.appearance?.appName || currentAccount.name || 'Your Store'));
+    }, [currentAccount]);
+
+    const handleSaveFooter = async () => {
+        if (!currentAccount || !token) return;
+        setIsSavingFooter(true);
+        try {
+            const appearance = {
+                ...(currentAccount.appearance || {}),
+                emailFooterHtml: emailFooterHtml || buildDefaultEmailFooterHtml(currentAccount.appearance?.appName || currentAccount.name || 'Your Store'),
+            };
+            const res = await fetch(`/api/accounts/${currentAccount.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ appearance }),
+            });
+            if (!res.ok) throw new Error('Failed to save email footer');
+            await refreshAccounts();
+            toast.success('Email footer saved.');
+        } catch (error) {
+            Logger.error('Failed to save email footer', { error });
+            toast.error('Failed to save email footer.');
+        } finally {
+            setIsSavingFooter(false);
+        }
+    };
 
     const handleSave = async (accountData: Partial<EmailAccount>) => {
         if (!currentAccount || !token) return;
@@ -188,6 +225,31 @@ export function EmailSettings() {
 
     return (
         <div className="space-y-6">
+            {!editingAccount && (
+                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 space-y-3">
+                    <div>
+                        <h3 className="font-medium text-gray-900">Account Email Footer</h3>
+                        <p className="text-sm text-gray-500">Used by Email Designer v2 footer blocks for this account. Include <code>{'{{unsubscribe_url}}'}</code> in your footer content.</p>
+                    </div>
+                    <RichTextEditor
+                        value={emailFooterHtml}
+                        onChange={setEmailFooterHtml}
+                        placeholder="<p>You are receiving this email from Your Store...</p>"
+                        variant="standard"
+                        features={['bold', 'italic', 'underline', 'link', 'list']}
+                    />
+                    <div className="flex justify-end">
+                        <button
+                            onClick={handleSaveFooter}
+                            disabled={isSavingFooter}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                            {isSavingFooter ? 'Saving...' : 'Save Footer'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Sync Button & Status */}
             {!editingAccount && (
                 <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">

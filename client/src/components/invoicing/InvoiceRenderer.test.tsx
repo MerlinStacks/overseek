@@ -54,8 +54,9 @@ describe('InvoiceRenderer', () => {
         expect(screen.queryByText(/Invoice Date:/i)).not.toBeInTheDocument();
         expect(screen.queryByText(/Due Date:/i)).not.toBeInTheDocument();
         expect(screen.getByText(/Order Number:/i)).toBeInTheDocument();
-        expect(screen.getAllByText(/INV-01234/i).length).toBeGreaterThan(0);
-        expect(screen.getByText(/Pay now:/i)).toBeInTheDocument();
+        expect(screen.queryByText(/INV-01234/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Pay now:/i)).not.toBeInTheDocument();
+        expect(screen.getByText(/Scan to pay/i)).toBeInTheDocument();
         expect(screen.getByText(/ABN 12 345 678 901/i)).toBeInTheDocument();
         expect(container).toMatchSnapshot();
     });

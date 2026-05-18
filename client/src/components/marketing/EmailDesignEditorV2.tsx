@@ -91,6 +91,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [builderTab, setBuilderTab] = useState<BuilderTab>('blocks');
     const [blockSearch, setBlockSearch] = useState('');
     const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+    const [previewSurface, setPreviewSurface] = useState<'canvas' | 'html'>('canvas');
     const [saving, setSaving] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -111,7 +112,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const saveStatus = saving ? 'Saving...' : hasUnsavedChanges ? 'Autosaved draft' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
     const isUtilityPanel = activePanel === 'checklist' || activePanel === 'history' || activePanel === 'test';
     const isInvoiceDownloadBlock = selectedBlock?.type === 'button' && (selectedBlock.props.href || '').trim() === '{{order.invoiceUrl}}';
-    const hideRightSidebar = (selectedBlock?.type === 'text' || isInvoiceDownloadBlock) && !isUtilityPanel;
+    const hideRightSidebar = (selectedBlock?.type === 'text' || selectedBlock?.type === 'footer' || isInvoiceDownloadBlock) && !isUtilityPanel;
 
     const brandLogoUrl = invoiceLogoUrl || currentAccount?.appearance?.logoUrl || '';
     const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
@@ -143,7 +144,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         setSnapshots(next);
     }, []);
 
-    const addStructurePreset = (widths: number[]) => {
+    const addStructurePreset = (widths: number[], insertIndex?: number) => {
         setDirtyDesign((draft) => {
             const section: EmailSection = {
                 id: createEmailDesignId('section'),
@@ -158,10 +159,22 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     blocks: [],
                 })),
             };
-            draft.document.sections.push(section);
+            if (typeof insertIndex === 'number') {
+                draft.document.sections.splice(insertIndex, 0, section);
+            } else {
+                draft.document.sections.push(section);
+            }
             setSelectedSectionId(section.id);
             setSelectedBlockId(null);
         });
+    };
+
+    const handleDropStructure = (event: DragEvent, insertIndex: number) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const structureWidths = event.dataTransfer.getData('application/x-overseek-structure');
+        if (!structureWidths) return;
+        addStructurePreset(JSON.parse(structureWidths) as number[], insertIndex);
     };
 
     const addPaletteBlock = (sectionId: string, key: PaletteKey, insertIndex?: number, columnId?: string) => {
@@ -209,7 +222,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         const structureWidths = event.dataTransfer.getData('application/x-overseek-structure');
         const paletteKey = event.dataTransfer.getData('application/x-overseek-block') as PaletteKey;
         const blockId = event.dataTransfer.getData('application/x-overseek-existing-block');
-        if (structureWidths) addStructurePreset(JSON.parse(structureWidths) as number[]);
+        if (structureWidths) return;
         else if (paletteKey) addPaletteBlock(sectionId, paletteKey, insertIndex, columnId);
         else if (blockId) moveBlock(blockId, sectionId, insertIndex, columnId);
     };
@@ -541,7 +554,11 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         </div>
                         <Pencil size={17} className="shrink-0 text-slate-500 dark:text-slate-400" />
                     </div>
-                    <div className="flex items-center justify-center">
+                    <div className="flex items-center justify-center gap-2">
+                        <div className="flex rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
+                            <button onClick={() => setPreviewSurface('canvas')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'canvas' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Live canvas preview" aria-label="Live canvas preview">Canvas</button>
+                            <button onClick={() => setPreviewSurface('html')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'html' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Real email HTML preview" aria-label="Real email HTML preview">Real Email</button>
+                        </div>
                         <div className="flex rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
                             <button onClick={() => setPreviewMode('desktop')} className={`rounded-md p-2 ${previewMode === 'desktop' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Desktop preview" aria-label="Desktop preview"><Monitor size={16} /></button>
                             <button onClick={() => setPreviewMode('mobile')} className={`rounded-md p-2 ${previewMode === 'mobile' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Mobile preview" aria-label="Mobile preview"><Smartphone size={16} /></button>
@@ -638,16 +655,29 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
 
                     <main className="min-h-0 overflow-auto bg-slate-200/70 p-4 dark:bg-slate-950">
                         <div className="mx-auto mb-3 flex max-w-4xl items-center justify-between gap-3">
-                            <p className="text-sm text-slate-600 dark:text-slate-300">Live email canvas. Drag blocks into place and edit content directly.</p>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">{previewSurface === 'canvas' ? 'Live email canvas. Drag blocks into place and edit content directly.' : 'Real email preview from compiled HTML. This is the exact markup that gets saved and sent.'}</p>
                         </div>
-                        <ErrorBoundary
-                            onReset={() => {
-                                setSelectedSectionId((prev) => prev || design.document.sections[0]?.id || '');
-                                setSelectedBlockId(null);
-                            }}
-                        >
-                            <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onOpenSettings={() => { setActivePanel('settings'); }} onDropOnSection={handleDropOnSection} />
-                        </ErrorBoundary>
+                        {previewSurface === 'canvas' ? (
+                            <ErrorBoundary
+                                onReset={() => {
+                                    setSelectedSectionId((prev) => prev || design.document.sections[0]?.id || '');
+                                    setSelectedBlockId(null);
+                                }}
+                            >
+                                <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onOpenSettings={() => { setActivePanel('settings'); }} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                            </ErrorBoundary>
+                        ) : (
+                            <div className="mx-auto w-full rounded-3xl border border-slate-300 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                                <div className="mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700" style={{ width: previewMode === 'mobile' ? 390 : Math.min(design.document.theme.contentWidth, 920), maxWidth: '100%' }}>
+                                    <iframe
+                                        title="Compiled email HTML preview"
+                                        srcDoc={html}
+                                        className="h-[78vh] w-full bg-white"
+                                        sandbox="allow-popups allow-popups-to-escape-sandbox"
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </main>
 
                     {!hideRightSidebar && <aside className="min-h-0 overflow-auto border-l border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -875,7 +905,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
             {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
             {block.type === 'social' && <><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
-            {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Appearance and is locked in the designer.</div>}
+            {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Email and is locked in the designer.</div>}
             {block.type === 'rawHtml' && <TextArea label="Raw HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
         </div>
     );

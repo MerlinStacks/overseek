@@ -7,6 +7,7 @@ import { MarketingService } from '../services/MarketingService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { cartRecoveryService } from '../services/CartRecoveryService';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 
@@ -306,16 +307,11 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
             }
 
-            // Get the primary email account for this account
-            const emailAccount = await prisma.emailAccount.findFirst({
-                where: {
-                    accountId: request.user!.accountId!,
-                    smtpEnabled: true
-                }
-            });
+            const accountId = request.accountId || request.user!.accountId!;
+            const emailAccount = await getDefaultEmailAccount(accountId);
 
             if (!emailAccount) {
-                return reply.code(400).send({ error: 'No email account configured. Please set up an email account in Settings.' });
+                return reply.code(400).send({ error: 'No sending-capable email account is configured. Please set up a sending account in Settings.' });
             }
 
             // Import email service to send the test
@@ -323,7 +319,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const emailService = new EmailService();
 
             await emailService.sendEmail(
-                request.user!.accountId!,
+                accountId,
                 emailAccount.id,
                 to,
                 subject,
@@ -332,7 +328,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 { source: 'TEST' }
             );
 
-            Logger.info('Test email sent', { to, subject: subject.substring(0, 50), accountId: request.user!.accountId });
+            Logger.info('Test email sent', { to, subject: subject.substring(0, 50), accountId });
             return { success: true };
         } catch (e) {
             Logger.error('Error sending test email', { error: e });

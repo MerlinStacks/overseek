@@ -13,7 +13,7 @@ import { PushNotificationService } from './PushNotificationService';
 import { getIO } from '../socket';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { EmailService } from './EmailService';
-import { InvoiceService } from './InvoiceService';
+import { canonicalInvoiceAttachmentService } from './CanonicalInvoiceAttachmentService';
 
 interface NotificationConfig {
     accountId: string;
@@ -41,7 +41,6 @@ interface NotificationConfig {
 export class NotificationEngine {
     private static initialized = false;
     private static readonly emailService = new EmailService();
-    private static readonly invoiceService = new InvoiceService();
 
     /**
      * Initialize the notification engine by subscribing to all notification-worthy events.
@@ -207,21 +206,25 @@ export class NotificationEngine {
                 return;
             }
 
-            const template = await prisma.invoiceTemplate.findFirst({
-                where: { accountId },
-                orderBy: { createdAt: 'desc' },
-                select: { id: true }
-            });
-
-            if (!template) {
-                Logger.warn('[NotificationEngine] Invoice email skipped: no invoice template found', {
+            let absolutePath = '';
+            try {
+                const resolved = await canonicalInvoiceAttachmentService.resolveAbsolutePath(accountId, String(order.id));
+                absolutePath = resolved.absolutePath || '';
+            } catch (error) {
+                Logger.warn('[NotificationEngine] Canonical invoice generation path failed; email skipped', {
                     accountId,
-                    orderId: order.id
+                    orderId: order.id,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+
+            if (!absolutePath) {
+                Logger.warn('[NotificationEngine] Invoice email skipped: canonical invoice artifact not ready', {
+                    accountId,
+                    orderId: order.id,
                 });
                 return;
             }
-
-            const { absolutePath } = await this.invoiceService.generateInvoicePdf(accountId, String(order.id), template.id);
             const recipientName = order.billing?.first_name
                 ? `${order.billing.first_name} ${order.billing.last_name || ''}`.trim()
                 : null;

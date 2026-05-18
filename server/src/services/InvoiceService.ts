@@ -690,13 +690,13 @@ export class InvoiceService {
                     }
 
                     case 'customer_details': {
-                        doc.font('Helvetica-Bold').fontSize(8).fillColor('#94a3b8');
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor('black');
                         doc.text('BILL TO', x, startY);
-                        doc.font('Helvetica').fontSize(9).fillColor('#334155');
+                        doc.font('Helvetica').fontSize(9).fillColor('black');
                         let custY = startY + 14;
                         if (billing.first_name || billing.last_name) {
-                            doc.font('Helvetica-Bold').fillColor('#1f2937').text(`${billing.first_name || ''} ${billing.last_name || ''}`, x, custY);
-                            doc.font('Helvetica').fillColor('#334155');
+                            doc.font('Helvetica-Bold').fillColor('black').text(`${billing.first_name || ''} ${billing.last_name || ''}`, x, custY);
+                            doc.font('Helvetica').fillColor('black');
                             custY += 12;
                         }
                         if (billing.company) {
@@ -720,8 +720,8 @@ export class InvoiceService {
                             custY += 12;
                         }
                         if (billing.email) {
-                            doc.fillColor('#2563eb').text(billing.email, x, custY);
-                            doc.fillColor('#334155');
+                            doc.fillColor('black').text(billing.email, x, custY);
+                            doc.fillColor('black');
                             custY += 12;
                         }
                         if (billing.phone) {
@@ -763,8 +763,8 @@ export class InvoiceService {
                             doc.font('Helvetica-Bold').fontSize(9);
                             const valueHeight = doc.heightOfString(safeValue, { width: detailValueWidth });
 
-                            doc.font('Helvetica').fillColor('#64748b').fontSize(9).text(label, x, detY, { width: detailLabelWidth });
-                            doc.font('Helvetica-Bold').fillColor('#1f2937').fontSize(9).text(safeValue, x + detailLabelWidth + 6, detY, {
+                            doc.font('Helvetica').fillColor('black').fontSize(9).text(label, x, detY, { width: detailLabelWidth });
+                            doc.font('Helvetica-Bold').fillColor('black').fontSize(9).text(safeValue, x + detailLabelWidth + 6, detY, {
                                 width: detailValueWidth
                             });
 
@@ -788,7 +788,7 @@ export class InvoiceService {
                         const totalWidth = Math.max(52, Math.round(safeTableWidth * 0.19));
                         const descWidth = Math.max(84, safeTableWidth - qtyWidth - priceWidth - totalWidth);
 
-                        doc.fillColor('#334155').text('Description', tableX, startY);
+                        doc.fillColor('black').text('Description', tableX, startY);
                         doc.text('Qty', tableX + descWidth, startY, { width: qtyWidth, align: 'center' });
                         doc.text('Unit Price', tableX + descWidth + qtyWidth, startY, { width: priceWidth, align: 'right' });
                         doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, startY, { width: totalWidth, align: 'right' });
@@ -801,7 +801,7 @@ export class InvoiceService {
 
                         const renderTableHeader = () => {
                             doc.fontSize(9).font('Helvetica-Bold');
-                            doc.fillColor('#334155').text('Description', tableX, tableY);
+                            doc.fillColor('black').text('Description', tableX, tableY);
                             doc.text('Qty', tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
                             doc.text('Unit Price', tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text('Total', tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
@@ -874,7 +874,7 @@ export class InvoiceService {
 
                             if (itemMeta.length > 0) {
                                 tableY += 2;
-                                doc.fontSize(8).fillColor('#64748b');
+                                doc.fontSize(8).fillColor('black');
                                 itemMeta.forEach((meta, metaIdx) => {
                                     const metaText = decodeInvoiceEntities(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
                                     const metaLineHeight = metaLineHeights[metaIdx] || 10;
@@ -909,34 +909,34 @@ export class InvoiceService {
                         const subtotal = totalVal - taxVal - shipVal;
                         const totalsX = tableX + safeTableWidth - 170;
 
-                        doc.font('Helvetica').fontSize(9).fillColor('#475569');
+                        doc.font('Helvetica').fontSize(9).fillColor('black');
                         doc.text('Subtotal', totalsX, tableY);
-                        doc.fillColor('#334155').text(formatCurrency(subtotal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        doc.fillColor('black').text(formatCurrency(subtotal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         tableY += 14;
 
                         if (shipVal > 0) {
-                            doc.fillColor('#475569').text('Shipping', totalsX, tableY);
-                            doc.fillColor('#334155').text(formatCurrency(shipVal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                            doc.fillColor('black').text('Shipping', totalsX, tableY);
+                            doc.fillColor('black').text(formatCurrency(shipVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                             tableY += 14;
                         }
 
                         const discountVal = parseFloat(rawOrderData.discount_total ?? 0);
                         if (discountVal > 0) {
-                            doc.fillColor('#059669'); // emerald
+                            doc.fillColor('black');
                             doc.text('Discount', totalsX, tableY);
                             doc.text(`-${formatCurrency(discountVal)}`, totalsX + 80, tableY, { width: 70, align: 'right' });
                             tableY += 14;
                             doc.fillColor('black');
                         }
 
-                        doc.fillColor('#475569').text('Tax', totalsX, tableY);
-                        doc.fillColor('#334155').text(formatCurrency(taxVal), totalsX + 80, tableY, { width: 70, align: 'right' });
+                        doc.fillColor('black').text('Tax', totalsX, tableY);
+                        doc.fillColor('black').text(formatCurrency(taxVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         tableY += 16;
 
                         doc.moveTo(totalsX, tableY - 3).lineTo(totalsX + 150, tableY - 3).strokeColor('#cbd5e1').lineWidth(1).stroke();
                         doc.strokeColor('black').lineWidth(1);
 
-                        doc.font('Helvetica-Bold').fontSize(11).fillColor('#0f172a');
+                        doc.font('Helvetica-Bold').fontSize(11).fillColor('black');
                         doc.text('Total', totalsX, tableY);
                         doc.text(formatCurrency(totalVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         doc.fillColor('black');
@@ -1002,7 +1002,7 @@ export class InvoiceService {
                             : (invoiceContext?.paymentUrl || '');
                         if (paymentUrl) {
                             doc.fontSize(9).font('Helvetica').fillColor(brandingSettings.primaryColor || '#4f46e5');
-                            doc.text(`${paymentSettings?.payNowLabel || 'Pay now'}: ${paymentUrl}`, x, payY, { width });
+                            doc.text('Scan to pay', x, payY, { width });
                             doc.fillColor('black');
                             payY += 16;
                         }
@@ -1126,10 +1126,10 @@ export class InvoiceService {
                 const halfWidth = Math.floor((printableWidth - columnGap) / 2);
 
                 const headerHeight = headerConfig
-                    ? renderBlock(headerConfig, printableMarginX, printableWidth, topY, 92)
+                    ? renderBlock(headerConfig, printableMarginX, printableWidth, topY, 104)
                     : 0;
 
-                const detailsY = topY + Math.max(92, headerHeight) + 20;
+                const detailsY = topY + Math.max(104, headerHeight) + 20;
                 const customerHeight = customerDetailsConfig
                     ? renderBlock(customerDetailsConfig, printableMarginX, halfWidth, detailsY, 140)
                     : 0;

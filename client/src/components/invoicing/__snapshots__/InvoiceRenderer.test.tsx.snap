@@ -26,7 +26,7 @@ exports[`InvoiceRenderer > renders order metadata, payment block, and legal foot
               <tbody>
                 <tr>
                   <td
-                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                    class="text-black pr-4 py-1 whitespace-nowrap w-40"
                   >
                     Order Number:
                   </td>
@@ -38,7 +38,7 @@ exports[`InvoiceRenderer > renders order metadata, payment block, and legal foot
                 </tr>
                 <tr>
                   <td
-                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                    class="text-black pr-4 py-1 whitespace-nowrap w-40"
                   >
                     Order Date:
                   </td>
@@ -50,7 +50,7 @@ exports[`InvoiceRenderer > renders order metadata, payment block, and legal foot
                 </tr>
                 <tr>
                   <td
-                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                    class="text-black pr-4 py-1 whitespace-nowrap w-40"
                   >
                     Payment Method:
                   </td>
@@ -62,7 +62,7 @@ exports[`InvoiceRenderer > renders order metadata, payment block, and legal foot
                 </tr>
                 <tr>
                   <td
-                    class="text-slate-500 pr-4 py-1 whitespace-nowrap w-40"
+                    class="text-black pr-4 py-1 whitespace-nowrap w-40"
                   >
                     Shipping Method:
                   </td>
@@ -84,20 +84,13 @@ exports[`InvoiceRenderer > renders order metadata, payment block, and legal foot
             class="py-2 border border-cyan-200 rounded-lg bg-cyan-50/40 p-3"
           >
             <div
-              class="text-xs uppercase tracking-wider text-cyan-700 font-semibold mb-2"
+              class="text-xs uppercase tracking-wider text-black font-semibold mb-2"
             >
               Payment
             </div>
             <div
               class="space-y-2"
             >
-              <div
-                class="text-sm text-cyan-700 break-all"
-              >
-                Pay now
-                : 
-                https://pay.example.com/invoice/INV-01234
-              </div>
               <div
                 class="w-16 h-16 rounded-md border border-cyan-300 bg-white grid grid-cols-4 gap-0.5 p-1"
               >
@@ -150,6 +143,11 @@ exports[`InvoiceRenderer > renders order metadata, payment block, and legal foot
                   class="bg-cyan-700 rounded-xs"
                 />
               </div>
+              <div
+                class="text-xs text-black"
+              >
+                Scan to pay
+              </div>
             </div>
           </div>
         </div>
@@ -158,13 +156,13 @@ exports[`InvoiceRenderer > renders order metadata, payment block, and legal foot
           style="top: 84px; left: 16px; width: 1248px; height: 68px; position: absolute;"
         >
           <div
-            class="py-3 text-center text-sm text-slate-500 bg-white"
+            class="py-3 text-center text-sm text-black bg-white"
           >
             <div>
               Thanks for your order
             </div>
             <div
-              class="mt-1 text-xs text-slate-400 whitespace-pre-wrap"
+              class="mt-1 text-xs text-black whitespace-pre-wrap"
             >
               ABN 12 345 678 901
             </div>
