@@ -7,7 +7,7 @@
 import { esClient } from '../../utils/elastic';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
-import { REVENUE_STATUSES } from '../../constants/orderStatus';
+import { NON_REVENUE_ORDER_STATUSES } from '../../constants/orderStatus';
 
 export interface ProductRanking {
     id: string;
@@ -195,6 +195,7 @@ export class ProductRankingService {
     ): Promise<Array<{ productId: number; revenue: number; unitsSold: number; orderCount: number }>> {
         try {
             const revenueField = useInclusive ? 'line_items.total' : 'line_items.net_total';
+            const nonRevenueStatuses = [...new Set(NON_REVENUE_ORDER_STATUSES.map(status => status.toLowerCase()))];
 
             const response = await esClient.search({
                 index: 'orders',
@@ -203,7 +204,6 @@ export class ProductRankingService {
                     bool: {
                         must: [
                             { term: { accountId } },
-                            { terms: { status: REVENUE_STATUSES } },
                             {
                                 range: {
                                     date_created: {
@@ -212,7 +212,8 @@ export class ProductRankingService {
                                     }
                                 }
                             }
-                        ]
+                        ],
+                        must_not: [{ terms: { status: nonRevenueStatuses } }]
                     }
                 },
                 aggs: {

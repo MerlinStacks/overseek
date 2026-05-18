@@ -13,7 +13,7 @@ interface Props {
 export function MarketingEmailDesigner(props: Props) {
     const { currentAccount } = useAccount();
     const flag = currentAccount?.features?.find((feature) => feature.featureKey === 'EMAIL_DESIGNER_V2');
-    const useV2 = flag?.isEnabled !== false;
+    const useV2 = flag?.isEnabled === true;
 
     return (
         <Suspense fallback={<div className="flex h-screen items-center justify-center text-gray-500">Loading email editor...</div>}>

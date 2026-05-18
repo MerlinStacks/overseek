@@ -84,7 +84,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                         whereClause.billingEmail = query.billingEmail.toLowerCase().trim();
                     }
 
-                    const orders = await prisma.wooOrder.findMany({
+                    let orders = await prisma.wooOrder.findMany({
                         where: whereClause,
                         orderBy: { dateCreated: 'desc' },
                         take: limit,
@@ -98,6 +98,33 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                             dateCreated: true
                         }
                     });
+
+                    if (orders.length === 0 && parsedCustomerId !== undefined) {
+                        const customer = await prisma.wooCustomer.findUnique({
+                            where: { accountId_wooId: { accountId, wooId: parsedCustomerId } },
+                            select: { email: true }
+                        });
+
+                        if (customer?.email) {
+                            orders = await prisma.wooOrder.findMany({
+                                where: {
+                                    accountId,
+                                    billingEmail: customer.email.toLowerCase().trim()
+                                },
+                                orderBy: { dateCreated: 'desc' },
+                                take: limit,
+                                select: {
+                                    id: true,
+                                    wooId: true,
+                                    number: true,
+                                    status: true,
+                                    total: true,
+                                    currency: true,
+                                    dateCreated: true
+                                }
+                            });
+                        }
+                    }
 
                     return { orders };
                 },

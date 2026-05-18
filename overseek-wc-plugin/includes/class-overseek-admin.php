@@ -429,8 +429,16 @@ class OverSeek_Admin
 						<label class="overseek-admin__field" for="overseek_webhook_auth_token">
 							<span class="overseek-admin__label">Webhook auth token (optional)</span>
 							<input id="overseek_webhook_auth_token" type="text" name="overseek_webhook_auth_token" value="<?php echo esc_attr($webhook_auth_token); ?>" spellcheck="false" />
-							<span class="overseek-admin__hint">If set, third-party plugins can use <code>Authorization: Bearer {token}</code>. This same token is also sent when forwarding tracking events to the OverSeek API.</span>
+							<span class="overseek-admin__hint">If set, third-party plugins can use <code>Authorization: Bearer {token}</code>. This same token is also sent when forwarding tracking events to the OverSeek API and can be reused by CK Workflow Suite for My Account email preferences.</span>
 						</label>
+
+						<div class="overseek-admin__code-block">
+							<span class="overseek-admin__key">Workflow Suite email preferences setup</span>
+							<code>API Base URL: <?php echo esc_html($api_url ?: 'Not set yet'); ?></code><br>
+							<code>Account ID: <?php echo esc_html($account_id ?: 'Not set yet'); ?></code><br>
+							<code>Auth token: <?php echo esc_html($webhook_auth_token ? 'Use the webhook auth token above' : 'Set a webhook auth token above'); ?></code>
+							<p>CK Workflow Suite can auto-detect these values when both plugins are installed on the same store. If it is hosted separately, copy these values into CK Workflow Suite &rarr; Email Preferences.</p>
+						</div>
 
 						<div class="overseek-admin__code-block">
 							<span class="overseek-admin__key">Email platform webhook URL</span>

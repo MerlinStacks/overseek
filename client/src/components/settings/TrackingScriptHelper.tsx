@@ -129,16 +129,32 @@ export function TrackingScriptHelper() {
 
 
     const [configCopied, setConfigCopied] = useState(false);
+    const [emailPrefsCopied, setEmailPrefsCopied] = useState(false);
+
+    const emailPreferencesAuthToken = currentAccount?.webhookSecret || '';
 
     const connectionConfig = JSON.stringify({
         apiUrl: publicApiUrl,
         accountId: currentAccount?.id || ''
     }, null, 2);
 
+    const emailPreferencesConfig = JSON.stringify({
+        apiBaseUrl: publicApiUrl,
+        accountId: currentAccount?.id || '',
+        authToken: emailPreferencesAuthToken || 'Set a webhook secret in Settings > Webhooks first',
+        endpoint: `${publicApiUrl}/api/email-preferences`
+    }, null, 2);
+
     const handleCopyConfig = () => {
         navigator.clipboard.writeText(connectionConfig);
         setConfigCopied(true);
         setTimeout(() => setConfigCopied(false), 2000);
+    };
+
+    const handleCopyEmailPreferencesConfig = () => {
+        navigator.clipboard.writeText(emailPreferencesConfig);
+        setEmailPrefsCopied(true);
+        setTimeout(() => setEmailPrefsCopied(false), 2000);
     };
 
     return (
@@ -182,6 +198,46 @@ export function TrackingScriptHelper() {
                     <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed border border-slate-800 shadow-xs relative">
                         <code>{connectionConfig || 'Loading configuration...'}</code>
                     </pre>
+                </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-6 space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h3 className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                            <Info size={16} className="text-gray-500" />
+                            Workflow Suite Email Preferences
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-1">
+                            Use this when CK Order Workflow Suite needs to show OverSeek mailing lists in WooCommerce My Account.
+                        </p>
+                    </div>
+                    <button
+                        onClick={handleCopyEmailPreferencesConfig}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-xs ${emailPrefsCopied
+                            ? 'bg-green-100 text-green-700 border border-green-200'
+                            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                            }`}
+                    >
+                        {emailPrefsCopied ? <Check size={14} /> : <Copy size={14} />}
+                        {emailPrefsCopied ? 'Copied' : 'Copy'}
+                    </button>
+                </div>
+
+                {!emailPreferencesAuthToken && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                        Set a webhook secret in <a href="/settings?tab=webhooks" className="font-medium underline">Settings &gt; Webhooks</a> before using this from Workflow Suite. That secret is used as the API auth token.
+                    </div>
+                )}
+
+                <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed border border-slate-800 shadow-xs">
+                    <code>{emailPreferencesConfig}</code>
+                </pre>
+
+                <div className="grid gap-2 text-xs text-gray-600 sm:grid-cols-3">
+                    <div><span className="font-medium text-gray-800">Workflow API Base URL:</span> {publicApiUrl}</div>
+                    <div><span className="font-medium text-gray-800">Account ID:</span> {currentAccount?.id || 'Not selected'}</div>
+                    <div><span className="font-medium text-gray-800">Endpoint:</span> /api/email-preferences</div>
                 </div>
             </div>
 

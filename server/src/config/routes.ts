@@ -71,6 +71,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(emailRoutes, { prefix: '/api/email' });
     const emailTrackingRoutes = (await import('../routes/email-tracking')).default;
     await fastify.register(emailTrackingRoutes, { prefix: '/api/email' });
+    const emailPreferencesRoutes = (await import('../routes/emailPreferences')).default;
+    await fastify.register(emailPreferencesRoutes, { prefix: '/api/email-preferences' });
 
     // Chat Widget (public widget script)
     const widgetRoutes = (await import('../routes/widget')).default;

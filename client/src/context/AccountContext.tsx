@@ -11,6 +11,7 @@ interface Account {
     currency: string;
     wooUrl: string;
     wooConsumerKey?: string;
+    webhookSecret?: string | null;
     openRouterApiKey?: string;
     aiModel?: string;
     embeddingModel?: string;

@@ -7,6 +7,12 @@
  */
 
 export const EXCLUDED_ORDER_STATUSES = new Set(['trash', 'auto-draft', 'checkout-draft']);
+export const NON_REVENUE_ORDER_STATUSES = [
+    'cancelled',
+    'refunded',
+    'failed',
+    ...EXCLUDED_ORDER_STATUSES,
+];
 
 export const ORDER_STATUS_SLUG_REGEX = /^[a-z0-9][a-z0-9-]*$/;
 

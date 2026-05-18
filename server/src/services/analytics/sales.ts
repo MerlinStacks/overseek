@@ -3,7 +3,7 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { SalesForecastService } from './SalesForecast';
 import { CustomReportService, CustomReportConfig } from './CustomReport';
-import { REVENUE_STATUSES } from '../../constants/orderStatus';
+import { NON_REVENUE_ORDER_STATUSES } from '../../constants/orderStatus';
 import type { Prisma } from '@prisma/client';
 
 /**
@@ -21,7 +21,7 @@ export class SalesAnalytics {
         try {
             const account = await prisma.account.findUnique({ where: { id: accountId } });
             const useInclusive = account?.revenueTaxInclusive ?? true;
-            const statuses = [...new Set(REVENUE_STATUSES.map(status => status.toLowerCase()))];
+            const nonRevenueStatuses = [...new Set(NON_REVENUE_ORDER_STATUSES.map(status => status.toLowerCase()))];
             const dateCreated: Prisma.DateTimeFilter = {};
 
             if (startDate) {
@@ -34,7 +34,7 @@ export class SalesAnalytics {
 
             const where: Prisma.WooOrderWhereInput = {
                 accountId,
-                status: { in: statuses },
+                status: { notIn: nonRevenueStatuses },
                 ...(Object.keys(dateCreated).length > 0 ? { dateCreated } : {})
             };
 
@@ -96,10 +96,10 @@ export class SalesAnalytics {
         const account = await prisma.account.findUnique({ where: { id: accountId } });
         const useInclusive = account?.revenueTaxInclusive ?? true;
         const revenueField = useInclusive ? 'total' : 'net_sales';
+        const nonRevenueStatuses = [...new Set(NON_REVENUE_ORDER_STATUSES.map(status => status.toLowerCase()))];
 
         const must: any[] = [
-            { term: { accountId } },
-            { terms: { 'status': REVENUE_STATUSES } }
+            { term: { accountId } }
         ];
 
         if (startDate || endDate) {
@@ -122,7 +122,7 @@ export class SalesAnalytics {
             const response = await esClient.search({
                 index: 'orders',
                 size: 0,
-                query: { bool: { must } },
+                query: { bool: { must, must_not: [{ terms: { status: nonRevenueStatuses } }] } },
                 aggs: {
                     sales_over_time: {
                         date_histogram: {
@@ -158,9 +158,9 @@ export class SalesAnalytics {
     static async getTopProducts(accountId: string, startDate?: string, endDate?: string, limit: number = 5) {
         try {
             const must: any[] = [
-                { term: { accountId } },
-                { terms: { 'status': REVENUE_STATUSES } }
+                { term: { accountId } }
             ];
+            const nonRevenueStatuses = [...new Set(NON_REVENUE_ORDER_STATUSES.map(status => status.toLowerCase()))];
 
             if (startDate || endDate) {
                 let finalEndDate = endDate;
@@ -181,7 +181,7 @@ export class SalesAnalytics {
             const response = await esClient.search({
                 index: 'orders',
                 size: 0,
-                query: { bool: { must } },
+                query: { bool: { must, must_not: [{ terms: { status: nonRevenueStatuses } }] } },
                 aggs: {
                     top_products: {
                         nested: { path: 'line_items' },
