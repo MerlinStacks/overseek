@@ -908,7 +908,7 @@ export class InvoiceService {
                                     const value = String(meta?.value || '').trim();
                                     return value.length > 0;
                                 })
-                                .slice(0, 6);
+                                .slice(0, 12);
                             const truncateMetaValue = (value: string) => {
                                 const compact = value.replace(/\s+/g, ' ').trim();
                                 if (compact.length <= 120) return compact;

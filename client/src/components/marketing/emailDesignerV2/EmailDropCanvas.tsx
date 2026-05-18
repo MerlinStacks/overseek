@@ -16,11 +16,12 @@ interface Props {
     onDeleteBlock: (id: string) => void;
     onDeleteSection: (id: string) => void;
     onOpenSettings: () => void;
+    onOpenSectionSettings: () => void;
     onDropOnSection: (event: DragEvent, sectionId: string, insertIndex?: number, columnId?: string) => void;
     onDropStructure: (event: DragEvent, insertIndex: number) => void;
 }
 
-export function EmailDropCanvas({ theme, previewMode, sections, selectedSectionId, selectedBlockId, onSelectSection, onSelectBlock, onUpdateBlock, onDuplicateBlock, onDeleteBlock, onDeleteSection, onOpenSettings, onDropOnSection, onDropStructure }: Props) {
+export function EmailDropCanvas({ theme, previewMode, sections, selectedSectionId, selectedBlockId, onSelectSection, onSelectBlock, onUpdateBlock, onDuplicateBlock, onDeleteBlock, onDeleteSection, onOpenSettings, onOpenSectionSettings, onDropOnSection, onDropStructure }: Props) {
     const [dropTarget, setDropTarget] = useState<string | null>(null);
     const [sectionDropIndex, setSectionDropIndex] = useState<number | null>(null);
     const canvasStyle: CSSProperties = { background: theme.backgroundColor, fontFamily: theme.fontFamily, color: theme.textColor };
@@ -86,7 +87,7 @@ export function EmailDropCanvas({ theme, previewMode, sections, selectedSectionI
                             <div onDragOver={(event) => handleStructureDragOver(event, sectionIndex)} onDragLeave={() => setSectionDropIndex(null)} onDrop={(event) => handleStructureDrop(event, sectionIndex)} className="py-3">
                                 <div className={`h-1 rounded-full transition ${sectionDropIndex === sectionIndex ? 'bg-indigo-500' : 'bg-transparent'}`} />
                             </div>
-                            <section onDragOver={(event) => handleSectionDragOver(event, sectionIndex)} onDrop={(event) => handleSectionDrop(event, sectionIndex, section.id)} onClick={() => onSelectSection(section.id)} className={`group/section relative transition ${selectedSectionId === section.id ? 'outline outline-2 outline-indigo-400' : 'outline outline-1 outline-transparent hover:outline-indigo-200'}`} style={sectionStyle}>
+                            <section onDragOver={(event) => handleSectionDragOver(event, sectionIndex)} onDrop={(event) => handleSectionDrop(event, sectionIndex, section.id)} onClick={() => { onSelectSection(section.id); onOpenSectionSettings(); }} className={`group/section relative transition ${selectedSectionId === section.id ? 'outline outline-2 outline-indigo-400' : 'outline outline-1 outline-transparent hover:outline-indigo-200'}`} style={sectionStyle}>
                                 <div className="pointer-events-none absolute left-2 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 opacity-0 shadow-sm transition group-hover/section:opacity-100">{section.name || 'Section'}</div>
                                 <div className="absolute right-2 top-2 z-20 hidden rounded-lg border border-slate-200 bg-white/95 p-1 shadow-lg group-hover/section:flex">
                                     <button type="button" title="Delete section" onClick={(event) => { event.stopPropagation(); onDeleteSection(section.id); }} disabled={sections.length <= 1} className="rounded-md p-1 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 size={14} /></button>

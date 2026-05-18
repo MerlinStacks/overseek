@@ -445,9 +445,18 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
     };
 
     const applyFormatBlock = (nextType: 'p' | 'h1' | 'h2' | 'h3') => {
-        editorRef.current?.focus();
-        document.execCommand('formatBlock', false, `<${nextType}>`);
-        syncHtml();
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        const currentHtml = editor.innerHTML.trim();
+        const content = currentHtml.replace(/^\s*<(p|h1|h2|h3)\b[^>]*>([\s\S]*)<\/\1>\s*$/i, '$2');
+        const nextHtml = `<${nextType}>${content}</${nextType}>`;
+
+        editor.innerHTML = nextHtml;
+        normalizeEditorDirection(editor);
+        onUpdate((draft) => {
+            if (draft.type === 'text') draft.props.html = sanitizeRtlHtml(nextHtml);
+        });
     };
 
     return (

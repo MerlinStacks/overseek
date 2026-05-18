@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Monitor, Pencil, Save, Search, Send, Settings, Smartphone, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Lock, LockOpen, Monitor, Pencil, Save, Search, Send, Settings, Smartphone, Trash2, Upload, X } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
@@ -45,7 +45,7 @@ const HISTORY_STORAGE_KEY = 'overseek-email-builder-v2-history';
 const MAX_HISTORY = 12;
 
 type BuilderTab = 'structure' | 'blocks' | 'layouts' | 'global';
-type LeftSidebarMode = 'builder' | 'blockSettings' | 'checklist' | 'history' | 'test';
+type LeftSidebarMode = 'builder' | 'blockSettings' | 'sectionSettings' | 'checklist' | 'history' | 'test';
 
 interface StructurePreset {
     id: string;
@@ -845,6 +845,33 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                             </div>
                         )}
 
+                        {leftSidebarMode === 'sectionSettings' && selectedSection && (
+                            <div className="min-h-0 flex-1 overflow-auto p-4 space-y-3">
+                                <PanelHeader title="Structure settings" onClose={() => setLeftSidebarMode('builder')} />
+                                <LabeledSelectField
+                                    label="Border style"
+                                    value={selectedSection.borderStyle || 'none'}
+                                    options={[
+                                        { value: 'none', label: 'Not Set' },
+                                        { value: 'solid', label: 'Solid' },
+                                        { value: 'dashed', label: 'Dashed' },
+                                        { value: 'dotted', label: 'Dotted' },
+                                    ]}
+                                    onChange={(value) => updateSelectedSection((section) => { section.borderStyle = value as EmailSection['borderStyle']; })}
+                                />
+                                {(selectedSection.borderStyle || 'none') !== 'none' && (
+                                    <>
+                                        <ColorField label="Border color" value={selectedSection.borderColor || '#e2e8f0'} onChange={(value) => updateSelectedSection((section) => { section.borderColor = value; })} />
+                                        <Field label="Border width" type="number" value={String(selectedSection.borderWidth ?? 1)} onChange={(value) => updateSelectedSection((section) => { section.borderWidth = Math.max(1, Number(value) || 1); })} />
+                                    </>
+                                )}
+                                <LinkedFourSideField label="Border radius" values={selectedSection.borderRadius || [0, 0, 0, 0]} onChange={updateSectionBorderRadiusSide} />
+                                <LinkedFourSideField label="Padding" values={parseBoxSpacing(selectedSection.padding || '0')} onChange={updateSectionPaddingSide} defaultLinked />
+                                <ToggleField label="Responsive structure" checked={(selectedSection.stackMode || 'stack') !== 'none'} onChange={(checked) => updateSection('stackMode', checked ? 'stack' : 'none')} />
+                                <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={setSectionHideOnMobile} />
+                            </div>
+                        )}
+
                         {leftSidebarMode === 'checklist' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Preflight checklist" onClose={() => setLeftSidebarMode('builder')} /><ChecklistPanel issues={issues} groupedIssues={groupedIssues} /></div>}
                         {leftSidebarMode === 'history' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Version history" onClose={() => setLeftSidebarMode('builder')} /><HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); setHasUnsavedChanges(true); }} /></div>}
                         {leftSidebarMode === 'test' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Send test email" onClose={() => setLeftSidebarMode('builder')} /><div className="space-y-3"><Field label="Recipient" value={testEmail} onChange={setTestEmail} type="email" />
@@ -865,7 +892,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                     setSelectedBlockId(null);
                                 }}
                             >
-                                <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                                <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onOpenSectionSettings={() => setLeftSidebarMode('sectionSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
                             </ErrorBoundary>
                         ) : (
                             <div className="mx-auto w-full rounded-3xl border border-slate-300 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
@@ -971,6 +998,59 @@ function SelectField({ label, value, options, onChange }: { label: string; value
                 {options.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
         </label>
+    );
+}
+
+function LabeledSelectField({ label, value, options, onChange }: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange: (value: string) => void }) {
+    return (
+        <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+            <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+        </label>
+    );
+}
+
+function LinkedFourSideField({ label, values, onChange, defaultLinked = true }: { label: string; values: [number, number, number, number]; onChange: (index: number, value: string) => void; defaultLinked?: boolean }) {
+    const [isLinked, setIsLinked] = useState(defaultLinked);
+    const sideLabels = ['Top', 'Right', 'Bottom', 'Left'];
+
+    return (
+        <div className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+                <div className="grid grid-cols-4 gap-2">
+                    {values.map((value, index) => (
+                        <label key={`${label}-${sideLabels[index]}`} className="block">
+                            <input
+                                type="number"
+                                value={String(value)}
+                                onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    if (isLinked) {
+                                        for (let i = 0; i < 4; i += 1) onChange(i, nextValue);
+                                        return;
+                                    }
+                                    onChange(index, nextValue);
+                                }}
+                                className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                            />
+                            <span className="mt-1 block text-[10px] uppercase tracking-wide text-slate-400">{sideLabels[index]}</span>
+                        </label>
+                    ))}
+                </div>
+                <button
+                    type="button"
+                    onClick={() => setIsLinked((current) => !current)}
+                    className="h-10 rounded-lg border border-slate-300 px-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    title={isLinked ? 'Unlock sides' : 'Link sides'}
+                    aria-label={isLinked ? `Unlock ${label}` : `Link ${label}`}
+                >
+                    {isLinked ? <Lock size={14} /> : <LockOpen size={14} />}
+                </button>
+            </div>
+        </div>
     );
 }
 

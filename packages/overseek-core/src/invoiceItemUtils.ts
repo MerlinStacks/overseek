@@ -75,14 +75,21 @@ export interface InvoiceItemMeta {
  */
 export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[] => {
   const meta: InvoiceItemMeta[] = [];
-  const seenLabels = new Set<string>();
+  const seenEntries = new Set<string>();
 
   const addMeta = (label: string, value: string) => {
     const normalizedLabel = label.toLowerCase().trim();
-    if (!seenLabels.has(normalizedLabel) && value.length > 0 && value.length < 200) {
-      seenLabels.add(normalizedLabel);
-      meta.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value });
-    }
+    const normalizedValue = value.replace(/\s+/g, ' ').trim();
+    if (!normalizedLabel || !normalizedValue) return;
+
+    const dedupeKey = `${normalizedLabel}::${normalizedValue.toLowerCase()}`;
+    if (seenEntries.has(dedupeKey)) return;
+
+    seenEntries.add(dedupeKey);
+    meta.push({
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+      value: normalizedValue,
+    });
   };
 
   if (item.sku) addMeta('SKU', item.sku);

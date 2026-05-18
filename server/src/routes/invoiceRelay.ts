@@ -29,7 +29,20 @@ function signCanonicalPayload(artifactId: string, expires: number): string {
 function buildArtifactDownloadUrl(request: FastifyRequest, artifactId: string): string {
     const expires = Date.now() + (5 * 60 * 1000);
     const sig = signCanonicalPayload(artifactId, expires);
-    const base = `${request.protocol}://${request.hostname}`;
+    const forwardedProtoHeader = request.headers['x-forwarded-proto'];
+    const forwardedProto = Array.isArray(forwardedProtoHeader)
+        ? forwardedProtoHeader[0]
+        : forwardedProtoHeader;
+    const proto = (forwardedProto || request.protocol || 'https').split(',')[0].trim();
+
+    const forwardedHostHeader = request.headers['x-forwarded-host'];
+    const forwardedHost = Array.isArray(forwardedHostHeader)
+        ? forwardedHostHeader[0]
+        : forwardedHostHeader;
+    const hostHeader = request.headers.host;
+    const host = (forwardedHost || hostHeader || request.hostname).split(',')[0].trim();
+
+    const base = `${proto}://${host}`;
     return `${base}/api/invoices/relay/artifact/${encodeURIComponent(artifactId)}?expires=${encodeURIComponent(String(expires))}&sig=${encodeURIComponent(sig)}`;
 }
 
