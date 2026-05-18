@@ -2,7 +2,7 @@
  * NodeConfigPanel - Slide-out configuration panel for flow nodes.
  * Opens when a node is selected, showing type-specific configuration options.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Node } from '@xyflow/react';
 import { X, Trash2, Zap, Mail, Clock, Split, Save } from 'lucide-react';
 import { TriggerConfig, ActionConfig, DelayConfig, ConditionConfig } from './nodeConfigs';
@@ -29,17 +29,26 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     const [localData, setLocalData] = useState<NodeDataState>({});
     const [originalData, setOriginalData] = useState<NodeDataState>({});
     const nodeId = node?.id;
+    const syncedNodeIdRef = useRef<string | undefined>(undefined);
 
-    // Sync local state when node changes
+    // Sync local state only when selecting a different node. Same-node config
+    // updates are already applied locally and should not be overwritten by
+    // queued parent renders while Designer v2 saves multiple fields.
     useEffect(() => {
-        if (node) {
-            queueMicrotask(() => {
-                const snapshot = { ...(node.data as Record<string, unknown>) };
-                setLocalData(snapshot);
-                setOriginalData(snapshot);
-            });
+        if (!node || !nodeId) {
+            syncedNodeIdRef.current = undefined;
+            return;
         }
-    }, [node]);
+
+        if (syncedNodeIdRef.current === nodeId) return;
+        syncedNodeIdRef.current = nodeId;
+
+        queueMicrotask(() => {
+            const snapshot = { ...(node.data as Record<string, unknown>) };
+            setLocalData(snapshot);
+            setOriginalData(snapshot);
+        });
+    }, [node, nodeId]);
 
     const handleSave = () => {
         onClose();
@@ -70,6 +79,19 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
             const next = {
                 ...prev,
                 config: { ...(prev.config || {}), [key]: value }
+            };
+            onUpdate(nodeId, next);
+            return next;
+        });
+    }, [nodeId, onUpdate]);
+
+    const updateConfigPatch = useCallback((updates: Record<string, unknown>) => {
+        if (!nodeId) return;
+
+        setLocalData((prev) => {
+            const next = {
+                ...prev,
+                config: { ...(prev.config || {}), ...updates }
             };
             onUpdate(nodeId, next);
             return next;
@@ -154,6 +176,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                         <ActionConfig
                             config={localData.config || {}}
                             onUpdate={updateConfig}
+                            onUpdateMany={updateConfigPatch}
                         />
                     )}
 

@@ -716,6 +716,9 @@ export class InvoiceService {
                     case 'customer_details': {
                         const shippingAddress = shipping || {};
                         const showShippingAddress = hasAddressFields(shippingAddress) && isAddressDifferent(billing || {}, shippingAddress);
+                        const safeWidth = Number.isFinite(width) ? width : 260;
+                        const safeX = Number.isFinite(x) ? x : 40;
+                        const safeStartY = Number.isFinite(startY) ? startY : 80;
 
                         const headingFontSize = showShippingAddress ? 7 : 8;
                         const bodyFontSize = showShippingAddress ? 8 : 9;
@@ -725,63 +728,73 @@ export class InvoiceService {
                             heading: string,
                             address: Record<string, unknown>,
                             columnX: number,
-                            includeContact: boolean
+                            includeContact: boolean,
+                            forceSingleColumn = false
                         ) => {
                             doc.font('Helvetica-Bold').fontSize(headingFontSize).fillColor('black');
-                            doc.text(heading, columnX, startY);
+                            doc.text(heading, columnX, safeStartY);
 
-                            let y = startY + 12;
+                            let y = safeStartY + 12;
                             doc.font('Helvetica').fontSize(bodyFontSize).fillColor('black');
+                            const textWidth = forceSingleColumn
+                                ? Math.max(120, safeWidth)
+                                : (showShippingAddress ? Math.max(92, (safeWidth - 14) / 2) : Math.max(120, safeWidth));
 
                             if (address.first_name || address.last_name) {
-                                doc.font('Helvetica-Bold').fillColor('black').text(`${address.first_name || ''} ${address.last_name || ''}`, columnX, y);
+                                doc.font('Helvetica-Bold').fillColor('black').text(`${address.first_name || ''} ${address.last_name || ''}`, columnX, y, { width: textWidth });
                                 doc.font('Helvetica').fillColor('black');
                                 y += lineStep;
                             }
                             if (address.company) {
-                                doc.text(String(address.company), columnX, y);
+                                doc.text(String(address.company), columnX, y, { width: textWidth });
                                 y += lineStep;
                             }
                             if (address.address_1) {
-                                doc.text(String(address.address_1), columnX, y);
+                                doc.text(String(address.address_1), columnX, y, { width: textWidth });
                                 y += lineStep;
                             }
                             if (address.address_2) {
-                                doc.text(String(address.address_2), columnX, y);
+                                doc.text(String(address.address_2), columnX, y, { width: textWidth });
                                 y += lineStep;
                             }
                             if (address.city || address.state || address.postcode) {
-                                doc.text(`${address.city || ''}${address.city && address.state ? ', ' : ''}${address.state || ''} ${address.postcode || ''}`, columnX, y);
+                                doc.text(`${address.city || ''}${address.city && address.state ? ', ' : ''}${address.state || ''} ${address.postcode || ''}`, columnX, y, { width: textWidth });
                                 y += lineStep;
                             }
                             if (address.country) {
-                                doc.text(String(address.country), columnX, y);
+                                doc.text(String(address.country), columnX, y, { width: textWidth });
                                 y += lineStep;
                             }
                             if (includeContact && address.email) {
-                                doc.fillColor('black').text(String(address.email), columnX, y);
+                                doc.fillColor('black').text(String(address.email), columnX, y, { width: textWidth });
                                 doc.fillColor('black');
                                 y += lineStep;
                             }
                             if (includeContact && address.phone) {
-                                doc.text(String(address.phone), columnX, y);
+                                doc.text(String(address.phone), columnX, y, { width: textWidth });
                                 y += lineStep;
                             }
 
                             return y;
                         };
 
-                        if (showShippingAddress) {
-                            const gap = 14;
-                            const colWidth = Math.max(110, (width - gap) / 2);
-                            const rightColX = x + colWidth + gap;
+                        try {
+                            if (showShippingAddress) {
+                                const gap = 14;
+                                const colWidth = Math.max(92, (safeWidth - gap) / 2);
+                                const rightColX = safeX + colWidth + gap;
 
-                            const billEndY = renderAddressBlock('BILL TO', billing || {}, x, true);
-                            const shipEndY = renderAddressBlock('SHIP TO', shippingAddress, rightColX, false);
-                            blockHeight = Math.max(billEndY, shipEndY) - startY + 8;
-                        } else {
-                            const billEndY = renderAddressBlock('BILL TO', billing || {}, x, true);
-                            blockHeight = billEndY - startY + 8;
+                                const billEndY = renderAddressBlock('BILL TO', billing || {}, safeX, true);
+                                const shipEndY = renderAddressBlock('SHIP TO', shippingAddress, rightColX, false);
+                                blockHeight = Math.max(billEndY, shipEndY) - safeStartY + 8;
+                            } else {
+                                const billEndY = renderAddressBlock('BILL TO', billing || {}, safeX, true);
+                                blockHeight = billEndY - safeStartY + 8;
+                            }
+                        } catch (error) {
+                            Logger.warn('[InvoiceService] Customer details two-column render failed, falling back to single-column', { error });
+                            const fallbackEndY = renderAddressBlock('BILL TO', billing || {}, safeX, true, true);
+                            blockHeight = fallbackEndY - safeStartY + 8;
                         }
 
                         doc.fillColor('black').font('Helvetica').fontSize(10);

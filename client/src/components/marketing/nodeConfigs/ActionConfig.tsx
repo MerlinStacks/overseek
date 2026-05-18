@@ -29,6 +29,7 @@ interface ActionNodeConfig {
 export interface ActionConfigProps {
     config: ActionNodeConfig;
     onUpdate: (key: string, value: unknown) => void;
+    onUpdateMany?: (updates: Record<string, unknown>) => void;
 }
 
 const ACTION_TYPES = [
@@ -73,7 +74,7 @@ function getSmsMetrics(message: string) {
     };
 }
 
-export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) => {
+export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, onUpdateMany }) => {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const selectedActionType = config.actionType || 'SEND_EMAIL';
@@ -115,7 +116,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate }) 
             )}
 
             {selectedActionType === 'SEND_EMAIL' && (
-                <SendEmailConfig config={config} onUpdate={onUpdate} />
+                <SendEmailConfig config={config} onUpdate={onUpdate} onUpdateMany={onUpdateMany} />
             )}
 
             {selectedActionType === 'SEND_SMS' && (

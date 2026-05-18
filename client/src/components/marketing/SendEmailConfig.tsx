@@ -37,6 +37,7 @@ interface SendEmailNodeConfig {
 interface SendEmailConfigProps {
     config: SendEmailNodeConfig;
     onUpdate: (key: string, value: unknown) => void;
+    onUpdateMany?: (updates: Record<string, unknown>) => void;
 }
 
 type MergeTagField = 'to' | 'subject' | 'previewText';
@@ -50,7 +51,7 @@ const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: s
     { id: 'general', label: 'General' },
 ];
 
-export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
+export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailConfigProps) {
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
     const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
@@ -69,20 +70,36 @@ export function SendEmailConfig({ config, onUpdate }: SendEmailConfigProps) {
     const emailCategory = config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING');
 
     const handleTemplateSelect = (template: EmailTemplate) => {
-        onUpdate('htmlContent', template.content);
-        onUpdate('designJson', template.designJson);
-        if (template.subject) {
-            onUpdate('subject', template.subject);
+        const updates: Record<string, unknown> = {
+            htmlContent: template.content,
+            designJson: template.designJson,
+        };
+
+        if (template.subject) updates.subject = template.subject;
+
+        if (onUpdateMany) {
+            onUpdateMany(updates);
+        } else {
+            Object.entries(updates).forEach(([key, value]) => onUpdate(key, value));
         }
         setShowTemplateSelector(false);
     };
 
     const handleVisualBuilderSave = (html: string, design: unknown, meta?: { subject: string; previewText: string }) => {
-        onUpdate('htmlContent', html);
-        onUpdate('designJson', design);
+        const updates: Record<string, unknown> = {
+            htmlContent: html,
+            designJson: design,
+        };
+
         if (meta) {
-            onUpdate('subject', meta.subject);
-            onUpdate('previewText', meta.previewText);
+            updates.subject = meta.subject;
+            updates.previewText = meta.previewText;
+        }
+
+        if (onUpdateMany) {
+            onUpdateMany(updates);
+        } else {
+            Object.entries(updates).forEach(([key, value]) => onUpdate(key, value));
         }
         setShowVisualBuilder(false);
     };

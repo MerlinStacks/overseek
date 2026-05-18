@@ -139,7 +139,6 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                             syncLabel();
                         });
                     }}
-                    onInput={syncLabel}
                     style={{
                         display: 'inline-block',
                         background: block.props.backgroundColor || theme.primaryColor,

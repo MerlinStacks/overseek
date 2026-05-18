@@ -331,6 +331,7 @@ export class EmailService {
 
         let htmlWithMergeTagUrls = htmlWithTracking;
         if (unsubscribeUrl) {
+            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/https?:\/\/\{\{unsubscribe_url\}\}\/?/gi, unsubscribeUrl);
             htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl);
         }
         if (preferencesUrl) {
