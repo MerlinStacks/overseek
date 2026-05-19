@@ -61,7 +61,7 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     if (type === 'coupon') return { id, type, props: { headline: 'Your exclusive offer', code: '{{coupon.code}}', description: '{{coupon.description}}' } };
     if (type === 'review') return { id, type, props: { headline: 'How did we do?', rating: '{{review.rating}}', content: '{{review.content}}', reviewer: '{{review.reviewer}}', productName: '{{review.productName}}', ctaLabel: 'Write your review', ctaHref: '{{review.productUrl}}' } };
     if (type === 'menu') return { id, type, props: { links: [{ label: 'Shop', href: '{{store_url}}' }, { label: 'Account', href: '{{store_url}}/account' }, { label: 'Contact', href: '{{store_url}}/contact' }], align: 'center' } };
-    if (type === 'social') return { id, type, props: { links: defaultSocialLinks, align: 'center', iconStyle: 'solid' } };
+    if (type === 'social') return { id, type, props: { links: defaultSocialLinks, align: 'center', iconStyle: 'solid', iconSet: 'native' } };
     if (type === 'footer') return { id, type, props: { html: createAccountFooterHtml('Your Store'), align: 'center' } };
     return { id, type: 'rawHtml', props: { html: '<div style="padding:16px;">Custom HTML</div>' } };
 };
@@ -74,7 +74,7 @@ export const createPaletteBlock = (key: PaletteKey, accountName: string, logoUrl
     if (key === 'menu') return createBlock('menu');
     if (key === 'social') {
         const usableSocialLinks = socialLinks.filter((link) => link.label.trim() && link.href.trim());
-        return { id: createEmailDesignId('social'), type: 'social', props: { links: usableSocialLinks.length ? usableSocialLinks : defaultSocialLinks, align: 'center', iconStyle: 'solid' } };
+        return { id: createEmailDesignId('social'), type: 'social', props: { links: usableSocialLinks.length ? usableSocialLinks : defaultSocialLinks, align: 'center', iconStyle: 'solid', iconSet: 'native' } };
     }
     if (key === 'invoiceDownload') {
         return {

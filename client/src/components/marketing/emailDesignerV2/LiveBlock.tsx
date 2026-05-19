@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { AlignCenter, AlignLeft, AlignRight, Bold, Copy, Italic, Link2, List, ListOrdered, Search, Strikethrough, Underline, X } from 'lucide-react';
-import { getSocialIconSvg } from '../../../lib/emailDesignerV2';
+import { getSocialIconSvg, getSocialPlatform, getSocialPlatformColor } from '../../../lib/emailDesignerV2';
 import type { EmailBlock, EmailDesignTheme, SocialIconStyle } from '../../../lib/emailDesignerV2';
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './mergeTags';
 
@@ -60,7 +60,13 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
         }} style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{block.props.headline || 'Customer review'}</p><p style={{ margin: '0 0 8px', color: '#b45309', fontSize: 18, letterSpacing: 1 }}>{stars}</p><p style={{ margin: '0 0 10px', color: theme.textColor, lineHeight: 1.6 }}>{block.props.content || '{{review.content}}'}</p><p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13 }}>- {block.props.reviewer || '{{review.reviewer}}'} on {block.props.productName || '{{review.productName}}'}</p><span style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700 }}>{block.props.ctaLabel || 'Write your review'}</span></div>;
     }
     if (block.type === 'social') {
-        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => { const iconStyle = link.iconStyle || block.props.iconStyle || 'solid'; return <span key={`${link.label}-${index}`} style={getSocialPreviewStyle(iconStyle, block.props.color || theme.primaryColor)} title={link.label}><span dangerouslySetInnerHTML={{ __html: getSocialIconSvg(link.label, iconStyle, block.props.color || theme.primaryColor) }} /></span>; })}</div>;
+        return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => {
+            const iconStyle = link.iconStyle || block.props.iconStyle || 'solid';
+            const iconSet = block.props.iconSet || 'native';
+            const baseColor = block.props.color || theme.primaryColor;
+            const iconColor = iconSet === 'native' ? getSocialPlatformColor(getSocialPlatform(link.label), baseColor) : baseColor;
+            return <span key={`${link.label}-${index}`} style={getSocialPreviewStyle(iconStyle, iconColor)} title={link.label}><span dangerouslySetInnerHTML={{ __html: getSocialIconSvg(link.label, iconStyle, iconColor, iconSet) }} /></span>;
+        })}</div>;
     }
     if (block.type === 'menu') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => <span key={`${link.label}-${index}`} contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {

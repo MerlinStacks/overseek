@@ -29,6 +29,7 @@ class OverSeek_Order_Invoices
     private const META_INVOICE_RETRY_COUNT = '_overseek_invoice_retry_count';
     private const META_INVOICE_RENDERER_VERSION = '_overseek_invoice_renderer_version';
     private const CURRENT_RENDERER_VERSION = 'operational-a4-v3';
+    private const INVOICE_ALLOWED_ORDER_STATUSES = ['processing', 'completed'];
 
     private string $api_url;
     private string $account_id;
@@ -124,7 +125,23 @@ class OverSeek_Order_Invoices
             return;
         }
 
+        $order_status = $this->normalize_order_status((string) $order->get_status());
+        if (!in_array($order_status, self::INVOICE_ALLOWED_ORDER_STATUSES, true)) {
+            $this->set_invoice_status($order, 'failed', 'Invoice generation skipped because order status is ' . $order_status . '.');
+            return;
+        }
+
         $this->generate_invoice_for_order($order, 8);
+    }
+
+    private function normalize_order_status(string $status): string
+    {
+        $normalized = strtolower(trim($status));
+        if (strpos($normalized, 'wc-') === 0) {
+            $normalized = substr($normalized, 3);
+        }
+
+        return $normalized;
     }
 
     private function schedule_processing_retry(int $order_id, int $delay_seconds = 60): void

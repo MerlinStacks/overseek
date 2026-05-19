@@ -31,7 +31,6 @@ const KNOWN_FEATURES = [
     'GOLD_PRICE_CALCULATOR',
     'AD_TRACKING',
     'EMAIL',
-    'EMAIL_DESIGNER_V2',
     'FEED_EXPORTS',
     'BOT_SHIELD',
     'TRACKING_EMAIL_EVENTS'
@@ -46,7 +45,6 @@ const FEATURE_LABELS: Record<string, string> = {
     GOLD_PRICE_CALCULATOR: 'Gold Pricing',
     AD_TRACKING: 'Ad Tracking',
     EMAIL: 'Email',
-    EMAIL_DESIGNER_V2: 'Email Designer V2',
     FEED_EXPORTS: 'Feeds',
     BOT_SHIELD: 'Bot Shield',
     TRACKING_EMAIL_EVENTS: 'Tracking Email',

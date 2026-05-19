@@ -86,8 +86,8 @@ Legacy documents may remain as `engine: "unlayer"`.
 
 ## 4) Integration Points
 
-- Campaign editor uses V2 via feature flag.
-- Broadcast editor uses V2 via feature flag.
+- Campaign editor uses V2 by default.
+- Broadcast editor uses V2 by default.
 - Automation "Send Email" visual mode uses V2.
 - Template selector is engine-aware (`unlayer` vs `overseek-v2` badges).
 
@@ -103,13 +103,7 @@ Legacy documents may remain as `engine: "unlayer"`.
 
 ## 6) Rollout and Risk Control
 
-- Account-level flag: `EMAIL_DESIGNER_V2`
-- Rollout phases:
-  1. Internal accounts
-  2. Pilot accounts
-  3. Wider beta
-  4. Default-on
-  5. Unlayer deprecation/removal
+- Rollout complete: V2 is default-on for all accounts.
 - Telemetry:
   - editor open/save/export
   - test-send success/failure

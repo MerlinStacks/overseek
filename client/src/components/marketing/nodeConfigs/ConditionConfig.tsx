@@ -134,6 +134,8 @@ const NUMERIC_FIELDS = new Set([
     'customer.totalSpent',
     'customer.ordersCount',
     'customer.daysSinceLastOrder',
+    'customer.reviewedInLastDays',
+    'customer.latestReviewRating',
     'user.registeredDays',
 ]);
 
@@ -206,6 +208,8 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
         label: 'Engagement',
         icon: 'Engage',
         conditions: [
+            { field: 'customer.reviewedInLastDays', label: 'Left a review in last X days', operators: ['eq'] },
+            { field: 'customer.latestReviewRating', label: 'Latest review rating', operators: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] },
             { field: 'email.opened', label: 'Opened any email', operators: ['eq'] },
             { field: 'email.openedRecent', label: 'Opened email in last X days', operators: ['eq'] },
             { field: 'email.clicked', label: 'Clicked any link', operators: ['eq'] },

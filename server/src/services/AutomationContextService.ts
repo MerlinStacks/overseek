@@ -72,6 +72,9 @@ export class AutomationContextService {
         const hasInboxEmail = requiredFields.has('inbox.customerSentEmail')
             ? await this.hasCustomerInboxEmail(input.accountId, customer?.id || null, normalizedEmail)
             : undefined;
+        const latestReview = (requiredFields.has('customer.reviewedInLastDays') || requiredFields.has('customer.latestReviewRating'))
+            ? await this.getLatestReview(input.accountId, customer?.id || null, normalizedEmail)
+            : undefined;
 
         const latestOrderRaw = this.asRecord(latestOrder?.rawData);
         const customerRaw = this.asRecord(customer?.rawData);
@@ -98,6 +101,8 @@ export class AutomationContextService {
                 emailDomain: normalizedEmail?.split('@')[1] || '',
                 lastOrderDate: baseContext.customer?.lastOrderDate || lastPurchaseDate?.toISOString() || null,
                 daysSinceLastOrder: baseContext.customer?.daysSinceLastOrder ?? this.getDaysSince(lastPurchaseDate),
+                latestReviewDate: baseContext.customer?.latestReviewDate || latestReview?.dateCreated?.toISOString() || null,
+                latestReviewRating: baseContext.customer?.latestReviewRating ?? latestReview?.rating ?? null,
                 hasInboxEmail: baseContext.customer?.hasInboxEmail ?? hasInboxEmail ?? false
             },
             order: baseContext.order || latestOrderRaw || undefined,
@@ -149,6 +154,31 @@ export class AutomationContextService {
                 dateCreated: true
             }
         });
+    }
+
+    private async getLatestReview(
+        accountId: string,
+        wooCustomerRecordId?: string | null,
+        email?: string | null
+    ): Promise<{ dateCreated: Date; rating: number } | null> {
+        if (!wooCustomerRecordId && !email) return null;
+
+        const review = await prisma.wooReview.findFirst({
+            where: {
+                accountId,
+                OR: [
+                    ...(wooCustomerRecordId ? [{ wooCustomerId: wooCustomerRecordId }] : []),
+                    ...(email ? [{ reviewerEmail: email }] : [])
+                ]
+            },
+            orderBy: { dateCreated: 'desc' },
+            select: {
+                dateCreated: true,
+                rating: true
+            }
+        });
+
+        return review || null;
     }
 
     private normalizeEmail(value: unknown): string | null {

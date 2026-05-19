@@ -84,4 +84,58 @@ describe('AutomationConditionService', () => {
 
         expect(result).toBe(true);
     });
+
+    it('evaluates review recency condition using lookback days', () => {
+        const recentResult = automationConditionService.evaluate({
+            matchType: 'all',
+            conditions: [
+                { field: 'customer.reviewedInLastDays', operator: 'eq', value: 30 }
+            ]
+        }, {
+            customer: {
+                latestReviewDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+            }
+        });
+
+        const staleResult = automationConditionService.evaluate({
+            matchType: 'all',
+            conditions: [
+                { field: 'customer.reviewedInLastDays', operator: 'eq', value: 30 }
+            ]
+        }, {
+            customer: {
+                latestReviewDate: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
+            }
+        });
+
+        expect(recentResult).toBe(true);
+        expect(staleResult).toBe(false);
+    });
+
+    it('evaluates latest review rating condition', () => {
+        const fiveStarResult = automationConditionService.evaluate({
+            matchType: 'all',
+            conditions: [
+                { field: 'customer.latestReviewRating', operator: 'eq', value: 5 }
+            ]
+        }, {
+            customer: {
+                latestReviewRating: 5
+            }
+        });
+
+        const fourStarResult = automationConditionService.evaluate({
+            matchType: 'all',
+            conditions: [
+                { field: 'customer.latestReviewRating', operator: 'eq', value: 5 }
+            ]
+        }, {
+            customer: {
+                latestReviewRating: 4
+            }
+        });
+
+        expect(fiveStarResult).toBe(true);
+        expect(fourStarResult).toBe(false);
+    });
 });

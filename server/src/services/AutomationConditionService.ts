@@ -22,6 +22,24 @@ export class AutomationConditionService {
     }
 
     private evaluateSingle(condition: { field: string; operator: string; value: unknown }, context: any): boolean {
+        if (condition.field === 'customer.reviewedInLastDays') {
+            const lookbackDays = this.toNumber(condition.value);
+            if (lookbackDays === null || lookbackDays < 0) return false;
+
+            const lastReviewDate = this.toDate(
+                context.customer?.latestReviewDate
+                || context.customer?.lastReviewDate
+                || context.review?.dateCreated
+                || context.review?.date_created
+            );
+
+            if (!lastReviewDate) return false;
+
+            const elapsedMs = Date.now() - lastReviewDate.getTime();
+            const lookbackMs = lookbackDays * 24 * 60 * 60 * 1000;
+            return elapsedMs >= 0 && elapsedMs <= lookbackMs;
+        }
+
         const fieldVal = this.resolveFieldValue(condition.field, context);
         const operator = condition.operator || 'eq';
         const targetVal = condition.value;
@@ -122,6 +140,8 @@ export class AutomationConditionService {
                 return context.customer?.emailDomain || context.email?.split?.('@')?.[1] || '';
             case 'customer.lastOrderDate':
                 return context.customer?.lastOrderDate || context.lastPurchaseAt || null;
+            case 'customer.latestReviewRating':
+                return context.customer?.latestReviewRating ?? context.review?.rating ?? null;
             case 'customer.daysSinceLastOrder':
                 return context.customer?.daysSinceLastOrder ?? context.daysSinceLastPurchase ?? null;
             case 'customer.country':

@@ -51,7 +51,7 @@ const hasConditionValue = (rule: { operator?: string; value?: string }) => {
 export const TriggerNode = memo(({ data, id }: NodeProps) => {
     const nodeData = data as unknown as FlowNodeData;
     const config = nodeData.config;
-    const stats = data.stats as NodeStats | undefined;
+    const stats = (data.stats as NodeStats | undefined) ?? { active: 0, queued: 0, completed: 0, skipped: 0, failed: 0 };
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
@@ -94,7 +94,7 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
 export const ActionNode = memo(({ data, id }: NodeProps) => {
     const nodeData = data as unknown as FlowNodeData;
     const config = nodeData.config;
-    const stats = data.stats as NodeStats | undefined;
+    const stats = (data.stats as NodeStats | undefined) ?? { active: 0, queued: 0, completed: 0, skipped: 0, failed: 0 };
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
@@ -142,7 +142,7 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
 export const DelayNode = memo(({ data, id }: NodeProps) => {
     const nodeData = data as unknown as FlowNodeData;
     const config = nodeData.config;
-    const stats = data.stats as NodeStats | undefined;
+    const stats = (data.stats as NodeStats | undefined) ?? { active: 0, queued: 0, completed: 0, skipped: 0, failed: 0 };
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
@@ -191,7 +191,7 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
 export const ConditionNode = memo(({ data, id }: NodeProps) => {
     const nodeData = data as unknown as FlowNodeData;
     const config = nodeData.config;
-    const stats = data.stats as NodeStats | undefined;
+    const stats = (data.stats as NodeStats | undefined) ?? { active: 0, queued: 0, completed: 0, skipped: 0, failed: 0 };
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onAddConditionBranch = data.onAddConditionBranch as ((nodeId: string, sourceHandle: 'true' | 'false', position: { x: number; y: number }) => void) | undefined;

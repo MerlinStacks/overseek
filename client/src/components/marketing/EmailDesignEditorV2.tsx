@@ -14,6 +14,7 @@ import {
     type EmailDeviceVisibility,
     type EmailSection,
     type EmailStackMode,
+    type SocialIconSet,
     type SocialIconStyle,
 } from '../../lib/emailDesignerV2';
 import { createAccountFooterHtml, createBlock, createPaletteBlock, paletteItems, type PaletteKey } from './emailDesignerV2/blockFactory';
@@ -72,6 +73,7 @@ const RECENT_TEST_RECIPIENTS_KEY = 'overseek-email-builder-v2-test-recipients';
 const MAX_TEST_RECIPIENTS = 5;
 const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'X', 'Twitter', 'LinkedIn', 'Pinterest'];
 const SOCIAL_ICON_STYLES: SocialIconStyle[] = ['solid', 'outline', 'glyph'];
+const SOCIAL_ICON_SETS: SocialIconSet[] = ['native', 'classic'];
 const PRODUCT_VISIBILITY_FIELDS = [
     { key: 'showImage', label: 'Image' },
     { key: 'showTitle', label: 'Title' },
@@ -80,6 +82,97 @@ const PRODUCT_VISIBILITY_FIELDS = [
     { key: 'showRegularPrice', label: 'Regular Price' },
     { key: 'showButton', label: 'Button' },
 ] as const;
+
+interface PreviewMergeContext {
+    storeUrl: string;
+    customerFirstName: string;
+    customerLastName: string;
+    customerEmail: string;
+    customerPhone: string;
+    orderNumber: string;
+    orderDate: string;
+    orderStatus: string;
+    orderSubtotal: string;
+    orderShippingTotal: string;
+    orderDiscountTotal: string;
+    orderTotal: string;
+    orderCustomerNote: string;
+    billingAddress: string;
+    shippingAddress: string;
+    productName: string;
+    productPrice: string;
+    productImage: string;
+    productDescription: string;
+    reviewReviewer: string;
+    reviewRating: string;
+    reviewContent: string;
+    reviewProductName: string;
+    reviewProductUrl: string;
+}
+
+function applyPreviewMergeTags(html: string, context: PreviewMergeContext): string {
+    const replacements: Array<[RegExp, string]> = [
+        [/\{\{store_url\}\}/g, context.storeUrl],
+        [/\{\{preferences_url\}\}/g, `${context.storeUrl.replace(/\/$/, '')}/my-account/edit-account`],
+        [/\{\{unsubscribe_url\}\}/g, `${context.storeUrl.replace(/\/$/, '')}/?unsubscribe=preview`],
+        [/\{\{link_trigger\}\}/g, context.storeUrl],
+        [/\{\{customer\.firstName\}\}/g, context.customerFirstName],
+        [/\{\{customer\.lastName\}\}/g, context.customerLastName],
+        [/\{\{customer\.email\}\}/g, context.customerEmail],
+        [/\{\{customer\.phone\}\}/g, context.customerPhone],
+        [/\{\{order\.number\}\}/g, context.orderNumber],
+        [/\{\{order_id\}\}/g, context.orderNumber],
+        [/\{\{order\.date\}\}/g, context.orderDate],
+        [/\{\{order\.status\}\}/g, context.orderStatus],
+        [/\{\{order\.subtotal\}\}/g, context.orderSubtotal],
+        [/\{\{order\.shippingTotal\}\}/g, context.orderShippingTotal],
+        [/\{\{order\.discountTotal\}\}/g, context.orderDiscountTotal],
+        [/\{\{order\.total\}\}/g, context.orderTotal],
+        [/\{\{order\.customerNote\}\}/g, context.orderCustomerNote],
+        [/\{\{order\.billingAddress\}\}/g, context.billingAddress],
+        [/\{\{order\.shippingAddress\}\}/g, context.shippingAddress],
+        [/\{\{product\.name\}\}/g, context.productName],
+        [/\{\{product\.price\}\}/g, context.productPrice],
+        [/\{\{product\.image\}\}/g, context.productImage],
+        [/\{\{product\.description\}\}/g, context.productDescription],
+        [/\{\{review\.reviewer\}\}/g, context.reviewReviewer],
+        [/\{\{review\.rating\}\}/g, context.reviewRating],
+        [/\{\{review\.content\}\}/g, context.reviewContent],
+        [/\{\{review\.productName\}\}/g, context.reviewProductName],
+        [/\{\{review\.productUrl\}\}/g, context.reviewProductUrl],
+    ];
+
+    return replacements.reduce((result, [pattern, value]) => result.replace(pattern, value || ''), html);
+}
+
+function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContext {
+    return {
+        storeUrl,
+        customerFirstName: 'Alex',
+        customerLastName: 'Taylor',
+        customerEmail: 'alex@example.com',
+        customerPhone: '+61 400 000 000',
+        orderNumber: '1001',
+        orderDate: new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' }),
+        orderStatus: 'processing',
+        orderSubtotal: '$89.00',
+        orderShippingTotal: '$10.00',
+        orderDiscountTotal: '$0.00',
+        orderTotal: '$99.00',
+        orderCustomerNote: 'Please leave at front door.',
+        billingAddress: 'Alex Taylor<br />12 Market Street<br />Sydney, NSW, 2000<br />AU',
+        shippingAddress: 'Alex Taylor<br />12 Market Street<br />Sydney, NSW, 2000<br />AU',
+        productName: 'Classic Hoodie',
+        productPrice: '$89.00',
+        productImage: 'https://via.placeholder.com/600x600?text=Product+Image',
+        productDescription: 'Comfortable everyday hoodie with a relaxed fit.',
+        reviewReviewer: 'Alex Taylor',
+        reviewRating: '5',
+        reviewContent: 'Great quality and very fast shipping.',
+        reviewProductName: 'Classic Hoodie',
+        reviewProductUrl: `${storeUrl.replace(/\/$/, '')}/products/classic-hoodie`,
+    };
+}
 
 function parseBoxSpacing(value: string): [number, number, number, number] {
     const parts = value.trim().split(/\s+/).map((part) => Number(part.replace('px', '')) || 0);
@@ -145,15 +238,19 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [recentRecipients, setRecentRecipients] = useState<string[]>([]);
     const [missingEmailAccount, setMissingEmailAccount] = useState(false);
     const [invoiceLogoUrl, setInvoiceLogoUrl] = useState('');
+    const [previewMergeContext, setPreviewMergeContext] = useState<PreviewMergeContext | null>(null);
 
     const html = useMemo(() => compileEmailDesignV2(design), [design]);
+    const mergedPreviewHtml = useMemo(() => (
+        previewMergeContext ? applyPreviewMergeTags(html, previewMergeContext) : html
+    ), [html, previewMergeContext]);
     const iframePreviewHtml = useMemo(() => {
         const baseHref = typeof window !== 'undefined' ? window.location.origin : '';
-        if (!baseHref) return html;
-        return html.includes('<head>')
-            ? html.replace('<head>', `<head><base href="${baseHref}/">`)
-            : html;
-    }, [html]);
+        if (!baseHref) return mergedPreviewHtml;
+        return mergedPreviewHtml.includes('<head>')
+            ? mergedPreviewHtml.replace('<head>', `<head><base href="${baseHref}/">`)
+            : mergedPreviewHtml;
+    }, [mergedPreviewHtml]);
     const selectedSection = design.document.sections.find((section) => section.id === selectedSectionId) || design.document.sections[0];
     const selectedBlock = selectedSection?.columns.flatMap((column) => column.blocks).find((block) => block.id === selectedBlockId) || null;
     const groupedIssues = groupPreflightIssues(issues);
@@ -166,6 +263,119 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const brandLogoUrl = isEmailSafeImageUrl(invoiceLogoUrl) ? invoiceLogoUrl : appearanceLogoUrl;
     const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
     const accountFooterHtml = currentAccount?.appearance?.emailFooterHtml || createAccountFooterHtml(accountName);
+
+    useEffect(() => {
+        const accountMeta = currentAccount as unknown as Record<string, unknown>;
+        const baseStoreUrl = String(accountMeta?.woocommerceUrl || accountMeta?.url || '{{store_url}}');
+        const fallbackContext = createFallbackPreviewMergeContext(baseStoreUrl);
+
+        if (!token || !currentAccount?.id) {
+            setPreviewMergeContext(fallbackContext);
+            return;
+        }
+
+        setPreviewMergeContext(fallbackContext);
+
+        const controller = new AbortController();
+
+        const fetchPreviewData = async () => {
+            try {
+                const listResponse = await fetch('/api/orders?limit=1', {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'X-Account-ID': currentAccount.id,
+                    },
+                    signal: controller.signal,
+                });
+
+                if (!listResponse.ok) return;
+                const listPayload = await listResponse.json() as { orders?: Array<{ id?: string; wooId?: number }> };
+                const newest = listPayload.orders?.[0];
+                if (!newest?.id) return;
+
+                const detailResponse = await fetch(`/api/orders/${newest.id}`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'X-Account-ID': currentAccount.id,
+                    },
+                    signal: controller.signal,
+                });
+                if (!detailResponse.ok) return;
+
+                const order = await detailResponse.json() as Record<string, unknown>;
+                const billing = (order.billing as Record<string, unknown> | undefined) || {};
+                const shipping = (order.shipping as Record<string, unknown> | undefined) || {};
+                const lineItems = Array.isArray(order.line_items) ? order.line_items as Array<Record<string, unknown>> : [];
+                const firstItem = lineItems[0] || {};
+
+                const firstName = String(billing.first_name || '').trim();
+                const lastName = String(billing.last_name || '').trim();
+                const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || 'Customer';
+                const productName = String(firstItem.name || 'Product');
+                const productTotal = String(firstItem.total || firstItem.price || order.total || '');
+                const currency = String(order.currency || 'AUD');
+                const storeUrl = String(accountMeta.woocommerceUrl || accountMeta.url || '{{store_url}}');
+
+                const fmtDate = (raw: unknown) => {
+                    const value = String(raw || '');
+                    if (!value) return '';
+                    const parsed = new Date(value);
+                    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' });
+                };
+                const fmtMoney = (raw: unknown) => {
+                    const value = Number(raw);
+                    if (!Number.isFinite(value)) return String(raw || '');
+                    return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(value);
+                };
+                const fmtAddress = (address: Record<string, unknown>) => {
+                    const parts = [
+                        [address.first_name, address.last_name].filter(Boolean).join(' '),
+                        address.company,
+                        address.address_1,
+                        address.address_2,
+                        [address.city, address.state, address.postcode].filter(Boolean).join(', '),
+                        address.country,
+                    ].filter(Boolean);
+                    return parts.join('<br />');
+                };
+
+                setPreviewMergeContext({
+                    storeUrl,
+                    customerFirstName: firstName,
+                    customerLastName: lastName,
+                    customerEmail: String(billing.email || ''),
+                    customerPhone: String(billing.phone || ''),
+                    orderNumber: String(order.number || order.id || ''),
+                    orderDate: fmtDate(order.date_created),
+                    orderStatus: String(order.status || ''),
+                    orderSubtotal: fmtMoney(order.subtotal),
+                    orderShippingTotal: fmtMoney(order.shipping_total),
+                    orderDiscountTotal: fmtMoney(order.discount_total),
+                    orderTotal: fmtMoney(order.total),
+                    orderCustomerNote: String(order.customer_note || ''),
+                    billingAddress: fmtAddress(billing),
+                    shippingAddress: fmtAddress(shipping),
+                    productName,
+                    productPrice: fmtMoney(productTotal),
+                    productImage: String((firstItem.image as Record<string, unknown> | undefined)?.src || ''),
+                    productDescription: String(firstItem.name ? `From your latest order: ${firstItem.name}` : ''),
+                    reviewReviewer: fullName,
+                    reviewRating: '5',
+                    reviewContent: `I love my ${productName}. Great quality and fast shipping.`,
+                    reviewProductName: productName,
+                    reviewProductUrl: `${storeUrl.replace(/\/$/, '')}/?p=${String(firstItem.product_id || '')}`,
+                });
+            } catch {
+                // Preview data is best-effort and should not block editing.
+            }
+        };
+
+        fetchPreviewData();
+
+        return () => {
+            controller.abort();
+        };
+    }, [token, currentAccount]);
 
     const autosaveTimerRef = useRef<number | null>(null);
     const latestDesignRef = useRef(design);
@@ -1377,7 +1587,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
             {block.type === 'review' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Rating" value={block.props.rating} onChange={(value) => patchProps({ rating: value })} /><TextArea label="Review content" value={block.props.content} onChange={(value) => patchProps({ content: value })} /><Field label="Reviewer name" value={block.props.reviewer} onChange={(value) => patchProps({ reviewer: value })} /><Field label="Product name" value={block.props.productName} onChange={(value) => patchProps({ productName: value })} /><Field label="CTA label" value={block.props.ctaLabel} onChange={(value) => patchProps({ ctaLabel: value })} /><Field label="CTA URL" value={block.props.ctaHref} onChange={(value) => patchProps({ ctaHref: value })} /></>}
             {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
-            {block.type === 'social' && <><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
+            {block.type === 'social' && <><SelectField label="Icon pack" value={block.props.iconSet || 'native'} options={SOCIAL_ICON_SETS} onChange={(value) => patchProps({ iconSet: value as SocialIconSet })} /><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
             {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Email and is locked in the designer.</div>}
             {block.type === 'rawHtml' && <TextArea label="Raw HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
         </div>
