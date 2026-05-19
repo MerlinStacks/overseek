@@ -57,6 +57,7 @@ const EmailListsPage = lazy(() => import('./pages/EmailListsPage').then(m => ({ 
 const EmailDashboardPage = lazy(() => import('./pages/EmailDashboardPage').then(m => ({ default: m.EmailDashboardPage })));
 const EmailSettingsPage = lazy(() => import('./pages/EmailSettingsPage').then(m => ({ default: m.EmailSettingsPage })));
 const EmailLogsPage = lazy(() => import('./pages/EmailLogsPage').then(m => ({ default: m.EmailLogsPage })));
+const BlockedContactsPage = lazy(() => import('./pages/BlockedContactsPage').then(m => ({ default: m.BlockedContactsPage })));
 const HelpCenterHome = lazy(() => import('./pages/HelpCenter/HelpCenterHome').then(m => ({ default: m.HelpCenterHome })));
 const HelpArticle = lazy(() => import('./pages/HelpCenter/HelpArticle').then(m => ({ default: m.HelpArticle })));
 const LiveAnalyticsPage = lazy(() => import('./pages/LiveAnalyticsPage').then(m => ({ default: m.LiveAnalyticsPage })));
@@ -265,6 +266,7 @@ function App() {
                                                 <Route path="/emails" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailDashboardPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/emails/settings" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailSettingsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/emails/logs" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailLogsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/emails/blocked-contacts" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BlockedContactsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/flows" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><FlowsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path="/inbox" element={<AccountGuard><InboxPage /></AccountGuard>} />
                                                 <Route path="/live" element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />

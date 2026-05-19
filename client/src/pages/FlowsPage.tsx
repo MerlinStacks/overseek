@@ -390,6 +390,7 @@ export function FlowsPage() {
     const [nodeAnalytics, setNodeAnalytics] = useState<NodeAnalyticsResponse | null>(null);
     const [isNodeAnalyticsLoading, setIsNodeAnalyticsLoading] = useState(false);
     const [expandedJourneyEnrollmentId, setExpandedJourneyEnrollmentId] = useState<string | null>(null);
+    const [activeEditorTab, setActiveEditorTab] = useState<'flow' | 'insights'>('flow');
 
     const baselineFlowRef = useRef<string>('');
     const autosaveTimerRef = useRef<number | null>(null);
@@ -427,7 +428,9 @@ export function FlowsPage() {
 
     const handleEditFlow = useCallback(async (id: string, requestedName?: string) => {
         if (searchParams.get('flowId') !== id) {
-            setSearchParams({ flowId: id }, { replace: true });
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.set('flowId', id);
+            setSearchParams(nextParams, { replace: true });
         }
 
         setEditingItem({ id, name: requestedName || 'Loading flow...' });
@@ -506,13 +509,21 @@ export function FlowsPage() {
 
     useEffect(() => {
         const flowId = searchParams.get('flowId');
+        const editorTab = searchParams.get('editorTab');
+
+        if (editorTab === 'insights' && activeEditorTab !== 'insights') {
+            setActiveEditorTab('insights');
+        } else if (editorTab !== 'insights' && activeEditorTab !== 'flow') {
+            setActiveEditorTab('flow');
+        }
+
         if (isClosingEditor) {
             if (!flowId) setIsClosingEditor(false);
             return;
         }
         if (!flowId || isEditing || !token || !currentAccount) return;
         void handleEditFlow(flowId);
-    }, [searchParams, isEditing, token, currentAccount, handleEditFlow, isClosingEditor]);
+    }, [searchParams, isEditing, token, currentAccount, handleEditFlow, isClosingEditor, activeEditorTab]);
 
     const handleFlowChange = useCallback((flow: FlowDefinition) => {
         if (!editingItem || !editingFlowData) return;
@@ -904,147 +915,184 @@ export function FlowsPage() {
                         </div>
                     </div>
 
-                    {analytics && (
-                        <div className="grid grid-cols-2 gap-3 border-b bg-white px-4 py-3 md:grid-cols-4">
-                            <div className="rounded-xl border border-gray-200 p-3">
-                                <div className="text-xs uppercase text-gray-500">Enrollments</div>
-                                <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.enrollments.total}</div>
-                                <div className="text-xs text-gray-500">{analytics.enrollments.completed} completed</div>
-                            </div>
-                            <div className="rounded-xl border border-gray-200 p-3">
-                                <div className="text-xs uppercase text-gray-500">Email</div>
-                                <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.email.sends}</div>
-                                <div className="text-xs text-gray-500">
-                                    {analytics.email.opens} opens, {analytics.email.clicks} clicks
-                                </div>
-                            </div>
-                            <div className="rounded-xl border border-gray-200 p-3">
-                                <div className="text-xs uppercase text-gray-500">Conversions</div>
-                                <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.goals.conversions}</div>
-                                <div className="text-xs text-gray-500">{analytics.enrollments.cancelled} cancelled</div>
-                            </div>
-                            <div className="rounded-xl border border-gray-200 p-3">
-                                <div className="text-xs uppercase text-gray-500">Revenue</div>
-                                <div className="mt-1 text-lg font-semibold text-gray-900">
-                                    ${analytics.goals.revenue.toFixed(2)}
-                                </div>
-                                <div className="text-xs text-gray-500">{analytics.email.unsubscribes} unsubscribes</div>
-                            </div>
-                        </div>
-                    )}
-
-                    {analytics && getExecutionSummaryBadges(analytics).length > 0 && (
-                        <div className="border-b bg-white px-4 py-3">
-                            <div className="mb-2 text-xs uppercase text-gray-500">Execution Summary</div>
-                            <div className="flex flex-wrap gap-2">
-                                {getExecutionSummaryBadges(analytics).map((badge) => (
-                                    <span
-                                        key={badge.label}
-                                        className="rounded-full bg-gray-100 px-3 py-1.5 text-sm text-gray-700"
-                                    >
-                                        {badge.label}: {badge.value}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {recentEnrollments.length > 0 && (
-                        <div className="border-b bg-white px-4 py-3">
-                            <div className="mb-2 text-xs uppercase text-gray-500">Recent Enrollments</div>
-                            <div className="flex flex-wrap gap-2">
-                                {recentEnrollments.map((enrollment) => (
-                                    <div
-                                        key={enrollment.id}
-                                        className="rounded-full border border-gray-200 px-3 py-1.5 text-sm text-gray-700"
-                                    >
-                                        {enrollment.email} · {enrollment.status.toLowerCase()}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {recentRunEvents.length > 0 && (
-                        <div className="border-b bg-white px-4 py-3">
-                            <div className="mb-2 text-xs uppercase text-gray-500">Recent Run History</div>
-                            <div className="grid gap-2 md:grid-cols-2">
-                                {recentRunEvents.map((event) => {
-                                    const badges = getRunMetadataBadges(event.metadata);
-
-                                    return (
-                                        <div key={event.id} className="rounded-xl border border-gray-200 p-3 text-sm text-gray-700">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <span className="font-medium text-gray-900">{event.outcome || event.eventType}</span>
-                                                <span className="text-xs text-gray-500">
-                                                    {new Date(event.createdAt).toLocaleString()}
-                                                </span>
-                                            </div>
-                                            <div className="mt-1 text-xs text-gray-500">
-                                                {event.eventType}
-                                                {event.nodeId ? ` · node ${event.nodeId}` : ''}
-                                            </div>
-                                            {badges.length > 0 && (
-                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                    {badges.map((badge) => (
-                                                        <span
-                                                            key={`${event.id}-${badge.label}`}
-                                                            className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700"
-                                                        >
-                                                            {badge.label}: {badge.value}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {analytics?.nodePerformance && analytics.nodePerformance.length > 0 && (
-                        <div className="border-b bg-white px-4 py-3">
-                            <div className="mb-2 text-xs uppercase text-gray-500">Node Reliability</div>
-                            <div className="grid gap-2 md:grid-cols-2">
-                                {analytics.nodePerformance.map((nodeStats) => (
-                                    <div key={nodeStats.nodeId} className="rounded-xl border border-gray-200 p-3 text-sm text-gray-700">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="font-medium text-gray-900">Node {nodeStats.nodeId}</span>
-                                            <span className="text-xs text-gray-500">{nodeStats.executions} runs</span>
-                                        </div>
-                                        <div className="mt-1 text-xs text-gray-500">
-                                            {nodeStats.failed} failed · {nodeStats.skipped} skipped · {(nodeStats.failureRate * 100).toFixed(1)}% failure
-                                        </div>
-                                        <div className="mt-1 text-xs text-gray-500">
-                                            Avg latency: {nodeStats.avgExecutionMs !== null ? `${nodeStats.avgExecutionMs}ms` : 'N/A'}
-                                            {nodeStats.lastOutcome ? ` · Last: ${nodeStats.lastOutcome}` : ''}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex-1 overflow-hidden">
-                        <ErrorBoundary>
-                            <FlowBuilder
-                                initialFlow={editingFlowData?.flowDefinition}
-                                onSave={handleSaveFlow}
-                                onCancel={handleRequestCloseEditor}
-                                isSaveDisabled={isUpdatingStatus || isSavingFlow}
-                                isSaving={isSavingFlow}
-                                onFlowChange={handleFlowChange}
-                                onUndoRedoStateChange={setUndoRedoState}
-                                onUndoRedoHandlersChange={(handlers) => {
-                                    undoRedoHandlersRef.current = handlers;
+                    <div className="border-b bg-white px-4">
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setActiveEditorTab('flow');
+                                    const nextParams = new URLSearchParams(searchParams);
+                                    nextParams.delete('editorTab');
+                                    setSearchParams(nextParams, { replace: true });
                                 }}
-                                invalidNodeIds={invalidNodeIds}
-                                flowId={editingItem?.id}
-                                onViewNodeAnalytics={openNodeAnalytics}
-                            />
-                        </ErrorBoundary>
+                                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeEditorTab === 'flow' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+                            >
+                                Flow
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setActiveEditorTab('insights');
+                                    const nextParams = new URLSearchParams(searchParams);
+                                    nextParams.set('editorTab', 'insights');
+                                    setSearchParams(nextParams, { replace: true });
+                                }}
+                                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeEditorTab === 'insights' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+                            >
+                                Insights
+                            </button>
+                        </div>
                     </div>
+
+                    {activeEditorTab === 'flow' ? (
+                        <div className="flex-1 overflow-hidden">
+                            <ErrorBoundary>
+                                <FlowBuilder
+                                    initialFlow={editingFlowData?.flowDefinition}
+                                    onSave={handleSaveFlow}
+                                    onCancel={handleRequestCloseEditor}
+                                    isSaveDisabled={isUpdatingStatus || isSavingFlow}
+                                    isSaving={isSavingFlow}
+                                    onFlowChange={handleFlowChange}
+                                    onUndoRedoStateChange={setUndoRedoState}
+                                    onUndoRedoHandlersChange={(handlers) => {
+                                        undoRedoHandlersRef.current = handlers;
+                                    }}
+                                    invalidNodeIds={invalidNodeIds}
+                                    flowId={editingItem?.id}
+                                    onViewNodeAnalytics={openNodeAnalytics}
+                                />
+                            </ErrorBoundary>
+                        </div>
+                    ) : (
+                        <div className="flex-1 overflow-y-auto bg-white">
+                            {analytics && (
+                                <div className="grid grid-cols-2 gap-3 px-4 py-3 md:grid-cols-4">
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <div className="text-xs uppercase text-gray-500">Enrollments</div>
+                                        <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.enrollments.total}</div>
+                                        <div className="text-xs text-gray-500">{analytics.enrollments.completed} completed</div>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <div className="text-xs uppercase text-gray-500">Email</div>
+                                        <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.email.sends}</div>
+                                        <div className="text-xs text-gray-500">
+                                            {analytics.email.opens} opens, {analytics.email.clicks} clicks
+                                        </div>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <div className="text-xs uppercase text-gray-500">Conversions</div>
+                                        <div className="mt-1 text-lg font-semibold text-gray-900">{analytics.goals.conversions}</div>
+                                        <div className="text-xs text-gray-500">{analytics.enrollments.cancelled} cancelled</div>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <div className="text-xs uppercase text-gray-500">Revenue</div>
+                                        <div className="mt-1 text-lg font-semibold text-gray-900">
+                                            ${analytics.goals.revenue.toFixed(2)}
+                                        </div>
+                                        <div className="text-xs text-gray-500">{analytics.email.unsubscribes} unsubscribes</div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {analytics && getExecutionSummaryBadges(analytics).length > 0 && (
+                                <div className="border-t bg-white px-4 py-3">
+                                    <div className="mb-2 text-xs uppercase text-gray-500">Execution Summary</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {getExecutionSummaryBadges(analytics).map((badge) => (
+                                            <span
+                                                key={badge.label}
+                                                className="rounded-full bg-gray-100 px-3 py-1.5 text-sm text-gray-700"
+                                            >
+                                                {badge.label}: {badge.value}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {recentEnrollments.length > 0 && (
+                                <div className="border-t bg-white px-4 py-3">
+                                    <div className="mb-2 text-xs uppercase text-gray-500">Recent Enrollments</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {recentEnrollments.map((enrollment) => (
+                                            <div
+                                                key={enrollment.id}
+                                                className="rounded-full border border-gray-200 px-3 py-1.5 text-sm text-gray-700"
+                                            >
+                                                {enrollment.email} · {enrollment.status.toLowerCase()}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {recentRunEvents.length > 0 && (
+                                <div className="border-t bg-white px-4 py-3">
+                                    <div className="mb-2 text-xs uppercase text-gray-500">Recent Run History</div>
+                                    <div className="grid gap-2 md:grid-cols-2">
+                                        {recentRunEvents.map((event) => {
+                                            const badges = getRunMetadataBadges(event.metadata);
+
+                                            return (
+                                                <div key={event.id} className="rounded-xl border border-gray-200 p-3 text-sm text-gray-700">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <span className="font-medium text-gray-900">{event.outcome || event.eventType}</span>
+                                                        <span className="text-xs text-gray-500">
+                                                            {new Date(event.createdAt).toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-gray-500">
+                                                        {event.eventType}
+                                                        {event.nodeId ? ` · node ${event.nodeId}` : ''}
+                                                    </div>
+                                                    {badges.length > 0 && (
+                                                        <div className="mt-2 flex flex-wrap gap-2">
+                                                            {badges.map((badge) => (
+                                                                <span
+                                                                    key={`${event.id}-${badge.label}`}
+                                                                    className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700"
+                                                                >
+                                                                    {badge.label}: {badge.value}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {analytics?.nodePerformance && analytics.nodePerformance.length > 0 && (
+                                <div className="border-t bg-white px-4 py-3">
+                                    <div className="mb-2 text-xs uppercase text-gray-500">Node Reliability</div>
+                                    <div className="grid gap-2 md:grid-cols-2">
+                                        {analytics.nodePerformance.map((nodeStats) => (
+                                            <div key={nodeStats.nodeId} className="rounded-xl border border-gray-200 p-3 text-sm text-gray-700">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-medium text-gray-900">Node {nodeStats.nodeId}</span>
+                                                    <span className="text-xs text-gray-500">{nodeStats.executions} runs</span>
+                                                </div>
+                                                <div className="mt-1 text-xs text-gray-500">
+                                                    {nodeStats.failed} failed · {nodeStats.skipped} skipped · {(nodeStats.failureRate * 100).toFixed(1)}% failure
+                                                </div>
+                                                <div className="mt-1 text-xs text-gray-500">
+                                                    Avg latency: {nodeStats.avgExecutionMs !== null ? `${nodeStats.avgExecutionMs}ms` : 'N/A'}
+                                                    {nodeStats.lastOutcome ? ` · Last: ${nodeStats.lastOutcome}` : ''}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {!analytics && recentEnrollments.length === 0 && recentRunEvents.length === 0 && (
+                                <div className="px-4 py-10 text-center text-sm text-gray-500">No insight data available for this flow yet.</div>
+                            )}
+                        </div>
+                    )}
                 </div>
                 <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
                 <Modal

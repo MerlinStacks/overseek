@@ -6,6 +6,7 @@
  */
 
 import { normalizeOrderStatus } from '../constants/orderStatus';
+import { getInvoiceItemMeta } from '@overseek/core';
 
 interface MergeTagContext {
     order?: any;
@@ -166,19 +167,29 @@ export function renderOrderItemsTable(items: any[]): string {
         return '<p style="color: #6b7280; font-style: italic;">No items</p>';
     }
 
-    const rows = items.map(item => `
+    const rows = items.map(item => {
+        const derivedMeta = getInvoiceItemMeta(item)
+            .map((entry) => `${entry.label}: ${entry.value}`)
+            .join(', ');
+        const fallbackMeta = item.meta?.length
+            ? item.meta.map((m: any) => `${m.key}: ${m.value}`).join(', ')
+            : '';
+        const itemMeta = derivedMeta || fallbackMeta;
+
+        return `
         <tr style="border-bottom: 1px solid #e5e7eb;">
             <td style="padding: 12px; vertical-align: top;">
                 ${item.image ? `<img src="${item.image}" alt="${item.name}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;" />` : ''}
             </td>
             <td style="padding: 12px; color: #374151;">
                 ${item.name || item.productName || 'Product'}
-                ${item.meta?.length ? `<br><span style="font-size: 12px; color: #6b7280;">${item.meta.map((m: any) => `${m.key}: ${m.value}`).join(', ')}</span>` : ''}
+                ${itemMeta ? `<br><span style="font-size: 12px; color: #6b7280;">${itemMeta}</span>` : ''}
             </td>
             <td style="padding: 12px; text-align: center; color: #374151;">${item.quantity || 1}</td>
             <td style="padding: 12px; text-align: right; color: #374151;">${formatCurrency(item.total || item.price, item.currency)}</td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 
     return `
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif;">

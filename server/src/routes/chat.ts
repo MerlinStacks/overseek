@@ -197,9 +197,25 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     return reply.code(400).send({ error: 'Invalid status filter' });
                 }
 
+                const blockedContacts = await prisma.blockedContact.findMany({
+                    where: { accountId },
+                    select: { email: true }
+                });
+                const blockedEmails = blockedContacts.map((contact) => contact.email);
+
                 const baseWhere: Prisma.ConversationWhereInput = {
                     accountId,
                     ...(statusFilter ? { status: statusFilter } : {}),
+                    ...(blockedEmails.length > 0
+                        ? {
+                            NOT: {
+                                OR: [
+                                    { guestEmail: { in: blockedEmails } },
+                                    { wooCustomer: { email: { in: blockedEmails } } }
+                                ]
+                            }
+                        }
+                        : {}),
                 };
 
                 const directFieldFilters: Prisma.ConversationWhereInput[] = [

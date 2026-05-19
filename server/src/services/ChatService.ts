@@ -47,7 +47,16 @@ export class ChatService {
         return cacheAside(
             cacheKey,
             async () => {
+                const blockedContacts = await prisma.blockedContact.findMany({
+                    where: { accountId },
+                    select: { email: true }
+                });
+                const blockedEmails = blockedContacts.map((contact) => contact.email);
+
                 const conversations = await prisma.conversation.findMany({
+                    // Always exclude blocked contacts from inbox list views,
+                    // including when resolved conversations are requested.
+                    // This keeps blocked auto-resolved threads out of the UI.
                     take: limit,
                     skip: cursor ? 1 : 0,
                     cursor: cursor ? { id: cursor } : undefined,
@@ -61,6 +70,16 @@ export class ChatService {
                                 : {}),
                         ...(options?.wooCustomerId ? { wooCustomerId: options.wooCustomerId } : {}),
                         ...(options?.guestEmail ? { guestEmail: options.guestEmail } : {}),
+                        ...(blockedEmails.length > 0
+                            ? {
+                                NOT: {
+                                    OR: [
+                                        { guestEmail: { in: blockedEmails } },
+                                        { wooCustomer: { email: { in: blockedEmails } } }
+                                    ]
+                                }
+                            }
+                            : {}),
                         mergedIntoId: null
                     } satisfies Prisma.ConversationWhereInput,
                     include: {
