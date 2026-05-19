@@ -79,13 +79,15 @@ const FlowControls: React.FC<ControlsProps> = ({ onSave, onCancel, isSaveDisable
     return (
         <div className="flex gap-2 bg-white p-2 rounded-sm shadow-xs border">
             <button
-                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
+                type="button"
+                className="nodrag nopan px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
                 onClick={onCancel}
             >
                 Cancel
             </button>
             <button
-                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                className="nodrag nopan px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => onSave(getNodes(), getEdges())}
                 disabled={isSaveDisabled}
             >

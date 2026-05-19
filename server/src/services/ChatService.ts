@@ -47,16 +47,19 @@ export class ChatService {
         return cacheAside(
             cacheKey,
             async () => {
-                const blockedContacts = await prisma.blockedContact.findMany({
-                    where: { accountId },
-                    select: { email: true }
-                });
-                const blockedEmails = blockedContacts.map((contact) => contact.email);
+                const shouldExcludeBlocked = status === 'OPEN';
+                let blockedEmails: string[] = [];
+                if (shouldExcludeBlocked) {
+                    const blockedContacts = await prisma.blockedContact.findMany({
+                        where: { accountId },
+                        select: { email: true }
+                    });
+                    blockedEmails = blockedContacts.map((contact) => contact.email);
+                }
 
                 const conversations = await prisma.conversation.findMany({
-                    // Always exclude blocked contacts from inbox list views,
-                    // including when resolved conversations are requested.
-                    // This keeps blocked auto-resolved threads out of the UI.
+                    // Only exclude blocked contacts from OPEN inbox views.
+                    // Closed/All views should remain searchable and reviewable.
                     take: limit,
                     skip: cursor ? 1 : 0,
                     cursor: cursor ? { id: cursor } : undefined,
