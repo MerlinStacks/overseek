@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAccountFeature } from '../hooks/useAccountFeature';
 import { formatDate, formatCurrency } from '../utils/format';
 import { User, MapPin, Mail, Phone, Package, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, Truck, ExternalLink, Copy, GripVertical } from 'lucide-react';
 import { generateInvoicePDF } from '../utils/InvoiceGenerator';
@@ -19,6 +20,7 @@ import { OrderDetailPageSkeleton } from '../components/ui/PageSkeletons';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useToast } from '../context/ToastContext';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
+import { ShipmentMonitoringPanel } from '../components/shipping/ShipmentMonitoringPanel';
 
 interface Attribution {
     firstTouchSource: string;
@@ -95,6 +97,7 @@ export function OrderDetailPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { hasPermission } = usePermissions();
+    const isShippingHubEnabled = useAccountFeature('SHIPPING_HUB');
     const toast = useToast();
 
     const [order, setOrder] = useState<OrderDetails | null>(null);
@@ -404,6 +407,56 @@ export function OrderDetailPage() {
     const billing = order.billing || {};
     const shipping = order.shipping || {};
     const hasTrackingItems = (order.tracking_items || []).length > 0;
+    const legacyTrackingPanel = hasTrackingItems ? (
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
+            <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                <Truck size={18} className="text-blue-500" />
+                Shipment Tracking
+            </div>
+
+            <div className="space-y-3">
+                {(order.tracking_items || []).map((item, idx: number) => (
+                    <div key={idx} className={`space-y-2 ${idx > 0 ? 'pt-3 border-t border-dashed border-gray-200' : ''}`}>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-gray-500 uppercase">{item.provider}</span>
+                            {item.dateShipped && (
+                                <span className="text-xs text-gray-400">
+                                    • Shipped {formatDate(item.dateShipped)}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <code className="text-sm font-mono text-gray-900 bg-gray-50 px-2 py-1 rounded flex-1 truncate">
+                                {item.trackingNumber}
+                            </code>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(item.trackingNumber);
+                                }}
+                                className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                                title="Copy tracking number"
+                            >
+                                <Copy size={14} />
+                            </button>
+                            {item.trackingUrl && (
+                                <a
+                                    href={item.trackingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-700 transition-colors"
+                                    title="Track shipment"
+                                >
+                                    <ExternalLink size={14} />
+                                </a>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    ) : null;
+
+    const shippingWooOrderId = Number(order.wooId);
 
     const sidebarPanels: Record<SidebarPanelId, ReactNode | null> = {
             tags: (
@@ -493,54 +546,9 @@ export function OrderDetailPage() {
                     </div>
                 </div>
             ),
-            tracking: hasTrackingItems ? (
-                <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
-                    <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-                        <Truck size={18} className="text-blue-500" />
-                        Shipment Tracking
-                    </div>
-
-                    <div className="space-y-3">
-                        {(order.tracking_items || []).map((item, idx: number) => (
-                            <div key={idx} className={`space-y-2 ${idx > 0 ? 'pt-3 border-t border-dashed border-gray-200' : ''}`}>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-semibold text-gray-500 uppercase">{item.provider}</span>
-                                    {item.dateShipped && (
-                                        <span className="text-xs text-gray-400">
-                                            • Shipped {formatDate(item.dateShipped)}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <code className="text-sm font-mono text-gray-900 bg-gray-50 px-2 py-1 rounded flex-1 truncate">
-                                        {item.trackingNumber}
-                                    </code>
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(item.trackingNumber);
-                                        }}
-                                        className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
-                                        title="Copy tracking number"
-                                    >
-                                        <Copy size={14} />
-                                    </button>
-                                    {item.trackingUrl && (
-                                        <a
-                                            href={item.trackingUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="p-1.5 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-700 transition-colors"
-                                            title="Track shipment"
-                                        >
-                                            <ExternalLink size={14} />
-                                        </a>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            ) : null,
+            tracking: isShippingHubEnabled && Number.isFinite(shippingWooOrderId) && shippingWooOrderId > 0
+                ? <ShipmentMonitoringPanel wooOrderId={shippingWooOrderId} fallback={legacyTrackingPanel} />
+                : legacyTrackingPanel,
             attribution: (
                 <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
                     <div className="font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">

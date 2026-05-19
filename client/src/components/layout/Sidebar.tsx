@@ -32,7 +32,9 @@ import {
     Bot,
     FileText,
     Mail,
-    Rss
+    Rss,
+    Truck,
+    ClipboardList
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -67,6 +69,19 @@ const navItems = [
             { icon: RefreshCw, label: 'BOM Sync', path: '/inventory/bom-sync' },
             { icon: TrendingDown, label: 'Forecasts', path: '/inventory/forecasts' },
             { icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
+        ]
+    },
+    {
+        type: 'group',
+        label: 'Shipping',
+        icon: Truck,
+        children: [
+            { icon: Truck, label: 'Hub', path: '/shipping' },
+            { icon: Package, label: 'Packages', path: '/shipping/packages' },
+            { icon: ClipboardList, label: 'Item Overwrites', path: '/shipping/item-overwrites' },
+            { icon: FileText, label: 'Past Labels / Invoices', path: '/shipping/labels' },
+            { icon: ClipboardList, label: 'Operations', path: '/shipping/operations' },
+            { icon: Settings, label: 'Settings', path: '/shipping/settings' },
         ]
     },
     {
@@ -135,6 +150,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     const isBotShieldEnabled = useAccountFeature('BOT_SHIELD');
     const isAiManagerEnabled = useAccountFeature('AI_MANAGER');
     const isFeedsEnabled = useAccountFeature('FEED_EXPORTS');
+    const isShippingEnabled = useAccountFeature('SHIPPING_HUB');
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
 
@@ -194,6 +210,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 });
                 return hasChild;
             }
+            if (item.label === 'Shipping') return isShippingEnabled && hasPermission('view_shipping');
             if (item.label === 'Analytics') return hasPermission('view_finance');
             if (item.label === 'Growth') return hasPermission('view_marketing');
             if (item.label === 'Team') return hasPermission('view_orders');
@@ -206,6 +223,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                         if (child.path === '/crawlers') return isBotShieldEnabled;
                         if (child.path === '/ai-manager') return isAiManagerEnabled && hasPermission('view_marketing');
                         if (child.path === '/feeds') return isFeedsEnabled && hasPermission('view_marketing');
+                        if (child.path?.startsWith('/shipping')) return isShippingEnabled && hasPermission('view_shipping');
                         if (child.path === '/orders') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
@@ -220,7 +238,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             }
             return item;
         });
-    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled, isFeedsEnabled]);
+    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled, isFeedsEnabled, isShippingEnabled]);
 
     // State for expanded groups
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);

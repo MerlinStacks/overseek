@@ -512,7 +512,9 @@ export class AutomationEngine {
     }
 
     private getTriggerEntityId(data: any): string | undefined {
-        const candidate = data?.id
+        const candidate = data?.shippingLabelId
+            ?? data?.labelId
+            ?? data?.id
             ?? data?.wooId
             ?? data?.reviewId
             ?? data?.sessionId
@@ -522,6 +524,7 @@ export class AutomationEngine {
     }
 
     private getTriggerEntityType(triggerType: string, data: any): string | undefined {
+        if (triggerType.includes('SHIPMENT')) return 'SHIPMENT';
         if (triggerType.includes('ORDER')) return 'ORDER';
         if (triggerType.includes('ARTWORK')) return 'ORDER';
         if (triggerType === 'ABANDONED_CART') return 'CART';
@@ -536,6 +539,11 @@ export class AutomationEngine {
         }
         if (triggerType === 'NO_PURCHASE_IN_X_DAYS') {
             return `${triggerType}:${entityId || email.toLowerCase()}`;
+        }
+        if (triggerType.includes('SHIPMENT')) {
+            const shipmentId = data?.shippingLabelId || data?.labelId || entityId;
+            const milestone = data?.scanEventCode || data?.shipmentStatus || '';
+            return `${triggerType}:${shipmentId || 'shipment'}:${milestone}:${email.toLowerCase()}`;
         }
         if (entityId) {
             return `${triggerType}:${entityId}:${email.toLowerCase()}`;

@@ -12,6 +12,7 @@ import { SyncScheduler } from './SyncScheduler';
 import { MessageScheduler } from './MessageScheduler';
 import { MarketingScheduler } from './MarketingScheduler';
 import { MaintenanceScheduler } from './MaintenanceScheduler';
+import { ShippingTrackingScheduler } from './ShippingTrackingScheduler';
 
 export class SchedulerService {
     private static readonly DEPRECATED_JOB_NAMES = new Set([
@@ -29,6 +30,7 @@ export class SchedulerService {
         await SyncScheduler.register();
         await MarketingScheduler.register();
         await MaintenanceScheduler.register();
+        await ShippingTrackingScheduler.register();
 
         // Remove stale repeatable jobs from older deployments.
         await this.cleanupDeprecatedJobs();
@@ -115,6 +117,12 @@ export class SchedulerService {
                     break;
                 case 'conversion-retry':
                     await MaintenanceScheduler.dispatchConversionRetry();
+                    break;
+                case 'shipping-tracking-poll':
+                    await ShippingTrackingScheduler.dispatchTrackingPoll();
+                    break;
+                case 'shipping-label-storage-cleanup':
+                    await ShippingTrackingScheduler.dispatchLabelStorageCleanup();
                     break;
 
                 // Marketing jobs

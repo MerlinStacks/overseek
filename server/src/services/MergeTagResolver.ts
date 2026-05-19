@@ -13,6 +13,7 @@ interface MergeTagContext {
     product?: any;
     coupon?: any;
     cart?: any;
+    shipment?: any;
     store?: {
         url?: string;
     };
@@ -126,6 +127,19 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         result = result.replace(/\{\{cart\.total\}\}/g, formatCurrency(cart.total ?? cart.cartValue, cart.currency));
         result = result.replace(/\{\{cart\.currency\}\}/g, cart.currency || '');
         result = result.replace(/\{\{cart\.itemsTable\}\}/g, renderOrderItemsTable(cart.items || cart.cartItems || []));
+    }
+
+    // Shipment merge tags
+    if (context.shipment) {
+        const shipment = context.shipment;
+        result = result.replace(/\{\{shipment\.trackingNumber\}\}/g, shipment.trackingNumber || '');
+        result = result.replace(/\{\{shipment\.trackingUrl\}\}/g, shipment.trackingUrl || '');
+        result = result.replace(/\{\{shipment\.carrier\}\}/g, shipment.carrier || '');
+        result = result.replace(/\{\{shipment\.serviceName\}\}/g, shipment.serviceName || '');
+        result = result.replace(/\{\{shipment\.status\}\}/g, shipment.status ? String(shipment.status).replace(/_/g, ' ') : '');
+        result = result.replace(/\{\{shipment\.latestScanDescription\}\}/g, shipment.latestScanDescription || '');
+        result = result.replace(/\{\{shipment\.latestScanLocation\}\}/g, shipment.latestScanLocation || '');
+        result = result.replace(/\{\{shipment\.latestScanTime\}\}/g, formatDate(shipment.latestScanTime));
     }
 
     return result;

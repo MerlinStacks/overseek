@@ -1,0 +1,40 @@
+{
+  "name": "overseek-print-agent",
+  "version": "0.1.0",
+  "description": "OverSeek local print agent with Windows tray UI",
+  "private": true,
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win nsis",
+    "pack:win": "electron-builder --win dir"
+  },
+  "build": {
+    "appId": "com.overseek.printagent",
+    "productName": "OverSeek Print Agent",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OverSeek Print Agent",
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  }
+}
