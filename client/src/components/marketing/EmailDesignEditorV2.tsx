@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Lock, LockOpen, Monitor, Pencil, Save, Search, Send, Settings, Smartphone, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Lock, LockOpen, Monitor, Pencil, Search, Send, Settings, Smartphone, Trash2, Upload, X } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
@@ -26,7 +26,7 @@ interface Props {
     initialDesign?: unknown;
     initialSubject?: string;
     initialPreviewText?: string;
-    onSave: (html: string, design: unknown, meta?: { subject: string; previewText: string }) => void;
+    onSave: (html: string, design: unknown, meta?: { subject: string; previewText: string; autosave?: boolean }) => void | Promise<void>;
     onCancel: () => void;
 }
 
@@ -134,6 +134,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
     const [previewSurface, setPreviewSurface] = useState<'canvas' | 'html'>('canvas');
     const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const [issues, setIssues] = useState<PreflightIssue[]>([]);
@@ -157,7 +158,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const selectedBlock = selectedSection?.columns.flatMap((column) => column.blocks).find((block) => block.id === selectedBlockId) || null;
     const groupedIssues = groupPreflightIssues(issues);
     const visiblePaletteItems = paletteItems.filter((item) => item.label.toLowerCase().includes(blockSearch.trim().toLowerCase()));
-    const saveStatus = saving ? 'Saving...' : hasUnsavedChanges ? 'Autosaved draft' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
+    const saveStatus = saving ? 'Autosaving...' : saveError ? 'Autosave failed, draft kept' : hasUnsavedChanges ? 'Autosave pending' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
     const hideOnDesktop = selectedSection?.visibility === 'mobile';
     const hideOnMobile = selectedSection?.visibility === 'desktop';
 
@@ -166,12 +167,25 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
     const accountFooterHtml = currentAccount?.appearance?.emailFooterHtml || createAccountFooterHtml(accountName);
 
+    const autosaveTimerRef = useRef<number | null>(null);
+    const latestDesignRef = useRef(design);
+    const latestHtmlRef = useRef(html);
+    const baselineDesignRef = useRef(JSON.stringify(design));
+    const autosaveInFlightRef = useRef(false);
+    const autosaveAgainRef = useRef(false);
+    const didMountRef = useRef(false);
+
     const setDirtyDesign = useCallback((updater: (draft: EmailDesignV2Envelope) => void) => {
         setDesign((current) => {
             const next = cloneDesign(current);
             updater(next);
-            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ design: next, updatedAt: new Date().toISOString() }));
+            try {
+                localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ design: next, updatedAt: new Date().toISOString() }));
+            } catch {
+                // Draft persistence is best-effort and should not block editing.
+            }
             setHasUnsavedChanges(true);
+            setSaveError(false);
             return next;
         });
     }, []);
@@ -462,7 +476,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         }
     };
 
-    const applyStarterLayout = (type: 'promo' | 'product' | 'cart' | 'followup' | 'coupon') => {
+    const applyStarterLayout = (type: 'promo' | 'product' | 'cart' | 'followup' | 'coupon' | 'review') => {
         const logoUrl = brandLogoUrl;
         const heroCopy: Record<typeof type, string> = {
             promo: '<h2>Something new just landed</h2><p>Give customers a clear reason to click with a focused offer and one strong call to action.</p>',
@@ -470,6 +484,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
             cart: '<h2>You left something behind</h2><p>Your basket is still waiting. Complete checkout before your items sell out.</p>',
             followup: '<h2>Thanks for your order</h2><p>Here is everything you need to know about what happens next.</p>',
             coupon: '<h2>A little thank you</h2><p>Use this code on your next order before it expires.</p>',
+            review: '<h2>Share your experience</h2><p>Your feedback helps other shoppers and helps us keep improving every order.</p>',
         };
         setDirtyDesign((draft) => {
             draft.document.sections = [
@@ -494,7 +509,13 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         width: 100,
                         blocks: [
                             { id: createEmailDesignId('text'), type: 'text', props: { html: heroCopy[type], align: 'center', size: 16, lineHeight: 1.65 } },
-                            type === 'product' ? createBlock('product') : type === 'coupon' ? createBlock('coupon') : createBlock('button'),
+                            type === 'product'
+                                ? createBlock('product')
+                                : type === 'coupon'
+                                    ? createBlock('coupon')
+                                    : type === 'review'
+                                        ? createBlock('review')
+                                        : createBlock('button'),
                         ],
                     }],
                 },
@@ -518,15 +539,63 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         setLeftSidebarMode('checklist');
     };
 
-    const saveDesign = () => {
+    const persistLatestDesign = useCallback(async () => {
+        const nextDesign = latestDesignRef.current;
+        const serializedAtStart = JSON.stringify(nextDesign);
+        if (serializedAtStart === baselineDesignRef.current) return;
+
+        if (autosaveInFlightRef.current) {
+            autosaveAgainRef.current = true;
+            return;
+        }
+
+        autosaveInFlightRef.current = true;
         setSaving(true);
-        saveSnapshot(design);
-        onSave(html, design, { subject: design.document.meta.title, previewText: design.document.meta.previewText || '' });
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-        setHasUnsavedChanges(false);
-        setLastSavedAt(new Date());
-        setSaving(false);
-    };
+        setSaveError(false);
+
+        try {
+            await onSave(latestHtmlRef.current, nextDesign, {
+                subject: nextDesign.document.meta.title,
+                previewText: nextDesign.document.meta.previewText || '',
+                autosave: true,
+            });
+
+            try {
+                saveSnapshot(nextDesign);
+            } catch {
+                // Version history is best-effort and should not mark server autosave as failed.
+            }
+            baselineDesignRef.current = serializedAtStart;
+
+            if (JSON.stringify(latestDesignRef.current) === serializedAtStart) {
+                try {
+                    localStorage.removeItem(DRAFT_STORAGE_KEY);
+                } catch {
+                    // Ignore local draft cleanup failures.
+                }
+                setHasUnsavedChanges(false);
+                setLastSavedAt(new Date());
+            } else {
+                setHasUnsavedChanges(true);
+                autosaveAgainRef.current = true;
+            }
+        } catch {
+            setSaveError(true);
+            setHasUnsavedChanges(true);
+        } finally {
+            autosaveInFlightRef.current = false;
+            setSaving(false);
+
+            if (autosaveAgainRef.current) {
+                autosaveAgainRef.current = false;
+                if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+                autosaveTimerRef.current = window.setTimeout(() => {
+                    autosaveTimerRef.current = null;
+                    void persistLatestDesign();
+                }, 500);
+            }
+        }
+    }, [onSave, saveSnapshot]);
 
     const sendTestEmail = async () => {
         const recipient = testEmail.trim();
@@ -565,6 +634,59 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
             setSendingTest(false);
         }
     };
+
+    const handleClose = async () => {
+        if (autosaveTimerRef.current) {
+            window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+
+        if (hasUnsavedChanges) {
+            await persistLatestDesign();
+        }
+
+        onCancel();
+    };
+
+    useEffect(() => {
+        latestDesignRef.current = design;
+        latestHtmlRef.current = html;
+
+        if (!didMountRef.current) {
+            didMountRef.current = true;
+            baselineDesignRef.current = JSON.stringify(design);
+            return;
+        }
+
+        const serialized = JSON.stringify(design);
+        const dirty = serialized !== baselineDesignRef.current;
+        setHasUnsavedChanges(dirty);
+
+        if (autosaveTimerRef.current) {
+            window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+
+        if (!dirty) return;
+
+        try {
+            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ design, updatedAt: new Date().toISOString() }));
+        } catch {
+            // Draft persistence is best-effort. Server autosave still runs below.
+        }
+
+        autosaveTimerRef.current = window.setTimeout(() => {
+            autosaveTimerRef.current = null;
+            void persistLatestDesign();
+        }, 1000);
+
+        return () => {
+            if (autosaveTimerRef.current) {
+                window.clearTimeout(autosaveTimerRef.current);
+                autosaveTimerRef.current = null;
+            }
+        };
+    }, [design, html, persistLatestDesign]);
 
     useEffect(() => {
         const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
@@ -692,14 +814,13 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                        <span className={`hidden rounded-full px-2.5 py-1 text-xs font-semibold md:inline-flex ${hasUnsavedChanges ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                        <span className={`hidden rounded-full px-2.5 py-1 text-xs font-semibold md:inline-flex ${saveError ? 'bg-red-100 text-red-800' : hasUnsavedChanges || saving ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
                             {saveStatus}
                         </span>
                         <button onClick={runChecklist} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><ClipboardList size={16} />Checklist</button>
                         <button onClick={() => setLeftSidebarMode('history')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><History size={16} />History</button>
                         <button onClick={() => setLeftSidebarMode('test')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><Send size={16} />Test</button>
-                        <button onClick={onCancel} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><X size={16} />Close</button>
-                        <button onClick={saveDesign} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">{saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}Save</button>
+                        <button onClick={() => void handleClose()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{saving ? <Loader2 className="animate-spin" size={16} /> : <X size={16} />}Close</button>
                     </div>
                 </header>
 
@@ -746,6 +867,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                         ['cart', 'Abandoned cart'],
                                         ['followup', 'Order follow-up'],
                                         ['coupon', 'Coupon drop'],
+                                        ['review', 'Review request'],
                                     ] as const).map(([type, label]) => (
                                         <button key={type} onClick={() => applyStarterLayout(type)} className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Layers size={15} />{label}</button>
                                     ))}
@@ -1253,6 +1375,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'orderSummary' && <Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} />}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
+            {block.type === 'review' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Rating" value={block.props.rating} onChange={(value) => patchProps({ rating: value })} /><TextArea label="Review content" value={block.props.content} onChange={(value) => patchProps({ content: value })} /><Field label="Reviewer name" value={block.props.reviewer} onChange={(value) => patchProps({ reviewer: value })} /><Field label="Product name" value={block.props.productName} onChange={(value) => patchProps({ productName: value })} /><Field label="CTA label" value={block.props.ctaLabel} onChange={(value) => patchProps({ ctaLabel: value })} /><Field label="CTA URL" value={block.props.ctaHref} onChange={(value) => patchProps({ ctaHref: value })} /></>}
             {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
             {block.type === 'social' && <><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
             {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Email and is locked in the designer.</div>}
@@ -1356,7 +1479,7 @@ function HistoryPanel({ snapshots, onRestore }: { snapshots: Snapshot[]; onResto
     return (
         <div className="space-y-3">
             <p className="font-semibold text-slate-900 dark:text-white">Version history</p>
-            {snapshots.length === 0 ? <p className="text-sm text-slate-500">Save to create the first snapshot.</p> : snapshots.map((snapshot) => (
+            {snapshots.length === 0 ? <p className="text-sm text-slate-500">Autosave will create the first snapshot.</p> : snapshots.map((snapshot) => (
                 <button key={snapshot.id} onClick={() => onRestore(snapshot)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800">
                     {new Date(snapshot.createdAt).toLocaleString()} <span className="text-indigo-600">Restore</span>
                 </button>

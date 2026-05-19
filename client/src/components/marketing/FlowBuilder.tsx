@@ -66,43 +66,8 @@ const FLOW_DENSITY_KEY = 'overseek-flow-density';
 let id = 0;
 const getId = () => `node_${Date.now()}_${id++}`;
 
-interface ControlsProps {
-    onSave: (nodes: Node[], edges: Edge[]) => void;
-    onCancel: () => void;
-    isSaveDisabled?: boolean;
-    isSaving?: boolean;
-}
-
-const FlowControls: React.FC<ControlsProps> = ({ onSave, onCancel, isSaveDisabled = false, isSaving = false }) => {
-    const { getNodes, getEdges } = useReactFlow();
-
-    return (
-        <div className="flex gap-2 bg-white p-2 rounded-sm shadow-xs border">
-            <button
-                type="button"
-                className="nodrag nopan px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
-                onClick={onCancel}
-            >
-                Cancel
-            </button>
-            <button
-                type="button"
-                className="nodrag nopan px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={() => onSave(getNodes(), getEdges())}
-                disabled={isSaveDisabled}
-            >
-                {isSaving ? 'Saving...' : 'Save Flow'}
-            </button>
-        </div>
-    );
-};
-
 interface Props {
     initialFlow?: { nodes: Node[], edges: Edge[] } | null;
-    onSave: (flow: { nodes: Node[], edges: Edge[] }) => void;
-    onCancel: () => void;
-    isSaveDisabled?: boolean;
-    isSaving?: boolean;
     onFlowChange?: (flow: { nodes: Node[], edges: Edge[] }) => void;
     onUndoRedoStateChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
     onUndoRedoHandlersChange?: (handlers: { undo: () => void; redo: () => void }) => void;
@@ -111,11 +76,12 @@ interface Props {
     onViewNodeAnalytics?: (nodeId: string) => void;
 }
 
-const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, isSaveDisabled = false, isSaving = false, onFlowChange, onUndoRedoStateChange, onUndoRedoHandlersChange, invalidNodeIds = [], flowId, onViewNodeAnalytics }) => {
+const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndoRedoStateChange, onUndoRedoHandlersChange, invalidNodeIds = [], flowId, onViewNodeAnalytics }) => {
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+    const loadedFlowIdRef = useRef<string | null>(null);
 
     // Modal states
     const [showEventSelector, setShowEventSelector] = useState(false);
@@ -205,8 +171,12 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
         onUndoRedoHandlersChange?.({ undo, redo });
     }, [undo, redo, onUndoRedoHandlersChange]);
 
-    // Load initial flow - start with empty canvas if no existing flow
+    // Load initial flow once per flow id. Autosave responses must not reset the active canvas.
     useEffect(() => {
+        const nextFlowId = flowId || '__new_flow__';
+        if (loadedFlowIdRef.current === nextFlowId) return;
+        loadedFlowIdRef.current = nextFlowId;
+
         if (initialFlow && initialFlow.nodes && initialFlow.nodes.length > 0) {
             setNodes(initialFlow.nodes);
             setEdges(initialFlow.edges || []);
@@ -222,7 +192,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
         }
         historyIndexRef.current = 0;
         onUndoRedoStateChange?.({ canUndo: false, canRedo: false });
-    }, [initialFlow, onUndoRedoStateChange, setNodes, setEdges]);
+    }, [flowId, initialFlow, onUndoRedoStateChange, setNodes, setEdges]);
 
     useEffect(() => {
         pushHistorySnapshot(nodes, edges);
@@ -820,14 +790,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     <Controls />
                     <MiniMap pannable zoomable className="!bg-white/90 !border !border-gray-200 !rounded-lg" />
                     <Background color="#e2e8f0" gap={16} />
-                    <Panel position="top-right">
-                        <FlowControls
-                            onSave={(n, e) => onSave({ nodes: n, edges: e })}
-                            onCancel={onCancel}
-                            isSaveDisabled={isSaveDisabled}
-                            isSaving={isSaving}
-                        />
-                    </Panel>
                     <Panel position="top-left">
                         <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm p-1 rounded-lg shadow-xs border border-slate-200">
                             <button

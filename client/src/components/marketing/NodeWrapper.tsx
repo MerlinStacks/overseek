@@ -88,12 +88,13 @@ interface NodeWrapperProps {
     onMove?: OnMoveNodeCallback;
     onDelete?: OnDeleteNodeCallback;
     statOrder?: Array<'active' | 'queued' | 'completed' | 'skipped' | 'failed'>;
+    onStatsClick?: () => void;
     density?: 'compact' | 'comfortable';
 }
 
 export const NodeWrapper: React.FC<NodeWrapperProps> = ({
     children, title, subtitle, icon, iconBgColor, borderColor, bgColor = 'bg-white',
-    stepNumber, stats, onSettingsClick, nodeId, onAddStep, showAddButton = true, onCopy, onMove, onDelete, statOrder, density = 'comfortable'
+    stepNumber, stats, onSettingsClick, nodeId, onAddStep, showAddButton = true, onCopy, onMove, onDelete, statOrder, onStatsClick, density = 'comfortable'
 }) => {
     const isCompact = density === 'compact';
 
@@ -122,20 +123,37 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
                     failed: { label: 'Failed', value: stats.failed ?? 0, badgeClass: 'bg-red-100 text-red-700 border-red-200' },
                 };
                 const visibleStats = order
-                    .map((key) => ({ key, ...meta[key] }))
-                    .filter((entry) => entry.value > 0);
+                    .map((key) => ({ key, ...meta[key] }));
 
                 if (visibleStats.length === 0) return null;
 
                 return (
-                    <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${isCompact ? 'px-3 py-2' : 'px-4 py-2.5'} bg-slate-50 border-t border-slate-200 text-[11px]`}>
-                        {visibleStats.map((entry) => (
-                            <div key={entry.key} className="flex items-center gap-1">
-                                <span className="text-slate-700">{entry.label}</span>
-                                <span className={`px-2 py-0.5 rounded-full border font-semibold ${entry.badgeClass}`}>{entry.value.toLocaleString()}</span>
-                            </div>
-                        ))}
-                    </div>
+                    onStatsClick ? (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onStatsClick();
+                            }}
+                            className={`w-full flex flex-wrap items-center gap-x-3 gap-y-1 text-left ${isCompact ? 'px-3 py-2' : 'px-4 py-2.5'} bg-slate-50 border-t border-slate-200 text-[11px] cursor-pointer hover:bg-slate-100 transition-colors`}
+                        >
+                            {visibleStats.map((entry) => (
+                                <div key={entry.key} className="flex items-center gap-1">
+                                    <span className="text-slate-700">{entry.label}</span>
+                                    <span className={`px-2 py-0.5 rounded-full border font-semibold ${entry.badgeClass}`}>{entry.value.toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </button>
+                    ) : (
+                        <div className={`w-full flex flex-wrap items-center gap-x-3 gap-y-1 ${isCompact ? 'px-3 py-2' : 'px-4 py-2.5'} bg-slate-50 border-t border-slate-200 text-[11px]`}>
+                            {visibleStats.map((entry) => (
+                                <div key={entry.key} className="flex items-center gap-1">
+                                    <span className="text-slate-700">{entry.label}</span>
+                                    <span className={`px-2 py-0.5 rounded-full border font-semibold ${entry.badgeClass}`}>{entry.value.toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )
                 );
             })()}
         </div>

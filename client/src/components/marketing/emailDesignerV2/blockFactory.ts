@@ -1,7 +1,7 @@
-import { Box, Code2, Download, ImageIcon, List, Menu, Minus, PanelTop, RectangleHorizontal, Share2, Smartphone, Ticket, Type } from 'lucide-react';
+import { Box, Code2, Download, ImageIcon, List, Menu, MessageSquareQuote, Minus, PanelTop, RectangleHorizontal, Share2, Smartphone, Ticket, Type } from 'lucide-react';
 import { createEmailDesignId, type EmailBlock } from '../../../lib/emailDesignerV2';
 
-export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'coupon' | 'invoiceDownload';
+export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'coupon' | 'review' | 'invoiceDownload';
 
 export interface PaletteItem {
     key: PaletteKey;
@@ -23,6 +23,7 @@ export const paletteItems: PaletteItem[] = [
     { key: 'footer', label: 'Footer', group: 'General', icon: Smartphone },
     { key: 'product', label: 'Product', group: 'WooCommerce', icon: Box },
     { key: 'coupon', label: 'Coupon', group: 'WooCommerce', icon: Ticket },
+    { key: 'review', label: 'Review', group: 'WooCommerce', icon: MessageSquareQuote },
     { key: 'invoiceDownload', label: 'Invoice Download', group: 'WooCommerce', icon: Download },
 ];
 
@@ -58,6 +59,7 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     if (type === 'orderSummary') return { id, type, props: { heading: 'Order summary', showTotals: true } };
     if (type === 'address') return { id, type, props: { title: 'Shipping address', source: 'shipping' } };
     if (type === 'coupon') return { id, type, props: { headline: 'Your exclusive offer', code: '{{coupon.code}}', description: '{{coupon.description}}' } };
+    if (type === 'review') return { id, type, props: { headline: 'How did we do?', rating: '{{review.rating}}', content: '{{review.content}}', reviewer: '{{review.reviewer}}', productName: '{{review.productName}}', ctaLabel: 'Write your review', ctaHref: '{{review.productUrl}}' } };
     if (type === 'menu') return { id, type, props: { links: [{ label: 'Shop', href: '{{store_url}}' }, { label: 'Account', href: '{{store_url}}/account' }, { label: 'Contact', href: '{{store_url}}/contact' }], align: 'center' } };
     if (type === 'social') return { id, type, props: { links: defaultSocialLinks, align: 'center', iconStyle: 'solid' } };
     if (type === 'footer') return { id, type, props: { html: createAccountFooterHtml('Your Store'), align: 'center' } };

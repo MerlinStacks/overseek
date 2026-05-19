@@ -13,6 +13,7 @@ interface MergeTagContext {
     customer?: any;
     product?: any;
     coupon?: any;
+    review?: any;
     cart?: any;
     store?: {
         url?: string;
@@ -127,6 +128,16 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         result = result.replace(/\{\{cart\.total\}\}/g, formatCurrency(cart.total ?? cart.cartValue, cart.currency));
         result = result.replace(/\{\{cart\.currency\}\}/g, cart.currency || '');
         result = result.replace(/\{\{cart\.itemsTable\}\}/g, renderOrderItemsTable(cart.items || cart.cartItems || []));
+    }
+
+    // Review merge tags
+    if (context.review) {
+        const review = context.review;
+        result = result.replace(/\{\{review\.reviewer\}\}/g, review.reviewer || review.reviewerName || '');
+        result = result.replace(/\{\{review\.rating\}\}/g, review.rating ? String(review.rating) : '');
+        result = result.replace(/\{\{review\.content\}\}/g, review.content || review.review || '');
+        result = result.replace(/\{\{review\.productName\}\}/g, review.productName || review.product_name || '');
+        result = result.replace(/\{\{review\.productUrl\}\}/g, review.productUrl || review.product_url || '');
     }
 
     return result;

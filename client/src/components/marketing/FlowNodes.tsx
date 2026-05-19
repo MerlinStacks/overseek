@@ -4,7 +4,7 @@
  */
 import { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { Clock, Split, Eye } from 'lucide-react';
+import { Clock, Split } from 'lucide-react';
 import { NodeWrapper } from './NodeWrapper';
 import {
     NodeStats, OnAddStepCallback, OnCopyNodeCallback, OnDeleteNodeCallback,
@@ -56,6 +56,7 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
+    const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
     const triggerLabel = getTriggerLabel(config);
 
@@ -75,7 +76,8 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
                 onAddStep={onAddStep}
                 onCopy={onCopy}
                 onDelete={onDelete}
-                statOrder={['active', 'completed']}
+                statOrder={['queued', 'completed', 'skipped', 'failed']}
+                onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
             >
                 <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">Flow trigger</div>
@@ -119,7 +121,8 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                 showAddButton={!isExitNode}
                 onCopy={onCopy}
                 onDelete={onDelete}
-                statOrder={['completed', 'skipped', 'failed', 'queued', 'active']}
+                statOrder={['queued', 'completed', 'skipped', 'failed']}
+                onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
             >
                 <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">{config?.actionType === 'SEND_EMAIL' ? 'Email step' : 'Action step'}</div>
@@ -127,18 +130,6 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                 {config?.subject
                     ? <div className="text-xs text-slate-600 truncate mt-1.5 max-w-[240px]">{config.subject}</div>
                     : <div className="text-xs text-slate-500 mt-1.5">Set up this step in the sidebar.</div>}
-                {config?.actionType === 'SEND_EMAIL' && (
-                    <button
-                        type="button"
-                        className="mt-2.5 inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onViewAnalytics?.(id);
-                        }}
-                    >
-                        <Eye size={12} />View Analytics
-                    </button>
-                )}
             </NodeWrapper>
             {!isExitNode && <Handle type="source" position={Position.Bottom} className="!w-0 !h-0 !bg-transparent !border-0 !shadow-none !opacity-0" />}
         </>
@@ -156,6 +147,7 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
+    const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
 
     const duration = config?.duration || 1;
@@ -181,7 +173,8 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
                 onAddStep={onAddStep}
                 onCopy={onCopy}
                 onDelete={onDelete}
-                statOrder={['queued', 'completed']}
+                statOrder={['queued', 'completed', 'skipped', 'failed']}
+                onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
             >
                 <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">Wait step</div>
@@ -204,6 +197,7 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
     const onAddConditionBranch = data.onAddConditionBranch as ((nodeId: string, sourceHandle: 'true' | 'false', position: { x: number; y: number }) => void) | undefined;
     const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
+    const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
 
     const conditionRules = Array.isArray(config?.conditions)
@@ -232,6 +226,8 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
                 showAddButton={false}
                 onCopy={onCopy}
                 onDelete={onDelete}
+                statOrder={['queued', 'completed', 'skipped', 'failed']}
+                onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
             >
                 <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 mb-2">Branch logic</div>

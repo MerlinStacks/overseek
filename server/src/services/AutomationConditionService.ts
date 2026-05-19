@@ -146,6 +146,8 @@ export class AutomationConditionService {
                 return Boolean(context.email?.opened);
             case 'email.clicked':
                 return Boolean(context.email?.clicked);
+            case 'inbox.customerSentEmail':
+                return Boolean(context.customer?.hasInboxEmail || context.inbox?.customerSentEmail);
             case 'date.dayOfWeek':
                 return new Date().getDay();
             case 'date.hour':

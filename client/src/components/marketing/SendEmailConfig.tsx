@@ -47,6 +47,7 @@ const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: s
     { id: 'order', label: 'Order' },
     { id: 'product', label: 'Product' },
     { id: 'coupon', label: 'Coupon' },
+    { id: 'review', label: 'Review' },
     { id: 'cart', label: 'Cart' },
     { id: 'general', label: 'General' },
 ];
@@ -85,7 +86,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
         setShowTemplateSelector(false);
     };
 
-    const handleVisualBuilderSave = (html: string, design: unknown, meta?: { subject: string; previewText: string }) => {
+    const handleVisualBuilderSave = (html: string, design: unknown, meta?: { subject: string; previewText: string; autosave?: boolean }) => {
         const updates: Record<string, unknown> = {
             htmlContent: html,
             designJson: design,
@@ -101,7 +102,9 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
         } else {
             Object.entries(updates).forEach(([key, value]) => onUpdate(key, value));
         }
-        setShowVisualBuilder(false);
+        if (!meta?.autosave) {
+            setShowVisualBuilder(false);
+        }
     };
 
     const handleRichTextChange = (value: string) => {

@@ -67,6 +67,7 @@ export type EmailBlock =
     | OrderSummaryBlock
     | AddressBlock
     | CouponBlock
+    | ReviewBlock
     | MenuBlock
     | SocialBlock
     | FooterBlock
@@ -200,6 +201,19 @@ export interface CouponBlock extends BaseBlock {
         headline: string;
         code: string;
         description: string;
+    };
+}
+
+export interface ReviewBlock extends BaseBlock {
+    type: 'review';
+    props: {
+        headline: string;
+        rating: string;
+        content: string;
+        reviewer: string;
+        productName: string;
+        ctaLabel: string;
+        ctaHref: string;
     };
 }
 
@@ -682,6 +696,12 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#eef2ff;border:1px dashed ${theme.primaryColor};border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'center'};"><p style="margin:0 0 6px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline)}</p><p style="margin:0 0 8px;color:${theme.primaryColor};font-size:22px;font-weight:800;letter-spacing:1px;">${escapeHtml(block.props.code || '{{coupon.code}}')}</p><p style="margin:0;color:${theme.mutedTextColor};line-height:1.5;">${escapeHtml(block.props.description || '{{coupon.description}}')}</p></div>`;
     }
 
+    if (block.type === 'review') {
+        const ratingNumber = Math.min(5, Math.max(1, Number(block.props.rating || '5') || 5));
+        const stars = '&#9733;'.repeat(ratingNumber);
+        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#fffbeb;border:1px solid #fde68a;border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'left'};"><p style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p><p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p><p style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p><p style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${escapeHtml(block.props.reviewer || '{{review.reviewer}}')} on ${escapeHtml(block.props.productName || '{{review.productName}}')}</p><a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.productUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a></div>`;
+    }
+
     if (block.type === 'social') {
         const props = block.props;
         const links = props.links.map((link) => renderSocialIconLink(link.label, toAbsoluteUrl(link.href), link.iconStyle || props.iconStyle || 'solid', props.color || theme.primaryColor)).join('');
@@ -775,6 +795,7 @@ export function getEmailDesignV2BlockLabel(block: EmailBlock): string {
         orderSummary: 'Order Summary',
         address: 'Address',
         coupon: 'Coupon',
+        review: 'Review',
         menu: 'Menu',
         social: 'Social',
         footer: 'Footer',

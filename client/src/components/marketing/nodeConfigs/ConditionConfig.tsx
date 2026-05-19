@@ -210,6 +210,7 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
             { field: 'email.openedRecent', label: 'Opened email in last X days', operators: ['eq'] },
             { field: 'email.clicked', label: 'Clicked any link', operators: ['eq'] },
             { field: 'email.clickedRecent', label: 'Clicked link in last X days', operators: ['eq'] },
+            { field: 'inbox.customerSentEmail', label: 'Sent any email to inbox', operators: ['eq'] },
         ]
     },
     {
@@ -502,7 +503,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             );
         }
 
-        if (cond.field === 'user.isLoggedIn') {
+        if (cond.field === 'user.isLoggedIn' || cond.field === 'inbox.customerSentEmail') {
             return (
                 <select
                     value={cond.value || ''}
@@ -632,7 +633,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             return formatStatusLabel(cond.value);
         }
 
-        if (cond.field === 'user.isLoggedIn') {
+        if (cond.field === 'user.isLoggedIn' || cond.field === 'inbox.customerSentEmail') {
             if (cond.value === 'true') return 'Yes';
             if (cond.value === 'false') return 'No';
         }

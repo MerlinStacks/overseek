@@ -10,6 +10,7 @@ const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: s
     { id: 'order', label: 'Order' },
     { id: 'product', label: 'Product' },
     { id: 'coupon', label: 'Coupon' },
+    { id: 'review', label: 'Review' },
     { id: 'cart', label: 'Cart' },
     { id: 'general', label: 'General' },
 ];
@@ -46,6 +47,17 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
                 if (draft.type === 'coupon') draft.props.headline = nextHeadline;
             });
         }} style={{ margin: '0 0 6px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{block.props.headline}</p><p style={{ margin: '0 0 8px', color: theme.primaryColor, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>{block.props.code || '{{coupon.code}}'}</p><p style={{ margin: 0, color: theme.mutedTextColor, lineHeight: 1.5 }}>{block.props.description || '{{coupon.description}}'}</p></div>;
+    }
+    if (block.type === 'review') {
+        const ratingNumber = Math.min(5, Math.max(1, Number(block.props.rating || '5') || 5));
+        const stars = '★'.repeat(ratingNumber);
+        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px', margin: '8px 0', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: theme.borderRadius, textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }}><p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+            normalizeEditorDirection(event.currentTarget);
+            const nextHeadline = sanitizeRtlText(event.currentTarget.textContent || '');
+            onUpdate((draft) => {
+                if (draft.type === 'review') draft.props.headline = nextHeadline;
+            });
+        }} style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{block.props.headline || 'Customer review'}</p><p style={{ margin: '0 0 8px', color: '#b45309', fontSize: 18, letterSpacing: 1 }}>{stars}</p><p style={{ margin: '0 0 10px', color: theme.textColor, lineHeight: 1.6 }}>{block.props.content || '{{review.content}}'}</p><p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13 }}>- {block.props.reviewer || '{{review.reviewer}}'} on {block.props.productName || '{{review.productName}}'}</p><span style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700 }}>{block.props.ctaLabel || 'Write your review'}</span></div>;
     }
     if (block.type === 'social') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => { const iconStyle = link.iconStyle || block.props.iconStyle || 'solid'; return <span key={`${link.label}-${index}`} style={getSocialPreviewStyle(iconStyle, block.props.color || theme.primaryColor)} title={link.label}><span dangerouslySetInnerHTML={{ __html: getSocialIconSvg(link.label, iconStyle, block.props.color || theme.primaryColor) }} /></span>; })}</div>;

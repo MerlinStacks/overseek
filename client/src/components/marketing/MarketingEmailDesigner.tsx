@@ -8,7 +8,7 @@ interface Props {
     initialDesign?: unknown;
     initialSubject?: string;
     initialPreviewText?: string;
-    onSave: (html: string, design: unknown, meta?: { subject: string; previewText: string }) => void;
+    onSave: (html: string, design: unknown, meta?: { subject: string; previewText: string; autosave?: boolean }) => void | Promise<void>;
     onCancel: () => void;
 }
 

@@ -40,7 +40,7 @@ interface FlowDraftPayload {
     savedAt: string;
 }
 
-type SaveIndicatorState = 'saved' | 'saving' | 'unsaved';
+type SaveIndicatorState = 'saved' | 'saving' | 'unsaved' | 'error';
 
 function areStringArraysEqual(left: string[], right: string[]): boolean {
     if (left.length !== right.length) return false;
@@ -48,6 +48,12 @@ function areStringArraysEqual(left: string[], right: string[]): boolean {
         if (left[index] !== right[index]) return false;
     }
     return true;
+}
+
+function sanitizeFlowDefinition(flow: FlowDefinition): FlowDefinition {
+    return JSON.parse(JSON.stringify(flow, (_key, value) => (
+        typeof value === 'function' ? undefined : value
+    ))) as FlowDefinition;
 }
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);
@@ -74,87 +80,6 @@ function getDelayNodeError(config: Record<string, unknown>): string | null {
 
     if (!ALLOWED_DELAY_UNITS.has(unit)) {
         return 'has an invalid time unit';
-    }
-
-    return null;
-}
-
-function validateFlowDefinition(flow: FlowDefinition): string | null {
-    const nodes = flow.nodes || [];
-    const edges = flow.edges || [];
-
-    if (nodes.length === 0) return 'Add at least one node to the flow.';
-
-    const triggerNodes = nodes.filter((node) => String(node.type).toLowerCase() === 'trigger');
-    if (triggerNodes.length === 0) return 'Flow must include a trigger node.';
-    if (triggerNodes.length > 1) return 'Flow can only have one trigger node.';
-
-    const nodeIds = new Set(nodes.map((node) => node.id));
-    const incoming = new Map<string, number>();
-    for (const node of nodes) incoming.set(node.id, 0);
-    for (const edge of edges) {
-        if (nodeIds.has(edge.target)) {
-            incoming.set(edge.target, (incoming.get(edge.target) || 0) + 1);
-        }
-    }
-
-    for (const node of nodes) {
-        if (node.id !== triggerNodes[0].id && (incoming.get(node.id) || 0) === 0) {
-            return `Node "${(node.data as { label?: string } | undefined)?.label || node.id}" is disconnected.`;
-        }
-
-        const config = (node.data as { config?: Record<string, unknown> } | undefined)?.config || {};
-        if (node.type === 'delay') {
-            const delayError = getDelayNodeError(config);
-            if (delayError) {
-                return `Delay node "${(node.data as { label?: string } | undefined)?.label || node.id}" ${delayError}.`;
-            }
-        }
-        if (node.type === 'action' && typeof config.actionType !== 'string') {
-            return `Action node "${(node.data as { label?: string } | undefined)?.label || node.id}" is missing action type.`;
-        }
-        if (node.type === 'condition') {
-            const conditions = Array.isArray(config.conditions)
-                ? config.conditions.filter((rule) => (
-                    rule
-                    && typeof rule === 'object'
-                    && (rule as { field?: unknown }).field
-                    && (rule as { operator?: unknown }).operator
-                    && hasConditionValue(rule as { operator?: unknown; value?: unknown })
-                ))
-                : [];
-            const hasLegacyCondition = Boolean(
-                config.field
-                && config.operator
-                && hasConditionValue(config as { operator?: unknown; value?: unknown })
-            );
-            if (conditions.length === 0 && !hasLegacyCondition) {
-                return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" is incomplete.`;
-            }
-            const trueBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'true');
-            const falseBranch = edges.some((edge) => edge.source === node.id && edge.sourceHandle === 'false');
-            if (!trueBranch || !falseBranch) {
-                return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" requires both YES and NO branches.`;
-            }
-
-            const outgoing = edges.filter((edge) => edge.source === node.id);
-            if (outgoing.length > 2) {
-                return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" can only have YES and NO branches.`;
-            }
-
-            const duplicateTrue = outgoing.filter((edge) => edge.sourceHandle === 'true').length > 1;
-            const duplicateFalse = outgoing.filter((edge) => edge.sourceHandle === 'false').length > 1;
-            if (duplicateTrue || duplicateFalse) {
-                return `Condition node "${(node.data as { label?: string } | undefined)?.label || node.id}" has duplicate branch connections.`;
-            }
-        }
-
-        if (node.type !== 'condition') {
-            const outgoing = edges.filter((edge) => edge.source === node.id).length;
-            if (outgoing > 1) {
-                return `Node "${(node.data as { label?: string } | undefined)?.label || node.id}" cannot branch to multiple paths.`;
-            }
-        }
     }
 
     return null;
@@ -373,7 +298,6 @@ export function FlowsPage() {
     const [recentEnrollments, setRecentEnrollments] = useState<EnrollmentRow[]>([]);
     const [recentRunEvents, setRecentRunEvents] = useState<RunEventRow[]>([]);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-    const [isSavingFlow, setIsSavingFlow] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
     const [toastVisible, setToastVisible] = useState(false);
     const [toastType, setToastType] = useState<ToastType>('error');
@@ -391,10 +315,15 @@ export function FlowsPage() {
     const [isNodeAnalyticsLoading, setIsNodeAnalyticsLoading] = useState(false);
     const [expandedJourneyEnrollmentId, setExpandedJourneyEnrollmentId] = useState<string | null>(null);
     const [activeEditorTab, setActiveEditorTab] = useState<'flow' | 'insights'>('flow');
+    const [flowBuilderRevision, setFlowBuilderRevision] = useState(0);
 
     const baselineFlowRef = useRef<string>('');
     const autosaveTimerRef = useRef<number | null>(null);
     const undoRedoHandlersRef = useRef<{ undo: () => void; redo: () => void } | null>(null);
+    const latestFlowRef = useRef<FlowDefinition | null>(null);
+    const latestSerializedFlowRef = useRef<string>('');
+    const autosaveInFlightRef = useRef(false);
+    const autosaveAgainRef = useRef(false);
 
     const showToast = (message: string, type: ToastType = 'error') => {
         setToastMessage(message);
@@ -481,6 +410,9 @@ export function FlowsPage() {
             setEditingItem({ id, name: resolvedName });
             setIsEditing(true);
             baselineFlowRef.current = serializeFlow(data.flowDefinition as FlowDefinition | undefined);
+            latestFlowRef.current = (data.flowDefinition as FlowDefinition | undefined) || { nodes: [], edges: [] };
+            latestSerializedFlowRef.current = baselineFlowRef.current;
+            autosaveAgainRef.current = false;
             setIsDirty(false);
             setSaveState('saved');
             setInvalidNodeIds(getInvalidNodeIds((data.flowDefinition as FlowDefinition | undefined) || { nodes: [], edges: [] }));
@@ -525,12 +457,108 @@ export function FlowsPage() {
         void handleEditFlow(flowId);
     }, [searchParams, isEditing, token, currentAccount, handleEditFlow, isClosingEditor, activeEditorTab]);
 
+    const persistLatestFlow = useCallback(async () => {
+        if (!editingItem || !editingFlowData) return;
+        if (!currentAccount || !token) {
+            setSaveState('error');
+            return;
+        }
+
+        if (autosaveInFlightRef.current) {
+            autosaveAgainRef.current = true;
+            return;
+        }
+
+        const flow = latestFlowRef.current;
+        if (!flow) return;
+
+        const serializedAtStart = latestSerializedFlowRef.current;
+        if (!serializedAtStart || serializedAtStart === baselineFlowRef.current) {
+            setSaveState('saved');
+            return;
+        }
+
+        autosaveInFlightRef.current = true;
+        setSaveState('saving');
+
+        try {
+            const normalizedFlow = sanitizeFlowDefinition(flow);
+            const triggerNode = normalizedFlow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
+            const triggerConfig =
+                (triggerNode?.data as Record<string, unknown> | undefined)?.config as Record<string, unknown> | undefined;
+            const triggerType =
+                typeof triggerConfig?.triggerType === 'string'
+                    ? triggerConfig.triggerType
+                    : (editingFlowData?.triggerType || 'NONE');
+
+            const payload = {
+                ...(editingFlowData || {}),
+                id: editingItem.id,
+                name: editingItem.name,
+                flowDefinition: normalizedFlow,
+                triggerType,
+                triggerConfig: triggerConfig || editingFlowData?.triggerConfig || {},
+                isActive: editingFlowData?.isActive ?? true
+            };
+
+            const res = await fetch('/api/marketing/automations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => null);
+                throw new Error(errorData?.error || 'Failed to autosave flow');
+            }
+
+            const updated: FlowRecord = await res.json();
+            setEditingFlowData((previous) => previous ? {
+                ...previous,
+                ...updated,
+                flowDefinition: previous.flowDefinition,
+            } : updated);
+
+            baselineFlowRef.current = serializedAtStart;
+
+            if (latestSerializedFlowRef.current === serializedAtStart) {
+                const draftKey = getDraftKey(editingItem.id);
+                if (draftKey) window.localStorage.removeItem(draftKey);
+                setIsDirty(false);
+                setSaveState('saved');
+            } else {
+                setIsDirty(true);
+                setSaveState('unsaved');
+                autosaveAgainRef.current = true;
+            }
+        } catch (error) {
+            Logger.error('Failed to autosave flow', { error });
+            setSaveState('error');
+        } finally {
+            autosaveInFlightRef.current = false;
+            if (autosaveAgainRef.current) {
+                autosaveAgainRef.current = false;
+                if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+                autosaveTimerRef.current = window.setTimeout(() => {
+                    autosaveTimerRef.current = null;
+                    void persistLatestFlow();
+                }, 500);
+            }
+        }
+    }, [currentAccount, editingFlowData, editingItem, getDraftKey, token]);
+
     const handleFlowChange = useCallback((flow: FlowDefinition) => {
         if (!editingItem || !editingFlowData) return;
         const draftKey = getDraftKey(editingItem.id);
         if (!draftKey) return;
 
         const current = serializeFlow(flow);
+        latestFlowRef.current = flow;
+        latestSerializedFlowRef.current = current;
         const dirty = current !== baselineFlowRef.current;
         setIsDirty(dirty);
         setSaveState(dirty ? 'unsaved' : 'saved');
@@ -554,31 +582,33 @@ export function FlowsPage() {
         }
 
         try {
-            setSaveState('saving');
-            autosaveTimerRef.current = window.setTimeout(() => {
-                try {
-                    const payload: FlowDraftPayload = {
-                        flowDefinition: flow,
-                        savedAt: new Date().toISOString()
-                    };
-                    window.localStorage.setItem(draftKey, JSON.stringify(payload));
-                    setSaveState('unsaved');
-                } catch (error) {
-                    Logger.warn('Failed to persist flow draft to localStorage', { error, flowId: editingItem.id });
-                }
-            }, 700);
+            const payload: FlowDraftPayload = {
+                flowDefinition: sanitizeFlowDefinition(flow),
+                savedAt: new Date().toISOString()
+            };
+            window.localStorage.setItem(draftKey, JSON.stringify(payload));
         } catch (error) {
             Logger.warn('Failed to persist flow draft to localStorage', { error, flowId: editingItem.id });
         }
-    }, [editingItem, editingFlowData, getDraftKey]);
+
+        autosaveTimerRef.current = window.setTimeout(() => {
+            autosaveTimerRef.current = null;
+            void persistLatestFlow();
+        }, 1000);
+    }, [editingItem, editingFlowData, getDraftKey, persistLatestFlow]);
 
     const handleRequestCloseEditor = useCallback(() => {
         if (isDirty) {
+            if (autosaveTimerRef.current) {
+                window.clearTimeout(autosaveTimerRef.current);
+                autosaveTimerRef.current = null;
+            }
+            void persistLatestFlow();
             setPendingClose(true);
             return;
         }
         handleCloseEditor();
-    }, [isDirty, handleCloseEditor]);
+    }, [isDirty, handleCloseEditor, persistLatestFlow]);
 
     useEffect(() => {
         if (!isEditing) return;
@@ -602,6 +632,12 @@ export function FlowsPage() {
         window.addEventListener('beforeunload', onBeforeUnload);
         return () => window.removeEventListener('beforeunload', onBeforeUnload);
     }, [isEditing, editingItem, isDirty]);
+
+    useEffect(() => {
+        if (!pendingClose || isDirty || saveState !== 'saved') return;
+        setPendingClose(false);
+        handleCloseEditor();
+    }, [handleCloseEditor, isDirty, pendingClose, saveState]);
 
     useEffect(() => {
         const loadAutomationInsights = async () => {
@@ -682,87 +718,6 @@ export function FlowsPage() {
         loadNodeAnalytics();
     }, [currentAccount, editingItem, nodeAnalyticsNodeId, nodeAnalyticsPage, nodeAnalyticsStatus, token]);
 
-    const handleSaveFlow = async (flow: FlowDefinition) => {
-        if (!editingItem || !currentAccount || !token) {
-            showToast('Missing account or session context. Refresh and try again.');
-            return;
-        }
-
-        const normalizedFlow = JSON.parse(JSON.stringify(flow, (_key, value) => (
-            typeof value === 'function' ? undefined : value
-        ))) as FlowDefinition;
-
-        const validationError = validateFlowDefinition(normalizedFlow);
-        if (validationError) {
-            showToast(validationError);
-            return;
-        }
-
-        if (autosaveTimerRef.current) {
-            window.clearTimeout(autosaveTimerRef.current);
-            autosaveTimerRef.current = null;
-        }
-
-        setIsSavingFlow(true);
-        try {
-            const triggerNode = normalizedFlow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
-            const triggerConfig =
-                (triggerNode?.data as Record<string, unknown> | undefined)?.config as Record<string, unknown> | undefined;
-            const triggerType =
-                typeof triggerConfig?.triggerType === 'string'
-                    ? triggerConfig.triggerType
-                    : (editingFlowData?.triggerType || 'NONE');
-
-            const payload = {
-                ...(editingFlowData || {}),
-                id: editingItem.id,
-                name: editingItem.name,
-                flowDefinition: normalizedFlow,
-                triggerType,
-                triggerConfig: triggerConfig || editingFlowData?.triggerConfig || {},
-                isActive: editingFlowData?.isActive ?? true
-            };
-
-            const res = await fetch('/api/marketing/automations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!res.ok) {
-                const errorData = await res.json().catch(() => null);
-                throw new Error(errorData?.error || 'Failed to save flow');
-            }
-
-            const updated: FlowRecord = await res.json();
-            setEditingFlowData(updated);
-
-            const draftKey = getDraftKey(editingItem.id);
-            if (draftKey) {
-                if (autosaveTimerRef.current) {
-                    window.clearTimeout(autosaveTimerRef.current);
-                    autosaveTimerRef.current = null;
-                }
-                window.localStorage.removeItem(draftKey);
-            }
-
-            baselineFlowRef.current = serializeFlow((updated.flowDefinition as FlowDefinition | undefined) || normalizedFlow);
-            setIsDirty(false);
-            setSaveState('saved');
-
-            showToast('Flow saved', 'success');
-        } catch (error) {
-            Logger.error('An error occurred', { error });
-            showToast('Failed to save flow');
-        } finally {
-            setIsSavingFlow(false);
-        }
-    };
-
     const handleRestoreDraft = () => {
         if (!recoveryPrompt || !editingFlowData) return;
         const draftKey = getDraftKey(recoveryPrompt.flowId);
@@ -790,6 +745,9 @@ export function FlowsPage() {
                     flowDefinition: parsedDraft.flowDefinition,
                 };
             });
+            latestFlowRef.current = parsedDraft.flowDefinition;
+            latestSerializedFlowRef.current = serializeFlow(parsedDraft.flowDefinition);
+            setFlowBuilderRevision((revision) => revision + 1);
             setIsDirty(true);
             setSaveState('unsaved');
             setInvalidNodeIds(getInvalidNodeIds(parsedDraft.flowDefinition));
@@ -874,10 +832,12 @@ export function FlowsPage() {
                                 <div className="mt-1 flex items-center gap-2 text-xs">
                                     <span className={`rounded-full px-2 py-0.5 font-medium ${saveState === 'saving'
                                         ? 'bg-amber-100 text-amber-800'
-                                        : isDirty
-                                            ? 'bg-blue-100 text-blue-800'
-                                            : 'bg-green-100 text-green-800'}`}>
-                                        {saveState === 'saving' ? 'Saving draft...' : isDirty ? 'Unsaved changes' : 'All changes saved'}
+                                        : saveState === 'error'
+                                            ? 'bg-red-100 text-red-800'
+                                            : isDirty
+                                                ? 'bg-blue-100 text-blue-800'
+                                                : 'bg-green-100 text-green-800'}`}>
+                                        {saveState === 'saving' ? 'Autosaving...' : saveState === 'error' ? 'Autosave failed, draft kept' : isDirty ? 'Autosave pending' : 'All changes saved'}
                                     </span>
                                 </div>
                             </div>
@@ -948,11 +908,8 @@ export function FlowsPage() {
                         <div className="flex-1 overflow-hidden">
                             <ErrorBoundary>
                                 <FlowBuilder
+                                    key={`${editingItem?.id || 'flow'}:${flowBuilderRevision}`}
                                     initialFlow={editingFlowData?.flowDefinition}
-                                    onSave={handleSaveFlow}
-                                    onCancel={handleRequestCloseEditor}
-                                    isSaveDisabled={isUpdatingStatus || isSavingFlow}
-                                    isSaving={isSavingFlow}
                                     onFlowChange={handleFlowChange}
                                     onUndoRedoStateChange={setUndoRedoState}
                                     onUndoRedoHandlersChange={(handlers) => {
@@ -1256,12 +1213,12 @@ export function FlowsPage() {
                 <Modal
                     isOpen={pendingClose}
                     onClose={() => setPendingClose(false)}
-                    title="Discard unsaved changes?"
+                    title="Autosave still pending"
                     maxWidth="max-w-md"
                 >
                     <div className="space-y-4">
                         <p className="text-sm text-slate-700 dark:text-slate-200">
-                            You have unsaved changes in this flow. Leave editor and discard them?
+                            The latest changes are still being saved. You can keep editing, or close now and recover the local draft if the network save fails.
                         </p>
                         <div className="flex justify-end gap-2">
                             <button
@@ -1274,9 +1231,9 @@ export function FlowsPage() {
                             <button
                                 type="button"
                                 onClick={discardUnsavedAndClose}
-                                className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+                                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
                             >
-                                Discard Changes
+                                Close Anyway
                             </button>
                         </div>
                     </div>

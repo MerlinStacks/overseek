@@ -57,10 +57,10 @@ export function BroadcastsPage() {
         setEditingItem(null);
     };
 
-    const handleSaveEmail = async (html: string, design: unknown, meta?: { subject: string }) => {
+    const handleSaveEmail = async (html: string, design: unknown, meta?: { subject: string; autosave?: boolean }) => {
         if (!editingItem || !currentAccount) return;
         try {
-            await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
+            const response = await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -69,10 +69,12 @@ export function BroadcastsPage() {
                 },
                 body: JSON.stringify({ content: html, designJson: design, subject: meta?.subject ?? editingItem.subject ?? '' })
             });
-            alert('Design saved!');
+            if (!response.ok) throw new Error('Failed to save');
+            if (!meta?.autosave) alert('Design saved!');
         } catch (err) {
             Logger.error('An error occurred', { error: err });
-            alert('Failed to save');
+            if (!meta?.autosave) alert('Failed to save');
+            throw err;
         }
     };
 

@@ -106,10 +106,10 @@ export function MarketingPage() {
         setEditingItem(null);
     };
 
-    const handleSaveEmail = async (html: string, design: unknown, meta?: { subject: string }) => {
+    const handleSaveEmail = async (html: string, design: unknown, meta?: { subject: string; autosave?: boolean }) => {
         if (!editingItem || !currentAccount) return;
         try {
-            await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
+            const response = await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
                 method: 'PUT', // or PATCH
                 headers: {
                     'Content-Type': 'application/json',
@@ -118,10 +118,12 @@ export function MarketingPage() {
                 },
                 body: JSON.stringify({ content: html, designJson: design, subject: meta?.subject ?? editingItem.subject ?? '' })
             });
-            toast.success('Design saved!');
+            if (!response.ok) throw new Error('Failed to save design');
+            if (!meta?.autosave) toast.success('Design saved!');
         } catch (err) {
             Logger.error('An error occurred', { error: err });
-            toast.error('Failed to save design');
+            if (!meta?.autosave) toast.error('Failed to save design');
+            throw err;
         }
     };
 

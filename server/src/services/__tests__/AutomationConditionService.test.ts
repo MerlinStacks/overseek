@@ -69,4 +69,19 @@ describe('AutomationConditionService', () => {
 
         expect(result).toBe(true);
     });
+
+    it('evaluates inbox email activity condition', () => {
+        const result = automationConditionService.evaluate({
+            matchType: 'all',
+            conditions: [
+                { field: 'inbox.customerSentEmail', operator: 'eq', value: 'true' }
+            ]
+        }, {
+            customer: {
+                hasInboxEmail: true
+            }
+        });
+
+        expect(result).toBe(true);
+    });
 });
