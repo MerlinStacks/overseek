@@ -214,6 +214,17 @@ model Account {
 
   // Internal Products (component-only, not synced to WooCommerce)
   internalProducts    InternalProduct[]
+  shippingCarrierAccounts ShippingCarrierAccount[]
+  shippingPackagePresets  ShippingPackagePreset[]
+  shippingItemOverrides   ShippingItemOverride[]
+  shippingLabels          ShippingLabel[]
+  shippingShipmentDrafts  ShippingShipmentDraft[]
+  shippingTrackingEvents  ShippingTrackingEvent[]
+  shippingAutomationDispatches ShippingAutomationDispatch[]
+  shippingPrintStations   ShippingPrintStation[]
+  shippingPrintJobs       ShippingPrintJob[]
+  shippingAuditEvents     ShippingAuditEvent[]
+  shippingCarrierTransactions ShippingCarrierTransaction[]
   
   // BOM Deduction Ledger (crash-recovery audit trail)
   bomDeductionLedger  BOMDeductionLedger[]

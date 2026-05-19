@@ -10,7 +10,10 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "build:plugin": "ts-node scripts/build_plugin.ts",
-        "lint": "eslint ."
+        "lint": "eslint .",
+        "mock:account": "npx ts-node src/scripts/setupMockAccount.ts",
+        "mock:seed": "npx ts-node src/scripts/seedMockData.ts",
+        "mock:reset": "npx ts-node src/scripts/resetMockData.ts"
     },
     "dependencies": {
         "@overseek/core": "1.0.0",
