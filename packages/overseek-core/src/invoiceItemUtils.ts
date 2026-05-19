@@ -69,6 +69,42 @@ export interface InvoiceItemMeta {
   value: string;
 }
 
+export interface InvoiceOrderLike {
+  meta_data?: InvoiceMetaEntry[];
+  [key: string]: unknown;
+}
+
+const GIFT_WRAP_KEY_PATTERN = /(gift\s*wrap|gift[_-]?wrapp?ing|giftwrapp?ing)/i;
+
+const isFalsyGiftWrapValue = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  return normalized === ''
+    || normalized === '0'
+    || normalized === 'false'
+    || normalized === 'no'
+    || normalized === 'none'
+    || normalized === 'n/a';
+};
+
+export const getOrderGiftWrappingMeta = (order: InvoiceOrderLike): InvoiceItemMeta | null => {
+  const metaEntries = Array.isArray(order?.meta_data) ? order.meta_data : [];
+  for (const entry of metaEntries) {
+    const rawKey = String(entry?.key || entry?.name || entry?.display_key || '').trim();
+    if (!rawKey || !GIFT_WRAP_KEY_PATTERN.test(rawKey)) continue;
+
+    const value = stringifyInvoiceValue(entry?.display_value ?? entry?.value).trim();
+    if (isFalsyGiftWrapValue(value)) continue;
+
+    const label = String(entry?.display_key || rawKey).replace(/_/g, ' ').trim() || 'Gift Wrapping';
+    return {
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+      value,
+    };
+  }
+
+  return null;
+};
+
 /**
  * Extracts user-facing metadata from an order line item.
  * Filters out internal plugin/system keys and prevents duplicate labels.
