@@ -47,19 +47,7 @@ export class ChatService {
         return cacheAside(
             cacheKey,
             async () => {
-                const shouldExcludeBlocked = status === 'OPEN';
-                let blockedEmails: string[] = [];
-                if (shouldExcludeBlocked) {
-                    const blockedContacts = await prisma.blockedContact.findMany({
-                        where: { accountId },
-                        select: { email: true }
-                    });
-                    blockedEmails = blockedContacts.map((contact) => contact.email);
-                }
-
                 const conversations = await prisma.conversation.findMany({
-                    // Only exclude blocked contacts from OPEN inbox views.
-                    // Closed/All views should remain searchable and reviewable.
                     take: limit,
                     skip: cursor ? 1 : 0,
                     cursor: cursor ? { id: cursor } : undefined,
@@ -73,16 +61,6 @@ export class ChatService {
                                 : {}),
                         ...(options?.wooCustomerId ? { wooCustomerId: options.wooCustomerId } : {}),
                         ...(options?.guestEmail ? { guestEmail: options.guestEmail } : {}),
-                        ...(blockedEmails.length > 0
-                            ? {
-                                NOT: {
-                                    OR: [
-                                        { guestEmail: { in: blockedEmails } },
-                                        { wooCustomer: { email: { in: blockedEmails } } }
-                                    ]
-                                }
-                            }
-                            : {}),
                         mergedIntoId: null
                     } satisfies Prisma.ConversationWhereInput,
                     include: {

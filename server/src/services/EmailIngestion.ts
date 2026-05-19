@@ -102,12 +102,13 @@ export class EmailIngestion {
         });
 
         if (isBlocked) {
-            // Auto-resolve without autoreplies or push notifications
+            // Keep blocked conversations visible in inbox while still suppressing
+            // auto-replies and push notifications.
             await prisma.conversation.update({
                 where: { id: conversation.id },
-                data: { status: 'CLOSED', updatedAt: new Date() }
+                data: { updatedAt: new Date() }
             });
-            Logger.info('[EmailIngestion] Blocked sender, auto-resolved', { fromEmail, conversationId: conversation.id });
+            Logger.info('[EmailIngestion] Blocked sender, imported without automation', { fromEmail, conversationId: conversation.id });
 
             // Still emit socket events so UI updates
             this.io.to(`conversation:${conversation.id}`).emit('message:new', message);
