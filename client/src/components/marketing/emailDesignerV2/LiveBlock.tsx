@@ -15,6 +15,54 @@ const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: s
     { id: 'general', label: 'General' },
 ];
 
+const EMAIL_TEXT_EDITOR_CONTENT_CLASS = 'os-email-text-editor-content';
+const EMAIL_TEXT_EDITOR_CONTENT_STYLE = `
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h1,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h2,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h3,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} p,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ul,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ol {
+    margin: 0 0 0.8em;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} > :last-child {
+    margin-bottom: 0;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h1 {
+    font-size: 2em;
+    font-weight: 700;
+    line-height: 1.25;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h2 {
+    font-size: 1.5em;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} h3 {
+    font-size: 1.17em;
+    font-weight: 700;
+    line-height: 1.35;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ul,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ol {
+    padding-left: 1.4em;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ul {
+    list-style: disc;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} ol {
+    list-style: decimal;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} strong,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} b {
+    font-weight: 700;
+}
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} em,
+.${EMAIL_TEXT_EDITOR_CONTENT_CLASS} i {
+    font-style: italic;
+}
+`;
+
 export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme: EmailDesignTheme; onUpdate: (updater: (block: EmailBlock) => void) => void }) {
     const responsiveStyle: CSSProperties = block.responsive ? { width: '100%', maxWidth: '100%' } : {};
     if (block.type === 'siteLogo') {
@@ -57,7 +105,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
             onUpdate((draft) => {
                 if (draft.type === 'review') draft.props.headline = nextHeadline;
             });
-        }} style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{block.props.headline || 'Customer review'}</p><p style={{ margin: '0 0 8px', color: '#b45309', fontSize: 18, letterSpacing: 1 }}>{stars}</p><p style={{ margin: '0 0 10px', color: theme.textColor, lineHeight: 1.6 }}>{block.props.content || '{{review.content}}'}</p><p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13 }}>- {block.props.reviewer || '{{review.reviewer}}'} on {block.props.productName || '{{review.productName}}'}</p><span style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700 }}>{block.props.ctaLabel || 'Write your review'}</span></div>;
+        }} style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{block.props.headline || 'Customer review'}</p><p style={{ margin: '0 0 8px', color: '#b45309', fontSize: 18, letterSpacing: 1 }}>{stars}</p><p style={{ margin: '0 0 10px', color: theme.textColor, lineHeight: 1.6 }}>{block.props.content || '{{review.content}}'}</p><p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13 }}>- {block.props.reviewer || '{{review.reviewer}}'} on {block.props.productName || '{{review.productName}}'}</p><a href={block.props.ctaHref || '{{review.productUrl}}'} style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700, textDecoration: 'none' }}>{block.props.ctaLabel || 'Write your review'}</a></div>;
     }
     if (block.type === 'social') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => {
@@ -479,8 +527,10 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
 
     return (
         <div ref={wrapperRef} className="relative">
+            <style>{EMAIL_TEXT_EDITOR_CONTENT_STYLE}</style>
             <div
                 ref={editorRef}
+                className={EMAIL_TEXT_EDITOR_CONTENT_CLASS}
                 contentEditable
                 suppressContentEditableWarning
                 dir="ltr"
@@ -502,6 +552,9 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                         setShowMergeTagPicker(false);
                         syncHtml();
                     });
+                }}
+                onInput={() => {
+                    syncHtml();
                 }}
                 dangerouslySetInnerHTML={{ __html: block.props.html }}
                 style={textStyle}
@@ -577,12 +630,12 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
 
                     <span className="mx-0.5 h-5 w-px bg-slate-600" aria-hidden="true" />
 
-                    <button type="button" className={buttonClass(isBold)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('bold')} title="Bold"><Bold size={14} /></button>
-                    <button type="button" className={buttonClass(isItalic)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('italic')} title="Italic"><Italic size={14} /></button>
-                    <button type="button" className={buttonClass(isUnderline)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('underline')} title="Underline"><Underline size={14} /></button>
-                    <button type="button" className={buttonClass(isStrike)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('strikeThrough')} title="Strikethrough"><Strikethrough size={14} /></button>
-                    <button type="button" className={buttonClass(isBulletList)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('insertUnorderedList')} title="Bullet list"><List size={14} /></button>
-                    <button type="button" className={buttonClass(isNumberList)} onMouseDown={(event) => event.preventDefault()} onClick={() => document.execCommand('insertOrderedList')} title="Numbered list"><ListOrdered size={14} /></button>
+                    <button type="button" className={buttonClass(isBold)} onMouseDown={(event) => event.preventDefault()} onClick={() => { editorRef.current?.focus(); document.execCommand('bold'); syncHtml(); }} title="Bold"><Bold size={14} /></button>
+                    <button type="button" className={buttonClass(isItalic)} onMouseDown={(event) => event.preventDefault()} onClick={() => { editorRef.current?.focus(); document.execCommand('italic'); syncHtml(); }} title="Italic"><Italic size={14} /></button>
+                    <button type="button" className={buttonClass(isUnderline)} onMouseDown={(event) => event.preventDefault()} onClick={() => { editorRef.current?.focus(); document.execCommand('underline'); syncHtml(); }} title="Underline"><Underline size={14} /></button>
+                    <button type="button" className={buttonClass(isStrike)} onMouseDown={(event) => event.preventDefault()} onClick={() => { editorRef.current?.focus(); document.execCommand('strikeThrough'); syncHtml(); }} title="Strikethrough"><Strikethrough size={14} /></button>
+                    <button type="button" className={buttonClass(isBulletList)} onMouseDown={(event) => event.preventDefault()} onClick={() => { editorRef.current?.focus(); document.execCommand('insertUnorderedList'); syncHtml(); }} title="Bullet list"><List size={14} /></button>
+                    <button type="button" className={buttonClass(isNumberList)} onMouseDown={(event) => event.preventDefault()} onClick={() => { editorRef.current?.focus(); document.execCommand('insertOrderedList'); syncHtml(); }} title="Numbered list"><ListOrdered size={14} /></button>
                     <button type="button" className={buttonClass(textAlign === 'left')} onMouseDown={(event) => event.preventDefault()} onClick={() => applyBlockAlign('left')} title="Align left"><AlignLeft size={14} /></button>
                     <button type="button" className={buttonClass(textAlign === 'center')} onMouseDown={(event) => event.preventDefault()} onClick={() => applyBlockAlign('center')} title="Align center"><AlignCenter size={14} /></button>
                     <button type="button" className={buttonClass(textAlign === 'right')} onMouseDown={(event) => event.preventDefault()} onClick={() => applyBlockAlign('right')} title="Align right"><AlignRight size={14} /></button>

@@ -115,4 +115,27 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).toContain('Canvas Tote');
         expect(html).toContain('https://store.example.com/products/canvas-tote');
     });
+
+    it('renders review merge tags with defaults when review context is missing', () => {
+        const html = resolveMergeTags(
+            '{{review.reviewer}} | {{review.rating}} | {{review.content}} | {{review.productName}} | {{review.productUrl}}',
+            {
+                customer: {
+                    firstName: 'Sam',
+                    lastName: 'Lee',
+                },
+                product: {
+                    name: 'Everyday Tee',
+                    permalink: 'https://store.example.com/products/everyday-tee',
+                },
+                storeUrl: 'https://store.example.com',
+            }
+        );
+
+        expect(html).toContain('Sam Lee');
+        expect(html).toContain('5');
+        expect(html).toContain('Thanks for your order. We would love to hear your feedback.');
+        expect(html).toContain('Everyday Tee');
+        expect(html).toContain('https://store.example.com/products/everyday-tee');
+    });
 });

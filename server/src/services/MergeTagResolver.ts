@@ -24,6 +24,8 @@ interface MergeTagContext {
     store_url?: string;
     preferencesUrl?: string;
     preferences_url?: string;
+    unsubscribeUrl?: string;
+    unsubscribe_url?: string;
 }
 
 /**
@@ -41,6 +43,8 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     result = result.replace(/\{\{link_trigger\}\}/g, linkTriggerUrl);
     const preferencesUrl = context.preferencesUrl || context.preferences_url || '';
     result = result.replace(/\{\{preferences_url\}\}/g, preferencesUrl);
+    const unsubscribeUrl = context.unsubscribeUrl || context.unsubscribe_url || (storeUrl ? `${storeUrl.replace(/\/$/, '')}/?unsubscribe=1` : '');
+    result = result.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl);
 
     // Order merge tags
     if (context.order) {
@@ -138,6 +142,18 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         result = result.replace(/\{\{review\.content\}\}/g, review.content || review.review || '');
         result = result.replace(/\{\{review\.productName\}\}/g, review.productName || review.product_name || '');
         result = result.replace(/\{\{review\.productUrl\}\}/g, review.productUrl || review.product_url || '');
+    } else {
+        const reviewer = [
+            context.customer?.firstName || context.customer?.first_name,
+            context.customer?.lastName || context.customer?.last_name,
+        ].filter(Boolean).join(' ').trim();
+        const fallbackProductUrl = context.product?.permalink || context.product?.url || storeUrl;
+
+        result = result.replace(/\{\{review\.reviewer\}\}/g, reviewer || 'Customer');
+        result = result.replace(/\{\{review\.rating\}\}/g, '5');
+        result = result.replace(/\{\{review\.content\}\}/g, 'Thanks for your order. We would love to hear your feedback.');
+        result = result.replace(/\{\{review\.productName\}\}/g, context.product?.name || 'your recent purchase');
+        result = result.replace(/\{\{review\.productUrl\}\}/g, fallbackProductUrl || storeUrl);
     }
 
     return result;

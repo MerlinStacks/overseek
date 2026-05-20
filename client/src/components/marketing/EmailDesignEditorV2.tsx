@@ -174,6 +174,13 @@ function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContex
     };
 }
 
+function normalizePreviewStoreUrl(raw: unknown): string {
+    const value = String(raw || '').trim();
+    if (!value || value.includes('{{')) return 'https://example.com';
+    if (/^https?:\/\//i.test(value)) return value;
+    return `https://${value}`;
+}
+
 function parseBoxSpacing(value: string): [number, number, number, number] {
     const parts = value.trim().split(/\s+/).map((part) => Number(part.replace('px', '')) || 0);
     if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]];
@@ -266,7 +273,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
 
     useEffect(() => {
         const accountMeta = currentAccount as unknown as Record<string, unknown>;
-        const baseStoreUrl = String(accountMeta?.woocommerceUrl || accountMeta?.url || '{{store_url}}');
+        const baseStoreUrl = normalizePreviewStoreUrl(accountMeta?.woocommerceUrl || accountMeta?.url);
         const fallbackContext = createFallbackPreviewMergeContext(baseStoreUrl);
 
         if (!token || !currentAccount?.id) {
@@ -314,7 +321,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 const productName = String(firstItem.name || 'Product');
                 const productTotal = String(firstItem.total || firstItem.price || order.total || '');
                 const currency = String(order.currency || 'AUD');
-                const storeUrl = String(accountMeta.woocommerceUrl || accountMeta.url || '{{store_url}}');
+                const storeUrl = normalizePreviewStoreUrl(accountMeta.woocommerceUrl || accountMeta.url);
 
                 const fmtDate = (raw: unknown) => {
                     const value = String(raw || '');
@@ -338,6 +345,10 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     ].filter(Boolean);
                     return parts.join('<br />');
                 };
+
+                const lineItemPermalink = String(firstItem.permalink || firstItem.product_permalink || '').trim();
+                const productPath = firstItem.slug ? `/product/${String(firstItem.slug)}` : `/?p=${String(firstItem.product_id || '')}`;
+                const resolvedProductUrl = lineItemPermalink || `${storeUrl.replace(/\/$/, '')}${productPath}`;
 
                 setPreviewMergeContext({
                     storeUrl,
@@ -363,7 +374,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     reviewRating: '5',
                     reviewContent: `I love my ${productName}. Great quality and fast shipping.`,
                     reviewProductName: productName,
-                    reviewProductUrl: `${storeUrl.replace(/\/$/, '')}/?p=${String(firstItem.product_id || '')}`,
+                    reviewProductUrl: resolvedProductUrl,
                 });
             } catch {
                 // Preview data is best-effort and should not block editing.
@@ -1585,7 +1596,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'orderSummary' && <Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} />}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
-            {block.type === 'review' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Rating" value={block.props.rating} onChange={(value) => patchProps({ rating: value })} /><TextArea label="Review content" value={block.props.content} onChange={(value) => patchProps({ content: value })} /><Field label="Reviewer name" value={block.props.reviewer} onChange={(value) => patchProps({ reviewer: value })} /><Field label="Product name" value={block.props.productName} onChange={(value) => patchProps({ productName: value })} /><Field label="CTA label" value={block.props.ctaLabel} onChange={(value) => patchProps({ ctaLabel: value })} /><Field label="CTA URL" value={block.props.ctaHref} onChange={(value) => patchProps({ ctaHref: value })} /></>}
+            {block.type === 'review' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Rating (1-5)" type="number" value={block.props.rating} onChange={(value) => patchProps({ rating: value })} /><TextArea label="Review content" value={block.props.content} onChange={(value) => patchProps({ content: value })} /><Field label="Reviewer name" value={block.props.reviewer} onChange={(value) => patchProps({ reviewer: value })} /><Field label="Product name" value={block.props.productName} onChange={(value) => patchProps({ productName: value })} /><Field label="CTA label" value={block.props.ctaLabel} onChange={(value) => patchProps({ ctaLabel: value })} /><Field label="CTA URL" value={block.props.ctaHref} onChange={(value) => patchProps({ ctaHref: value })} /></>}
             {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
             {block.type === 'social' && <><SelectField label="Icon pack" value={block.props.iconSet || 'native'} options={SOCIAL_ICON_SETS} onChange={(value) => patchProps({ iconSet: value as SocialIconSet })} /><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
             {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Email and is locked in the designer.</div>}

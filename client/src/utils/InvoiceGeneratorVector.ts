@@ -153,7 +153,7 @@ export async function generateVectorInvoicePDF(
     const colWidthPx = (DESIGN_WIDTH_PX - (GRID_COLS - 1) * GRID_MARGIN_X_PX) / GRID_COLS;
     const rowSpanPx = GRID_ROW_HEIGHT_PX + GRID_MARGIN_Y_PX;
 
-    const orderNumber = order.number || order.order_number || order.id || 'N/A';
+    const orderNumber = String(order.number || order.order_number || order.id || 'N/A');
     const orderDate = order.date_created
         ? new Date(order.date_created).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : 'N/A';
