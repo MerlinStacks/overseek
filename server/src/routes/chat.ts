@@ -56,6 +56,19 @@ function toSmsPlainText(content: string): string {
         .trim();
 }
 
+function extractWooCustomerPhone(rawData: unknown): string | null {
+    if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return null;
+    const record = rawData as Record<string, unknown>;
+    const billing = record.billing;
+    if (billing && typeof billing === 'object' && !Array.isArray(billing)) {
+        const billingPhone = (billing as Record<string, unknown>).phone;
+        if (typeof billingPhone === 'string' && billingPhone.trim()) return billingPhone.trim();
+    }
+    const phone = record.phone;
+    if (typeof phone === 'string' && phone.trim()) return phone.trim();
+    return null;
+}
+
 export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync => {
     return async (fastify) => {
         fastify.addHook('preHandler', requireAuthFastify);
@@ -579,7 +592,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const channels: Array<{ channel: string; identifier: string; available: boolean; unavailableReason?: string }> = [];
                 const smsSettings = await prisma.smsSettings.findUnique({
                     where: { accountId: conv.accountId },
-                    select: { enabled: true }
+                    select: { enabled: true, fromNumber: true }
                 });
                 const isSmsEnabled = Boolean(smsSettings?.enabled);
 
@@ -634,6 +647,22 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                                 available: true
                             });
                         }
+                    }
+                }
+
+                const wooCustomerPhone = extractWooCustomerPhone(conv.wooCustomer?.rawData);
+                if (isSmsEnabled && wooCustomerPhone && smsSettings?.fromNumber) {
+                    try {
+                        const normalizedPhone = TwilioService.normalizeToE164(wooCustomerPhone, smsSettings.fromNumber);
+                        if (!channels.find(c => c.channel === 'SMS' && c.identifier === normalizedPhone)) {
+                            channels.push({
+                                channel: 'SMS',
+                                identifier: normalizedPhone,
+                                available: true
+                            });
+                        }
+                    } catch {
+                        // Ignore invalid customer phone numbers for channel availability.
                     }
                 }
 

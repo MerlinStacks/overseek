@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import {
     User, Mail,
+    Phone,
     MoreVertical,
     ChevronDown, ChevronRight,
 } from 'lucide-react';
@@ -46,6 +47,8 @@ interface ContactPanelProps {
         };
         guestEmail?: string;
         guestName?: string;
+        channel?: string;
+        externalConversationId?: string;
         assignee?: {
             id: string;
             fullName?: string;
@@ -205,10 +208,12 @@ export function ContactPanel({ conversation, messageCount, onSelectConversation 
 
     if (!conversation) return null;
 
+    const smsSenderNumber = conversation.channel === 'SMS' ? conversation.externalConversationId : undefined;
     const name = customer
         ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.email || 'Anonymous'
-        : conversation.guestName || conversation.guestEmail || 'Anonymous';
+        : conversation.guestName || conversation.guestEmail || smsSenderNumber || 'Anonymous';
     const email = customer?.email || conversation.guestEmail;
+    const phone = !email ? smsSenderNumber : undefined;
     const initials = (name || 'A').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
 
     const totalSpent = Number(customer?.totalSpent ?? 0);
@@ -278,6 +283,12 @@ export function ContactPanel({ conversation, messageCount, onSelectConversation 
                             <a href={`mailto:${email}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1 truncate mt-0.5">
                                 <Mail size={12} />
                                 {email}
+                            </a>
+                        )}
+                        {phone && (
+                            <a href={`tel:${phone}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1 truncate mt-0.5">
+                                <Phone size={12} />
+                                {phone}
                             </a>
                         )}
                     </div>

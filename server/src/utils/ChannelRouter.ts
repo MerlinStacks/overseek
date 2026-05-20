@@ -65,6 +65,19 @@ function toPlainText(content: string): string {
         .trim();
 }
 
+function extractWooCustomerPhone(rawData: unknown): string | null {
+    if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return null;
+    const record = rawData as Record<string, unknown>;
+    const billing = record.billing;
+    if (billing && typeof billing === 'object' && !Array.isArray(billing)) {
+        const billingPhone = (billing as Record<string, unknown>).phone;
+        if (typeof billingPhone === 'string' && billingPhone.trim()) return billingPhone.trim();
+    }
+    const phone = record.phone;
+    if (typeof phone === 'string' && phone.trim()) return phone.trim();
+    return null;
+}
+
 /**
  * Routes a message to the appropriate external channel (Email, Facebook, Instagram, TikTok, SMS).
  */
@@ -161,6 +174,20 @@ export async function routeMessageToChannel(
         if (!externalId) {
             const merged = conversation.mergedFrom.find(m => m.channel === 'SMS');
             externalId = merged?.externalConversationId || null;
+        }
+
+        if (!externalId) {
+            const wooCustomerPhone = extractWooCustomerPhone(conversation.wooCustomer?.rawData);
+            if (wooCustomerPhone) {
+                const smsSettings = await TwilioService.getSettings(accountId);
+                if (smsSettings?.enabled && smsSettings.fromNumber) {
+                    try {
+                        externalId = TwilioService.normalizeToE164(wooCustomerPhone, smsSettings.fromNumber);
+                    } catch {
+                        externalId = null;
+                    }
+                }
+            }
         }
 
         if (externalId) {

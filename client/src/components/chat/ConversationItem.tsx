@@ -17,6 +17,8 @@ export interface Conversation {
     };
     guestEmail?: string;
     guestName?: string;
+    channel?: string;
+    externalConversationId?: string;
     title?: string;
     assignedTo?: string;
     assignee?: {
@@ -191,4 +193,3 @@ export const ConversationItem = memo(function ConversationItem({
         </div>
     );
 });
-

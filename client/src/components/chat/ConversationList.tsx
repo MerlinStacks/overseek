@@ -210,8 +210,9 @@ export function ConversationList({
             const name = `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim();
             return name || conv.wooCustomer.email || 'Customer';
         }
+        const smsSenderNumber = conv.channel === 'SMS' ? conv.externalConversationId : undefined;
         // For guests: prefer name, fall back to email address, last resort is generic text
-        return conv.guestName || conv.guestEmail || 'Unknown Contact';
+        return conv.guestName || conv.guestEmail || smsSenderNumber || 'Unknown Contact';
     }, []);
 
     const getInitials = useCallback((name: string) => {
