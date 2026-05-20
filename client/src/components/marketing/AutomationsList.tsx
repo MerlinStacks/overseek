@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Zap, Play, Pause, Trash2, Loader2, GitBranch, Circle, CheckCircle2, XCircle, DollarSign } from 'lucide-react';
+import { Plus, Pause, Trash2, Loader2, Circle, CheckCircle2, XCircle, DollarSign } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Toast, ToastType } from '../ui/Toast';
 
@@ -41,7 +41,7 @@ function MetricPill({
     className?: string;
 }) {
     return (
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${className || 'bg-slate-100 text-slate-700'}`}>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-5 ${className || 'bg-slate-100 text-slate-700'}`}>
             {icon}
             {value}
         </span>
@@ -200,14 +200,13 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
 
     return (
         <>
-            <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-semibold text-gray-900">Flows</h2>
+            <div className="space-y-3">
+                <div className="flex justify-end">
                     <button
                         onClick={() => setShowCreate(true)}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                        className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
                     >
-                        <Plus size={18} /> New Flow
+                        <Plus size={16} /> New Flow
                     </button>
                 </div>
 
@@ -234,91 +233,83 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                 )}
 
                 {isLoading ? <Loader2 className="animate-spin" /> : (
-                    <div className="grid gap-4">
-                        {flows.map(flow => (
-                            <div key={flow.id} className="bg-white px-4 py-3 rounded-xl border border-gray-200 shadow-xs">
-                                <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_minmax(440px,1.2fr)_180px] lg:items-center">
-                                    <div className="flex items-center gap-4 min-w-0">
-                                    <div className={`p-3 rounded-lg ${flow.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                        <Zap size={24} />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h3 className="font-semibold text-gray-900 truncate">{flow.name}</h3>
-                                        <div className="flex items-center gap-2 text-sm text-gray-500">
-                                            {flow.triggerType && flow.triggerType !== 'NONE' && (
-                                                <>
-                                                    <span className="font-medium text-gray-700">Trigger:</span> {triggers[flow.triggerType] || flow.triggerType}
-                                                    <span className="text-gray-300">|</span>
-                                                </>
-                                            )}
-                                            <span className="flex items-center gap-1"><GitBranch size={14} /> {flow.metrics?.activeInFlow || flow.enrollments?.length || 0} active</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-2">
-                                        <div className="mb-1.5 hidden grid-cols-5 gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
-                                            <span>Active in Flow</span>
-                                            <span>Paused in Flow</span>
-                                            <span>Completed Flow</span>
-                                            <span>Failed in Flow</span>
-                                            <span>Revenue</span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
-                                            <MetricPill
-                                                icon={<Circle size={12} />}
-                                                value={flow.metrics?.activeInFlow || 0}
-                                                className="bg-slate-100 text-slate-700"
-                                            />
-                                            <MetricPill
-                                                icon={<Pause size={12} />}
-                                                value={flow.metrics?.pausedInFlow || 0}
-                                                className="bg-slate-100 text-slate-700"
-                                            />
-                                            <MetricPill
-                                                icon={<CheckCircle2 size={12} />}
-                                                value={flow.metrics?.completedInFlow || 0}
-                                                className="bg-slate-100 text-slate-700"
-                                            />
-                                            <MetricPill
-                                                icon={<XCircle size={12} />}
-                                                value={flow.metrics?.failedInFlow || 0}
-                                                className="bg-slate-100 text-slate-700"
-                                            />
-                                            <MetricPill
-                                                icon={<DollarSign size={12} />}
-                                                value={formatRevenue(flow.metrics?.revenue || 0)}
-                                                className="bg-teal-100 text-teal-800"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-1.5 lg:justify-end lg:border-l lg:border-slate-200 lg:pl-3">
-                                    <button
-                                        onClick={() => toggleActive(flow)}
-                                        disabled={updatingFlowId === flow.id}
-                                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${flow.isActive
-                                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                            } ${updatingFlowId === flow.id ? 'cursor-not-allowed opacity-60' : ''}`}
-                                    >
-                                        {updatingFlowId === flow.id
-                                            ? <>Updating...</>
-                                            : (flow.isActive ? <><Pause size={14} /> Active</> : <><Play size={14} /> Paused</>)}
-                                    </button>
-                                    <button onClick={() => onEdit(flow.id, flow.name)} className="text-blue-600 hover:text-blue-800 px-2 py-1.5 font-medium text-xs rounded-md hover:bg-blue-50">
-                                        Edit Flow
-                                    </button>
-                                    <button onClick={() => setPendingDelete({ id: flow.id, name: flow.name })} className="p-1.5 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50">
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                                </div>
-                            </div>
-                        ))}
-                        {flows.length === 0 && (
-                            <div className="text-center py-12 text-gray-500">No flows created yet. Create your first flow to automate customer engagement.</div>
-                        )}
+                    <div className="overflow-x-auto border-y border-slate-200 bg-white">
+                        <table className="min-w-[1040px] w-full text-left text-xs text-slate-800">
+                            <thead className="bg-slate-100 text-[11px] font-semibold text-slate-900">
+                                <tr>
+                                    <th className="w-10 px-3 py-2">
+                                        <input type="checkbox" aria-label="Select all flows" className="h-4 w-4 rounded border-slate-300" disabled />
+                                    </th>
+                                    <th className="px-3 py-2">Name</th>
+                                    <th className="px-3 py-2">Event</th>
+                                    <th className="px-3 py-2">Category</th>
+                                    <th className="px-3 py-2">Contact Activity</th>
+                                    <th className="px-3 py-2">Revenue</th>
+                                    <th className="px-3 py-2">Status</th>
+                                    <th className="w-32 px-3 py-2 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {flows.map(flow => (
+                                    <tr key={flow.id} className="h-10 hover:bg-slate-50">
+                                        <td className="px-3 py-1.5 align-middle">
+                                            <input type="checkbox" aria-label={`Select ${flow.name}`} className="h-4 w-4 rounded border-slate-300" />
+                                        </td>
+                                        <td className="max-w-[320px] px-3 py-1.5 align-middle">
+                                            <button onClick={() => onEdit(flow.id, flow.name)} className="truncate font-semibold text-blue-700 hover:text-blue-900 hover:underline">
+                                                {flow.name}
+                                            </button>
+                                        </td>
+                                        <td className="px-3 py-1.5 align-middle text-slate-700">
+                                            {triggers[flow.triggerType || 'NONE'] || flow.triggerType || 'No Trigger'}
+                                        </td>
+                                        <td className="px-3 py-1.5 align-middle text-slate-700">-</td>
+                                        <td className="px-3 py-1.5 align-middle">
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                <MetricPill icon={<Circle size={12} />} value={flow.metrics?.activeInFlow || flow.enrollments?.length || 0} />
+                                                <MetricPill icon={<Pause size={12} />} value={flow.metrics?.pausedInFlow || 0} />
+                                                <MetricPill icon={<CheckCircle2 size={12} />} value={flow.metrics?.completedInFlow || 0} />
+                                                <MetricPill icon={<XCircle size={12} />} value={flow.metrics?.failedInFlow || 0} />
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-1.5 align-middle">
+                                            {flow.metrics?.revenue ? (
+                                                <MetricPill icon={<DollarSign size={12} />} value={formatRevenue(flow.metrics.revenue)} className="bg-teal-100 text-teal-800" />
+                                            ) : '-'}
+                                        </td>
+                                        <td className="px-3 py-1.5 align-middle">
+                                            <button
+                                                onClick={() => toggleActive(flow)}
+                                                disabled={updatingFlowId === flow.id}
+                                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-5 transition-colors ${flow.isActive
+                                                    ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                                    : 'bg-red-50 text-red-600 hover:bg-red-100'
+                                                    } ${updatingFlowId === flow.id ? 'cursor-not-allowed opacity-60' : ''}`}
+                                            >
+                                                {updatingFlowId === flow.id
+                                                    ? 'Updating...'
+                                                    : (flow.isActive ? 'Active' : 'Inactive')}
+                                            </button>
+                                        </td>
+                                        <td className="px-3 py-1.5 align-middle">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <button onClick={() => onEdit(flow.id, flow.name)} className="rounded-md px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-800">
+                                                    Edit
+                                                </button>
+                                                <button onClick={() => setPendingDelete({ id: flow.id, name: flow.name })} className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {flows.length === 0 && (
+                                    <tr>
+                                        <td colSpan={8} className="py-12 text-center text-sm text-gray-500">No flows created yet. Create your first flow to automate customer engagement.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 )
                 }

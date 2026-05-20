@@ -83,7 +83,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
             onUpdate((draft) => {
                 if (draft.type === 'list') draft.props.items[index] = nextItem;
             });
-        }} style={{ margin: '0 0 6px', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{item}</li>)}</Tag></div>;
+        }} style={{ margin: '0 0 6px', outline: 'none', direction: 'ltr', unicodeBidi: 'isolate', writingMode: 'horizontal-tb' }}>{item}</li>)}</Tag></div>;
     }
     if (block.type === 'image') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', ...responsiveStyle }}><img src={block.props.src} alt={block.props.alt || ''} width={block.props.width || 560} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /></div>;
@@ -95,7 +95,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
             onUpdate((draft) => {
                 if (draft.type === 'coupon') draft.props.headline = nextHeadline;
             });
-        }} style={{ margin: '0 0 6px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{block.props.headline}</p><p style={{ margin: '0 0 8px', color: theme.primaryColor, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>{block.props.code || '{{coupon.code}}'}</p><p style={{ margin: 0, color: theme.mutedTextColor, lineHeight: 1.5 }}>{block.props.description || '{{coupon.description}}'}</p></div>;
+        }} style={{ margin: '0 0 6px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'isolate', writingMode: 'horizontal-tb' }}>{block.props.headline}</p><p style={{ margin: '0 0 8px', color: theme.primaryColor, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>{block.props.code || '{{coupon.code}}'}</p><p style={{ margin: 0, color: theme.mutedTextColor, lineHeight: 1.5 }}>{block.props.description || '{{coupon.description}}'}</p></div>;
     }
     if (block.type === 'review') {
         const ratingNumber = Math.min(5, Math.max(1, Number(block.props.rating || '5') || 5));
@@ -106,7 +106,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
             onUpdate((draft) => {
                 if (draft.type === 'review') draft.props.headline = nextHeadline;
             });
-        }} style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{block.props.headline || 'Customer review'}</p><p style={{ margin: '0 0 8px', color: '#b45309', fontSize: 18, letterSpacing: 1 }}>{stars}</p><p style={{ margin: '0 0 10px', color: theme.textColor, lineHeight: 1.6 }}>{block.props.content || '{{review.content}}'}</p><p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13 }}>- {block.props.reviewer || '{{review.reviewer}}'} on {block.props.productName || '{{review.productName}}'}</p><a href={block.props.ctaHref || '{{review.productUrl}}'} style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700, textDecoration: 'none' }}>{block.props.ctaLabel || 'Write your review'}</a></div>;
+        }} style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'isolate', writingMode: 'horizontal-tb' }}>{block.props.headline || 'Customer review'}</p><p style={{ margin: '0 0 8px', color: '#b45309', fontSize: 18, letterSpacing: 1 }}>{stars}</p><p style={{ margin: '0 0 10px', color: theme.textColor, lineHeight: 1.6 }}>{block.props.content || '{{review.content}}'}</p><p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13 }}>- {block.props.reviewer || '{{review.reviewer}}'} on {block.props.productName || '{{review.productName}}'}</p><a href={block.props.ctaHref || '{{review.productUrl}}'} style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700, textDecoration: 'none' }}>{block.props.ctaLabel || 'Write your review'}</a></div>;
     }
     if (block.type === 'social') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => {
@@ -124,7 +124,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
             onUpdate((draft) => {
                 if (draft.type === block.type) draft.props.links[index].label = nextLabel;
             });
-        }} style={{ display: 'inline-block', margin: '0 10px', color: block.props.color || theme.primaryColor, fontWeight: 600, outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' }}>{link.label}</span>)}</div>;
+        }} style={{ display: 'inline-block', margin: '0 10px', color: block.props.color || theme.primaryColor, fontWeight: 600, outline: 'none', direction: 'ltr', unicodeBidi: 'isolate', writingMode: 'horizontal-tb' }}>{link.label}</span>)}</div>;
     }
     if (block.type === 'footer') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 12, lineHeight: 1.6, color: block.props.color || theme.mutedTextColor }} dangerouslySetInnerHTML={{ __html: block.props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>' }} />;
@@ -222,7 +222,7 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                         textDecoration,
                         fontSize,
                         direction: 'ltr',
-                        unicodeBidi: 'plaintext',
+                        unicodeBidi: 'isolate',
                         writingMode: 'horizontal-tb',
                         outline: 'none',
                     }}
@@ -448,7 +448,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         padding: block.props.padding || '8px 0',
         textAlign: align,
         direction: 'ltr',
-        unicodeBidi: 'plaintext',
+        unicodeBidi: 'isolate',
         writingMode: 'horizontal-tb',
         fontSize: size,
         lineHeight: block.props.lineHeight || 1.6,
@@ -731,13 +731,13 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
 function normalizeEditorDirection(editor: HTMLElement): void {
     editor.setAttribute('dir', 'ltr');
     editor.style.direction = 'ltr';
-    editor.style.unicodeBidi = 'plaintext';
+    editor.style.unicodeBidi = 'isolate';
     editor.style.writingMode = 'horizontal-tb';
 
     editor.querySelectorAll<HTMLElement>('*').forEach((node) => {
         if (node.getAttribute('dir')?.toLowerCase() === 'rtl') node.removeAttribute('dir');
         if (node.style.direction === 'rtl') node.style.direction = 'ltr';
-        if (node.style.unicodeBidi === 'bidi-override') node.style.unicodeBidi = 'plaintext';
+        if (node.style.unicodeBidi === 'bidi-override' || node.style.unicodeBidi === 'plaintext') node.style.unicodeBidi = 'isolate';
     });
 
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
@@ -755,7 +755,7 @@ function sanitizeRtlHtml(html: string): string {
         .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
         .replace(/\sdir=(['"])rtl\1/gi, '')
         .replace(/direction\s*:\s*rtl\s*;?/gi, 'direction:ltr;')
-        .replace(/unicode-bidi\s*:\s*bidi-override\s*;?/gi, 'unicode-bidi:plaintext;');
+        .replace(/unicode-bidi\s*:\s*(bidi-override|plaintext)\s*;?/gi, 'unicode-bidi:isolate;');
 }
 
 function sanitizeRtlText(text: string): string {
