@@ -557,7 +557,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                     });
                 }}
                 onInput={() => {
-                    syncHtml();
+                    if (editorRef.current) normalizeEditorDirection(editorRef.current);
                 }}
                 dangerouslySetInnerHTML={{ __html: block.props.html }}
                 style={textStyle}
