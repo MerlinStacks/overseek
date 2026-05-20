@@ -215,6 +215,12 @@ export interface ReviewBlock extends BaseBlock {
         productName: string;
         ctaLabel: string;
         ctaHref: string;
+        showHeadline?: boolean;
+        showRating?: boolean;
+        showContent?: boolean;
+        showReviewer?: boolean;
+        showProductName?: boolean;
+        showCta?: boolean;
     };
 }
 
@@ -701,7 +707,17 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     if (block.type === 'review') {
         const ratingNumber = Math.min(5, Math.max(1, Number(block.props.rating || '5') || 5));
         const stars = '&#9733;'.repeat(ratingNumber);
-        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#fffbeb;border:1px solid #fde68a;border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'left'};"><p style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p><p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p><p style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p><p style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${escapeHtml(block.props.reviewer || '{{review.reviewer}}')} on ${escapeHtml(block.props.productName || '{{review.productName}}')}</p><a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.productUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a></div>`;
+        const showHeadline = block.props.showHeadline !== false;
+        const showRating = block.props.showRating !== false;
+        const showContent = block.props.showContent !== false;
+        const showReviewer = block.props.showReviewer !== false;
+        const showProductName = block.props.showProductName !== false;
+        const showCta = block.props.showCta !== false;
+        const attribution = [
+            showReviewer ? escapeHtml(block.props.reviewer || '{{review.reviewer}}') : '',
+            showProductName ? `on ${escapeHtml(block.props.productName || '{{review.productName}}')}` : '',
+        ].filter(Boolean).join(' ');
+        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#fffbeb;border:1px solid #fde68a;border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'left'};">${showHeadline ? `<p style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p>` : ''}${showRating ? `<p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p>` : ''}${showContent ? `<p style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p>` : ''}${attribution ? `<p style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${attribution}</p>` : ''}${showCta ? `<a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.productUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a>` : ''}</div>`;
     }
 
     if (block.type === 'social') {

@@ -10,6 +10,7 @@ import { prisma } from '../utils/prisma';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { cartRecoveryService } from '../services/CartRecoveryService';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
+import { resolveMergeTags } from '../services/MergeTagResolver';
 
 const service = new MarketingService();
 
@@ -333,6 +334,15 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
             const accountId = request.accountId || request.user!.accountId!;
             const emailAccount = await getDefaultEmailAccount(accountId);
+            const account = await prisma.account.findFirst({
+                where: { id: accountId },
+                select: { wooUrl: true, domain: true }
+            });
+            const latestOrder = await prisma.wooOrder.findFirst({
+                where: { accountId },
+                orderBy: { dateCreated: 'desc' },
+                select: { id: true, number: true, status: true, currency: true, total: true, dateCreated: true, rawData: true }
+            });
 
             if (!emailAccount) {
                 return reply.code(400).send({ error: 'No sending-capable email account is configured. Please set up a sending account in Settings.' });
@@ -342,12 +352,51 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const { EmailService } = await import('../services/EmailService');
             const emailService = new EmailService();
 
+            const storeUrl = account?.wooUrl || account?.domain || '';
+            const normalizedStoreUrl = storeUrl.startsWith('http://') || storeUrl.startsWith('https://')
+                ? storeUrl
+                : (storeUrl ? `https://${storeUrl}` : '');
+            const orderRaw = (latestOrder?.rawData && typeof latestOrder.rawData === 'object' ? latestOrder.rawData : {}) as Record<string, any>;
+            const billing = orderRaw.billing || {};
+            const firstLineItem = Array.isArray(orderRaw.line_items) ? orderRaw.line_items[0] : undefined;
+            const testContext = {
+                customer: {
+                    firstName: billing.first_name || 'Test',
+                    lastName: billing.last_name || 'Customer',
+                    email: billing.email || to,
+                    phone: billing.phone || ''
+                },
+                order: latestOrder ? {
+                    ...orderRaw,
+                    id: latestOrder.id,
+                    orderNumber: latestOrder.number,
+                    status: latestOrder.status,
+                    currency: latestOrder.currency,
+                    total: latestOrder.total,
+                    dateCreated: latestOrder.dateCreated,
+                    lineItems: orderRaw.line_items || orderRaw.lineItems || orderRaw.items || []
+                } : undefined,
+                product: firstLineItem ? {
+                    name: firstLineItem.name,
+                    price: firstLineItem.price || firstLineItem.total,
+                    image: firstLineItem.image,
+                    permalink: firstLineItem.permalink
+                } : undefined,
+                store: { url: normalizedStoreUrl },
+                linkTriggerUrl: normalizedStoreUrl,
+                preferencesUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/my-account/edit-account/` : '',
+                unsubscribeUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/?unsubscribe=1` : ''
+            };
+
+            const resolvedSubject = resolveMergeTags(subject, testContext);
+            const resolvedContent = resolveMergeTags(content, testContext);
+
             await emailService.sendEmail(
                 accountId,
                 emailAccount.id,
                 to,
-                subject,
-                content,
+                resolvedSubject,
+                resolvedContent,
                 undefined,
                 { source: 'TEST' }
             );

@@ -100,13 +100,19 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
     if (block.type === 'review') {
         const ratingNumber = Math.min(5, Math.max(1, Number(block.props.rating || '5') || 5));
         const stars = '★'.repeat(ratingNumber);
-        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px', margin: '8px 0', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: theme.borderRadius, textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }}><p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+        const showHeadline = block.props.showHeadline !== false;
+        const showRating = block.props.showRating !== false;
+        const showContent = block.props.showContent !== false;
+        const showReviewer = block.props.showReviewer !== false;
+        const showProductName = block.props.showProductName !== false;
+        const showCta = block.props.showCta !== false;
+        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px', margin: '8px 0', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: theme.borderRadius, textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }}>{showHeadline && <p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
             normalizeEditorDirection(event.currentTarget);
             const nextHeadline = sanitizeRtlText(event.currentTarget.textContent || '');
             onUpdate((draft) => {
                 if (draft.type === 'review') draft.props.headline = nextHeadline;
             });
-        }} style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'isolate', writingMode: 'horizontal-tb' }}>{block.props.headline || 'Customer review'}</p><p style={{ margin: '0 0 8px', color: '#b45309', fontSize: 18, letterSpacing: 1 }}>{stars}</p><p style={{ margin: '0 0 10px', color: theme.textColor, lineHeight: 1.6 }}>{block.props.content || '{{review.content}}'}</p><p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13 }}>- {block.props.reviewer || '{{review.reviewer}}'} on {block.props.productName || '{{review.productName}}'}</p><a href={block.props.ctaHref || '{{review.productUrl}}'} style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700, textDecoration: 'none' }}>{block.props.ctaLabel || 'Write your review'}</a></div>;
+        }} style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, fontWeight: 700, outline: 'none', direction: 'ltr', unicodeBidi: 'isolate', writingMode: 'horizontal-tb' }}>{block.props.headline || 'Customer review'}</p>}{showRating && <p style={{ margin: '0 0 8px', color: '#b45309', fontSize: 18, letterSpacing: 1 }}>{stars}</p>}{showContent && <p style={{ margin: '0 0 10px', color: theme.textColor, lineHeight: 1.6 }}>{block.props.content || '{{review.content}}'}</p>}{(showReviewer || showProductName) && <p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13 }}>- {showReviewer ? (block.props.reviewer || '{{review.reviewer}}') : ''}{showReviewer && showProductName ? ' ' : ''}{showProductName ? `on ${block.props.productName || '{{review.productName}}'}` : ''}</p>}{showCta && <a href={block.props.ctaHref || '{{review.productUrl}}'} style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '10px 16px', fontWeight: 700, textDecoration: 'none' }}>{block.props.ctaLabel || 'Write your review'}</a>}</div>;
     }
     if (block.type === 'social') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', fontSize: 14, lineHeight: 1.5 }}>{block.props.links.map((link, index) => {
@@ -558,6 +564,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                 }}
                 onInput={() => {
                     if (editorRef.current) normalizeEditorDirection(editorRef.current);
+                    syncHtml();
                 }}
                 dangerouslySetInnerHTML={{ __html: block.props.html }}
                 style={textStyle}

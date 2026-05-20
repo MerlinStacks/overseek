@@ -66,7 +66,9 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         result = result.replace(/\{\{order\.shippingAddress\}\}/g, formatAddress(order.shippingAddress || order.shipping));
 
         // Items table
-        result = result.replace(/\{\{order\.itemsTable\}\}/g, renderOrderItemsTable(order.lineItems || order.items || []));
+        const orderItems = order.lineItems || order.items || order.line_items || [];
+        result = result.replace(/\{\{order\.itemsTable\}\}/g, renderOrderItemsTable(orderItems));
+        result = result.replace(/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, renderOrderItemsText(orderItems));
 
         // Downloads
         result = result.replace(/\{\{order\.downloads\}\}/g, renderDownloadsTable(order.downloads || []));
@@ -82,24 +84,25 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         result = result.replace(/\{\{pdf_url\}\}/g, invoiceUrl);
     }
 
+    result = result.replace(/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, 'your order');
+
     // Customer merge tags
     if (context.customer) {
         const customer = context.customer;
-
-        result = result.replace(/\{\{customer\.firstName\}\}/g, customer.firstName || customer.first_name || '');
-        result = result.replace(/\{\{customer\.lastName\}\}/g, customer.lastName || customer.last_name || '');
-        result = result.replace(/\{\{customer\.email\}\}/g, customer.email || '');
-        result = result.replace(/\{\{customer\.phone\}\}/g, customer.phone || customer.billing?.phone || '');
 
         const firstName = customer.firstName || customer.first_name || '';
         const lastName = customer.lastName || customer.last_name || '';
         const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
 
-        result = result.replace(/\{\{contact_first_name\}\}/g, firstName);
-        result = result.replace(/\{\{contact_last_name\}\}/g, lastName);
-        result = result.replace(/\{\{contact_email\}\}/g, customer.email || '');
-        result = result.replace(/\{\{contact_full_name\}\}/g, fullName);
-        result = result.replace(/\{\{contact_id\}\}/g, customer.id ? String(customer.id) : '');
+        result = result.replace(/\{\{\s*customer\.firstName\s*\}\}/g, firstName);
+        result = result.replace(/\{\{\s*customer\.lastName\s*\}\}/g, lastName);
+        result = result.replace(/\{\{\s*customer\.email\s*\}\}/g, customer.email || '');
+        result = result.replace(/\{\{\s*customer\.phone\s*\}\}/g, customer.phone || customer.billing?.phone || '');
+        result = result.replace(/\{\{\s*contact_first_name\s*\}\}/g, firstName);
+        result = result.replace(/\{\{\s*contact_last_name\s*\}\}/g, lastName);
+        result = result.replace(/\{\{\s*contact_email\s*\}\}/g, customer.email || '');
+        result = result.replace(/\{\{\s*contact_full_name\s*\}\}/g, fullName);
+        result = result.replace(/\{\{\s*contact_id\s*\}\}/g, customer.id ? String(customer.id) : '');
     }
 
     // Product merge tags
@@ -233,6 +236,20 @@ export function renderOrderItemsTable(items: any[]): string {
             </tbody>
         </table>
     `;
+}
+
+function renderOrderItemsText(items: any[]): string {
+    if (!items || items.length === 0) return 'your order';
+
+    const names = items
+        .map((item) => item.name || item.productName || item.product_name || item.title)
+        .filter(Boolean)
+        .map(String);
+
+    if (names.length === 0) return 'your order';
+    if (names.length === 1) return names[0];
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 /**

@@ -83,6 +83,14 @@ const PRODUCT_VISIBILITY_FIELDS = [
     { key: 'showRegularPrice', label: 'Regular Price' },
     { key: 'showButton', label: 'Button' },
 ] as const;
+const REVIEW_VISIBILITY_FIELDS = [
+    { key: 'showHeadline', label: 'Headline' },
+    { key: 'showRating', label: 'Rating' },
+    { key: 'showContent', label: 'Review Content' },
+    { key: 'showReviewer', label: 'Reviewer Name' },
+    { key: 'showProductName', label: 'Product Name' },
+    { key: 'showCta', label: 'CTA Button' },
+] as const;
 
 interface PreviewMergeContext {
     storeUrl: string;
@@ -121,8 +129,13 @@ function applyPreviewMergeTags(html: string, context: PreviewMergeContext): stri
         [/\{\{customer\.lastName\}\}/g, context.customerLastName],
         [/\{\{customer\.email\}\}/g, context.customerEmail],
         [/\{\{customer\.phone\}\}/g, context.customerPhone],
+        [/\{\{contact_first_name\}\}/g, context.customerFirstName],
+        [/\{\{contact_last_name\}\}/g, context.customerLastName],
+        [/\{\{contact_email\}\}/g, context.customerEmail],
+        [/\{\{contact_full_name\}\}/g, [context.customerFirstName, context.customerLastName].filter(Boolean).join(' ')],
         [/\{\{order\.number\}\}/g, context.orderNumber],
         [/\{\{order_id\}\}/g, context.orderNumber],
+        [/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, context.productName || 'your order'],
         [/\{\{order\.date\}\}/g, context.orderDate],
         [/\{\{order\.status\}\}/g, context.orderStatus],
         [/\{\{order\.subtotal\}\}/g, context.orderSubtotal],
@@ -1605,7 +1618,37 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'orderSummary' && <Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} />}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
-            {block.type === 'review' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Rating (1-5)" type="number" value={block.props.rating} onChange={(value) => patchProps({ rating: value })} /><TextArea label="Review content" value={block.props.content} onChange={(value) => patchProps({ content: value })} /><Field label="Reviewer name" value={block.props.reviewer} onChange={(value) => patchProps({ reviewer: value })} /><Field label="Product name" value={block.props.productName} onChange={(value) => patchProps({ productName: value })} /><Field label="CTA label" value={block.props.ctaLabel} onChange={(value) => patchProps({ ctaLabel: value })} /><Field label="CTA URL" value={block.props.ctaHref} onChange={(value) => patchProps({ ctaHref: value })} /></>}
+            {block.type === 'review' && <>
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Visible Review Fields</p>
+                    <div className="space-y-2">
+                        {REVIEW_VISIBILITY_FIELDS.map((field) => {
+                            const enabled = block.props[field.key] !== false;
+                            return (
+                                <label key={field.key} className="flex items-center justify-between text-sm text-slate-700 dark:text-slate-200">
+                                    <span>{field.label}</span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={enabled}
+                                        onClick={() => patchProps({ [field.key]: !enabled })}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${enabled ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                                    >
+                                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                                    </button>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </div>
+                <Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} />
+                <Field label="Rating (1-5)" type="number" value={block.props.rating} onChange={(value) => patchProps({ rating: value })} />
+                <TextArea label="Review content" value={block.props.content} onChange={(value) => patchProps({ content: value })} />
+                <Field label="Reviewer name" value={block.props.reviewer} onChange={(value) => patchProps({ reviewer: value })} />
+                <Field label="Product name" value={block.props.productName} onChange={(value) => patchProps({ productName: value })} />
+                <Field label="CTA label" value={block.props.ctaLabel} onChange={(value) => patchProps({ ctaLabel: value })} />
+                <Field label="CTA URL" value={block.props.ctaHref} onChange={(value) => patchProps({ ctaHref: value })} />
+            </>}
             {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
             {block.type === 'social' && <><SelectField label="Icon pack" value={block.props.iconSet || 'native'} options={SOCIAL_ICON_SETS} onChange={(value) => patchProps({ iconSet: value as SocialIconSet })} /><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
             {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Email and is locked in the designer.</div>}
