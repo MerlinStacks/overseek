@@ -3,6 +3,7 @@ import { Loader2, Search } from 'lucide-react';
 import { useAccount } from '../../../context/AccountContext';
 import { useAuth } from '../../../context/AuthContext';
 import { getProductImagePreview, type EmailDesignerProduct } from './productBlockProps';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 
 export function ProductPicker({ onSelect }: { onSelect: (product: EmailDesignerProduct) => void }) {
     const { token } = useAuth();
@@ -45,7 +46,7 @@ export function ProductPicker({ onSelect }: { onSelect: (product: EmailDesignerP
         <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
             <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                 <Search size={14} className="text-slate-400" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products" className="w-full border-0 bg-transparent p-0 text-sm focus:ring-0 dark:text-white" />
+                <input value={query} onChange={(event) => setQuery(sanitizeBidiText(event.target.value))} placeholder="Search products" className="w-full border-0 bg-transparent p-0 text-sm focus:ring-0 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
                 {loading && <Loader2 size={14} className="animate-spin text-slate-400" />}
             </label>
             <div className="max-h-56 space-y-2 overflow-auto">

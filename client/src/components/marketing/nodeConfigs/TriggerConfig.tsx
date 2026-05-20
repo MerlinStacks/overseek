@@ -5,6 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
+import { LTR_TEXT_STYLE } from '../textInputBidi';
 
 interface TriggerNodeConfig {
     triggerType?: string;
@@ -310,6 +311,8 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                                             onChange={(e) => onUpdate('filterValue', e.target.value)}
                                             placeholder="100"
                                             className="w-20 px-2 py-1 border rounded-sm text-sm"
+                                            dir="ltr"
+                                            style={LTR_TEXT_STYLE}
                                         />
                                     </div>
                                 )}
@@ -389,6 +392,8 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                         value={frequencyCapValue}
                         onChange={(e) => onUpdate('frequencyCapValue', Number(e.target.value) || 0)}
                         className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <select
                         value={frequencyCapUnit}
@@ -413,6 +418,8 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                         value={accountWideEmailCapValue}
                         onChange={(e) => onUpdate('accountWideEmailCapValue', Number(e.target.value) || 0)}
                         className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <select
                         value={accountWideEmailCapUnit}
@@ -451,6 +458,8 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                                 value={config.quietHoursStart ?? 21}
                                 onChange={(e) => onUpdate('quietHoursStart', Number(e.target.value) || 0)}
                                 className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                dir="ltr"
+                                style={LTR_TEXT_STYLE}
                             />
                             <span className="text-sm text-gray-600">to</span>
                             <input
@@ -460,6 +469,8 @@ export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }
                                 value={config.quietHoursEnd ?? 8}
                                 onChange={(e) => onUpdate('quietHoursEnd', Number(e.target.value) || 0)}
                                 className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                dir="ltr"
+                                style={LTR_TEXT_STYLE}
                             />
                             <span className="text-sm text-gray-600">local store time</span>
                         </div>

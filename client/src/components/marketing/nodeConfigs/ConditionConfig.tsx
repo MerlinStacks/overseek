@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 
 type MatchType = 'all' | 'any';
 
@@ -607,9 +608,11 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             <input
                 type="text"
                 value={cond.value || ''}
-                onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                onChange={(e) => updateCondition(idx, 'value', sanitizeBidiText(e.target.value))}
                 placeholder="Value..."
                 className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                dir="ltr"
+                style={LTR_TEXT_STYLE}
             />
         );
     };

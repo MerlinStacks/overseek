@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../ui/Modal';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from './textInputBidi';
 
 interface MarketingCampaign {
     id: string;
@@ -616,9 +617,11 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
                         value={query}
-                        onChange={(event) => setQuery(event.target.value)}
+                        onChange={(event) => setQuery(sanitizeBidiText(event.target.value))}
                         placeholder="Search..."
                         className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 focus:border-sky-400 focus:outline-none"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                 </label>
                 <button
@@ -732,8 +735,10 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                         <input
                                             className="w-full rounded-lg border border-gray-300 px-3 py-2"
                                             value={newItem.name}
-                                            onChange={(event) => setNewItem((prev) => ({ ...prev, name: event.target.value }))}
+                                            onChange={(event) => setNewItem((prev) => ({ ...prev, name: sanitizeBidiText(event.target.value) }))}
                                             placeholder="Mother's Day Reminder"
+                                            dir="ltr"
+                                            style={LTR_TEXT_STYLE}
                                         />
                                     </div>
                                     <div className="space-y-3">
@@ -915,8 +920,10 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                         <input
                                             className="w-full rounded-lg border border-gray-300 px-3 py-2"
                                             value={newItem.subject}
-                                            onChange={(event) => setNewItem((prev) => ({ ...prev, subject: event.target.value }))}
+                                            onChange={(event) => setNewItem((prev) => ({ ...prev, subject: sanitizeBidiText(event.target.value) }))}
                                             placeholder="Enter subject"
+                                            dir="ltr"
+                                            style={LTR_TEXT_STYLE}
                                         />
                                     </div>
                                     <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">
@@ -1022,9 +1029,11 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
                                                 ) : (
                                                     <input
                                                         value={condition.value}
-                                                        onChange={(event) => updateCondition(group.id, condition.id, 'value', event.target.value)}
+                                                        onChange={(event) => updateCondition(group.id, condition.id, 'value', sanitizeBidiText(event.target.value))}
                                                         className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                                                         placeholder="Value (ex. SUBSCRIBED or john@shop.com)"
+                                                        dir="ltr"
+                                                        style={LTR_TEXT_STYLE}
                                                     />
                                                 )}
                                             </div>

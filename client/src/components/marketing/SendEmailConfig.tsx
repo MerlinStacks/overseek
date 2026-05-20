@@ -12,6 +12,7 @@ import { EmailPreviewModal } from './flow/EmailPreviewModal';
 import type { EmailTemplate } from './flow/EmailTemplateSelectorModal';
 import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './emailDesignerV2/mergeTags';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from './textInputBidi';
 
 interface SendEmailNodeConfig {
     templateType?: 'visual' | 'richtext' | 'html';
@@ -189,9 +190,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         ref={toInputRef}
                         type="text"
                         value={config.to || '{{customer.email}}'}
-                        onChange={(e) => onUpdate('to', e.target.value)}
+                        onChange={(e) => onUpdate('to', sanitizeBidiText(e.target.value))}
                         placeholder="{{customer.email}}"
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <button
                         type="button"
@@ -214,9 +217,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         ref={subjectInputRef}
                         type="text"
                         value={config.subject || ''}
-                        onChange={(e) => onUpdate('subject', e.target.value)}
+                        onChange={(e) => onUpdate('subject', sanitizeBidiText(e.target.value))}
                         placeholder="Thank you {{customer.firstName}}, Order {{order.number}} has been confirmed."
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <button
                         type="button"
@@ -236,9 +241,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         ref={previewTextInputRef}
                         type="text"
                         value={config.previewText || ''}
-                        onChange={(e) => onUpdate('previewText', e.target.value)}
+                        onChange={(e) => onUpdate('previewText', sanitizeBidiText(e.target.value))}
                         placeholder="This is your order confirmation email, let's double check everything."
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <button
                         type="button"
@@ -409,9 +416,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignSource || ''}
-                            onChange={(e) => onUpdate('campaignSource', e.target.value)}
+                            onChange={(e) => onUpdate('campaignSource', sanitizeBidiText(e.target.value))}
                             placeholder=""
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <p className="mt-1 text-xs text-gray-500">Referrer: (e.g., google, newsletter)</p>
                     </div>
@@ -423,9 +432,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignMedium || 'Email'}
-                            onChange={(e) => onUpdate('campaignMedium', e.target.value)}
+                            onChange={(e) => onUpdate('campaignMedium', sanitizeBidiText(e.target.value))}
                             placeholder="Email"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <p className="mt-1 text-xs text-gray-500">Marketing medium: (e.g., CPC, banner, email)</p>
                     </div>
@@ -437,9 +448,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignName || ''}
-                            onChange={(e) => onUpdate('campaignName', e.target.value)}
+                            onChange={(e) => onUpdate('campaignName', sanitizeBidiText(e.target.value))}
                             placeholder=""
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <p className="mt-1 text-xs text-gray-500">Product, promo code, or slogan (e.g., spring_sale)</p>
                     </div>
@@ -451,9 +464,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignTerm || ''}
-                            onChange={(e) => onUpdate('campaignTerm', e.target.value)}
+                            onChange={(e) => onUpdate('campaignTerm', sanitizeBidiText(e.target.value))}
                             placeholder="Enter UTM term"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                 </div>
@@ -464,9 +479,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignContent || ''}
-                            onChange={(e) => onUpdate('campaignContent', e.target.value)}
+                            onChange={(e) => onUpdate('campaignContent', sanitizeBidiText(e.target.value))}
                             placeholder="Enter UTM content"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                 </div>
@@ -489,9 +506,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.fromName || ''}
-                            onChange={(e) => onUpdate('fromName', e.target.value)}
+                            onChange={(e) => onUpdate('fromName', sanitizeBidiText(e.target.value))}
                             placeholder="Your Company"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                     <div className="grid grid-cols-[140px_1fr] items-center gap-3">
@@ -499,9 +518,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="email"
                             value={config.fromEmail || ''}
-                            onChange={(e) => onUpdate('fromEmail', e.target.value)}
+                            onChange={(e) => onUpdate('fromEmail', sanitizeBidiText(e.target.value))}
                             placeholder="hello@example.com"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                     <div className="grid grid-cols-[140px_1fr] items-center gap-3">
@@ -509,9 +530,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="email"
                             value={config.replyToEmail || ''}
-                            onChange={(e) => onUpdate('replyToEmail', e.target.value)}
+                            onChange={(e) => onUpdate('replyToEmail', sanitizeBidiText(e.target.value))}
                             placeholder="reply@example.com"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                 </div>
@@ -613,9 +636,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                                 <Search className="h-4 w-4 text-gray-400" />
                                 <input
                                     value={mergeTagSearch}
-                                    onChange={(e) => setMergeTagSearch(e.target.value)}
+                                    onChange={(e) => setMergeTagSearch(sanitizeBidiText(e.target.value))}
                                     placeholder="Search by name"
                                     className="w-full border-0 text-sm text-gray-700 outline-none"
+                                    dir="ltr"
+                                    style={LTR_TEXT_STYLE}
                                 />
                             </div>
                             <button

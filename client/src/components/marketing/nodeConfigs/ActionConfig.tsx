@@ -7,6 +7,7 @@ import { SendEmailConfig } from '../SendEmailConfig';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 import { api } from '../../../services/api';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 
 interface ActionNodeConfig {
     actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK' | 'GENERATE_COUPON' | 'ADD_ORDER_NOTE' | 'UPDATE_ORDER_STATUS';
@@ -125,10 +126,12 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                         <label className="block text-sm font-medium text-gray-700 mb-1">SMS Message</label>
                         <textarea
                             value={config.smsMessage || ''}
-                            onChange={(e) => onUpdate('smsMessage', e.target.value)}
+                            onChange={(e) => onUpdate('smsMessage', sanitizeBidiText(e.target.value))}
                             placeholder="Hi {{customer.firstName}}, thanks for your order!"
                             rows={3}
                             className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${smsMetrics.overLimit ? 'border-red-300' : 'border-gray-300'}`}
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <div className="mt-1 flex items-center justify-between gap-3 text-xs text-gray-500">
                             <p>Use {"{{variable}}"} for personalization</p>
@@ -177,9 +180,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <input
                         type="text"
                         value={config.tagName || ''}
-                        onChange={(e) => onUpdate('tagName', e.target.value)}
+                        onChange={(e) => onUpdate('tagName', sanitizeBidiText(e.target.value))}
                         placeholder="VIP Customer"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <p className="text-xs text-gray-500 mt-1">This tag will be added to the contact</p>
                 </div>
@@ -191,9 +196,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <input
                         type="text"
                         value={config.tagName || ''}
-                        onChange={(e) => onUpdate('tagName', e.target.value)}
+                        onChange={(e) => onUpdate('tagName', sanitizeBidiText(e.target.value))}
                         placeholder="Abandoned Cart"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <p className="text-xs text-gray-500 mt-1">This tag will be removed from the contact</p>
                 </div>
@@ -205,9 +212,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <input
                         type="url"
                         value={config.webhookUrl || ''}
-                        onChange={(e) => onUpdate('webhookUrl', e.target.value)}
+                        onChange={(e) => onUpdate('webhookUrl', sanitizeBidiText(e.target.value))}
                         placeholder="https://example.com/webhook"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                 </div>
             )}
@@ -245,9 +254,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                             <input
                                 type="text"
                                 value={config.codePrefix || 'OS'}
-                                onChange={(e) => onUpdate('codePrefix', e.target.value)}
+                                onChange={(e) => onUpdate('codePrefix', sanitizeBidiText(e.target.value))}
                                 placeholder="WINBACK"
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                dir="ltr"
+                                style={LTR_TEXT_STYLE}
                             />
                         </div>
                         <div>
@@ -267,9 +278,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                         <input
                             type="text"
                             value={config.description || ''}
-                            onChange={(e) => onUpdate('description', e.target.value)}
+                            onChange={(e) => onUpdate('description', sanitizeBidiText(e.target.value))}
                             placeholder="Special recovery offer"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
 
@@ -296,10 +309,12 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                         <label className="block text-sm font-medium text-gray-700 mb-1">Order Note</label>
                         <textarea
                             value={config.noteContent || ''}
-                            onChange={(e) => onUpdate('noteContent', e.target.value)}
+                            onChange={(e) => onUpdate('noteContent', sanitizeBidiText(e.target.value))}
                             placeholder="Order updated by automation for {{customer.email}}"
                             rows={4}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <p className="text-xs text-gray-500 mt-1">Supports merge tags from the current automation context.</p>
                     </div>

@@ -4,6 +4,7 @@ import { AlignCenter, AlignLeft, AlignRight, Bold, Copy, Italic, Link2, List, Li
 import { getSocialIconSvg, getSocialPlatform, getSocialPlatformColor } from '../../../lib/emailDesignerV2';
 import type { EmailBlock, EmailDesignTheme, SocialIconStyle } from '../../../lib/emailDesignerV2';
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './mergeTags';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 
 const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: string }> = [
     { id: 'customer', label: 'Customer' },
@@ -345,9 +346,11 @@ function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailB
                                 <Search className="h-4 w-4 text-gray-400" />
                                 <input
                                     value={mergeTagSearch}
-                                    onChange={(event) => setMergeTagSearch(event.target.value)}
+                                    onChange={(event) => setMergeTagSearch(sanitizeBidiText(event.target.value))}
                                     placeholder="Search by name"
                                     className="w-full border-0 text-sm text-gray-700 outline-none"
+                                    dir="ltr"
+                                    style={LTR_TEXT_STYLE}
                                 />
                             </div>
                             <button
@@ -689,9 +692,11 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                             <div className="border-b border-slate-700 p-2">
                                 <input
                                     value={mergeTagSearch}
-                                    onChange={(event) => setMergeTagSearch(event.target.value)}
+                                    onChange={(event) => setMergeTagSearch(sanitizeBidiText(event.target.value))}
                                     placeholder="Search merge tags"
                                     className="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none"
+                                    dir="ltr"
+                                    style={LTR_TEXT_STYLE}
                                 />
                             </div>
                             <div className="max-h-48 overflow-y-auto p-1">

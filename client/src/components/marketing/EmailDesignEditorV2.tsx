@@ -74,6 +74,7 @@ const MAX_TEST_RECIPIENTS = 5;
 const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'X', 'Twitter', 'LinkedIn', 'Pinterest'];
 const SOCIAL_ICON_STYLES: SocialIconStyle[] = ['solid', 'outline', 'glyph'];
 const SOCIAL_ICON_SETS: SocialIconSet[] = ['native', 'classic'];
+const LTR_TEXT_STYLE = { direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' } as const;
 const PRODUCT_VISIBILITY_FIELDS = [
     { key: 'showImage', label: 'Image' },
     { key: 'showTitle', label: 'Title' },
@@ -143,6 +144,10 @@ function applyPreviewMergeTags(html: string, context: PreviewMergeContext): stri
     ];
 
     return replacements.reduce((result, [pattern, value]) => result.replace(pattern, value || ''), html);
+}
+
+function sanitizeBidiText(value: string): string {
+    return value.replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '');
 }
 
 function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContext {
@@ -1011,15 +1016,19 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         <div className="min-w-0 flex-1">
                             <input
                                 value={design.document.meta.title}
-                                onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.title = event.target.value; })}
+                                onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.title = sanitizeBidiText(event.target.value); })}
                                 placeholder="Add a Subject Text"
                                 className="block w-full border-0 bg-transparent p-0 text-base font-semibold text-slate-950 placeholder:text-slate-950 focus:ring-0 dark:text-white dark:placeholder:text-white"
+                                dir="ltr"
+                                style={LTR_TEXT_STYLE}
                             />
                             <input
                                 value={design.document.meta.previewText || ''}
-                                onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.previewText = event.target.value; })}
+                                onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.previewText = sanitizeBidiText(event.target.value); })}
                                 placeholder="Add a Preview Text"
                                 className="mt-0.5 block w-full border-0 bg-transparent p-0 text-sm text-indigo-500 placeholder:text-indigo-500 focus:ring-0 dark:text-indigo-300"
+                                dir="ltr"
+                                style={LTR_TEXT_STYLE}
                             />
                         </div>
                         <Pencil size={17} className="shrink-0 text-slate-500 dark:text-slate-400" />
@@ -1059,7 +1068,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                             <div className="min-h-0 flex-1 overflow-auto px-3 pb-4">
                                 <label className="mb-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950">
                                     <Search size={15} />
-                                    <input value={blockSearch} onChange={(event) => setBlockSearch(event.target.value)} placeholder="Search blocks" className="w-full border-0 bg-transparent p-0 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-0 dark:text-slate-100" />
+                                    <input value={blockSearch} onChange={(event) => setBlockSearch(sanitizeBidiText(event.target.value))} placeholder="Search blocks" className="w-full border-0 bg-transparent p-0 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-0 dark:text-slate-100" dir="ltr" style={LTR_TEXT_STYLE} />
                                 </label>
                                 <div>
                                     <p className="mb-3 text-sm font-medium text-slate-950 dark:text-white">General</p>
@@ -1261,7 +1270,7 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
     return (
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-            <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <input type={type} value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
         </label>
     );
 }
@@ -1272,7 +1281,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
             <div className="flex gap-2">
                 <input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-800" />
-                <input value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                <input value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
             </div>
         </label>
     );
@@ -1664,7 +1673,7 @@ function ListEditor({ items, onChange }: { items: string[]; onChange: (items: st
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">List items</p>
             {items.map((item, index) => (
                 <div key={index} className="flex gap-2">
-                    <input value={item} onChange={(event) => onChange(items.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    <input value={item} onChange={(event) => onChange(items.map((value, itemIndex) => itemIndex === index ? sanitizeBidiText(event.target.value) : value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
                     <button onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))} className="rounded-lg border border-red-200 px-2 text-sm text-red-600 hover:bg-red-50">Remove</button>
                 </div>
             ))}
@@ -1677,7 +1686,7 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
     return (
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-            <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={8} className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <textarea value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} rows={8} className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
         </label>
     );
 }

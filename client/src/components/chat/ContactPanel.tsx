@@ -55,6 +55,7 @@ interface ContactPanelProps {
             avatarUrl?: string;
         };
     };
+    smsIdentifier?: string;
     messageCount?: number;
     onSelectConversation?: (conversationId: string) => void;
 }
@@ -95,7 +96,7 @@ interface PreviousConversation {
     messages?: { content: string }[];
 }
 
-export function ContactPanel({ conversation, messageCount, onSelectConversation }: ContactPanelProps) {
+export function ContactPanel({ conversation, smsIdentifier, messageCount, onSelectConversation }: ContactPanelProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const accountCurrency = currentAccount?.currency || 'USD';
@@ -208,7 +209,9 @@ export function ContactPanel({ conversation, messageCount, onSelectConversation 
 
     if (!conversation) return null;
 
-    const smsSenderNumber = conversation.channel === 'SMS' ? conversation.externalConversationId : undefined;
+    const smsSenderNumber = conversation.channel === 'SMS'
+        ? (conversation.externalConversationId || smsIdentifier)
+        : smsIdentifier;
     const name = customer
         ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.email || 'Anonymous'
         : conversation.guestName || conversation.guestEmail || smsSenderNumber || 'Anonymous';
