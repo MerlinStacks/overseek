@@ -1,4 +1,5 @@
 import { prisma } from '../../utils/prisma';
+import type { Prisma } from '@prisma/client';
 import { Logger } from '../../utils/logger';
 import { automationEngine } from '../AutomationEngine';
 import { ausPostShippingTrackingAdapter } from './AusPostShippingTrackingAdapter';
@@ -193,7 +194,7 @@ export class ShippingTrackingService {
                 status: input.status || normalized.normalizedState,
                 description: input.description || null,
                 location: input.location || null,
-                rawEvent: input.rawEvent || {},
+                rawEvent: (input.rawEvent || {}) as Prisma.InputJsonValue,
             },
             create: {
                 accountId,
@@ -207,7 +208,7 @@ export class ShippingTrackingService {
                 description: input.description || null,
                 location: input.location || null,
                 occurredAt,
-                rawEvent: input.rawEvent || {},
+                rawEvent: (input.rawEvent || {}) as Prisma.InputJsonValue,
             },
         });
 

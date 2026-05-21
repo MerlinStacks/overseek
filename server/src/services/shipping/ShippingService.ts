@@ -1,4 +1,5 @@
 import { prisma } from '../../utils/prisma';
+import type { Prisma } from '@prisma/client';
 import { decrypt, encrypt } from '../../utils/encryption';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -174,25 +175,27 @@ export class ShippingService {
             ...packageAndServiceErrors.filter((error) => error?.field !== 'service'),
             ...(serviceError ? [serviceError] : []),
         ];
+        const updateData: Prisma.ShippingShipmentDraftUncheckedUpdateInput = {
+            ...(data.selectedPackagePresetId !== undefined ? { selectedPackagePresetId: data.selectedPackagePresetId } : {}),
+            ...(data.manualOuterLengthMm !== undefined ? { manualOuterLengthMm: data.manualOuterLengthMm } : {}),
+            ...(data.manualOuterWidthMm !== undefined ? { manualOuterWidthMm: data.manualOuterWidthMm } : {}),
+            ...(data.manualOuterHeightMm !== undefined ? { manualOuterHeightMm: data.manualOuterHeightMm } : {}),
+            ...(data.manualWeightGrams !== undefined ? { manualWeightGrams: data.manualWeightGrams } : {}),
+            ...(data.correctedAddress !== undefined ? { correctedAddress: data.correctedAddress as Prisma.InputJsonValue } : {}),
+            ...(data.selectedServiceCode !== undefined ? { selectedServiceCode: data.selectedServiceCode } : {}),
+            ...(data.selectedPrintStationId !== undefined ? { selectedPrintStationId: data.selectedPrintStationId } : {}),
+            ...(packageTouched ? {
+                packageSelectionConfidence: 'manual_override',
+                packageSelectionReason: 'Package details manually updated by staff',
+                readinessErrors: readinessErrors as Prisma.InputJsonValue,
+                readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked',
+            } : {}),
+            updatedByUserId: userId,
+        };
+
         const updated = await prisma.shippingShipmentDraft.update({
             where: { accountId_wooOrderId: { accountId, wooOrderId } },
-            data: {
-                ...(data.selectedPackagePresetId !== undefined ? { selectedPackagePresetId: data.selectedPackagePresetId } : {}),
-                ...(data.manualOuterLengthMm !== undefined ? { manualOuterLengthMm: data.manualOuterLengthMm } : {}),
-                ...(data.manualOuterWidthMm !== undefined ? { manualOuterWidthMm: data.manualOuterWidthMm } : {}),
-                ...(data.manualOuterHeightMm !== undefined ? { manualOuterHeightMm: data.manualOuterHeightMm } : {}),
-                ...(data.manualWeightGrams !== undefined ? { manualWeightGrams: data.manualWeightGrams } : {}),
-                ...(data.correctedAddress !== undefined ? { correctedAddress: data.correctedAddress } : {}),
-                ...(data.selectedServiceCode !== undefined ? { selectedServiceCode: data.selectedServiceCode } : {}),
-                ...(data.selectedPrintStationId !== undefined ? { selectedPrintStationId: data.selectedPrintStationId } : {}),
-                ...(packageTouched ? {
-                    packageSelectionConfidence: 'manual_override',
-                    packageSelectionReason: 'Package details manually updated by staff',
-                    readinessErrors,
-                    readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked',
-                } : {}),
-                updatedByUserId: userId,
-            },
+            data: updateData,
         });
 
         await this.recordAuditEvent(accountId, 'DRAFT_UPDATED', {
@@ -280,8 +283,8 @@ export class ShippingService {
         const updated = await prisma.shippingShipmentDraft.update({
             where: { accountId_wooOrderId: { accountId, wooOrderId } },
             data: {
-                lastRateRequest: requestSnapshot,
-                lastRateResponse: rateResponse,
+                lastRateRequest: requestSnapshot as Prisma.InputJsonValue,
+                lastRateResponse: rateResponse as Prisma.InputJsonValue,
             },
         });
         await this.recordAuditEvent(accountId, 'RATES_REQUESTED', {
@@ -1240,8 +1243,8 @@ export class ShippingService {
                     displayName: data.displayName || existing.displayName,
                     isEnabled: data.isEnabled ?? existing.isEnabled,
                     credentialsEncrypted: credentialPayload,
-                    config: nextConfig,
-                    senderAddress: data.senderAddress || existing.senderAddress || {},
+                    config: nextConfig as Prisma.InputJsonValue,
+                    senderAddress: (data.senderAddress || existing.senderAddress || {}) as Prisma.InputJsonValue,
                 },
             })
             : await prisma.shippingCarrierAccount.create({
@@ -1251,8 +1254,8 @@ export class ShippingService {
                     displayName: data.displayName || 'Australia Post',
                     isEnabled: data.isEnabled ?? true,
                     credentialsEncrypted: credentialPayload,
-                    config: nextConfig,
-                    senderAddress: data.senderAddress || {},
+                    config: nextConfig as Prisma.InputJsonValue,
+                    senderAddress: (data.senderAddress || {}) as Prisma.InputJsonValue,
                 },
             });
 
@@ -1594,7 +1597,8 @@ export class ShippingService {
             try {
                 const fulfillmentResult = await shippingFulfillmentService.syncPrintedLabel(accountId, label.id);
                 lastResult = fulfillmentResult;
-                if (!fulfillmentResult.error) {
+                const fulfillmentError = 'error' in fulfillmentResult ? fulfillmentResult.error : null;
+                if (!fulfillmentError) {
                     await prisma.shippingLabel.update({ where: { id: label.id }, data: { status: 'fulfilled', errorMessage: null } });
                     await this.recordAuditEvent(accountId, 'LABEL_PRINT_FULFILLMENT_SYNCED', {
                         orderId: label.orderId,
@@ -1603,7 +1607,7 @@ export class ShippingService {
                     });
                     return { ok: true, attempts: attempt + 1, result: fulfillmentResult };
                 }
-                lastErrorMessage = fulfillmentResult.error;
+                lastErrorMessage = fulfillmentError;
             } catch (error: any) {
                 lastErrorMessage = error?.message || 'Fulfillment sync failed';
             }
@@ -1700,9 +1704,9 @@ export class ShippingService {
                 draftId: data.draftId || null,
                 userId: data.userId || null,
                 eventType,
-                beforeSnapshot: data.beforeSnapshot || {},
-                afterSnapshot: data.afterSnapshot || {},
-                metadata: data.metadata || {},
+                beforeSnapshot: (data.beforeSnapshot || {}) as Prisma.InputJsonValue,
+                afterSnapshot: (data.afterSnapshot || {}) as Prisma.InputJsonValue,
+                metadata: (data.metadata || {}) as Prisma.InputJsonValue,
             },
         });
     }
