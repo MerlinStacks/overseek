@@ -29,11 +29,16 @@ export function AdminLogsPage() {
         fetch(`/api/admin/logs?page=${currentPage}&limit=${currentLimit}`, {
             headers: { Authorization: `Bearer ${token}` }
         })
-            .then(res => res.json())
+            .then(async res => {
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch logs (${res.status})`);
+                }
+                return res.json();
+            })
             .then(data => {
-                setLogs(data.logs);
-                setTotalPages(data.totalPages);
-                setPage(data.page);
+                setLogs(Array.isArray(data.logs) ? data.logs : []);
+                setTotalPages(Number.isFinite(data.totalPages) ? data.totalPages : 1);
+                setPage(Number.isFinite(data.page) ? data.page : currentPage);
                 setLoading(false);
             })
             .catch(err => {

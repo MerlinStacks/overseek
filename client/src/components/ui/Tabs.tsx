@@ -24,21 +24,26 @@ export function Tabs({
     activeTab: controlledActiveTab,
     onTabChange
 }: TabsProps) {
-    const [uncontrolledActiveTab, setUncontrolledActiveTab] = useState(defaultTab || tabs[0].id);
+    const initialTab = defaultTab || tabs[0]?.id || '';
+    const [uncontrolledActiveTab, setUncontrolledActiveTab] = useState(initialTab);
 
     const rawActiveTab = controlledActiveTab ?? uncontrolledActiveTab;
     const isValidTab = tabs.some(tab => tab.id === rawActiveTab);
-    const fallbackTab = defaultTab || tabs[0].id;
+    const fallbackTab = defaultTab || tabs[0]?.id || '';
     const activeTab = isValidTab ? rawActiveTab : fallbackTab;
 
     useEffect(() => {
-        if (!isValidTab && controlledActiveTab === undefined) {
+        if (fallbackTab && !isValidTab && controlledActiveTab === undefined) {
             // Guard: when active tab is removed from tab list, fall back to a valid tab
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setUncontrolledActiveTab(fallbackTab);
             onTabChange?.(fallbackTab);
         }
     }, [isValidTab, controlledActiveTab, fallbackTab, onTabChange]);
+
+    if (tabs.length === 0) {
+        return null;
+    }
 
     const handleTabChange = (tabId: string) => {
         if (controlledActiveTab === undefined) {

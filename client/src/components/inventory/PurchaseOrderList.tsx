@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Loader2, FileText, Package, Clock, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
 import { subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
+import { getSafeHref } from '../../utils/url';
 
 interface PurchaseOrder {
     id: string;
@@ -256,7 +257,7 @@ export function PurchaseOrderList() {
                                         <div className="flex items-center justify-center gap-2">
                                             {po.trackingLink && (
                                                 <a
-                                                    href={po.trackingLink}
+                                                    href={getSafeHref(po.trackingLink)}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     onClick={(e) => e.stopPropagation()}

@@ -4,6 +4,7 @@
  */
 import { FileText, Download, Image as ImageIcon, File, Eye, Paperclip } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { getSafeHref } from '../../utils/url';
 
 interface AttachmentInfo {
     type: 'image' | 'pdf' | 'document' | 'file';
@@ -70,7 +71,7 @@ export function AttachmentGallery({ attachments, onImageClick }: AttachmentGalle
                     // File attachment pill
                     <a
                         key={idx}
-                        href={attachment.url || '#'}
+                        href={getSafeHref(attachment.url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         download={attachment.filename}

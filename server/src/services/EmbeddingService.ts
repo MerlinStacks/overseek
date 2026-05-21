@@ -11,6 +11,17 @@ import { Logger } from '../utils/logger';
 // Default embedding model
 const DEFAULT_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
 
+async function safeOpenRouterJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('OpenRouter embeddings returned non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error('OpenRouter returned a non-JSON response');
+    }
+
+    return response.json();
+}
+
 interface EmbeddingResult {
     id: string;
     name: string;
@@ -70,11 +81,11 @@ export class EmbeddingService {
             });
 
             if (!response.ok) {
-                const error = await response.json();
+                const error = await safeOpenRouterJson(response, 'generateEmbeddings.error').catch(() => ({}));
                 throw new Error(error.error?.message || 'Embedding generation failed');
             }
 
-            const data = await response.json();
+            const data = await safeOpenRouterJson(response, 'generateEmbeddings');
             return data.data.sort((a: any, b: any) => a.index - b.index).map((d: any) => d.embedding);
         } catch (error) {
             Logger.error('Failed to generate embeddings', { error, model, count: texts.length });

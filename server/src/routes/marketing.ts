@@ -2,7 +2,7 @@
  * Marketing Route - Fastify Plugin
  */
 
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { MarketingService } from '../services/MarketingService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
@@ -13,6 +13,19 @@ import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 import { resolveMergeTags } from '../services/MergeTagResolver';
 
 const service = new MarketingService();
+
+function getAccountId(request: FastifyRequest): string {
+    const accountId = request.accountId || request.user?.accountId;
+    if (!accountId) {
+        throw new Error('Account context required');
+    }
+    return accountId;
+}
+
+function sendInternalError(reply: FastifyReply, error: unknown, context: string) {
+    Logger.error(context, { error });
+    return reply.code(500).send({ error: 'Internal server error' });
+}
 
 const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Params: { token: string } }>('/recover-cart/:token', async (request, reply) => {
@@ -53,48 +66,48 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     // Campaigns
     fastify.get('/campaigns', async (request, reply) => {
         try {
-            const campaigns = await service.listCampaigns(request.user!.accountId!);
+            const campaigns = await service.listCampaigns(getAccountId(request));
             return campaigns;
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.post('/campaigns', async (request, reply) => {
         try {
-            const campaign = await service.createCampaign(request.user!.accountId!, request.body as any);
+            const campaign = await service.createCampaign(getAccountId(request), request.body as any);
             return campaign;
         } catch (e) {
             Logger.error('Error creating campaign', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.get<{ Params: { id: string } }>('/campaigns/:id', async (request, reply) => {
         try {
-            const campaign = await service.getCampaign(request.params.id, request.user!.accountId!);
+            const campaign = await service.getCampaign(request.params.id, getAccountId(request));
             if (!campaign) return reply.code(404).send({ error: 'Not found' });
             return campaign;
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.put<{ Params: { id: string } }>('/campaigns/:id', async (request, reply) => {
         try {
-            await service.updateCampaign(request.params.id, request.user!.accountId!, request.body as any);
+            await service.updateCampaign(request.params.id, getAccountId(request), request.body as any);
             return { success: true };
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.delete<{ Params: { id: string } }>('/campaigns/:id', async (request, reply) => {
         try {
-            await service.deleteCampaign(request.params.id, request.user!.accountId!);
+            await service.deleteCampaign(request.params.id, getAccountId(request));
             return { success: true };
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -104,13 +117,13 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             await service.sendTestEmail(request.params.id, email);
             return { success: true };
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.post<{ Params: { id: string } }>('/campaigns/:id/send', async (request, reply) => {
         try {
-            const result = await service.enqueueCampaignSend(request.params.id, request.user!.accountId!);
+            const result = await service.enqueueCampaignSend(request.params.id, getAccountId(request));
             if (!result.queued) {
                 return reply.code(409).send({ success: false, error: 'Campaign is already sending' });
             }
@@ -138,7 +151,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Invalid scheduledAt value' });
             }
 
-            const result = await service.scheduleCampaign(request.params.id, request.user!.accountId!, scheduledAt);
+            const result = await service.scheduleCampaign(request.params.id, getAccountId(request), scheduledAt);
             return reply.code(202).send({ success: true, ...result });
         } catch (e) {
             const message = (e as Error).message;
@@ -159,7 +172,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.delete<{ Params: { id: string } }>('/campaigns/:id/schedule', async (request, reply) => {
         try {
-            const result = await service.unscheduleCampaign(request.params.id, request.user!.accountId!);
+            const result = await service.unscheduleCampaign(request.params.id, getAccountId(request));
             if (!result.unscheduled && result.reason === 'not_scheduled') {
                 return reply.code(409).send({ success: false, error: 'Campaign is not scheduled' });
             }
@@ -178,29 +191,29 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     // Automations
     fastify.get('/automations', async (request, reply) => {
         try {
-            const automations = await service.listAutomations(request.user!.accountId!);
+            const automations = await service.listAutomations(getAccountId(request));
             return automations;
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.post('/automations', async (request, reply) => {
         try {
-            const automation = await service.upsertAutomation(request.user!.accountId!, request.body as any);
+            const automation = await service.upsertAutomation(getAccountId(request), request.body as any);
             return automation;
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.get<{ Params: { id: string } }>('/automations/:id', async (request, reply) => {
         try {
-            const automation = await service.getAutomation(request.params.id, request.user!.accountId!);
+            const automation = await service.getAutomation(request.params.id, getAccountId(request));
             if (!automation) return reply.code(404).send({ error: 'Not found' });
             return automation;
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -212,7 +225,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
             return await service.setAutomationEnabled(
                 request.params.id,
-                request.user!.accountId!,
+                getAccountId(request),
                 request.body.isActive
             );
         } catch (e) {
@@ -220,45 +233,45 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             if (message === 'Automation not found') {
                 return reply.code(404).send({ error: message });
             }
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.get<{ Params: { id: string } }>('/automations/:id/analytics', async (request, reply) => {
         try {
-            return await service.getAutomationAnalytics(request.params.id, request.user!.accountId!);
+            return await service.getAutomationAnalytics(request.params.id, getAccountId(request));
         } catch (e) {
             const message = (e as Error).message;
             if (message === 'Automation not found') {
                 return reply.code(404).send({ error: message });
             }
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/automations/:id/enrollments', async (request, reply) => {
         try {
             const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
-            return await service.listAutomationEnrollments(request.params.id, request.user!.accountId!, limit);
+            return await service.listAutomationEnrollments(request.params.id, getAccountId(request), limit);
         } catch (e) {
             const message = (e as Error).message;
             if (message === 'Automation not found') {
                 return reply.code(404).send({ error: message });
             }
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/automations/:id/run-events', async (request, reply) => {
         try {
             const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
-            return await service.listAutomationRunEvents(request.params.id, request.user!.accountId!, limit);
+            return await service.listAutomationRunEvents(request.params.id, getAccountId(request), limit);
         } catch (e) {
             const message = (e as Error).message;
             if (message === 'Automation not found') {
                 return reply.code(404).send({ error: message });
             }
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -270,7 +283,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 const perPage = request.query.perPage ? parseInt(request.query.perPage, 10) : 10;
                 return await service.getAutomationNodeAnalytics(
                     request.params.id,
-                    request.user!.accountId!,
+                    getAccountId(request),
                     request.params.nodeId,
                     request.query.status,
                     page,
@@ -281,45 +294,45 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 if (message === 'Automation not found') {
                     return reply.code(404).send({ error: message });
                 }
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
 
     fastify.delete<{ Params: { id: string } }>('/automations/:id', async (request, reply) => {
         try {
-            await service.deleteAutomation(request.params.id, request.user!.accountId!);
+            await service.deleteAutomation(request.params.id, getAccountId(request));
             return { success: true };
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     // Templates
     fastify.get('/templates', async (request, reply) => {
         try {
-            const templates = await service.listTemplates(request.user!.accountId!);
+            const templates = await service.listTemplates(getAccountId(request));
             return templates;
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.post('/templates', async (request, reply) => {
         try {
-            const template = await service.upsertTemplate(request.user!.accountId!, request.body as any);
+            const template = await service.upsertTemplate(getAccountId(request), request.body as any);
             return template;
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
     fastify.delete<{ Params: { id: string } }>('/templates/:id', async (request, reply) => {
         try {
-            await service.deleteTemplate(request.params.id, request.user!.accountId!);
+            await service.deleteTemplate(request.params.id, getAccountId(request));
             return { success: true };
         } catch (e) {
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -332,7 +345,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
             }
 
-            const accountId = request.accountId || request.user!.accountId!;
+            const accountId = request.accountId || getAccountId(request);
             const emailAccount = await getDefaultEmailAccount(accountId);
             const account = await prisma.account.findFirst({
                 where: { id: accountId },
@@ -405,7 +418,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true };
         } catch (e) {
             Logger.error('Error sending test email', { error: e });
-            return reply.code(500).send({ error: 'Failed to send test email', message: (e as Error).message });
+            return reply.code(500).send({ error: 'Failed to send test email' });
         }
     });
 
@@ -414,13 +427,13 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { campaignTrackingService } = await import('../services/CampaignTrackingService');
             const analytics = await campaignTrackingService.getCampaignAnalytics(
-                request.user!.accountId!,
+                getAccountId(request),
                 request.params.id
             );
             return analytics;
         } catch (e) {
             Logger.error('Error fetching campaign analytics', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -429,13 +442,13 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const { campaignTrackingService } = await import('../services/CampaignTrackingService');
             const days = parseInt(request.query.days || '30', 10);
             const overview = await campaignTrackingService.getAccountCampaignOverview(
-                request.user!.accountId!,
+                getAccountId(request),
                 days
             );
             return overview;
         } catch (e) {
             Logger.error('Error fetching campaign overview', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -444,7 +457,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const days = parseInt(request.query.days || '30', 10);
             const safeDays = Number.isFinite(days) && days > 0 ? days : 30;
             const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
-            const accountId = request.user!.accountId!;
+            const accountId = getAccountId(request);
 
             const [campaignEvents, emailLogStats, recentUnsubscribes, emailLogsForTrend, unsubscribesForTrend] = await Promise.all([
                 prisma.campaignEvent.groupBy({
@@ -580,7 +593,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             };
         } catch (e) {
             Logger.error('Error fetching email dashboard analytics', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -597,7 +610,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const { RecommendationTracker } = await import('../services/tools/knowledge/RecommendationTracker');
                 const history = await RecommendationTracker.getHistory(
-                    request.user!.accountId!,
+                    getAccountId(request),
                     {
                         status: request.query.status as any,
                         limit: request.query.limit ? parseInt(request.query.limit, 10) : 50
@@ -606,7 +619,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return history;
             } catch (e) {
                 Logger.error('Error fetching recommendation history', { error: e });
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
@@ -620,11 +633,11 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const { RecommendationTracker } = await import('../services/tools/knowledge/RecommendationTracker');
                 const days = parseInt(request.query.days || '90', 10);
-                const stats = await RecommendationTracker.getStats(request.user!.accountId!, days);
+                const stats = await RecommendationTracker.getStats(getAccountId(request), days);
                 return stats;
             } catch (e) {
                 Logger.error('Error fetching recommendation stats', { error: e });
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
@@ -654,7 +667,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return { success: true };
             } catch (e) {
                 Logger.error('Error recording recommendation feedback', { error: e });
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
@@ -680,7 +693,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return { success: true };
             } catch (e) {
                 Logger.error('Error recording recommendation outcome', { error: e });
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
@@ -697,14 +710,14 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             try {
                 const { LearningService } = await import('../services/tools/knowledge/LearningService');
-                const learnings = await LearningService.list(request.user!.accountId!, {
+                const learnings = await LearningService.list(getAccountId(request), {
                     includeInactive: request.query.includeInactive === 'true',
                     includePending: request.query.includePending === 'true'
                 });
                 return learnings;
             } catch (e) {
                 Logger.error('Error fetching learnings', { error: e });
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
@@ -715,11 +728,11 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/learnings/pending', async (request, reply) => {
         try {
             const { LearningService } = await import('../services/tools/knowledge/LearningService');
-            const pending = await LearningService.getPending(request.user!.accountId!);
+            const pending = await LearningService.getPending(getAccountId(request));
             return pending;
         } catch (e) {
             Logger.error('Error fetching pending learnings', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -737,7 +750,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                     return reply.code(400).send({ error: 'Missing required fields' });
                 }
 
-                const learning = await LearningService.create(request.user!.accountId!, {
+                const learning = await LearningService.create(getAccountId(request), {
                     platform: platform as any,
                     category: category as any,
                     condition,
@@ -748,7 +761,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return learning;
             } catch (e) {
                 Logger.error('Error creating learning', { error: e });
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
@@ -763,7 +776,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 const { LearningService } = await import('../services/tools/knowledge/LearningService');
                 const updated = await LearningService.update(
                     request.params.id,
-                    request.user!.accountId!,
+                    getAccountId(request),
                     request.body
                 );
 
@@ -773,7 +786,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return updated;
             } catch (e) {
                 Logger.error('Error updating learning', { error: e });
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
@@ -784,7 +797,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.delete<{ Params: { id: string } }>('/learnings/:id', async (request, reply) => {
         try {
             const { LearningService } = await import('../services/tools/knowledge/LearningService');
-            const deleted = await LearningService.delete(request.params.id, request.user!.accountId!);
+            const deleted = await LearningService.delete(request.params.id, getAccountId(request));
 
             if (!deleted) {
                 return reply.code(404).send({ error: 'Learning not found' });
@@ -792,7 +805,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true };
         } catch (e) {
             Logger.error('Error deleting learning', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -802,7 +815,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { id: string } }>('/learnings/:id/approve', async (request, reply) => {
         try {
             const { LearningService } = await import('../services/tools/knowledge/LearningService');
-            const approved = await LearningService.approvePending(request.params.id, request.user!.accountId!);
+            const approved = await LearningService.approvePending(request.params.id, getAccountId(request));
 
             if (!approved) {
                 return reply.code(404).send({ error: 'Pending learning not found' });
@@ -810,7 +823,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true };
         } catch (e) {
             Logger.error('Error approving learning', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -820,11 +833,11 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/learnings/derive', async (request, reply) => {
         try {
             const { LearningService } = await import('../services/tools/knowledge/LearningService');
-            const derived = await LearningService.deriveFromOutcomes(request.user!.accountId!);
+            const derived = await LearningService.deriveFromOutcomes(getAccountId(request));
             return { derived, count: derived.length };
         } catch (e) {
             Logger.error('Error deriving learnings', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -844,7 +857,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
                 const alerts = await prisma.adAlert.findMany({
                     where: {
-                        accountId: request.user!.accountId!,
+                        accountId: getAccountId(request),
                         ...(unacknowledgedOnly ? { isAcknowledged: false } : {})
                     },
                     orderBy: { createdAt: 'desc' },
@@ -853,7 +866,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return alerts;
             } catch (e) {
                 Logger.error('Error fetching alerts', { error: e });
-                return reply.code(500).send({ error: e });
+                return sendInternalError(reply, e, 'Marketing route failed');
             }
         }
     );
@@ -864,7 +877,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { id: string } }>('/alerts/:id/acknowledge', async (request, reply) => {
         try {
             const alert = await prisma.adAlert.findFirst({
-                where: { id: request.params.id, accountId: request.user!.accountId! }
+                where: { id: request.params.id, accountId: getAccountId(request) }
             });
 
             if (!alert) {
@@ -883,7 +896,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true };
         } catch (e) {
             Logger.error('Error acknowledging alert', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 
@@ -893,14 +906,14 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/alerts/count', async (request, reply) => {
         try {
             const [total, unacknowledged, critical] = await Promise.all([
-                prisma.adAlert.count({ where: { accountId: request.user!.accountId! } }),
-                prisma.adAlert.count({ where: { accountId: request.user!.accountId!, isAcknowledged: false } }),
-                prisma.adAlert.count({ where: { accountId: request.user!.accountId!, isAcknowledged: false, severity: 'critical' } })
+                prisma.adAlert.count({ where: { accountId: getAccountId(request) } }),
+                prisma.adAlert.count({ where: { accountId: getAccountId(request), isAcknowledged: false } }),
+                prisma.adAlert.count({ where: { accountId: getAccountId(request), isAcknowledged: false, severity: 'critical' } })
             ]);
             return { total, unacknowledged, critical };
         } catch (e) {
             Logger.error('Error fetching alert counts', { error: e });
-            return reply.code(500).send({ error: e });
+            return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
 };

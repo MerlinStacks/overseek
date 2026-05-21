@@ -8,6 +8,17 @@
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { AI_LIMITS } from '../config/limits';
+
+async function safeOpenRouterJson(response: Response): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[PerformanceDigest] OpenRouter returned non-JSON response', { status: response.status, contentType, bodySnippet });
+        throw new Error('OpenRouter returned a non-JSON response');
+    }
+
+    return response.json();
+}
 import { AdsService } from './ads';
 import { EmailService } from './EmailService';
 
@@ -354,7 +365,7 @@ export class PerformanceDigestService {
                 throw new Error(`OpenRouter API error: ${response.status}`);
             }
 
-            const data = await response.json();
+            const data = await safeOpenRouterJson(response);
             const content = data.choices?.[0]?.message?.content || '';
 
             // Parse AI response (expecting JSON)

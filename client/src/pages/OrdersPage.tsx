@@ -5,7 +5,7 @@
  * State management delegated to useOrders hook.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, RefreshCw, Search, Tag, TrendingUp, X, Eye, ShoppingBag, CheckCircle2, FileText } from 'lucide-react';
 import { formatDate, formatTime, formatCurrency } from '../utils/format';
@@ -13,22 +13,14 @@ import { Pagination } from '../components/ui/Pagination';
 import { OrderPreviewModal } from '../components/orders/OrderPreviewModal';
 import { OrderStatusTabs } from '../components/orders/OrderStatusTabs';
 import { FraudIcon } from '../components/orders/FraudIcon';
+import { openSafeUrl } from '../utils/url';
 import { useOrders } from '../hooks/useOrders';
 import { EmptyState } from '../components/ui/EmptyState';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { RelativeTime } from '../components/ui/RelativeTime';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { Logger } from '../utils/logger';
-
-interface InvoiceTemplate {
-    name: string;
-    layout?: {
-        grid?: unknown[];
-        items?: unknown[];
-    };
-}
 
 export function OrdersPage() {
     const { token } = useAuth();
@@ -45,7 +37,6 @@ export function OrdersPage() {
         handleSync, handleGeneratePicklist, removeTag, handleMarkOrderCompleted
     } = useOrders();
     const [busyActionOrderIds, setBusyActionOrderIds] = useState<Record<number, { completing?: boolean; invoicing?: boolean }>>({});
-    const invoiceTemplateRef = useRef<InvoiceTemplate | null | undefined>(undefined);
 
     const setOrderActionState = useCallback((orderId: number, key: 'completing' | 'invoicing', value: boolean) => {
         setBusyActionOrderIds(prev => ({
@@ -53,22 +44,6 @@ export function OrdersPage() {
             [orderId]: { ...prev[orderId], [key]: value }
         }));
     }, []);
-
-    const fetchLatestInvoiceTemplate = useCallback(async (): Promise<InvoiceTemplate | null> => {
-        if (invoiceTemplateRef.current !== undefined) {
-            return invoiceTemplateRef.current;
-        }
-        const res = await fetch('/api/invoices/templates', {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount?.id || ''
-            }
-        });
-        if (!res.ok) throw new Error('Failed to fetch invoice templates');
-        const templates: InvoiceTemplate[] = await res.json();
-        invoiceTemplateRef.current = templates.length > 0 ? templates[0] : null;
-        return invoiceTemplateRef.current;
-    }, [token, currentAccount?.id]);
 
     const handleQuickComplete = useCallback(async (orderId: number) => {
         setOrderActionState(orderId, 'completing', true);
@@ -79,21 +54,27 @@ export function OrdersPage() {
     }, [handleMarkOrderCompleted, setOrderActionState, toast]);
 
     const handleQuickInvoice = useCallback(async (orderId: number) => {
-        const order = orders.find((item) => item.id === orderId);
-        if (!order) return;
+        if (!token || !currentAccount?.id) return;
         setOrderActionState(orderId, 'invoicing', true);
         try {
-            const template = await fetchLatestInvoiceTemplate();
-            if (!template) {
-                toast.error('No invoice template found. Please design one first.');
-                return;
+            const res = await fetch(`/api/invoices/orders/${encodeURIComponent(String(orderId))}/generate`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ forceRegenerate: true })
+            });
+
+            const payload = await res.json();
+            if (!res.ok) {
+                throw new Error(payload?.error || 'Failed to generate canonical invoice');
             }
-            await generateInvoicePDF(
-                { ...order, number: String(order.id) },
-                (template.layout?.grid || []) as Array<{ i: string; x: number; y: number; w: number; h: number }>,
-                (template.layout?.items || []) as unknown as Parameters<typeof generateInvoicePDF>[2],
-                template.name
-            );
+
+            const downloadUrl = String(payload?.artifact_download_url || '');
+            if (!downloadUrl) throw new Error('Canonical invoice download URL missing');
+            if (!openSafeUrl(downloadUrl)) throw new Error('Invalid canonical invoice download URL');
             toast.success(`Invoice generated for order #${orderId}`);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -102,7 +83,7 @@ export function OrdersPage() {
         } finally {
             setOrderActionState(orderId, 'invoicing', false);
         }
-    }, [orders, fetchLatestInvoiceTemplate, setOrderActionState, toast]);
+    }, [token, currentAccount?.id, setOrderActionState, toast]);
 
     return (
         <div className="space-y-6">

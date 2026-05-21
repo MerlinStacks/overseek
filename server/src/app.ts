@@ -175,6 +175,8 @@ async function build() {
     fastify.addHook('onClose', async () => {
         Logger.info('Graceful shutdown initiated...');
         const { WooService } = await import('./services/woo');
+        await QueueFactory.closeQueues();
+        Logger.info('BullMQ queues closed.');
         WooService.destroyAgents();
         Logger.info('HTTP agent pools destroyed.');
         await prisma.$disconnect();

@@ -14,6 +14,7 @@ import { AdAccountCard, AdAccount, AdInsights } from './AdAccountCard';
 import { EditAdAccountModal, PendingSetupModal } from './AdAccountModals';
 import { AdConnectForm } from './AdConnectForm';
 import { Toast, ToastType } from '../ui/Toast';
+import { navigateToSafeUrl } from '../../utils/url';
 
 export function AdAccountSettings() {
     const { token } = useAuth();
@@ -88,7 +89,8 @@ export function AdAccountSettings() {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             const data = await res.json();
-            if (data.authUrl) window.location.href = data.authUrl;
+            if (data.authUrl && navigateToSafeUrl(data.authUrl)) return;
+            if (data.authUrl) showToast('Invalid Google OAuth redirect URL');
             else showToast('Failed to initiate Google OAuth');
         } catch { showToast('Error initiating Google OAuth'); }
     }
@@ -101,7 +103,8 @@ export function AdAccountSettings() {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             const data = await res.json();
-            if (data.authUrl) window.location.href = data.authUrl;
+            if (data.authUrl && navigateToSafeUrl(data.authUrl)) return;
+            if (data.authUrl) showToast('Invalid Meta OAuth redirect URL');
             else showToast('Failed to initiate Meta OAuth');
         } catch { showToast('Error initiating Meta OAuth'); }
     }

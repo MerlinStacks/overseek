@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { AlignCenter, AlignLeft, AlignRight, Bold, Copy, Italic, Link2, List, ListOrdered, Search, Strikethrough, Underline, X } from 'lucide-react';
 import { getSocialIconSvg, getSocialPlatform, getSocialPlatformColor } from '../../../lib/emailDesignerV2';
@@ -450,6 +450,13 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
     const align = block.props.align || 'left';
     const blockType = block.props.html.trim().toLowerCase().startsWith('<h1') ? 'h1' : block.props.html.trim().toLowerCase().startsWith('<h2') ? 'h2' : block.props.html.trim().toLowerCase().startsWith('<h3') ? 'h3' : 'p';
 
+    const setEditorRef = useCallback((node: HTMLDivElement | null) => {
+        editorRef.current = node;
+        if (node && node.innerHTML !== block.props.html) {
+            node.innerHTML = block.props.html;
+        }
+    }, [block.id]);
+
     const textStyle = useMemo<CSSProperties>(() => ({
         padding: block.props.padding || '8px 0',
         textAlign: align,
@@ -468,6 +475,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         if (!editor) return;
         normalizeEditorDirection(editor);
         const nextHtml = sanitizeRtlHtml(editor.innerHTML);
+        if (nextHtml === block.props.html) return;
         onUpdate((draft) => {
             if (draft.type === 'text') draft.props.html = nextHtml;
         });
@@ -505,6 +513,13 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         };
     }, [isFocused]);
 
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor || isFocused || editor.innerHTML === block.props.html) return;
+        editor.innerHTML = block.props.html;
+        normalizeEditorDirection(editor);
+    }, [block.props.html, isFocused]);
+
     const buttonClass = (active = false) => `rounded p-1.5 transition ${active ? 'bg-slate-200 text-slate-900 ring-1 ring-slate-300' : 'hover:bg-slate-700'}`;
 
     const applyBlockAlign = (nextAlign: 'left' | 'center' | 'right') => {
@@ -538,7 +553,7 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
         <div ref={wrapperRef} className="relative">
             <style>{EMAIL_TEXT_EDITOR_CONTENT_STYLE}</style>
             <div
-                ref={editorRef}
+                ref={setEditorRef}
                 className={EMAIL_TEXT_EDITOR_CONTENT_CLASS}
                 contentEditable
                 suppressContentEditableWarning
@@ -566,7 +581,6 @@ function EditableTextBlock({ block, theme, onUpdate }: { block: Extract<EmailBlo
                     if (editorRef.current) normalizeEditorDirection(editorRef.current);
                     syncHtml();
                 }}
-                dangerouslySetInnerHTML={{ __html: block.props.html }}
                 style={textStyle}
             />
             {isFocused && (

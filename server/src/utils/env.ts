@@ -1,7 +1,6 @@
 
 
 import { Logger } from './logger';
-import crypto from 'crypto';
 
 interface EnvConfig {
 
@@ -58,27 +57,14 @@ export function validateEnvironment(): void {
 
     Logger.info('[ENV] Environment validation passed');
 
-    // log JWT fingerprint so multi-container setups can verify they share the same secret
-    // (only hashes first 8 chars — safe to log)
     const jwtSecret = process.env.JWT_SECRET;
     if (jwtSecret) {
-        const fingerprint = crypto.createHash('sha256').update(jwtSecret.substring(0, 8)).digest('hex').substring(0, 12);
-
-
         if (jwtSecret.length < 32 && process.env.NODE_ENV === 'production') {
             Logger.error('[ENV] JWT_SECRET is too short for production (minimum 32 characters)', {
-                length: jwtSecret.length,
-                fingerprint
+                length: jwtSecret.length
             });
             throw new Error('JWT_SECRET must be at least 32 characters in production');
         }
-
-
-        Logger.info('[ENV] JWT_SECRET fingerprint for multi-container validation', {
-            fingerprint,
-            length: jwtSecret.length,
-            tip: 'All containers must show the same fingerprint to share sessions'
-        });
     }
 
     // in dev mode, swap Docker hostnames to localhost to avoid ENOTFOUND

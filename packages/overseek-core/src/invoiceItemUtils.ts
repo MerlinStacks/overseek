@@ -97,7 +97,7 @@ export interface InvoiceOrderLike {
   [key: string]: unknown;
 }
 
-const GIFT_WRAP_KEY_PATTERN = /(gift\s*wrap|gift[_-]?wrapp?ing|giftwrapp?ing)/i;
+const GIFT_WRAP_KEY_PATTERN = /(gift[\s_-]*wrap(?:p?ing)?|giftwrapp?ing)/i;
 
 const isFalsyGiftWrapValue = (value: string) => {
   const normalized = value.trim().toLowerCase();
@@ -110,7 +110,10 @@ const isFalsyGiftWrapValue = (value: string) => {
 };
 
 export const getOrderGiftWrappingMeta = (order: InvoiceOrderLike): InvoiceItemMeta | null => {
-  const metaEntries = Array.isArray(order?.meta_data) ? order.meta_data : [];
+  const rawData = order?.rawData as InvoiceOrderLike | undefined;
+  const metaEntries = Array.isArray(order?.meta_data)
+    ? order.meta_data
+    : (Array.isArray(rawData?.meta_data) ? rawData.meta_data : []);
   for (const entry of metaEntries) {
     const rawKey = String(entry?.key || entry?.name || entry?.display_key || '').trim();
     if (!rawKey || !GIFT_WRAP_KEY_PATTERN.test(rawKey)) continue;

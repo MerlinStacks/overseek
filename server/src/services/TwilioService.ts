@@ -3,6 +3,17 @@ import { Logger } from '../utils/logger';
 import crypto from 'crypto';
 
 const TWILIO_API_BASE = 'https://api.twilio.com/2010-04-01';
+
+async function safeTwilioJson(response: Response, accountId: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[TwilioService] Non-JSON response', { status: response.status, contentType, bodySnippet, accountId });
+        throw new Error('Twilio returned a non-JSON response');
+    }
+
+    return response.json();
+}
 const MAX_SMS_LENGTH = 1600; // Limit to 10 segments
 
 export class TwilioService {
@@ -87,7 +98,7 @@ export class TwilioService {
                 body: formData
             });
 
-            const data = await response.json();
+            const data = await safeTwilioJson(response, accountId);
 
             if (!response.ok) {
                 Logger.error('[TwilioService] Failed to send SMS', { error: data, accountId });
@@ -120,7 +131,9 @@ export class TwilioService {
             .update(data)
             .digest('base64');
 
-        return hmac === twilioSignature;
+        const expected = Buffer.from(hmac);
+        const actual = Buffer.from(twilioSignature || '');
+        return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
     }
 
     /**

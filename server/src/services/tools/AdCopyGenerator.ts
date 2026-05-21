@@ -9,6 +9,16 @@ import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
 import { AI_LIMITS } from '../../config/limits';
 
+async function safeOpenRouterJson(response: Response): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[AdCopyGenerator] OpenRouter returned non-JSON response', { status: response.status, contentType, bodySnippet });
+        throw new Error('OpenRouter returned a non-JSON response');
+    }
+
+    return response.json();
+}
 
 /** Tone presets for ad copy generation */
 export type TonePreset = 'professional' | 'playful' | 'urgent' | 'luxury';
@@ -313,7 +323,7 @@ export class AdCopyGenerator {
             throw new Error(`OpenRouter API error: ${response.status}`);
         }
 
-        const data = await response.json();
+        const data = await safeOpenRouterJson(response);
         return data.choices?.[0]?.message?.content || '';
     }
 
@@ -743,4 +753,3 @@ OUTPUT FORMAT: Return ONLY a JSON array of ${variantCount} objects, each with "h
         };
     }
 }
-

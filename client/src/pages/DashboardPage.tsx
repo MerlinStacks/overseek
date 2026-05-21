@@ -211,12 +211,13 @@ export function DashboardPage() {
     };
 
     const saveLayout = useCallback(async (newWidgets: WidgetInstance[]) => {
+        if (!currentAccount?.id) return;
         setIsSaving(true);
         try {
             await api.request('/api/dashboard', {
                 method: 'POST',
                 token: token || undefined,
-                accountId: currentAccount!.id,
+                accountId: currentAccount.id,
                 headers: {
                     'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
                 },

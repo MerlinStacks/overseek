@@ -8,6 +8,17 @@
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
 
+async function safeMetaJson(response: Response, accountId: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[CreativeFatigueAdvisor] Meta returned non-JSON response', { accountId, status: response.status, contentType, bodySnippet });
+        return null;
+    }
+
+    return response.json();
+}
+
 /**
  * Detect stale ad creatives in Meta campaigns.
  * @param accountId - The account to analyze
@@ -35,12 +46,14 @@ export async function processCreativeFatigue(
 
                 // Fetch ads with creation date and frequency
                 const fields = 'ad_name,created_time,frequency';
-                const url = `https://graph.facebook.com/v18.0/${actId}/ads?fields=${fields}&effective_status=['ACTIVE']&access_token=${adAccount.accessToken}&limit=50`;
+                const url = `https://graph.facebook.com/v18.0/${actId}/ads?fields=${encodeURIComponent(fields)}&effective_status=${encodeURIComponent("['ACTIVE']")}&limit=50`;
 
-                const response = await fetch(url);
-                const data = await response.json();
+                const response = await fetch(url, {
+                    headers: { Authorization: `Bearer ${adAccount.accessToken}` }
+                });
+                const data = await safeMetaJson(response, accountId);
 
-                if (data.error || !data.data) continue;
+                if (!response.ok || data?.error || !data?.data) continue;
 
                 const now = new Date();
                 const staleAds: { name: string; age: number }[] = [];

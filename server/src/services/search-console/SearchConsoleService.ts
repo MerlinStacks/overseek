@@ -12,6 +12,17 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getCredentials } from '../ads/types';
 
+async function safeJson<T>(response: Response, context: string): Promise<T> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[SearchConsole] Non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error(`Search Console returned non-JSON response during ${context}`);
+    }
+
+    return response.json() as Promise<T>;
+}
+
 /** Shape of a single row from the Search Analytics API */
 export interface SearchAnalyticsRow {
     keys: string[];
@@ -119,7 +130,7 @@ export class SearchConsoleService {
             }).toString()
         });
 
-        const data = await response.json();
+        const data = await safeJson<any>(response, 'refreshAccessToken');
         if (data.error) throw new Error(data.error_description || data.error);
 
         // Persist the refreshed token
@@ -192,7 +203,7 @@ export class SearchConsoleService {
                     await this.sleep(delayMs);
                     const retried = await doFetch(accessToken);
                     if (retried.ok) {
-                        return retried.json() as Promise<T>;
+                        return safeJson<T>(retried, 'apiRequest.retry');
                     }
                     response = retried;
                     errText = await response.text();
@@ -202,7 +213,7 @@ export class SearchConsoleService {
             throw new Error(`Search Console API error (${response.status}): ${errText}`);
         }
 
-        return response.json() as Promise<T>;
+        return safeJson<T>(response, 'apiRequest');
     }
 
     /**

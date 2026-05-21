@@ -41,6 +41,7 @@ const querySchema = z.object({
 const accountIdSchema = z.string().uuid();
 const BLOCKED_AGENTS_IP_WINDOW_MS = 60 * 1000;
 const BLOCKED_AGENTS_IP_MAX_REQUESTS = 120;
+const BLOCKED_AGENTS_IP_MAX_KEYS = 5000;
 const blockedAgentsIpHits = new Map<string, { count: number; startedAt: number }>();
 
 async function isBotShieldEnabled(accountId: string): Promise<boolean> {
@@ -58,7 +59,7 @@ function isBlockedAgentsIpRateLimited(ip: string): boolean {
     const now = Date.now();
 
     for (const [key, value] of blockedAgentsIpHits) {
-        if (now - value.startedAt > BLOCKED_AGENTS_IP_WINDOW_MS) {
+        if (now - value.startedAt > BLOCKED_AGENTS_IP_WINDOW_MS || blockedAgentsIpHits.size > BLOCKED_AGENTS_IP_MAX_KEYS) {
             blockedAgentsIpHits.delete(key);
         }
     }

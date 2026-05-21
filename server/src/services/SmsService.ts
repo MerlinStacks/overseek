@@ -23,6 +23,17 @@ interface SmsResult {
 const SMS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MAX_SMS_LENGTH = 1600;
 
+async function safeTwilioJson(response: Response, accountId: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('Twilio returned non-JSON response', { status: response.status, contentType, bodySnippet, accountId });
+        return { message: 'Twilio returned a non-JSON response' };
+    }
+
+    return response.json();
+}
+
 interface CachedCreds {
     creds: TwilioCredentials | null;
     cachedAt: number;
@@ -80,7 +91,7 @@ export class SmsService {
                 })
             });
 
-            const data = await response.json();
+            const data = await safeTwilioJson(response, accountId);
 
             if (!response.ok) {
                 Logger.error('Twilio API error', {

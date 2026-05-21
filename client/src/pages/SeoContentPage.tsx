@@ -6,6 +6,7 @@ import { useAccount } from '../context/AccountContext';
 import { SeoAnalysisPanel, type SeoTest } from '../components/Seo/SeoAnalysisPanel';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 import { calculateContentSeoScore } from '@overseek/core';
+import { getSafeHref } from '../utils/url';
 
 type Tab = 'pages' | 'posts';
 type EditorTab = 'content' | 'seo';
@@ -490,7 +491,7 @@ ${html}
                                     <td className="px-4 py-2">{new Date(item.dateModified).toLocaleString()}</td>
                                     <td className="px-4 py-2">{typeof item.seoScore === 'number' ? `${item.seoScore}/100` : '-'}</td>
                                     <td className="px-4 py-2">
-                                        {item.permalink ? <a className="inline-flex items-center gap-1 text-blue-600" href={item.permalink} target="_blank" rel="noreferrer">Open <ExternalLink size={12} /></a> : '-'}
+                                        {item.permalink ? <a className="inline-flex items-center gap-1 text-blue-600" href={getSafeHref(item.permalink)} target="_blank" rel="noreferrer">Open <ExternalLink size={12} /></a> : '-'}
                                     </td>
                                     <td className="px-4 py-2">
                                         <button onClick={() => openEditor(item)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">

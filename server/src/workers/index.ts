@@ -18,27 +18,17 @@ import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 const activeWorkers: Worker[] = [];
 const marketingService = new MarketingService();
 
-// Register SIGTERM handler exactly once at module load. Previously it was
-// attached inside startWorkers(), so if the function was ever invoked more
-// than once (tests, hot reload, error recovery) Node would accumulate
-// listeners and warn about MaxListeners.
-let sigtermRegistered = false;
-function registerSigtermOnce() {
-    if (sigtermRegistered) return;
-    sigtermRegistered = true;
-    process.on('SIGTERM', async () => {
-        Logger.info(`SIGTERM received. Closing ${activeWorkers.length} workers...`);
-        await Promise.allSettled(activeWorkers.map(w => w.close()));
-        Logger.info('All workers closed');
-        const r = await import('../utils/redis');
-        await r.redisClient.quit().catch(() => { /* already closed */ });
-        process.exit(0);
-    });
+export async function stopWorkers() {
+    if (activeWorkers.length === 0) return;
+
+    Logger.info(`Closing ${activeWorkers.length} workers...`);
+    await QueueFactory.closeWorkers();
+    activeWorkers.length = 0;
+    Logger.info('All workers closed');
 }
 
 export async function startWorkers() {
     Logger.info('Starting Workers...');
-    registerSigtermOnce();
 
 
     activeWorkers.push(QueueFactory.createWorker(QUEUES.ORDERS, async (job) => {

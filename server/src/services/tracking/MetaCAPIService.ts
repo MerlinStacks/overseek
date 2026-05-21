@@ -211,13 +211,16 @@ export class MetaCAPIService implements ConversionPlatformService {
         payload: Record<string, any>,
         deliveryId: string,
     ): Promise<void> {
-        const url = `${GRAPH_API_BASE}/${pixelId}/events?access_token=${accessToken}`;
+        const url = `${GRAPH_API_BASE}/${pixelId}/events`;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${accessToken}`,
+                    },
                     body: JSON.stringify(payload),
                 });
 

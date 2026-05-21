@@ -73,7 +73,10 @@ export const requireAuthFastify = async (request: FastifyRequest, reply: Fastify
     let token: string | undefined;
 
     if (authHeader) {
-        token = authHeader.split(' ')[1];
+        const [scheme, value] = authHeader.trim().split(/\s+/);
+        if (scheme?.toLowerCase() === 'bearer' && value) {
+            token = value;
+        }
     } else if (queryToken && request.url.startsWith('/admin/queues')) {
         token = queryToken;
     }
@@ -129,11 +132,7 @@ export const requireAuthFastify = async (request: FastifyRequest, reply: Fastify
         if (err.name === 'TokenExpiredError') {
             return reply.code(401).send({ error: 'Token expired' });
         }
-        // Log fingerprint for debugging multi-container JWT issues
-        const crypto = await import('crypto');
-        const secret = process.env.JWT_SECRET || '';
-        const fingerprint = crypto.createHash('sha256').update(secret.substring(0, 8)).digest('hex').substring(0, 12);
-        Logger.info('[Auth] Token verification failed', { error: err.message, url: request.url, jwtFingerprint: fingerprint });
+        Logger.info('[Auth] Token verification failed', { error: err.message, url: request.url });
         return reply.code(401).send({ error: 'Invalid token' });
     }
 };

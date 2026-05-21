@@ -37,6 +37,20 @@ async function safeFetchJson(response: Response, context: string): Promise<any> 
     return response.json();
 }
 
+function buildMetaUrl(path: string, params: Record<string, string | number | boolean> = {}): string {
+    const url = new URL(`${GRAPH_API_BASE}/${path.replace(/^\//, '')}`);
+    for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, String(value));
+    }
+    return url.toString();
+}
+
+function metaFetch(url: string, accessToken: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers || {});
+    headers.set('Authorization', `Bearer ${accessToken}`);
+    return fetch(url, { ...init, headers });
+}
+
 /**
  * Service for Meta (Facebook/Instagram) Ads integration.
  * Uses Facebook Graph API v24.0.
@@ -58,12 +72,12 @@ export class MetaAdsService {
 
         const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
         const fields = 'spend,impressions,clicks,purchase_roas,action_values';
-        const url = `${GRAPH_API_BASE}/${actId}/insights?fields=${fields}&date_preset=last_30d&access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(`${actId}/insights`, { fields, date_preset: 'last_30d' });
 
         try {
             Logger.info('[MetaAds] Fetching insights', { actId, hasToken: !!adAccount.accessToken });
 
-            const response = await fetch(url);
+            const response = await metaFetch(url, adAccount.accessToken);
             const data = await safeFetchJson(response, 'getInsights');
 
             if (data.error) {
@@ -122,10 +136,20 @@ export class MetaAdsService {
             throw new Error('Meta Ads credentials not configured. Please configure via Super Admin.');
         }
 
-        const url = `${GRAPH_API_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${creds.appId}&client_secret=${creds.appSecret}&fb_exchange_token=${shortLivedToken}`;
+        const url = buildMetaUrl('oauth/access_token');
+        const body = new URLSearchParams({
+            grant_type: 'fb_exchange_token',
+            client_id: creds.appId,
+            client_secret: creds.appSecret,
+            fb_exchange_token: shortLivedToken,
+        });
 
         try {
-            const response = await fetch(url);
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body,
+            });
             const data = await safeFetchJson(response, 'exchangeToken');
 
             if (data.error) {
@@ -166,10 +190,10 @@ export class MetaAdsService {
             until: formatDateISO(endDate)
         });
         const filtering = JSON.stringify([{ field: 'campaign.effective_status', operator: 'IN', value: ['ACTIVE'] }]);
-        const url = `${GRAPH_API_BASE}/${actId}/insights?fields=${fields}&level=campaign&time_range=${encodeURIComponent(timeRange)}&filtering=${encodeURIComponent(filtering)}&access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(`${actId}/insights`, { fields, level: 'campaign', time_range: timeRange, filtering });
 
         try {
-            const response = await fetch(url);
+            const response = await metaFetch(url, adAccount.accessToken);
             const data = await safeFetchJson(response, 'getCampaignInsights');
 
             if (data.error) {
@@ -260,10 +284,10 @@ export class MetaAdsService {
             since: formatDateISO(startDate),
             until: formatDateISO(endDate)
         });
-        const url = `${GRAPH_API_BASE}/${actId}/insights?fields=${fields}&time_increment=1&time_range=${encodeURIComponent(timeRange)}&access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(`${actId}/insights`, { fields, time_increment: 1, time_range: timeRange });
 
         try {
-            const response = await fetch(url);
+            const response = await metaFetch(url, adAccount.accessToken);
             const data = await safeFetchJson(response, 'getDailyTrends');
 
             if (data.error) {
@@ -327,12 +351,12 @@ export class MetaAdsService {
         // So we multiply by 100.
         const budgetInCents = Math.round(dailyBudget * 100);
 
-        const url = `${GRAPH_API_BASE}/${campaignId}?access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(campaignId);
 
         try {
             Logger.info('[MetaAds] Updating budget', { campaignId, dailyBudget, budgetInCents });
 
-            const response = await fetch(url, {
+            const response = await metaFetch(url, adAccount.accessToken, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -366,12 +390,12 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `${GRAPH_API_BASE}/${campaignId}?access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(campaignId);
 
         try {
             Logger.info('[MetaAds] Updating status', { campaignId, status });
 
-            const response = await fetch(url, {
+            const response = await metaFetch(url, adAccount.accessToken, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -415,12 +439,12 @@ export class MetaAdsService {
         }
 
         const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
-        const url = `${GRAPH_API_BASE}/${actId}/customaudiences?access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(`${actId}/customaudiences`);
 
         try {
             Logger.info('[MetaAds] Creating Custom Audience', { actId, name });
 
-            const response = await fetch(url, {
+            const response = await metaFetch(url, adAccount.accessToken, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -464,7 +488,7 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `${GRAPH_API_BASE}/${audienceId}/users?access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(`${audienceId}/users`);
 
         // Format data for Meta API
         const payload = {
@@ -480,7 +504,7 @@ export class MetaAdsService {
                 count: hashedEmails.length
             });
 
-            const response = await fetch(url, {
+            const response = await metaFetch(url, adAccount.accessToken, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -520,7 +544,7 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `${GRAPH_API_BASE}/${audienceId}/usersreplace?access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(`${audienceId}/usersreplace`);
 
         const payload = {
             payload: {
@@ -540,7 +564,7 @@ export class MetaAdsService {
                 count: hashedEmails.length
             });
 
-            const response = await fetch(url, {
+            const response = await metaFetch(url, adAccount.accessToken, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -584,7 +608,7 @@ export class MetaAdsService {
         }
 
         const actId = adAccount.externalId.startsWith('act_') ? adAccount.externalId : `act_${adAccount.externalId}`;
-        const url = `${GRAPH_API_BASE}/${actId}/customaudiences?access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(`${actId}/customaudiences`);
 
         // Meta uses ratio format: 0.01 = 1%, 0.03 = 3%, etc.
         const ratio = percent / 100;
@@ -596,7 +620,7 @@ export class MetaAdsService {
                 countryCode
             });
 
-            const response = await fetch(url, {
+            const response = await metaFetch(url, adAccount.accessToken, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -639,12 +663,12 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `${GRAPH_API_BASE}/${audienceId}?access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(audienceId);
 
         try {
             Logger.info('[MetaAds] Deleting Custom Audience', { audienceId });
 
-            const response = await fetch(url, {
+            const response = await metaFetch(url, adAccount.accessToken, {
                 method: 'DELETE'
             });
 
@@ -687,10 +711,10 @@ export class MetaAdsService {
         const fields = 'spend,impressions,clicks,actions,action_values';
         // Note: adId from platform is usually numeric string. Ensure it doesn't have "ad_" prefix unless stored that way.
         // Our system stores externalAdId as returned by platform. Meta Ad IDs are just numbers.
-        const url = `${GRAPH_API_BASE}/${adId}/insights?fields=${fields}&date_preset=maximum&access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(`${adId}/insights`, { fields, date_preset: 'maximum' });
 
         try {
-            const response = await fetch(url);
+            const response = await metaFetch(url, adAccount.accessToken);
             const data = await safeFetchJson(response, 'getAdMetrics');
 
             if (data.error) {
@@ -739,12 +763,12 @@ export class MetaAdsService {
             throw new Error('Invalid Meta Ad Account');
         }
 
-        const url = `${GRAPH_API_BASE}/${adId}?access_token=${adAccount.accessToken}`;
+        const url = buildMetaUrl(adId);
 
         try {
             Logger.info('[MetaAds] Updating Ad status', { adId, status });
 
-            const response = await fetch(url, {
+            const response = await metaFetch(url, adAccount.accessToken, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

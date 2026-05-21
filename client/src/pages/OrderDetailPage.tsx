@@ -7,7 +7,6 @@ import { useAccount } from '../context/AccountContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatDate, formatCurrency } from '../utils/format';
 import { User, MapPin, Mail, Phone, Package, RefreshCw, Printer, TrendingUp, Globe, Smartphone, Monitor, Tablet, Truck, ExternalLink, Copy, GripVertical } from 'lucide-react';
-import { generateInvoicePDF } from '../utils/InvoiceGenerator';
 import { Modal } from '../components/ui/Modal';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
 import { Clock } from 'lucide-react';
@@ -18,6 +17,7 @@ import { OrderCOGSPanel } from '../components/orders/OrderCOGSPanel';
 import { OrderDetailPageSkeleton } from '../components/ui/PageSkeletons';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useToast } from '../context/ToastContext';
+import { getSafeHref, openSafeUrl } from '../utils/url';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 
 interface Attribution {
@@ -49,14 +49,6 @@ interface TrackingItem {
     dateShipped?: string;
     trackingNumber: string;
     trackingUrl?: string;
-}
-
-interface InvoiceTemplate {
-    name: string;
-    layout?: {
-        grid?: unknown[];
-        items?: unknown[];
-    };
 }
 
 interface WooOrderStatusesResponse {
@@ -236,35 +228,26 @@ export function OrderDetailPage() {
         ));
 
     const handleGenerateInvoice = async () => {
-        if (!order) return;
+        if (!order || !token || !currentAccount?.id) return;
         setIsGenerating(true);
         try {
-            // 1. Fetch Templates
-            const res = await fetch(`/api/invoices/templates`, {
+            const orderId = Number(order.id || order.wooId);
+            if (!Number.isFinite(orderId)) throw new Error('Invalid order ID');
+
+            const res = await fetch(`/api/invoices/orders/${encodeURIComponent(String(orderId))}/generate`, {
+                method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount?.id || ''
-                }
+                    'X-Account-ID': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ forceRegenerate: true })
             });
-            if (!res.ok) throw new Error("Failed to fetch templates");
-
-            const templates: InvoiceTemplate[] = await res.json();
-
-            // Use the most recent template or default
-            const template = templates.length > 0 ? templates[0] : null;
-
-            if (!template) {
-                toast.error('No invoice template found. Please design one first.');
-                return;
-            }
-
-            // 2. Generate PDF
-            await generateInvoicePDF(
-                { ...order, number: toStringValue(order.id || order.wooId || '') },
-                (template.layout?.grid || []) as Array<{ i: string; x: number; y: number; w: number; h: number }>,
-                (template.layout?.items || []) as unknown as Parameters<typeof generateInvoicePDF>[2],
-                template.name
-            );
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload?.error || 'Failed to generate canonical invoice');
+            const downloadUrl = String(payload?.artifact_download_url || '');
+            if (!downloadUrl) throw new Error('Canonical invoice download URL missing');
+            if (!openSafeUrl(downloadUrl)) throw new Error('Invalid canonical invoice download URL');
 
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -526,7 +509,7 @@ export function OrderDetailPage() {
                                     </button>
                                     {item.trackingUrl && (
                                         <a
-                                            href={item.trackingUrl}
+                                            href={getSafeHref(item.trackingUrl)}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="p-1.5 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-700 transition-colors"

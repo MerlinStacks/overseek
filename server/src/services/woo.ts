@@ -19,6 +19,10 @@ const MOCK_REVIEWS: MockReview[] = [];
 const MOCK_PAGES: MockPage[] = [];
 const MOCK_POSTS: MockPost[] = [];
 
+function cacheKeyPart(value: unknown): string {
+    return encodeURIComponent(String(value ?? 'unknown'));
+}
+
 export interface WooProductData {
     name: string;
     type?: 'simple' | 'variable' | 'grouped' | 'external' | string; // Extended to support ATUM's custom types
@@ -315,7 +319,7 @@ export class WooService {
         return this.requestWithRetry('get', 'products/reviews', apiParams);
     }
 
-    private async requestWpWithRetry(endpoint: 'pages' | 'posts', params: any = {}): Promise<any> {
+    private async requestWpWithRetry(method: 'get' | 'post' | 'put', endpoint: string, params: any = {}, version: 'wp/v2' | 'overseek/v1' = 'wp/v2'): Promise<any> {
         try {
             return await retryWithBackoff(
                 async () => {
@@ -323,12 +327,12 @@ export class WooService {
                         url: this.url,
                         consumerKey: this.consumerKey,
                         consumerSecret: this.consumerSecret,
-                        version: 'wp/v2' as any,
+                        version: version as any,
                         queryStringAuth: true,
                         axiosConfig: this.axiosConfig
                     });
 
-                    const response = await wpApi.get(endpoint, params);
+                    const response = await wpApi[method](endpoint, params);
                     return {
                         data: response.data,
                         total: parseInt(response.headers['x-wp-total'] || '0', 10),
@@ -338,7 +342,7 @@ export class WooService {
                 {
                     maxRetries: this.maxRetries,
                     baseDelayMs: 1000,
-                    context: `WordPress:${endpoint}`
+                    context: `WordPress:${method}:${version}:${endpoint}`
                 }
             );
         } catch (error: any) {
@@ -368,7 +372,7 @@ export class WooService {
             ...(after && { modified_after: after }),
             context: 'view'
         };
-        return this.requestWpWithRetry('pages', apiParams);
+        return this.requestWpWithRetry('get', 'pages', apiParams);
     }
 
     async getPosts(params: { after?: string; page?: number; per_page?: number } = {}) {
@@ -380,7 +384,7 @@ export class WooService {
             ...(after && { modified_after: after }),
             context: 'view'
         };
-        return this.requestWpWithRetry('posts', apiParams);
+        return this.requestWpWithRetry('get', 'posts', apiParams);
     }
 
     async updatePage(id: number, data: { title?: string; content?: string; excerpt?: string; status?: string }, userId?: string) {
@@ -389,16 +393,7 @@ export class WooService {
             return { id, ...data };
         }
 
-        const wpApi = new WooCommerceRestApi({
-            url: this.url,
-            consumerKey: this.consumerKey,
-            consumerSecret: this.consumerSecret,
-            version: 'wp/v2' as any,
-            queryStringAuth: true,
-            axiosConfig: this.axiosConfig
-        });
-
-        const response = await wpApi.put(`pages/${id}`, data);
+        const response = await this.requestWpWithRetry('put', `pages/${id}`, data);
 
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');
@@ -414,16 +409,7 @@ export class WooService {
             return { id, ...data };
         }
 
-        const wpApi = new WooCommerceRestApi({
-            url: this.url,
-            consumerKey: this.consumerKey,
-            consumerSecret: this.consumerSecret,
-            version: 'wp/v2' as any,
-            queryStringAuth: true,
-            axiosConfig: this.axiosConfig
-        });
-
-        const response = await wpApi.put(`posts/${id}`, data);
+        const response = await this.requestWpWithRetry('put', `posts/${id}`, data);
 
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');
@@ -447,16 +433,7 @@ export class WooService {
             };
         }
 
-        const wpApi = new WooCommerceRestApi({
-            url: this.url,
-            consumerKey: this.consumerKey,
-            consumerSecret: this.consumerSecret,
-            version: 'wp/v2' as any,
-            queryStringAuth: true,
-            axiosConfig: this.axiosConfig
-        });
-
-        const response = await wpApi.post('pages', data);
+        const response = await this.requestWpWithRetry('post', 'pages', data);
 
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');
@@ -480,16 +457,7 @@ export class WooService {
             };
         }
 
-        const wpApi = new WooCommerceRestApi({
-            url: this.url,
-            consumerKey: this.consumerKey,
-            consumerSecret: this.consumerSecret,
-            version: 'wp/v2' as any,
-            queryStringAuth: true,
-            axiosConfig: this.axiosConfig
-        });
-
-        const response = await wpApi.post('posts', data);
+        const response = await this.requestWpWithRetry('post', 'posts', data);
 
         if (this.accountId) {
             const { AuditService } = await import('./AuditService');
@@ -512,7 +480,7 @@ export class WooService {
 
         // Try cache first
         const { redisClient } = await import('../utils/redis');
-        const cacheKey = `woo:product:${this.accountId}:${id}`;
+        const cacheKey = `woo:product:${cacheKeyPart(this.accountId)}:${cacheKeyPart(id)}`;
 
         try {
             const cached = await redisClient.get(cacheKey);
@@ -554,7 +522,7 @@ export class WooService {
 
         // Try cache first to avoid redundant API calls (BOM sync may fetch same parent repeatedly)
         const { redisClient } = await import('../utils/redis');
-        const cacheKey = `woo:variations:${this.accountId}:${productId}`;
+        const cacheKey = `woo:variations:${cacheKeyPart(this.accountId)}:${cacheKeyPart(productId)}`;
 
         try {
             const cached = await redisClient.get(cacheKey);
@@ -855,20 +823,7 @@ export class WooService {
             return { success: true, message: "Settings updated (Demo)" };
         }
 
-        // Create a temporary client pointing to the custom namespace
-        // The library appends version to the URL. We want `wp-json/overseek/v1`.
-        // If we set version to 'overseek/v1', it constructs `wp-json/overseek/v1`.
-        const customApi = new WooCommerceRestApi({
-            url: this.url,
-            consumerKey: this.consumerKey,
-            consumerSecret: this.consumerSecret,
-            version: "overseek/v1" as any, // Target our custom namespace
-            queryStringAuth: true,
-            axiosConfig: this.axiosConfig
-        });
-
-        // The endpoint is 'settings', resulting in `.../wp-json/overseek/v1/settings`
-        const response = await customApi.post("settings", settings);
+        const response = await this.requestWpWithRetry('post', 'settings', settings, 'overseek/v1');
         return response.data;
     }
 

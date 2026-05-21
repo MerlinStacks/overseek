@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useCannibalization, useContentBrief } from '../../hooks/useSeoKeywords';
 import type { ContentBrief, CannibalizationResult } from '../../hooks/useSeoKeywords';
+import { getSafeHref } from '../../utils/url';
 
 const SEVERITY_STYLES = {
     high: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800/50',
@@ -76,7 +77,7 @@ export function HealthTab() {
                                         <p className="text-xs text-slate-500 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 text-amber-500" />{r.recommendation}</p>
                                         {r.pages.map(p => (
                                             <div key={p.url} className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 rounded-lg px-3 py-2 text-xs">
-                                                <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[50%] flex items-center gap-1">
+                                                <a href={getSafeHref(p.url)} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[50%] flex items-center gap-1">
                                                     {p.url.replace(/^https?:\/\/[^/]+/, '')}<ExternalLink className="w-3 h-3 shrink-0" />
                                                 </a>
                                                 <div className="flex items-center gap-4 text-slate-500">

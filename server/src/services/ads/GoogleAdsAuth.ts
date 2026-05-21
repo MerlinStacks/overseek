@@ -8,6 +8,17 @@
 import { Logger } from '../../utils/logger';
 import { getCredentials } from './types';
 
+async function safeJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[GoogleAdsAuth] Non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error(`Google OAuth returned non-JSON response during ${context}`);
+    }
+
+    return response.json();
+}
+
 export class GoogleAdsAuth {
 
     /**
@@ -43,7 +54,7 @@ export class GoogleAdsAuth {
                 body: params.toString()
             });
 
-            const data = await response.json();
+            const data = await safeJson(response, 'exchangeCode');
 
             Logger.info('Google token exchange response', {
                 hasAccessToken: !!data.access_token,

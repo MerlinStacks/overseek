@@ -22,16 +22,20 @@ const botHitPayloadSchema = z.object({
 
 const BOT_HIT_IP_WINDOW_MS = 60 * 1000;
 const BOT_HIT_IP_MAX_REQUESTS = 180;
+const BOT_HIT_IP_MAX_KEYS = 5000;
 const botHitIpHits = new Map<string, { count: number; startedAt: number }>();
 
-function isBotHitIpRateLimited(ip: string): boolean {
-    const now = Date.now();
-
+function pruneBotHitIpHits(now: number): void {
     for (const [key, value] of botHitIpHits) {
-        if (now - value.startedAt > BOT_HIT_IP_WINDOW_MS) {
+        if (now - value.startedAt > BOT_HIT_IP_WINDOW_MS || botHitIpHits.size > BOT_HIT_IP_MAX_KEYS) {
             botHitIpHits.delete(key);
         }
     }
+}
+
+function isBotHitIpRateLimited(ip: string): boolean {
+    const now = Date.now();
+    pruneBotHitIpHits(now);
 
     const existing = botHitIpHits.get(ip);
     if (!existing || now - existing.startedAt > BOT_HIT_IP_WINDOW_MS) {

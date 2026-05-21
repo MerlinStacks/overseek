@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Plus, Facebook, Loader2, Trash2, ExternalLink, AlertCircle, RefreshCw, BarChart2 } from 'lucide-react';
 import { GoogleAdsCampaigns } from './GoogleAdsCampaigns';
+import { navigateToSafeUrl } from '../../utils/url';
 
 interface AdAccount {
     id: string;
@@ -175,7 +176,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
             const data = await res.json();
 
             if (data.authUrl) {
-                window.location.href = data.authUrl;
+                if (!navigateToSafeUrl(data.authUrl)) alert('Invalid Google OAuth redirect URL');
             } else {
                 alert('Failed to initiate Google OAuth');
             }
@@ -201,7 +202,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
             const data = await res.json();
 
             if (data.authUrl) {
-                window.location.href = data.authUrl;
+                if (!navigateToSafeUrl(data.authUrl)) alert('Invalid Meta OAuth redirect URL');
             } else {
                 alert('Failed to initiate Meta OAuth');
             }
@@ -622,4 +623,3 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
         </div>
     );
 }
-

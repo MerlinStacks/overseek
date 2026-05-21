@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom';
 import { X, User, MapPin, Clock, Smartphone, Monitor, Tablet, ShoppingBag, Search, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { DeviceBrowserBadge } from './DeviceBrowserIcons';
 import { format, formatDistanceStrict } from 'date-fns';
+import { getSafeHref } from '../../utils/url';
 
 interface VisitorProfileModalProps {
     visitorId: string;
@@ -115,7 +116,7 @@ const EventItem: React.FC<{ event: AnalyticsEvent }> = ({ event }) => {
                     {event.type === 'pageview' && (
                         <div>
                             <span className="font-medium">Viewed {event.pageTitle || 'page'}</span>
-                            <a href={event.url} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline truncate block mt-0.5 max-w-md">
+                            <a href={getSafeHref(event.url)} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline truncate block mt-0.5 max-w-md">
                                 {event.url}
                             </a>
                         </div>

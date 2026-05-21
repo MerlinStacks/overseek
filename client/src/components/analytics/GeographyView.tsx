@@ -47,6 +47,7 @@ export const GeographyView: React.FC<{ dateRange: string }> = ({ dateRange }) =>
     useEffect(() => { fetchData(); }, [fetchData]);
 
     const toggleExpand = async (country: string) => {
+        if (!token || !currentAccount?.id) return;
         const next = new Set(expanded);
         if (next.has(country)) {
             next.delete(country);
@@ -60,7 +61,7 @@ export const GeographyView: React.FC<{ dateRange: string }> = ({ dateRange }) =>
                 const range = getDateRange(dateRange);
                 const cities = await api.get<{ city: string; sessions: number; revenue: number }[]>(
                     `/api/analytics/geography/cities?country=${country}&startDate=${range.startDate}&endDate=${range.endDate}`,
-                    token!, currentAccount!.id
+                    token, currentAccount.id
                 );
                 setCountries(prev =>
                     prev.map(c => c.country === country ? { ...c, cities } : c)

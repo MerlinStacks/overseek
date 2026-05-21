@@ -21,6 +21,17 @@ if (!fs.existsSync(attachmentsDir)) {
     fs.mkdirSync(attachmentsDir, { recursive: true });
 }
 
+async function safeRelayJson(response: Response, endpoint: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[EmailService] Relay returned non-JSON response', { status: response.status, contentType, bodySnippet, endpoint });
+        throw new Error('Relay returned a non-JSON response');
+    }
+
+    return response.json();
+}
+
 export class EmailService {
     private static readonly RELAY_MAX_ATTACHMENTS = 10;
     private static readonly RELAY_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -661,7 +672,7 @@ export class EmailService {
             throw new Error(`Relay request failed: ${response.status} - ${errorText}`);
         }
 
-        const result = await response.json();
+        const result = await safeRelayJson(response, emailAccount.relayEndpoint);
 
         if (!result.success) {
             throw new Error(result.error || 'Relay returned unsuccessful response');

@@ -80,10 +80,7 @@ export class SecurityService {
         // Create Access Token with sessionId for current session identification
         const accessToken = generateToken({ userId, sessionId: refreshTokenRecord.id });
 
-        // Log JWT fingerprint for debugging multi-container secret mismatches
-        const secret = process.env.JWT_SECRET || '';
-        const fingerprint = crypto.createHash('sha256').update(secret.substring(0, 8)).digest('hex').substring(0, 12);
-        Logger.debug('[SecurityService] Token generated', { userId, sessionId: refreshTokenRecord.id, jwtFingerprint: fingerprint });
+        Logger.debug('[SecurityService] Token generated', { userId, sessionId: refreshTokenRecord.id });
 
         return { accessToken, refreshToken: refreshTokenPlain }; // Return plaintext to client
     }
@@ -155,4 +152,3 @@ export class SecurityService {
         return result.count;
     }
 }
-

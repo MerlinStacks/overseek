@@ -5,6 +5,7 @@
 import { useEffect, useCallback } from 'react';
 import { X, Download, ZoomIn, ZoomOut } from 'lucide-react';
 import { useState } from 'react';
+import { openSafeUrl } from '../../utils/url';
 
 interface ImageLightboxProps {
     src: string;
@@ -52,7 +53,7 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
             window.URL.revokeObjectURL(url);
         } catch (error) {
             // Fallback: open in new tab
-            window.open(src, '_blank');
+            openSafeUrl(src);
         }
     };
 

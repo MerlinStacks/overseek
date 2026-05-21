@@ -11,6 +11,13 @@ import { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKe
 import { createGoogleAdsClient, parseGoogleAdsError, recordGrpcFailure, extractGrpcErrorMessage } from './GoogleAdsClient';
 import { GoogleAdsAuth } from './GoogleAdsAuth';
 
+function requireGoogleAdsNumericId(value: string, label: string): string {
+    if (!/^\d+$/.test(String(value))) {
+        throw new Error(`Invalid ${label}`);
+    }
+    return value;
+}
+
 export class GoogleAdsService {
 
     /**
@@ -256,6 +263,7 @@ export class GoogleAdsService {
     static async getCampaignProducts(adAccountId: string, campaignId: string, days: number = 30): Promise<ShoppingProductInsight[]> {
         try {
             const { customer, currency } = await createGoogleAdsClient(adAccountId);
+            const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
             const endDate = new Date();
             const startDate = new Date();
@@ -271,7 +279,7 @@ export class GoogleAdsService {
                     metrics.conversions, metrics.conversions_value
                 FROM shopping_performance_view
                 WHERE segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
-                    AND campaign.id = ${campaignId}
+                    AND campaign.id = ${safeCampaignId}
                     AND metrics.impressions > 0
                 ORDER BY metrics.cost_micros DESC
                 LIMIT 500
@@ -401,13 +409,14 @@ export class GoogleAdsService {
      */
     static async updateCampaignBudget(adAccountId: string, campaignId: string, dailyBudget: number): Promise<boolean> {
         const { customer } = await createGoogleAdsClient(adAccountId);
+        const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
         try {
             // 1. Get the Budget ID from the Campaign
             const campaignQuery = `
                 SELECT campaign.id, campaign.campaign_budget
                 FROM campaign
-                WHERE campaign.id = ${campaignId}
+                WHERE campaign.id = ${safeCampaignId}
             `;
             const campaignRows = await customer.query(campaignQuery);
             const campaignInfo = campaignRows[0];
@@ -445,40 +454,11 @@ export class GoogleAdsService {
      */
     static async updateCampaignStatus(adAccountId: string, campaignId: string, status: 'ENABLED' | 'PAUSED'): Promise<boolean> {
         const { customer } = await createGoogleAdsClient(adAccountId);
+        const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
         try {
-            Logger.info('[GoogleAds] Updating status', { campaignId, status });
-
-            const resourceName = `customers/${customer.customer_id}/campaigns/${campaignId}`;
-
-            await customer.campaigns.update({
-                resource_name: resourceName,
-                status: status === 'ENABLED' ? 2 : 3 // 2=ENABLED, 3=PAUSED (using enum values often safer, or strings if library supports)
-                // google-ads-api usually handles strings if mapped, but let's check. 
-                // Actually safer to pass the field if we aren't sure of enum mapping in the library wrapper.
-                // However, commonly: ENABLED=2, PAUSED=3, REMOVED=4
-            });
-            // Re-attempt with string just in case library handles it, which is more readable.
-            // Documentation typically supports strings. Let's try string first, if it fails we revert to enum.
-            // Actually, let's look at `types.ts` imports. We don't have Enums imported.
-            // To be safe, let's use the 'status' string field, as google-ads-api usually maps it.
-        } catch (error: any) {
-            // Retry with numeric if string failed (or just catch) 
-            // Actually, to avoid complexity, let's trust the library string handling or use numeric loop.
-            // We'll trust string. 
-        }
-
-        // Correct implementation for google-ads-api:
-        try {
-            // Format resource name correctly if needed, or just let library handle if it takes ID.
-            // Usually library takes object with resource_name or id.
-            // Let's use standard update pattern.
-            // We can't easily access customer_id from customer object wrapper sometimes.
-            // But we can just pass 'id' and let library helper construct resource name if it supports it.
-            // Or safer: query campaign to get resource_name first.
-
-            // Let's allow the library to infer or we query.
-            const campaignRows = await customer.query(`SELECT campaign.resource_name FROM campaign WHERE campaign.id = ${campaignId}`);
+            Logger.info('[GoogleAds] Updating status', { campaignId: safeCampaignId, status });
+            const campaignRows = await customer.query(`SELECT campaign.resource_name FROM campaign WHERE campaign.id = ${safeCampaignId}`);
             const campaign = campaignRows[0];
             if (!campaign?.campaign?.resource_name) throw new Error('Campaign not found');
 
@@ -502,6 +482,7 @@ export class GoogleAdsService {
     static async getCampaignAdGroups(adAccountId: string, campaignId: string): Promise<any[]> {
         try {
             const { customer } = await createGoogleAdsClient(adAccountId);
+            const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
             const query = `
                 SELECT
@@ -510,7 +491,7 @@ export class GoogleAdsService {
                     ad_group.status,
                     ad_group.type
                 FROM ad_group
-                WHERE campaign.id = ${campaignId}
+                WHERE campaign.id = ${safeCampaignId}
                     AND ad_group.status = 'ENABLED'
             `;
 
@@ -521,7 +502,7 @@ export class GoogleAdsService {
                 name: row.ad_group?.name || 'Unknown',
                 status: row.ad_group?.status || 'UNKNOWN',
                 type: row.ad_group?.type || 'UNKNOWN',
-                campaignId: campaignId
+                campaignId: safeCampaignId
             }));
 
         } catch (error: any) {
@@ -546,11 +527,12 @@ export class GoogleAdsService {
         matchType: 'BROAD' | 'PHRASE' | 'EXACT' = 'EXACT'
     ): Promise<boolean> {
         const { customer } = await createGoogleAdsClient(adAccountId);
+        const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
         try {
-            Logger.info('[GoogleAds] Adding negative keyword', { campaignId, keywordText, matchType });
+            Logger.info('[GoogleAds] Adding negative keyword', { campaignId: safeCampaignId, keywordText, matchType });
 
-            const resourceName = `customers/${customer.credentials.customer_id}/campaigns/${campaignId}`;
+            const resourceName = `customers/${customer.credentials.customer_id}/campaigns/${safeCampaignId}`;
 
             await customer.campaignCriteria.create([{
                 campaign: resourceName,
@@ -579,12 +561,13 @@ export class GoogleAdsService {
     static async getNegativeKeywords(adAccountId: string, campaignId: string): Promise<string[]> {
         try {
             const { customer } = await createGoogleAdsClient(adAccountId);
+            const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
             const query = `
                 SELECT
                     campaign_criterion.keyword.text
                 FROM campaign_criterion
-                WHERE campaign.id = ${campaignId}
+                WHERE campaign.id = ${safeCampaignId}
                     AND campaign_criterion.negative = TRUE
                     AND campaign_criterion.type = 'KEYWORD'
             `;
@@ -661,6 +644,7 @@ export class GoogleAdsService {
     } | null> {
         try {
             const { customer } = await createGoogleAdsClient(adAccountId);
+            const safeAdId = requireGoogleAdsNumericId(adId, 'ad ID');
 
             // adId in Google Ads is usually the ad_group_ad.ad.id
             // However, we need to query the 'ad_group_ad' resource.
@@ -680,7 +664,7 @@ export class GoogleAdsService {
                     metrics.conversions,
                     metrics.conversions_value
                 FROM ad_group_ad
-                WHERE ad_group_ad.ad.id = ${adId}
+                WHERE ad_group_ad.ad.id = ${safeAdId}
                   AND segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
             `;
 
@@ -734,13 +718,14 @@ export class GoogleAdsService {
     static async updateAdStatus(adAccountId: string, adId: string, status: 'ENABLED' | 'PAUSED'): Promise<boolean> {
         try {
             const { customer } = await createGoogleAdsClient(adAccountId);
+            const safeAdId = requireGoogleAdsNumericId(adId, 'ad ID');
 
             // 1. We need the Resource Name of the ad_group_ad
             // adId is just the number. We need to find the ad_group_ad containing it.
             const query = `
                 SELECT ad_group_ad.resource_name
                 FROM ad_group_ad
-                WHERE ad_group_ad.ad.id = ${adId}
+                WHERE ad_group_ad.ad.id = ${safeAdId}
             `;
 
             const _tmp_result: any[] = [];
@@ -749,13 +734,13 @@ export class GoogleAdsService {
             }
             const [result] = _tmp_result;
             if (!result?.ad_group_ad?.resource_name) {
-                Logger.warn('Ad not found for status update', { adId });
+                Logger.warn('Ad not found for status update', { adId: safeAdId });
                 return false;
             }
 
             const resourceName = result.ad_group_ad.resource_name;
 
-            Logger.info('[GoogleAds] Updating Ad status', { adId, status, resourceName });
+            Logger.info('[GoogleAds] Updating Ad status', { adId: safeAdId, status, resourceName });
 
             await customer.adGroupAds.update({
                 resource_name: resourceName,

@@ -288,9 +288,9 @@ class OverSeek_API {
 			return true;
 		}
 
-		$provided_order_key = (string) $request->get_param( 'key' );
-		$expected_order_key = (string) $order->get_order_key();
-		if ( $provided_order_key !== '' && $expected_order_key !== '' && hash_equals( $expected_order_key, $provided_order_key ) ) {
+		$provided_invoice_token = (string) $request->get_param( 'invoice_token' );
+		$expected_invoice_token = $this->get_invoice_access_token( $order );
+		if ( $provided_invoice_token !== '' && hash_equals( $expected_invoice_token, $provided_invoice_token ) ) {
 			return true;
 		}
 
@@ -299,6 +299,16 @@ class OverSeek_API {
 		}
 
 		return $this->integration_error( 'invoice_forbidden', 'You are not allowed to access this invoice.', 403 );
+	}
+
+	/**
+	 * Build a non-enumerable invoice access token for anonymous invoice links.
+	 *
+	 * @param WC_Order $order The WooCommerce order.
+	 * @return string
+	 */
+	private function get_invoice_access_token( WC_Order $order ): string {
+		return wp_hash( $order->get_id() . '|' . $order->get_order_key() . '|overseek_invoice_access' );
 	}
 
 	/**
@@ -598,28 +608,33 @@ class OverSeek_API {
 		$has_relay_key    = ! empty( (string) get_option( 'overseek_relay_api_key', '' ) );
 		$has_bearer_token = ! empty( (string) get_option( 'overseek_webhook_auth_token', '' ) );
 
-		$query_account_id = $request->get_param( 'account_id' );
-		$account_match    = empty( $query_account_id ) || $query_account_id === $account_id;
+		$query_account_id = (string) $request->get_param( 'account_id' );
+		$account_match    = $query_account_id !== '' && is_string( $account_id ) && hash_equals( (string) $account_id, $query_account_id );
+		$bearer_token     = $this->extract_bearer_token( $request );
+		$stored_relay_key = (string) get_option( 'overseek_relay_api_key', '' );
+		$stored_webhook_token = (string) get_option( 'overseek_webhook_auth_token', '' );
+		$token_authorized = ( $stored_relay_key !== '' && $bearer_token !== '' && hash_equals( $stored_relay_key, $bearer_token ) )
+			|| ( $stored_webhook_token !== '' && $bearer_token !== '' && hash_equals( $stored_webhook_token, $bearer_token ) );
+		$show_sensitive   = $this->check_admin_permission() || ( $account_match && $token_authorized );
 
-		// Only expose sensitive fields when caller proves they know the account ID.
-		// Without the correct account_id param, the endpoint is an info-leak vector.
+		// Only expose environment/configuration details to wp-admin users or authenticated OverSeek services.
 		return new WP_REST_Response( [
 			'success'            => true,
 			'plugin'             => 'overseek-wc',
-			'version'            => OVERSEEK_WC_VERSION,
-			'configured'         => ! empty( $account_id ) && ! empty( $api_url ),
-			'accountId'          => $account_match ? $account_id : null,
-			'accountMatch'       => $account_match,
-			'trackingEnabled'    => (bool) $tracking_enabled,
-			'chatEnabled'        => (bool) $chat_enabled,
-			'woocommerceActive'  => class_exists( 'WooCommerce' ),
-			'woocommerceVersion' => $account_match && defined( 'WC_VERSION' ) ? WC_VERSION : null,
-			'phpVersion'         => $account_match ? PHP_VERSION : null,
-			'siteUrl'            => $account_match ? home_url() : null,
-			'emailPlatformWebhookUrl' => $account_match ? $relay_endpoint : null,
-			'trackingEventsWebhookUrl' => $account_match ? $tracking_events_endpoint : null,
-			'artworkEventsWebhookUrl'  => $account_match ? $artwork_events_endpoint : null,
-			'webhookAuth'        => $account_match ? [
+			'version'            => $show_sensitive ? OVERSEEK_WC_VERSION : null,
+			'configured'         => $show_sensitive ? ! empty( $account_id ) && ! empty( $api_url ) : null,
+			'accountId'          => $show_sensitive ? $account_id : null,
+			'accountMatch'       => $show_sensitive ? $account_match : null,
+			'trackingEnabled'    => $show_sensitive ? (bool) $tracking_enabled : null,
+			'chatEnabled'        => $show_sensitive ? (bool) $chat_enabled : null,
+			'woocommerceActive'  => $show_sensitive ? class_exists( 'WooCommerce' ) : null,
+			'woocommerceVersion' => $show_sensitive && defined( 'WC_VERSION' ) ? WC_VERSION : null,
+			'phpVersion'         => $show_sensitive ? PHP_VERSION : null,
+			'siteUrl'            => $show_sensitive ? home_url() : null,
+			'emailPlatformWebhookUrl' => $show_sensitive ? $relay_endpoint : null,
+			'trackingEventsWebhookUrl' => $show_sensitive ? $tracking_events_endpoint : null,
+			'artworkEventsWebhookUrl'  => $show_sensitive ? $artwork_events_endpoint : null,
+			'webhookAuth'        => $show_sensitive ? [
 				'supportsXRelayKey' => true,
 				'supportsBearer'    => true,
 				'hasRelayApiKey'    => $has_relay_key,

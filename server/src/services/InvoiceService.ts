@@ -814,10 +814,10 @@ export class InvoiceService {
                             : formatDate(order.createdAt);
 
                         const detailsData: Array<{ label: string; value: string; highlight: boolean }> = [
-                            { label: 'Order Number:', value: String(order.number), highlight: false },
-                            { label: 'Order Date:', value: String(orderDate), highlight: false },
-                            { label: 'Payment Method:', value: String(paymentMethod), highlight: false },
-                            { label: 'Shipping Method:', value: String(shippingMethod), highlight: false },
+                            { label: 'Order Number:', value: decodeInvoiceEntities(String(order.number)), highlight: false },
+                            { label: 'Order Date:', value: decodeInvoiceEntities(String(orderDate)), highlight: false },
+                            { label: 'Payment Method:', value: decodeInvoiceEntities(String(paymentMethod)), highlight: false },
+                            { label: 'Shipping Method:', value: decodeInvoiceEntities(String(shippingMethod)), highlight: false },
                         ];
                         if (giftWrapMeta) {
                             detailsData.push({
@@ -916,7 +916,7 @@ export class InvoiceService {
                         };
 
                         lineItems.forEach((item: any) => {
-                            const itemName = item.name || 'Product';
+                            const itemName = decodeInvoiceEntities(String(item.name || 'Product'));
                             const qty = item.quantity || 1;
                             const unitPrice = qty > 0 ? (parseFloat(item.total || 0) / qty) : 0;
                             const itemMeta = getInvoiceItemMeta(item)

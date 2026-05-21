@@ -147,6 +147,9 @@ export class CampaignBuilderService {
 
         const { customer } = await createGoogleAdsClient(adAccountId);
         const { name, dailyBudget } = campaignParams;
+        let budgetResource: string | undefined;
+        let campaignResource: string | undefined;
+        let adGroupResource: string | undefined;
 
         try {
             Logger.info('[CampaignBuilder] Starting Search Campaign creation', {
@@ -161,7 +164,7 @@ export class CampaignBuilderService {
                 amount_micros: Math.round(dailyBudget * CURRENCY_TO_MICROS),
                 explicitly_shared: false
             }]);
-            const budgetResource = budgetRes[0];
+            budgetResource = budgetRes[0];
             Logger.info('[CampaignBuilder] Budget created', { budgetResource });
 
             // Step 2: Create Campaign
@@ -178,7 +181,7 @@ export class CampaignBuilderService {
                     target_partner_search_network: false
                 }
             }]);
-            const campaignResource = campaignRes[0];
+            campaignResource = campaignRes[0];
             Logger.info('[CampaignBuilder] Campaign created', { campaignResource });
 
             // Step 3: Create Ad Group
@@ -188,7 +191,7 @@ export class CampaignBuilderService {
                 status: 'ENABLED',
                 type: 'SEARCH_STANDARD'
             }]);
-            const adGroupResource = adGroupRes[0];
+            adGroupResource = adGroupRes[0];
             Logger.info('[CampaignBuilder] Ad Group created', { adGroupResource });
 
             // Step 4: Batch Create Keywords
@@ -226,11 +229,70 @@ export class CampaignBuilderService {
             };
 
         } catch (error: any) {
+            await this.rollbackSearchCampaign(customer, {
+                adGroupResource,
+                campaignResource,
+                budgetResource,
+                campaignName: name
+            });
+
             Logger.error('[CampaignBuilder] Failed to build Search Campaign', {
                 error: error.message,
                 campaignName: name
             });
             throw new Error(`Campaign Creation Failed: ${error.message}`);
+        }
+    }
+
+    private static async rollbackSearchCampaign(
+        customer: any,
+        resources: {
+            adGroupResource?: string;
+            campaignResource?: string;
+            budgetResource?: string;
+            campaignName: string;
+        }
+    ): Promise<void> {
+        const rollbackErrors: string[] = [];
+
+        if (resources.adGroupResource) {
+            try {
+                await customer.adGroups.update({
+                    resource_name: resources.adGroupResource,
+                    status: 'REMOVED'
+                });
+            } catch (err: any) {
+                rollbackErrors.push(`ad group: ${err.message}`);
+            }
+        }
+
+        if (resources.campaignResource) {
+            try {
+                await customer.campaigns.update({
+                    resource_name: resources.campaignResource,
+                    status: 'REMOVED'
+                });
+            } catch (err: any) {
+                rollbackErrors.push(`campaign: ${err.message}`);
+            }
+        }
+
+        if (resources.budgetResource) {
+            try {
+                await customer.campaignBudgets.update({
+                    resource_name: resources.budgetResource,
+                    status: 'REMOVED'
+                });
+            } catch (err: any) {
+                rollbackErrors.push(`budget: ${err.message}`);
+            }
+        }
+
+        if (rollbackErrors.length > 0) {
+            Logger.warn('[CampaignBuilder] Rollback left resources requiring manual cleanup', {
+                campaignName: resources.campaignName,
+                rollbackErrors
+            });
         }
     }
 

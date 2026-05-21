@@ -28,6 +28,20 @@ interface TooltipParam {
     seriesName: string;
 }
 
+function escapeHtml(value: unknown): string {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function safeCssColor(value: unknown): string {
+    const color = String(value ?? '');
+    return /^#[0-9a-f]{3,8}$/i.test(color) || /^rgba?\([\d\s,.%]+\)$/i.test(color) ? color : '#94a3b8';
+}
+
 export function SalesChartWidget({ className, dateRange, comparison }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -177,11 +191,11 @@ export function SalesChartWidget({ className, dateRange, comparison }: WidgetPro
                 formatter: (params: unknown) => {
                     if (!Array.isArray(params) || params.length === 0) return '';
                     const points = params as TooltipParam[];
-                    const date = points[0].axisValue;
+                    const date = escapeHtml(points[0].axisValue);
                     let html = `<div style="font-weight:600;margin-bottom:4px">${date}</div>`;
                     points.forEach((p) => {
-                        const value = formatCurrency(p.value || 0);
-                        html += `<div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${p.color}"></span>${p.seriesName}: ${value}</div>`;
+                        const value = escapeHtml(formatCurrency(p.value || 0));
+                        html += `<div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${safeCssColor(p.color)}"></span>${escapeHtml(p.seriesName)}: ${value}</div>`;
                     });
                     return html;
                 }

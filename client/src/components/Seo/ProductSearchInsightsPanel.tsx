@@ -16,6 +16,7 @@ import {
     Loader2, Link2, BarChart3, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useApi } from '../../hooks/useApi';
+import { navigateToSafeUrl } from '../../utils/url';
 import {
     useProductSearchInsights,
     type ProductQueryRow
@@ -247,7 +248,7 @@ function ConnectPrompt() {
         setLoading(true);
         try {
             const res = await api.get<{ authUrl: string }>('/api/oauth/search-console/authorize?redirect=/seo');
-            window.location.href = res.authUrl;
+            if (!navigateToSafeUrl(res.authUrl)) throw new Error('Invalid Search Console OAuth redirect URL');
         } catch {
             setLoading(false);
         }

@@ -7,6 +7,7 @@ import { User, Mail, Shield, Building, LogOut, Camera, Clock, Save, X, FileSigna
 import SessionManager from '../components/settings/SessionManager';
 import { RichTextEditor } from '../components/common/RichTextEditor';
 import { ChangePasswordModal } from '../components/settings/ChangePasswordModal';
+import { getSafeHref } from '../utils/url';
 
 /**
  * User profile page with premium styling, dark mode support,
@@ -326,7 +327,7 @@ export function UserProfilePage() {
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Store URL</label>
                                         <a
-                                            href={currentAccount.wooUrl}
+                                            href={getSafeHref(currentAccount.wooUrl)}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium truncate block hover:underline transition-colors"

@@ -281,15 +281,26 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // POST /conversations
         fastify.post('/conversations', async (request, reply) => {
-            const { accountId: bodyAccountId, wooCustomerId, visitorToken } = request.body as any;
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-            if (bodyAccountId && bodyAccountId !== accountId) {
-                return reply.code(400).send({ error: 'Account ID mismatch' });
-            }
+            try {
+                const { accountId: bodyAccountId, wooCustomerId, visitorToken } = request.body as any;
+                const accountId = request.accountId;
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (bodyAccountId && bodyAccountId !== accountId) {
+                    return reply.code(400).send({ error: 'Account ID mismatch' });
+                }
+                if (wooCustomerId !== undefined && typeof wooCustomerId !== 'string') {
+                    return reply.code(400).send({ error: 'wooCustomerId must be a string' });
+                }
+                if (visitorToken !== undefined && typeof visitorToken !== 'string') {
+                    return reply.code(400).send({ error: 'visitorToken must be a string' });
+                }
 
-            const conv = await chatService.createConversation(accountId, wooCustomerId, visitorToken);
-            return conv;
+                const conv = await chatService.createConversation(accountId, wooCustomerId, visitorToken);
+                return conv;
+            } catch (error) {
+                Logger.error('Failed to create conversation', { error });
+                return reply.code(500).send({ error: 'Failed to create conversation' });
+            }
         });
 
         // GET /email-accounts - List configured email accounts for sending
@@ -438,7 +449,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 return { success: true, conversationId: conversation.id };
             } catch (error: any) {
                 Logger.error('Failed to compose email', { error: error.message });
-                return reply.code(500).send({ error: error.message || 'Failed to send email' });
+                return reply.code(500).send({ error: 'Failed to send email' });
             }
         });
 
@@ -498,7 +509,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 return { success: true, conversationId: conversation.id };
             } catch (error: any) {
                 Logger.error('Failed to compose SMS', { error: error.message });
-                return reply.code(500).send({ error: error.message || 'Failed to send SMS' });
+                return reply.code(500).send({ error: 'Failed to send SMS' });
             }
         });
 
@@ -685,28 +696,53 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
         // PUT /:id
         fastify.put<{ Params: { id: string } }>('/:id', async (request, reply) => {
-            const body = request.body as { status?: string; assignedTo?: string | null; wooCustomerId?: string };
-            const { status, wooCustomerId } = body;
-            const { id } = request.params;
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            try {
+                const body = request.body as { status?: string; assignedTo?: string | null; wooCustomerId?: string };
+                const { status, wooCustomerId } = body;
+                const { id } = request.params;
+                const accountId = request.accountId;
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (status && !['OPEN', 'PENDING', 'RESOLVED', 'CLOSED'].includes(status)) {
+                    return reply.code(400).send({ error: 'Invalid conversation status' });
+                }
+                if (wooCustomerId !== undefined && typeof wooCustomerId !== 'string') {
+                    return reply.code(400).send({ error: 'wooCustomerId must be a string' });
+                }
+                if (Object.prototype.hasOwnProperty.call(body, 'assignedTo') && body.assignedTo !== null && typeof body.assignedTo !== 'string') {
+                    return reply.code(400).send({ error: 'assignedTo must be a string or null' });
+                }
 
-            if (status) await chatService.updateStatus(accountId, id, status);
-            if (Object.prototype.hasOwnProperty.call(body, 'assignedTo')) {
-                await chatService.assignConversation(accountId, id, body.assignedTo || null);
+                if (status) await chatService.updateStatus(accountId, id, status);
+                if (Object.prototype.hasOwnProperty.call(body, 'assignedTo')) {
+                    await chatService.assignConversation(accountId, id, body.assignedTo || null);
+                }
+                if (wooCustomerId) await chatService.linkCustomer(accountId, id, wooCustomerId);
+                return { success: true };
+            } catch (error) {
+                Logger.error('Failed to update conversation', { error, conversationId: request.params.id });
+                return reply.code(500).send({ error: 'Failed to update conversation' });
             }
-            if (wooCustomerId) await chatService.linkCustomer(accountId, id, wooCustomerId);
-            return { success: true };
         });
 
         // POST /:id/merge
         fastify.post<{ Params: { id: string } }>('/:id/merge', async (request, reply) => {
-            const { sourceId } = request.body as any;
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            try {
+                const { sourceId } = request.body as any;
+                const accountId = request.accountId;
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!sourceId || typeof sourceId !== 'string') {
+                    return reply.code(400).send({ error: 'sourceId is required' });
+                }
+                if (sourceId === request.params.id) {
+                    return reply.code(400).send({ error: 'Cannot merge a conversation into itself' });
+                }
 
-            await chatService.mergeConversations(accountId, request.params.id, sourceId);
-            return { success: true };
+                await chatService.mergeConversations(accountId, request.params.id, sourceId);
+                return { success: true };
+            } catch (error) {
+                Logger.error('Failed to merge conversations', { error, targetId: request.params.id });
+                return reply.code(500).send({ error: 'Failed to merge conversations' });
+            }
         });
 
         // POST /:id/read

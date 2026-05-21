@@ -9,6 +9,7 @@ export function formatRelativeTime(isoString: string | null | undefined): string
     if (!isoString) return 'Never';
 
     const date = new Date(isoString);
+    if (!Number.isFinite(date.getTime())) return 'Never';
     const now = Date.now();
     const diffMs = now - date.getTime();
 
@@ -38,7 +39,10 @@ export function formatRelativeTime(isoString: string | null | undefined): string
 export function getStalenessLevel(isoString: string | null | undefined): 'fresh' | 'stale' | 'critical' | 'never' {
     if (!isoString) return 'never';
 
-    const diffMs = Date.now() - new Date(isoString).getTime();
+    const date = new Date(isoString);
+    if (!Number.isFinite(date.getTime())) return 'never';
+
+    const diffMs = Date.now() - date.getTime();
     const hours = diffMs / (1000 * 60 * 60);
 
     if (hours < 1) return 'fresh';

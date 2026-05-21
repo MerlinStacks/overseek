@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Logger } from '../../utils/logger';
 import { Loader2, Gauge, TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react';
+import { getSafeHref } from '../../utils/url';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ function ScoreCard({ summary, isSelected, onClick }: {
                     <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-gray-500 dark:text-slate-400 tracking-widest uppercase">{summary.metric}</span>
                         <a
-                            href={meta.googleUrl}
+                            href={getSafeHref(meta.googleUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={e => e.stopPropagation()}

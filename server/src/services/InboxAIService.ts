@@ -10,6 +10,17 @@ import { Logger } from '../utils/logger';
 import { cacheAside, CacheTTL } from '../utils/cache';
 import { extractOrderTracking, TrackingItem } from '../utils/orderTracking';
 
+async function safeOpenRouterJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('OpenRouter returned non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error('OpenRouter returned a non-JSON response');
+    }
+
+    return response.json();
+}
+
 interface DraftResult {
     draft: string;
     error?: string;
@@ -150,7 +161,7 @@ Generate a complete reply that incorporates and improves upon the current draft.
                 return { draft: '', error: 'Failed to generate draft. Please try again.' };
             }
 
-            const data = await response.json();
+            const data = await safeOpenRouterJson(response, 'generateDraftReply');
             const draft = data.choices?.[0]?.message?.content || '';
 
             // Include warning if no policies were configured
@@ -270,7 +281,7 @@ Generate a complete, improved version of this email.`;
                 return { draft: '', error: 'Failed to generate draft. Please try again.' };
             }
 
-            const data = await response.json();
+            const data = await safeOpenRouterJson(response, 'generateComposeAssist');
             const draft = data.choices?.[0]?.message?.content || '';
 
             return { draft };

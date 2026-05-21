@@ -40,6 +40,7 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
 
     const fetchData = useCallback(async () => {
         if (!token || !currentAccount) return;
+        const accountId = currentAccount.id;
         setLoading(true);
         try {
             // Use shared date utility for consistent timezone handling
@@ -47,10 +48,10 @@ export const RoadblocksView = ({ dateRange }: RoadblocksViewProps) => {
 
             const [roadblocksRes, funnelRes] = await Promise.all([
                 fetch(`/api/analytics/behaviour/roadblocks?startDate=${range.startDate}&endDate=${range.endDate}`, {
-                    headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount!.id }
+                    headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId }
                 }),
                 fetch(`/api/analytics/behaviour/funnel-dropoff?startDate=${range.startDate}&endDate=${range.endDate}`, {
-                    headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount!.id }
+                    headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId }
                 })
             ]);
 

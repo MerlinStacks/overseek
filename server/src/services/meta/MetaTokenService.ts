@@ -14,6 +14,28 @@ import { Logger } from '../../utils/logger';
 const API_VERSION = 'v24.0';
 const GRAPH_API_BASE = `https://graph.facebook.com/${API_VERSION}`;
 
+async function safeMetaJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[MetaToken] Non-JSON response', {
+            context,
+            status: response.status,
+            contentType,
+            bodySnippet
+        });
+        throw new Error(`Meta API returned non-JSON response during ${context}`);
+    }
+
+    return response.json();
+}
+
+function metaBearerFetch(url: string, accessToken: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers || {});
+    headers.set('Authorization', `Bearer ${accessToken}`);
+    return fetch(url, { ...init, headers });
+}
+
 /** Token exchange result with explicit expiration info */
 export interface TokenExchangeResult {
     accessToken: string;
@@ -110,7 +132,8 @@ export class MetaTokenService {
     ): Promise<TokenExchangeResult> {
         const { appId, appSecret } = await this.getCredentials(preferredPlatform);
 
-        const url = `${GRAPH_API_BASE}/oauth/access_token?` + new URLSearchParams({
+        const url = `${GRAPH_API_BASE}/oauth/access_token`;
+        const body = new URLSearchParams({
             grant_type: 'fb_exchange_token',
             client_id: appId,
             client_secret: appSecret,
@@ -120,8 +143,12 @@ export class MetaTokenService {
         Logger.info('[MetaToken] Exchanging for long-lived token');
 
         try {
-            const response = await fetch(url);
-            const data = await response.json() as any;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body
+            });
+            const data = await safeMetaJson(response, 'exchangeForLongLived') as any;
 
             if (data.error) {
                 // Log full error details for debugging
@@ -178,12 +205,11 @@ export class MetaTokenService {
             const appToken = `${appId}|${appSecret}`;
 
             const url = `${GRAPH_API_BASE}/debug_token?` + new URLSearchParams({
-                input_token: accessToken,
-                access_token: appToken
+                input_token: accessToken
             });
 
-            const response = await fetch(url);
-            const data = await response.json() as any;
+            const response = await metaBearerFetch(url, appToken);
+            const data = await safeMetaJson(response, 'debugToken') as any;
 
             if (data.error) {
                 return {
@@ -232,12 +258,11 @@ export class MetaTokenService {
     }> {
         try {
             const url = `${GRAPH_API_BASE}/me?` + new URLSearchParams({
-                access_token: accessToken,
                 fields: 'id,name'
             });
 
-            const response = await fetch(url);
-            const data = await response.json() as any;
+            const response = await metaBearerFetch(url, accessToken);
+            const data = await safeMetaJson(response, 'validateToken') as any;
 
             if (data.error) {
                 return {
@@ -266,12 +291,11 @@ export class MetaTokenService {
     static async getPageTokens(userAccessToken: string): Promise<PageInfo[]> {
         try {
             const url = `${GRAPH_API_BASE}/me/accounts?` + new URLSearchParams({
-                access_token: userAccessToken,
                 fields: 'id,name,access_token,category'
             });
 
-            const response = await fetch(url);
-            const data = await response.json() as any;
+            const response = await metaBearerFetch(url, userAccessToken);
+            const data = await safeMetaJson(response, 'getPageTokens') as any;
 
             if (data.error) {
                 Logger.error('[MetaToken] Failed to fetch page tokens', { error: data.error });
@@ -299,12 +323,11 @@ export class MetaTokenService {
     static async getAdAccounts(userAccessToken: string): Promise<AdAccountInfo[]> {
         try {
             const url = `${GRAPH_API_BASE}/me/adaccounts?` + new URLSearchParams({
-                access_token: userAccessToken,
                 fields: 'id,account_id,name,currency,account_status'
             });
 
-            const response = await fetch(url);
-            const data = await response.json() as any;
+            const response = await metaBearerFetch(url, userAccessToken);
+            const data = await safeMetaJson(response, 'getAdAccounts') as any;
 
             if (data.error) {
                 Logger.error('[MetaToken] Failed to fetch ad accounts', { error: data.error });

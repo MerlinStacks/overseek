@@ -18,6 +18,17 @@ import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 /** Why HMAC: prevent forged state params — an attacker could craft a state to link SC to their account */
 const STATE_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'overseek-oauth-state';
 
+async function safeJson<T>(response: Response, context: string): Promise<T> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[SearchConsoleOAuth] Non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error(`Search Console OAuth returned non-JSON response during ${context}`);
+    }
+
+    return response.json() as Promise<T>;
+}
+
 /** Sign a state payload with HMAC-SHA256 */
 function signState(payload: object): string {
     const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -30,6 +41,7 @@ function verifyState(state: string): { accountId: string; frontendRedirect: stri
     const [data, sig] = state.split('.');
     if (!data || !sig) return null;
     const expected = crypto.createHmac('sha256', STATE_SECRET).update(data).digest('base64url');
+    if (Buffer.byteLength(sig) !== Buffer.byteLength(expected)) return null;
     if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
     try {
         return JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
@@ -69,7 +81,7 @@ async function exchangeCodeForTokens(
         }).toString()
     });
 
-    const data = await response.json();
+    const data = await safeJson<any>(response, 'exchangeCodeForTokens');
     if (data.error) throw new Error(data.error_description || data.error);
     if (!data.access_token) throw new Error('No access token received');
 
@@ -92,7 +104,7 @@ async function listVerifiedSites(accessToken: string): Promise<Array<{ siteUrl: 
         throw new Error(`Failed to list sites: ${err}`);
     }
 
-    const data = await response.json();
+    const data = await safeJson<any>(response, 'listVerifiedSites');
     return (data.siteEntry || []).map((entry: any) => ({
         siteUrl: entry.siteUrl,
         permissionLevel: entry.permissionLevel
