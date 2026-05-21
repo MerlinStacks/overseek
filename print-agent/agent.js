@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const http = require('http');
-const { execFile } = require('child_process');
+const { createStationHeaders, downloadLabel: downloadSharedLabel, listPrinters, normalizeApiBase, overseekFetch, printFile } = require('./shared.cjs');
 
 const ENV_PATH = path.join(__dirname, '.env');
 loadEnv(ENV_PATH);
@@ -36,8 +36,11 @@ async function poll() {
     try {
         if (!hasStationConfig()) return;
         lastPollAt = new Date().toISOString();
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 15000);
         const res = await fetch(`${API_BASE}/api/shipping/print-agent/jobs`, {
             headers: stationHeaders(),
+            signal: controller.signal,
         });
         if (!res.ok) throw new Error(`Job poll failed: ${res.status} ${await res.text()}`);
         const payload = await res.json();
@@ -56,8 +59,9 @@ async function poll() {
 
 async function handleJob(job) {
     try {
+        if (!job.id) throw new Error('Job ID is missing');
         if (!job.labelDownloadPath && !job.labelFilePath) throw new Error('Label download path missing');
-        const filePath = await downloadLabel(job);
+        const filePath = await downloadSharedLabel(job, { apiBase: API_BASE, downloadDir: DOWNLOAD_DIR, headers: stationHeaders() });
         await printFile(filePath, job.printerName || DEFAULT_PRINTER_NAME);
         await report(job.id, 'printed');
         lastJobMessage = `Printed job ${job.id}`;
@@ -69,60 +73,20 @@ async function handleJob(job) {
     }
 }
 
-async function downloadLabel(job) {
-    const source = String(job.labelDownloadPath || job.labelFilePath);
-    const url = source.startsWith('http') ? source : `${API_BASE}${source.startsWith('/') ? '' : '/'}${source}`;
-    const res = await fetch(url, { headers: stationHeaders() });
-    if (!res.ok) throw new Error(`Label download failed: ${res.status}`);
-    const arrayBuffer = await res.arrayBuffer();
-    const filePath = path.join(DOWNLOAD_DIR, `${job.id}.pdf`);
-    fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
-    return filePath;
-}
-
-function printFile(filePath, printerName) {
-    const platform = os.platform();
-    if (platform === 'win32') {
-        return execPromise('powershell.exe', [
-            '-NoProfile',
-            '-Command',
-            printerName
-                ? `Start-Process -FilePath '${escapePowerShell(filePath)}' -Verb PrintTo -ArgumentList '${escapePowerShell(printerName)}' -WindowStyle Hidden`
-                : `Start-Process -FilePath '${escapePowerShell(filePath)}' -Verb Print -WindowStyle Hidden`,
-        ]);
-    }
-    const args = printerName ? ['-d', printerName, filePath] : [filePath];
-    return execPromise('lp', args);
-}
-
 async function report(jobId, status, errorMessage) {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 15000);
     const res = await fetch(`${API_BASE}/api/shipping/print-agent/jobs/${jobId}/result`, {
         method: 'POST',
         headers: { ...stationHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, errorMessage }),
+        signal: controller.signal,
     });
     if (!res.ok) throw new Error(`Result report failed: ${res.status} ${await res.text()}`);
 }
 
 function stationHeaders() {
-    return {
-        'x-print-station-id': STATION_ID,
-        'x-print-station-token': STATION_TOKEN,
-        'x-print-agent-version': AGENT_VERSION,
-    };
-}
-
-function execPromise(command, args) {
-    return new Promise((resolve, reject) => {
-        execFile(command, args, (error, stdout, stderr) => {
-            if (error) reject(new Error(stderr || stdout || error.message));
-            else resolve(stdout);
-        });
-    });
-}
-
-function escapePowerShell(value) {
-    return String(value).replace(/'/g, "''");
+    return createStationHeaders(STATION_ID, STATION_TOKEN, AGENT_VERSION);
 }
 
 function loadEnv(filePath) {
@@ -191,51 +155,27 @@ function localStatus() {
     };
 }
 
-async function listPrinters() {
-    try {
-        if (os.platform() === 'win32') {
-            const output = await execPromise('powershell.exe', ['-NoProfile', '-Command', 'Get-Printer | Select-Object -ExpandProperty Name']);
-            return output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-        }
-        const output = await execPromise('lpstat', ['-a']);
-        return output.split(/\r?\n/).map((line) => line.trim().split(/\s+/)[0]).filter(Boolean);
-    } catch (error) {
-        return [];
-    }
-}
-
 async function readJson(request) {
     return new Promise((resolve, reject) => {
+        let settled = false;
         let body = '';
+        const settle = (fn, arg) => { if (!settled) { settled = true; fn(arg); } };
         request.on('data', (chunk) => {
             body += chunk;
             if (body.length > 1024 * 1024) {
-                reject(new Error('Request body too large'));
+                settle(reject, new Error('Request body too large'));
                 request.destroy();
             }
         });
         request.on('end', () => {
             try {
-                resolve(body ? JSON.parse(body) : {});
+                settle(resolve, body ? JSON.parse(body) : {});
             } catch (error) {
-                reject(new Error('Invalid JSON'));
+                settle(reject, new Error('Invalid JSON'));
             }
         });
-        request.on('error', reject);
+        request.on('error', (e) => settle(reject, e));
     });
-}
-
-async function overseekFetch(apiBase, urlPath, options = {}) {
-    const res = await fetch(`${apiBase}${urlPath}`, options);
-    const text = await res.text();
-    let payload = null;
-    try {
-        payload = text ? JSON.parse(text) : null;
-    } catch {
-        payload = { error: text };
-    }
-    if (!res.ok) throw new Error(payload?.error || `Request failed with ${res.status}`);
-    return payload;
 }
 
 async function handleLocalApi(request, response, pathname) {
@@ -297,14 +237,6 @@ async function handleLocalApi(request, response, pathname) {
     }
 
     return sendJson(response, 404, { error: 'Not found' });
-}
-
-function normalizeApiBase(value) {
-    const apiBase = String(value || '').trim().replace(/\/+$/, '');
-    if (!apiBase.startsWith('http://') && !apiBase.startsWith('https://')) {
-        throw new Error('OverSeek URL must start with http:// or https://');
-    }
-    return apiBase;
 }
 
 function sendJson(response, status, payload) {

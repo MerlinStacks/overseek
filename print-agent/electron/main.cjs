@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, safeStorage
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execFile } = require('child_process');
+const { createStationHeaders, downloadLabel: downloadSharedLabel, listPrinters, normalizeApiBase: normalizeSharedApiBase, overseekFetch, printFile } = require('../shared.cjs');
 
 const AGENT_VERSION = app.getVersion();
 const POLL_INTERVAL_MS = 5000;
@@ -75,7 +75,8 @@ function decryptSecret(value) {
         const buffer = Buffer.from(String(value), 'base64');
         if (!safeStorage.isEncryptionAvailable()) return buffer.toString('utf8');
         return safeStorage.decryptString(buffer);
-    } catch {
+    } catch (error) {
+        console.error(`[print-agent] Failed to decrypt stored secret: ${error.message}`);
         return '';
     }
 }
@@ -174,7 +175,9 @@ async function poll() {
     isPolling = true;
     try {
         lastPollAt = new Date().toISOString();
-        const res = await fetch(`${config.apiBase}/api/shipping/print-agent/jobs`, { headers: stationHeaders(config) });
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 15000);
+        const res = await fetch(`${config.apiBase}/api/shipping/print-agent/jobs`, { headers: stationHeaders(config), signal: controller.signal });
         if (!res.ok) throw new Error(`Job poll failed: ${res.status} ${await res.text()}`);
         const payload = await res.json();
         lastPollError = '';
@@ -199,7 +202,7 @@ function schedulePoll() {
 async function handleJob(job, config) {
     try {
         if (!job.labelDownloadPath && !job.labelFilePath) throw new Error('Label download path missing');
-        const filePath = await downloadLabel(job, config);
+        const filePath = await downloadSharedLabel(job, { apiBase: config.apiBase, downloadDir: downloadsDir(), headers: stationHeaders(config) });
         await printFile(filePath, job.printerName || config.defaultPrinterName);
         await report(job.id, 'printed', undefined, config);
         lastJobMessage = `Printed job ${job.id}`;
@@ -211,42 +214,20 @@ async function handleJob(job, config) {
     }
 }
 
-async function downloadLabel(job, config) {
-    fs.mkdirSync(downloadsDir(), { recursive: true });
-    const source = String(job.labelDownloadPath || job.labelFilePath);
-    const url = source.startsWith('http') ? source : `${config.apiBase}${source.startsWith('/') ? '' : '/'}${source}`;
-    const res = await fetch(url, { headers: stationHeaders(config) });
-    if (!res.ok) throw new Error(`Label download failed: ${res.status}`);
-    const filePath = path.join(downloadsDir(), `${job.id}.pdf`);
-    fs.writeFileSync(filePath, Buffer.from(await res.arrayBuffer()));
-    return filePath;
-}
-
-function printFile(filePath, printerName) {
-    if (os.platform() === 'win32') {
-        const command = printerName
-            ? `Start-Process -FilePath '${escapePowerShell(filePath)}' -Verb PrintTo -ArgumentList '${escapePowerShell(printerName)}' -WindowStyle Hidden`
-            : `Start-Process -FilePath '${escapePowerShell(filePath)}' -Verb Print -WindowStyle Hidden`;
-        return execPromise('powershell.exe', ['-NoProfile', '-Command', command]);
-    }
-    return execPromise('lp', printerName ? ['-d', printerName, filePath] : [filePath]);
-}
-
 async function report(jobId, statusValue, errorMessage, config) {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 15000);
     const res = await fetch(`${config.apiBase}/api/shipping/print-agent/jobs/${jobId}/result`, {
         method: 'POST',
         headers: { ...stationHeaders(config), 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: statusValue, errorMessage }),
+        signal: controller.signal,
     });
     if (!res.ok) throw new Error(`Result report failed: ${res.status} ${await res.text()}`);
 }
 
 function stationHeaders(config) {
-    return {
-        'x-print-station-id': config.stationId,
-        'x-print-station-token': config.stationToken,
-        'x-print-agent-version': AGENT_VERSION,
-    };
+    return createStationHeaders(config.stationId, config.stationToken, AGENT_VERSION);
 }
 
 function disconnectStation() {
@@ -310,51 +291,8 @@ function recentLogs() {
     return fs.readFileSync(logPath, 'utf8').split(/\r?\n/).filter(Boolean).slice(-80);
 }
 
-async function overseekFetch(apiBase, urlPath, options = {}) {
-    const res = await fetch(`${apiBase}${urlPath}`, options);
-    const text = await res.text();
-    let payload = null;
-    try {
-        payload = text ? JSON.parse(text) : null;
-    } catch {
-        payload = { error: text };
-    }
-    if (!res.ok) throw new Error(payload?.error || `Request failed with ${res.status}`);
-    return payload;
-}
-
 function normalizeApiBase(value) {
-    const apiBase = String(value || '').trim().replace(/\/+$/, '');
-    if (!apiBase.startsWith('http://') && !apiBase.startsWith('https://')) {
-        throw new Error('OverSeek address must start with http:// or https://');
-    }
-    return apiBase;
-}
-
-async function listPrinters() {
-    try {
-        if (os.platform() === 'win32') {
-            const output = await execPromise('powershell.exe', ['-NoProfile', '-Command', 'Get-Printer | Select-Object -ExpandProperty Name']);
-            return output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-        }
-        const output = await execPromise('lpstat', ['-a']);
-        return output.split(/\r?\n/).map((line) => line.trim().split(/\s+/)[0]).filter(Boolean);
-    } catch {
-        return [];
-    }
-}
-
-function execPromise(command, args) {
-    return new Promise((resolve, reject) => {
-        execFile(command, args, (error, stdout, stderr) => {
-            if (error) reject(new Error(stderr || stdout || error.message));
-            else resolve(stdout);
-        });
-    });
-}
-
-function escapePowerShell(value) {
-    return String(value).replace(/'/g, "''");
+    return normalizeSharedApiBase(value, 'OverSeek address');
 }
 
 function log(message) {
@@ -373,6 +311,8 @@ ipcMain.handle('agent:open-logs-folder', () => shell.openPath(app.getPath('userD
 ipcMain.handle('agent:print-test-label', () => printTestLabel());
 ipcMain.handle('agent:get-diagnostics', () => ({ status: status(), recentLogs: recentLogs() }));
 ipcMain.handle('agent:login', async (_event, input) => {
+    if (!input || typeof input !== 'object') throw new Error('Invalid input');
+    if (!input.apiBase || !input.email || !input.password) throw new Error('API base, email, and password are required');
     const apiBase = normalizeApiBase(input.apiBase);
     const login = await overseekFetch(apiBase, '/api/auth/login', {
         method: 'POST',
@@ -386,6 +326,7 @@ ipcMain.handle('agent:login', async (_event, input) => {
     return { apiBase, token: login.token, accounts };
 });
 ipcMain.handle('agent:configure', async (_event, input) => {
+    if (!input || typeof input !== 'object') throw new Error('Invalid input');
     const apiBase = normalizeApiBase(input.apiBase);
     const stationName = String(input.stationName || os.hostname()).trim();
     const defaultPrinterName = String(input.defaultPrinterName || '').trim();

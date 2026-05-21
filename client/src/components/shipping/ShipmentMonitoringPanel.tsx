@@ -28,6 +28,15 @@ interface ShipmentLabel {
     trackingEvents: TrackingEvent[];
 }
 
+function isValidHttpsUrl(url: string): boolean {
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
 export function ShipmentMonitoringPanel({ wooOrderId, fallback }: { wooOrderId: number; fallback: ReactNode }) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -66,7 +75,7 @@ export function ShipmentMonitoringPanel({ wooOrderId, fallback }: { wooOrderId: 
                             </div>
                             <div className="flex items-center gap-2">
                                 <button onClick={() => refreshTracking.mutate(label.id)} className="text-gray-400 hover:text-gray-700" title="Refresh tracking"><RefreshCw size={16} /></button>
-                                {label.trackingUrl ? <a href={label.trackingUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700"><ExternalLink size={16} /></a> : null}
+                                {label.trackingUrl && isValidHttpsUrl(label.trackingUrl) ? <a href={label.trackingUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700"><ExternalLink size={16} /></a> : null}
                             </div>
                         </div>
                         {label.trackingNumber ? <code className="block rounded bg-gray-50 px-2 py-1 text-sm text-gray-900">{label.trackingNumber}</code> : null}

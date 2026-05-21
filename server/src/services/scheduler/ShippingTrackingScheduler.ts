@@ -9,6 +9,11 @@ export class ShippingTrackingScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
 
     static async register() {
+        if (ShippingTrackingScheduler._registered) {
+            Logger.info('[ShippingTrackingScheduler] Already registered, skipping duplicate registration');
+            return;
+        }
+        ShippingTrackingScheduler._registered = true;
         await this.queue.add('shipping-tracking-poll', {}, {
             repeat: { pattern: '*/30 * * * *' },
             jobId: 'shipping-tracking-poll-30min',
@@ -21,6 +26,8 @@ export class ShippingTrackingScheduler {
         Logger.info('Scheduled Shipping Label Storage Cleanup (Daily)');
     }
 
+    private static _registered = false;
+
     static async dispatchTrackingPoll() {
         const enabledAccounts = await prisma.accountFeature.findMany({
             where: { featureKey: SHIPPING_FEATURE_KEY, isEnabled: true },
@@ -29,15 +36,16 @@ export class ShippingTrackingScheduler {
 
         Logger.info(`[ShippingTrackingScheduler] Polling tracking for ${enabledAccounts.length} Shipping Hub account(s)`);
 
-        for (const { accountId } of enabledAccounts) {
+        const batch = Promise.allSettled(enabledAccounts.map(async ({ accountId }) => {
             try {
                 const settings = await prisma.shippingCarrierAccount.findFirst({
                     where: { accountId, carrier: 'AUSPOST', isEnabled: true },
                     select: { config: true, credentialsEncrypted: true },
                 });
                 const config = (settings?.config as Record<string, unknown> | null) || {};
-                if (!settings?.credentialsEncrypted || config.trackingSyncEnabled === false) continue;
-
+                if (!settings?.credentialsEncrypted || config.trackingSyncEnabled === false) {
+                    return { accountId, result: null, error: null };
+                }
                 const result = await shippingTrackingService.pollActiveLabels(accountId);
                 Logger.info('[ShippingTrackingScheduler] Tracking poll completed', { accountId, ...result });
                 if (result.failed > 0 || result.adapterUnavailable > 0) {
@@ -49,10 +57,13 @@ export class ShippingTrackingScheduler {
                         updated: result.updated,
                     });
                 }
+                return { accountId, result, error: null };
             } catch (error) {
-                Logger.error('[ShippingTrackingScheduler] Tracking poll failed', { accountId, error });
+                Logger.error('[ShippingTrackingScheduler] Tracking poll failed', { accountId, error: error instanceof Error ? error.message : error });
+                return { accountId, result: null, error };
             }
-        }
+        }));
+        await batch;
     }
 
     static async dispatchLabelStorageCleanup() {

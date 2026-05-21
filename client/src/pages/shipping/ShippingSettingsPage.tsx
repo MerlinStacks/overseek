@@ -218,7 +218,7 @@ export function ShippingSettingsPage() {
                 labelFormat: values.labelFormat,
                 labelPrintGroup: values.labelPrintGroup,
                 labelPaperType: values.labelPaperType,
-                labelLayout: values.labelPaperType === 'a4_label_sheet' ? 'A4-4pp' : 'A6-1pp',
+                labelLayout: values.labelLayout,
                 printDeliveryMethod: values.printDeliveryMethod,
                 labelBranded: values.labelBranded,
                 wooFulfillmentBehavior: values.wooFulfillmentBehavior,

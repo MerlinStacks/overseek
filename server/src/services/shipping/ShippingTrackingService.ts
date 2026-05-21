@@ -30,6 +30,7 @@ interface NormalizedTrackingEvent {
 
 const TERMINAL_STATES = new Set(['delivered', 'returned', 'cancelled', 'expired']);
 const DEFAULT_TRIGGER_ALLOWLIST: ShipmentTriggerType[] = [];
+const ACTIVE_TRACKING_STATUSES = ['cancelled', 'delivered', 'returned', 'expired', 'exception'];
 
 export class ShippingTrackingService {
     async getTrackingHealthSummary(accountId: string) {
@@ -42,14 +43,14 @@ export class ShippingTrackingService {
                 where: {
                     accountId,
                     trackingNumber: { not: null },
-                    status: { notIn: ['cancelled', 'delivered', 'returned', 'expired', 'exception'] },
+                    status: { notIn: ACTIVE_TRACKING_STATUSES },
                 },
             }),
             prisma.shippingLabel.count({
                 where: {
                     accountId,
                     trackingNumber: { not: null },
-                    status: { notIn: ['cancelled', 'delivered', 'returned', 'expired', 'exception'] },
+                    status: { notIn: ACTIVE_TRACKING_STATUSES },
                     OR: [{ trackingSyncedAt: null }, { trackingSyncedAt: { lt: staleBefore } }],
                 },
             }),
@@ -90,8 +91,16 @@ export class ShippingTrackingService {
         if (!label) throw new Error('Label not found');
         if (!label.trackingNumber) throw new Error('Label does not have a tracking number');
         const events = await ausPostShippingTrackingAdapter.refreshTracking(accountId, label.trackingNumber);
+        let imported = 0;
+        let hadError = false;
         for (const event of events) {
-            await this.recordTrackingEvent(accountId, label.id, event);
+            try {
+                await this.recordTrackingEvent(accountId, label.id, event);
+                imported++;
+            } catch (error: any) {
+                hadError = true;
+                Logger.warn('[ShippingTrackingService] Failed to record tracking event', { labelId: label.id, error: error?.message || error });
+            }
         }
         await prisma.shippingAuditEvent.create({
             data: {
@@ -101,11 +110,13 @@ export class ShippingTrackingService {
                 eventType: 'TRACKING_REFRESH_COMPLETED',
                 metadata: {
                     trackingNumber: label.trackingNumber,
-                    eventsImported: events.length,
+                    eventsImported: imported,
+                    eventsTotal: events.length,
+                    hadErrors: hadError,
                 } as any,
             },
         });
-        return { labelId: label.id, trackingNumber: label.trackingNumber, eventsImported: events.length };
+        return { labelId: label.id, trackingNumber: label.trackingNumber, eventsImported: imported, eventsTotal: events.length, hadErrors: hadError };
     }
 
     async pollActiveLabels(accountId: string, limit = 25) {
@@ -115,7 +126,7 @@ export class ShippingTrackingService {
             where: {
                 accountId,
                 trackingNumber: { not: null },
-                status: { notIn: ['cancelled', 'delivered', 'returned', 'expired', 'exception'] },
+                status: { notIn: ACTIVE_TRACKING_STATUSES },
                 OR: [
                     { trackingSyncedAt: null },
                     { trackingSyncedAt: { lt: staleBefore } },
@@ -146,7 +157,7 @@ export class ShippingTrackingService {
                     result.failed++;
                     Logger.warn('[ShippingTrackingService] Tracking poll failed', { accountId, labelId: label.id, error: error?.message || error });
                     await prisma.shippingLabel.update({
-                        where: { id: label.id },
+                        where: { id: label.id, accountId },
                         data: { trackingSyncedAt: new Date(Date.now() + pollingConfig.failureBackoffMinutes * 60 * 1000) },
                     });
                     await prisma.shippingAuditEvent.create({
@@ -173,6 +184,7 @@ export class ShippingTrackingService {
 
         const normalized = this.normalizeTrackingEvent(input);
         const occurredAt = input.occurredAt ? new Date(input.occurredAt) : new Date();
+        if (isNaN(occurredAt.getTime())) throw new Error('Invalid occurredAt date');
         const eventCode = input.eventCode || `${normalized.normalizedState}:${occurredAt.toISOString()}`;
 
         const event = await prisma.shippingTrackingEvent.upsert({
@@ -200,7 +212,7 @@ export class ShippingTrackingService {
         });
 
         await prisma.shippingLabel.update({
-            where: { id: label.id },
+            where: { id: label.id, accountId },
             data: {
                 latestTrackingStatus: normalized.normalizedState,
                 latestTrackingSummary: input.description || input.status || normalized.normalizedState,

@@ -11,10 +11,6 @@ const listQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(200).default(50),
 });
 
-const orderListQuerySchema = z.object({
-    limit: z.coerce.number().int().positive().max(200).default(50),
-});
-
 const orderParamsSchema = z.object({
     wooOrderId: z.coerce.number().int().positive(),
 });
@@ -162,9 +158,16 @@ const idParamsSchema = z.object({ id: z.string().min(1) });
 async function requireShippingPermission(request: any, reply: any, permission: string) {
     const accountId = request.accountId;
     const userId = request.user?.id;
-    if (!accountId || !userId) return reply.code(401).send({ error: 'Authentication required' });
+    if (!accountId || !userId) {
+        const sent = reply.code(401).send({ error: 'Authentication required' });
+        return sent;
+    }
     const allowed = await PermissionService.hasPermission(userId, accountId, permission);
-    if (!allowed) return reply.code(403).send({ error: 'Insufficient shipping permission' });
+    if (!allowed) {
+        const sent = reply.code(403).send({ error: 'Insufficient shipping permission' });
+        return sent;
+    }
+    return null;
 }
 
 const shippingRoutes: FastifyPluginAsync = async (fastify) => {
@@ -207,7 +210,7 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const denied = await requireShippingPermission(request, reply, 'view_shipping');
             if (denied) return denied;
-            const { limit } = orderListQuerySchema.parse(request.query);
+            const { limit } = listQuerySchema.parse(request.query);
             return await shippingService.listDispatchOrders(request.accountId!, limit);
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to fetch dispatch orders', { error: error?.message || error });
@@ -285,7 +288,7 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
             const parsed = createLabelSchema.safeParse(request.body);
             if (!params.success) return reply.code(400).send({ error: 'Invalid order id' });
             if (!parsed.success) return reply.code(400).send({ error: 'Invalid label payload', details: parsed.error.flatten() });
-            return { label: await shippingService.createAndQueueLabelPlaceholder(request.accountId!, params.data.wooOrderId, request.user?.id, parsed.data?.printStationId) };
+            return { label: await shippingService.createAndQueueLabelPlaceholder(request.accountId!, params.data.wooOrderId, request.user?.id, parsed.data?.printStationId ?? null) };
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Label creation unavailable', { error: error?.message || error });
             const knownBadRequest = [

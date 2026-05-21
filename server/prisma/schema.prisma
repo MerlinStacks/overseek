@@ -2907,7 +2907,7 @@ model ShippingCarrierAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([accountId, carrier, displayName])
+  @@unique([accountId, carrier])
   @@index([accountId])
 }
 
@@ -3143,7 +3143,7 @@ model ShippingPrintJob {
   accountId String
 
   labelId                  String
-  printStationId           String
+  printStationId           String?
   printerName              String?
   status                   String @default("queued")
   attempts                 Int    @default(0)
@@ -3156,7 +3156,7 @@ model ShippingPrintJob {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   label   ShippingLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
-  printStation ShippingPrintStation @relation("PrintStationJobs", fields: [printStationId], references: [id], onDelete: Cascade)
+  printStation ShippingPrintStation? @relation("PrintStationJobs", fields: [printStationId], references: [id], onDelete: SetNull)
   reassignedFromStation ShippingPrintStation? @relation("ReassignedPrintStationJobs", fields: [reassignedFromStationId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())

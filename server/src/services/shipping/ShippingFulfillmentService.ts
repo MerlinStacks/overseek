@@ -24,40 +24,44 @@ class ShippingFulfillmentService {
         const fulfillmentMeta = this.buildFulfillmentMeta(label);
         const rawData = this.mergeOrderRawData(order.rawData as Record<string, unknown>, fulfillmentMeta);
 
-        await prisma.wooOrder.update({
-            where: { id: order.id },
-            data: {
-                status: 'completed',
-                rawData: rawData as any,
-                dateModified: new Date(),
-            },
-        });
-
-        const result = {
-            localOrderUpdated: true,
-            wooOrderUpdated: false,
-            wooNoteCreated: false,
-            shippingCostRecorded: label.costAmount != null,
-            skippedReason: null as string | null,
-            error: null as string | null,
-        };
+        let wooOrderUpdated = false;
+        let wooNoteCreated = false;
+        let syncError: string | null = null;
 
         try {
             const woo = await WooService.forAccount(accountId);
             await woo.updateOrder(label.wooOrderId, { status: 'completed', meta_data: fulfillmentMeta });
-            result.wooOrderUpdated = true;
+            wooOrderUpdated = true;
 
             if (!alreadySynced) {
                 await woo.createOrderNote(label.wooOrderId, {
                     note: this.buildOrderNote(label),
                     customer_note: false,
                 });
-                result.wooNoteCreated = true;
+                wooNoteCreated = true;
             }
         } catch (error: any) {
-            result.error = error?.message || 'WooCommerce fulfillment sync failed';
-            Logger.warn('[ShippingFulfillmentService] WooCommerce fulfillment sync failed', { accountId, labelId, wooOrderId: label.wooOrderId, error: result.error });
+            syncError = error?.message || 'WooCommerce fulfillment sync failed';
+            Logger.warn('[ShippingFulfillmentService] WooCommerce fulfillment sync failed', { accountId, labelId, wooOrderId: label.wooOrderId, error: syncError });
         }
+
+        await prisma.wooOrder.update({
+            where: { id: order.id },
+            data: {
+                status: wooOrderUpdated ? 'completed' : order.status,
+                rawData: rawData as any,
+                dateModified: new Date(),
+            },
+        });
+
+        const result = {
+            localOrderUpdated: wooOrderUpdated,
+            wooOrderUpdated,
+            wooNoteCreated,
+            shippingCostRecorded: label.costAmount != null,
+            skippedReason: null as string | null,
+            error: syncError,
+        };
 
         return result;
     }

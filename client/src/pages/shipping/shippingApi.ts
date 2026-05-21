@@ -205,10 +205,12 @@ export async function shippingFetch<T>(path: string, token: string, accountId: s
         throw new Error(body.error || 'Shipping request failed');
     }
 
-    return res.json();
+    const ct = res.headers.get('content-type');
+    if (ct && ct.includes('application/json')) return res.json();
+    return {} as T;
 }
 
-export async function openShippingLabelPdf(labelId: string, token: string, accountId: string) {
+export async function openShippingLabelPdf(labelId: string, token: string, accountId: string): Promise<() => void> {
     const res = await fetch(`/api/shipping/labels/${labelId}/pdf`, {
         headers: {
             Authorization: `Bearer ${token}`,
@@ -222,10 +224,20 @@ export async function openShippingLabelPdf(labelId: string, token: string, accou
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank', 'noopener,noreferrer');
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return () => URL.revokeObjectURL(url);
 }
 
-export const mmToCm = (value: number | null | undefined) => value ? value / 10 : '';
-export const gramsToKg = (value: number | null | undefined) => value ? value / 1000 : '';
-export const cmToMm = (value: string) => value.trim() === '' ? null : Math.ceil(Number(value) * 10);
-export const kgToGrams = (value: string) => value.trim() === '' ? null : Math.ceil(Number(value) * 1000);
+export const mmToCm = (value: number | null | undefined) => value != null ? value / 10 : '';
+export const gramsToKg = (value: number | null | undefined) => value != null ? value / 1000 : '';
+export const cmToMm = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed === '') return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? Math.ceil(n * 10) : null;
+};
+export const kgToGrams = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed === '') return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? Math.ceil(n * 1000) : null;
+};

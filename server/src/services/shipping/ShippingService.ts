@@ -211,9 +211,7 @@ export class ShippingService {
         const order = await prisma.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: wooOrderId } } });
         if (!order) throw new Error('Order not found');
         const draft = await this.ensureDraftForOrder(accountId, order, await this.getDispatchStatus(accountId));
-        const address = Object.keys((draft.correctedAddress as Record<string, unknown>) || {}).length > 0
-            ? draft.correctedAddress as Record<string, unknown>
-            : this.getShippingAddress(order.rawData as Record<string, any>);
+        const address = this.resolveAddress(draft, order);
         let errors: any[] = this.validateAddressShape(address);
         let carrierValidation: Record<string, unknown> | null = null;
         let status = errors.length === 0 ? 'valid' : 'invalid';
@@ -259,9 +257,7 @@ export class ShippingService {
         const order = await prisma.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: wooOrderId } } });
         if (!order) throw new Error('Order not found');
         const draft = await this.ensureDraftForOrder(accountId, order, await this.getDispatchStatus(accountId));
-        const address = Object.keys((draft.correctedAddress as Record<string, unknown>) || {}).length > 0
-            ? draft.correctedAddress as Record<string, unknown>
-            : this.getShippingAddress(order.rawData as Record<string, any>);
+        const address = this.resolveAddress(draft, order);
         const selectedPackage = draft.selectedPackagePresetId
             ? await prisma.shippingPackagePreset.findFirst({ where: { id: draft.selectedPackagePresetId, accountId } })
             : null;
@@ -270,12 +266,7 @@ export class ShippingService {
             wooOrderId,
             address,
             packagePresetId: draft.selectedPackagePresetId,
-            dimensions: {
-                lengthMm: draft.manualOuterLengthMm || selectedPackage?.outerLengthMm || null,
-                widthMm: draft.manualOuterWidthMm || selectedPackage?.outerWidthMm || null,
-                heightMm: draft.manualOuterHeightMm || selectedPackage?.outerHeightMm || null,
-                weightGrams: draft.manualWeightGrams,
-            },
+            dimensions: this.resolveDimensions(draft, selectedPackage),
             serviceCode: draft.selectedServiceCode,
         };
 
@@ -759,7 +750,7 @@ export class ShippingService {
         return {
             fileName: `${job.label.wooOrderId}-${job.label.carrierLabelId || job.labelId}.pdf`,
             contentType: 'application/pdf',
-            pdf: fs.readFileSync(labelPath),
+            pdf: await fs.promises.readFile(labelPath),
         };
     }
 
@@ -817,28 +808,27 @@ export class ShippingService {
         const order = await prisma.wooOrder.findUnique({ where: { accountId_wooId: { accountId, wooId: wooOrderId } } });
         if (!order) throw new Error('Order not found');
         const draft = await this.ensureDraftForOrder(accountId, order, await this.getDispatchStatus(accountId));
-        const lockResult = await prisma.shippingShipmentDraft.updateMany({
-            where: {
-                accountId,
-                wooOrderId,
-                status: { not: 'creating_label' },
-            },
-            data: {
-                status: 'creating_label',
-                updatedByUserId: userId,
-            },
-        });
-        if (lockResult.count === 0) {
-            await this.recordAuditEvent(accountId, 'LABEL_CREATE_BLOCKED_DUPLICATE_ATTEMPT', {
-                orderId: order.id,
-                draftId: draft.id,
-                userId,
-                metadata: { wooOrderId, reason: 'Draft is already in create-label flow' },
-            });
-            throw new Error('A label create request is already in progress for this order');
-        }
-
         try {
+            const lockResult = await prisma.shippingShipmentDraft.updateMany({
+                where: {
+                    accountId,
+                    wooOrderId,
+                    status: { not: 'creating_label' },
+                },
+                data: {
+                    status: 'creating_label',
+                    updatedByUserId: userId,
+                },
+            });
+            if (lockResult.count === 0) {
+                await this.recordAuditEvent(accountId, 'LABEL_CREATE_BLOCKED_DUPLICATE_ATTEMPT', {
+                    orderId: order.id,
+                    draftId: draft.id,
+                    userId,
+                    metadata: { wooOrderId, reason: 'Draft is already in create-label flow' },
+                });
+                throw new Error('A label create request is already in progress for this order');
+            }
         const existingLabel = await prisma.shippingLabel.findFirst({
             where: {
                 accountId,
@@ -858,18 +848,11 @@ export class ShippingService {
             userId,
             metadata: { wooOrderId, printStationId: printStationId || draft.selectedPrintStationId || null },
         });
-        const address = Object.keys((draft.correctedAddress as Record<string, unknown>) || {}).length > 0
-            ? draft.correctedAddress as Record<string, unknown>
-            : this.getShippingAddress(order.rawData as Record<string, any>);
+        const address = this.resolveAddress(draft, order);
         const selectedPackage = draft.selectedPackagePresetId
             ? await prisma.shippingPackagePreset.findFirst({ where: { id: draft.selectedPackagePresetId, accountId } })
             : null;
-        const dimensions = {
-            lengthMm: draft.manualOuterLengthMm || selectedPackage?.outerLengthMm || null,
-            widthMm: draft.manualOuterWidthMm || selectedPackage?.outerWidthMm || null,
-            heightMm: draft.manualOuterHeightMm || selectedPackage?.outerHeightMm || null,
-            weightGrams: draft.manualWeightGrams,
-        };
+        const dimensions = this.resolveDimensions(draft, selectedPackage);
         const requestSnapshot = {
             wooOrderId,
             order: order.rawData as Record<string, unknown>,
@@ -885,7 +868,7 @@ export class ShippingService {
         if (!labelPrintGroup || !['Parcel Post', 'Express Post'].includes(labelPrintGroup)) throw new Error('AusPost label print group must be configured in Shipping Settings');
         if (!labelLayout) throw new Error('AusPost label layout must be configured in Shipping Settings');
         const stationId = printDeliveryMethod === 'remote_print'
-            ? printStationId || draft.selectedPrintStationId || this.stringSetting(config.defaultPrintStationId) || (await prisma.shippingPrintStation.findFirst({ where: { accountId }, orderBy: { createdAt: 'asc' } }))?.id
+            ? printStationId || draft.selectedPrintStationId || this.stringSetting(config.defaultPrintStationId) || (await prisma.shippingPrintStation.findFirst({ where: { accountId, status: 'online' }, orderBy: { createdAt: 'asc' } }))?.id
             : null;
         if (printDeliveryMethod === 'remote_print' && !stationId) throw new Error('Print station not configured');
 
@@ -902,28 +885,13 @@ export class ShippingService {
         const requestId = labelRequestResult.labelRequest.requestId;
         if (!requestId) throw new Error('AusPost did not return a label request ID');
         const resolvedLabelRequest = await this.resolveLabelRequestWithRetry(accountId, labelRequestResult.labelRequest, requestId);
+        const baseLabelData = this.buildLabelData(accountId, order, wooOrderId, settings, shipmentResult, requestId, draft, requestSnapshot, labelRequestResult, resolvedLabelRequest, userId);
         if (!resolvedLabelRequest.url) {
             const pendingLabel = await prisma.shippingLabel.create({
                 data: {
-                    accountId,
-                    orderId: order.id,
-                    wooOrderId,
-                    carrier: 'AUSPOST',
-                    carrierAccountId: settings.id,
-                    carrierShipmentId: shipmentResult.shipment.carrierShipmentId,
-                    carrierLabelId: requestId,
-                    trackingNumber: shipmentResult.shipment.trackingNumber,
-                    trackingUrl: shipmentResult.shipment.trackingNumber ? `https://auspost.com.au/mypost/track/#/details/${shipmentResult.shipment.trackingNumber}` : null,
-                    serviceCode: draft.selectedServiceCode,
-                    serviceName: draft.selectedServiceCode,
+                    ...baseLabelData,
                     status: 'label_pending_pdf',
-                    labelFormat: 'PDF',
-                    costAmount: shipmentResult.shipment.totalCost,
-                    costCurrency: 'AUD',
-                    requestSnapshot: requestSnapshot as any,
-                    responseSnapshot: { shipment: shipmentResult.rawResponse, labelRequest: labelRequestResult.rawResponse, resolvedLabelRequest },
                     errorMessage: resolvedLabelRequest.message || 'AusPost label request is pending and PDF URL is not available yet',
-                    createdByUserId: userId,
                 },
             });
             await this.recordAuditEvent(accountId, 'LABEL_CREATED_PENDING_PDF', {
@@ -947,26 +915,10 @@ export class ShippingService {
 
         const label = await prisma.shippingLabel.create({
             data: {
-                accountId,
-                orderId: order.id,
-                wooOrderId,
-                carrier: 'AUSPOST',
-                carrierAccountId: settings.id,
-                carrierShipmentId: shipmentResult.shipment.carrierShipmentId,
-                carrierLabelId: requestId,
-                trackingNumber: shipmentResult.shipment.trackingNumber,
-                trackingUrl: shipmentResult.shipment.trackingNumber ? `https://auspost.com.au/mypost/track/#/details/${shipmentResult.shipment.trackingNumber}` : null,
-                serviceCode: draft.selectedServiceCode,
-                serviceName: draft.selectedServiceCode,
+                ...baseLabelData,
                 status: 'label_ready',
-                labelFormat: 'PDF',
                 labelFilePath,
                 labelStoredUntil: storedUntil,
-                costAmount: shipmentResult.shipment.totalCost,
-                costCurrency: 'AUD',
-                requestSnapshot: requestSnapshot as any,
-                responseSnapshot: { shipment: shipmentResult.rawResponse, labelRequest: labelRequestResult.rawResponse, resolvedLabelRequest },
-                createdByUserId: userId,
             },
         });
         const printJob = stationId
@@ -1019,11 +971,8 @@ export class ShippingService {
     async queueStoredLabelReprint(accountId: string, labelId: string, printStationId?: string | null, userId?: string) {
         const label = await prisma.shippingLabel.findFirst({ where: { id: labelId, accountId } });
         if (!label) throw new Error('Label not found');
-        if (!label.labelFilePath) throw new Error('Stored label PDF is missing');
-        if (!this.isSafeLabelFilePath(label.labelFilePath) || !fs.existsSync(label.labelFilePath)) {
-            throw new Error('Stored label PDF path is invalid or unavailable');
-        }
-        const stationId = printStationId || (await prisma.shippingPrintStation.findFirst({ where: { accountId }, orderBy: { createdAt: 'asc' } }))?.id;
+        this.validateLabelFilePath(label);
+        const stationId = printStationId || (await prisma.shippingPrintStation.findFirst({ where: { accountId, status: 'online' }, orderBy: { createdAt: 'asc' } }))?.id;
         if (!stationId) throw new Error('Print station not configured');
         const printJob = await prisma.shippingPrintJob.create({
             data: {
@@ -1046,10 +995,7 @@ export class ShippingService {
     async getStoredLabelPdf(accountId: string, labelId: string, userId?: string) {
         const label = await prisma.shippingLabel.findFirst({ where: { id: labelId, accountId } });
         if (!label) throw new Error('Label not found');
-        if (!label.labelFilePath) throw new Error('Stored label PDF is missing');
-        if (!this.isSafeLabelFilePath(label.labelFilePath) || !fs.existsSync(label.labelFilePath)) {
-            throw new Error('Stored label PDF path is invalid or unavailable');
-        }
+        this.validateLabelFilePath(label);
 
         await this.recordAuditEvent(accountId, 'LABEL_PDF_OPENED_ON_SCREEN', {
             orderId: label.orderId,
@@ -1061,7 +1007,7 @@ export class ShippingService {
         return {
             fileName: `${label.wooOrderId}-${label.carrierLabelId || label.id}.pdf`,
             contentType: 'application/pdf',
-            pdf: fs.readFileSync(label.labelFilePath),
+            pdf: await fs.promises.readFile(label.labelFilePath),
         };
     }
 
@@ -1163,7 +1109,7 @@ export class ShippingService {
 
         let printJob: any = null;
         if (queuePrint) {
-            const stationId = printStationId || (await prisma.shippingPrintStation.findFirst({ where: { accountId }, orderBy: { createdAt: 'asc' } }))?.id;
+            const stationId = printStationId || (await prisma.shippingPrintStation.findFirst({ where: { accountId, status: 'online' }, orderBy: { createdAt: 'asc' } }))?.id;
             if (!stationId) throw new Error('Print station not configured');
             printJob = await prisma.shippingPrintJob.create({
                 data: { accountId, labelId: updated.id, printStationId: stationId, status: 'queued', requestedByUserId: userId },
@@ -1281,8 +1227,8 @@ export class ShippingService {
                     }
                 }
                 return encrypt(JSON.stringify({
-                    apiKey: data.apiKey || existingCredentials.apiKey || undefined,
-                    apiSecret: data.apiSecret || existingCredentials.apiSecret || undefined,
+                    apiKey: data.apiKey ?? existingCredentials.apiKey ?? undefined,
+                    apiSecret: data.apiSecret ?? existingCredentials.apiSecret ?? undefined,
                 }));
             })()
             : existing?.credentialsEncrypted;
@@ -1371,22 +1317,29 @@ export class ShippingService {
         }
         const serviceError = await this.getServiceReadinessError(accountId, { selectedServiceCode: null });
         if (serviceError) readinessErrors.push(serviceError);
-        return prisma.shippingShipmentDraft.create({
-            data: {
-                accountId,
-                orderId: order.id,
-                wooOrderId: order.wooId,
-                status: 'draft',
-                readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked',
-                readinessErrors,
-                addressValidationStatus: addressErrors.length === 0 ? 'valid' : 'invalid',
-                addressValidationErrors: addressErrors,
-                selectedPackagePresetId: packageSelection.packageId,
-                packageSelectionConfidence: packageSelection.confidence,
-                packageSelectionReason: packageSelection.reason || `Order matched dispatch status: ${dispatchStatus}`,
-                manualWeightGrams: packageSelection.weightGrams,
-            },
-        });
+        try {
+            return await prisma.shippingShipmentDraft.create({
+                data: {
+                    accountId,
+                    orderId: order.id,
+                    wooOrderId: order.wooId,
+                    status: 'draft',
+                    readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked',
+                    readinessErrors,
+                    addressValidationStatus: addressErrors.length === 0 ? 'valid' : 'invalid',
+                    addressValidationErrors: addressErrors,
+                    selectedPackagePresetId: packageSelection.packageId,
+                    packageSelectionConfidence: packageSelection.confidence,
+                    packageSelectionReason: packageSelection.reason || `Order matched dispatch status: ${dispatchStatus}`,
+                    manualWeightGrams: packageSelection.weightGrams,
+                },
+            });
+        } catch (error: any) {
+            if (error?.code === 'P2002') {
+                return prisma.shippingShipmentDraft.findUnique({ where: { accountId_wooOrderId: { accountId, wooOrderId: order.wooId } } });
+            }
+            throw error;
+        }
     }
 
     private async selectPackageForOrder(accountId: string, raw: Record<string, any>) {
@@ -1464,7 +1417,7 @@ export class ShippingService {
                 continue;
             }
             if (maxLengthMm <= (pkg.innerLengthMm || pkg.outerLengthMm) && maxWidthMm <= (pkg.innerWidthMm || pkg.outerWidthMm) && maxHeightMm <= (pkg.innerHeightMm || pkg.outerHeightMm)) {
-                return { packageId: pkg.id, confidence: 'fits_by_dimensions', reason: 'Smallest configured package that fits current item dimensions', weightGrams: weight || null };
+                return { packageId: pkg.id, confidence: 'fits_by_dimensions', reason: 'Smallest configured package that fits the largest item (multi-item cumulative dimensions not yet supported)', weightGrams: weight || null };
             }
         }
 
@@ -1525,6 +1478,63 @@ export class ShippingService {
 
     private stringSetting(value: unknown) {
         return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+    }
+
+    private buildLabelData(
+        accountId: string,
+        order: any,
+        wooOrderId: number,
+        settings: any,
+        shipmentResult: any,
+        requestId: string,
+        draft: any,
+        requestSnapshot: Record<string, unknown>,
+        labelRequestResult: any,
+        resolvedLabelRequest: any,
+        userId?: string,
+    ) {
+        const trackingNumber = shipmentResult.shipment.trackingNumber;
+        return {
+            accountId,
+            orderId: order.id,
+            wooOrderId,
+            carrier: 'AUSPOST',
+            carrierAccountId: settings.id,
+            carrierShipmentId: shipmentResult.shipment.carrierShipmentId,
+            carrierLabelId: requestId,
+            trackingNumber,
+            trackingUrl: trackingNumber ? `https://auspost.com.au/mypost/track/#/details/${trackingNumber}` : null,
+            serviceCode: draft.selectedServiceCode,
+            serviceName: draft.selectedServiceCode,
+            labelFormat: 'PDF',
+            costAmount: shipmentResult.shipment.totalCost,
+            costCurrency: 'AUD',
+            requestSnapshot: requestSnapshot as any,
+            responseSnapshot: { shipment: shipmentResult.rawResponse, labelRequest: labelRequestResult.rawResponse, resolvedLabelRequest },
+            createdByUserId: userId,
+        };
+    }
+
+    private resolveAddress(draft: any, order: any): Record<string, unknown> {
+        const corrected = draft.correctedAddress as Record<string, unknown> | null;
+        if (corrected && Object.keys(corrected).length > 0) return corrected;
+        return this.getShippingAddress(order.rawData as Record<string, any>);
+    }
+
+    private resolveDimensions(draft: any, selectedPackage: any) {
+        return {
+            lengthMm: draft.manualOuterLengthMm || selectedPackage?.outerLengthMm || null,
+            widthMm: draft.manualOuterWidthMm || selectedPackage?.outerWidthMm || null,
+            heightMm: draft.manualOuterHeightMm || selectedPackage?.outerHeightMm || null,
+            weightGrams: draft.manualWeightGrams,
+        };
+    }
+
+    private validateLabelFilePath(label: any) {
+        if (!label.labelFilePath) throw new Error('Stored label PDF is missing');
+        if (!this.isSafeLabelFilePath(label.labelFilePath) || !fs.existsSync(label.labelFilePath)) {
+            throw new Error('Stored label PDF path is invalid or unavailable');
+        }
     }
 
     private getPrintDeliveryMethod(config: Record<string, unknown>): 'remote_print' | 'open_pdf' {
@@ -1599,7 +1609,10 @@ export class ShippingService {
             }
         }
 
-        await prisma.shippingLabel.update({ where: { id: label.id }, data: { status: 'printed', errorMessage: `WooCommerce sync failed: ${lastErrorMessage || 'Unknown error'}` } });
+        await prisma.shippingLabel.update({
+            where: { id: label.id },
+            data: { errorMessage: `WooCommerce sync failed: ${lastErrorMessage || 'Unknown error'}` },
+        });
         await this.recordAuditEvent(accountId, 'LABEL_PRINT_FULFILLMENT_SYNC_FAILED', {
             orderId: label.orderId,
             labelId: label.id,
@@ -1640,7 +1653,13 @@ export class ShippingService {
         if (!filePath || typeof filePath !== 'string') return false;
         const resolved = path.resolve(filePath);
         const base = ShippingService.LABEL_STORAGE_BASE_DIR;
-        return resolved === base || resolved.startsWith(`${base}${path.sep}`);
+        if (resolved !== base && !resolved.startsWith(`${base}${path.sep}`)) return false;
+        try {
+            const real = fs.realpathSync(resolved);
+            return real === base || real.startsWith(`${base}${path.sep}`);
+        } catch {
+            return false;
+        }
     }
 
     private compareVersions(left: string, right: string) {

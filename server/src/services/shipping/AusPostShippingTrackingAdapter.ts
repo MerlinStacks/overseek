@@ -106,12 +106,8 @@ class AusPostShippingTrackingAdapter {
         };
     }
 
-    async createLabel(accountId: string, _request: AusPostLabelRequest) {
-        const credentials = await this.getCredentials(accountId);
-        if (!credentials.endpoints.labels) throw new Error('AusPost label creation endpoint mapping is not configured yet');
-        await this.validateShipmentWithCredentials(credentials, _request);
-        throw new Error('AusPost label creation endpoint mapping is not configured yet');
-    }
+    // Label creation is handled via createShipment + createLabelRequest instead.
+    // The two-step flow: (1) createShipment to register the shipment, (2) createLabelRequest to generate the label.
 
     async validateShipment(accountId: string, request: AusPostLabelRequest) {
         const credentials = await this.getCredentials(accountId);
@@ -167,9 +163,21 @@ class AusPostShippingTrackingAdapter {
     async downloadLabelPdf(url: string) {
         const labelUrl = this.stringConfig(url);
         if (!labelUrl) throw new Error('AusPost label PDF URL is missing');
-        const response = await fetch(labelUrl);
-        if (!response.ok) throw new Error(`AusPost label PDF download failed (${response.status})`);
-        return Buffer.from(await response.arrayBuffer());
+        const parsed = new URL(labelUrl);
+        if (parsed.protocol !== 'https:') throw new Error('AusPost label PDF URL must use HTTPS');
+        const hostname = parsed.hostname.toLowerCase();
+        if (hostname === 'localhost' || hostname === '127.0.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.16.') || hostname.startsWith('169.254.') || hostname.endsWith('.internal') || hostname.endsWith('.local')) {
+            throw new Error('AusPost label PDF URL points to an internal or private address');
+        }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        try {
+            const response = await fetch(labelUrl, { signal: controller.signal });
+            if (!response.ok) throw new Error(`AusPost label PDF download failed (${response.status})`);
+            return Buffer.from(await response.arrayBuffer());
+        } finally {
+            clearTimeout(timeoutId);
+        }
     }
 
     async validateAddress(accountId: string, address: Record<string, unknown>) {
@@ -220,7 +228,13 @@ class AusPostShippingTrackingAdapter {
         const settings = await prisma.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST', isEnabled: true } });
         if (!settings?.credentialsEncrypted) throw new Error('AusPost credentials are not configured');
 
-        const decrypted = JSON.parse(decrypt(settings.credentialsEncrypted)) as { apiKey?: string; apiSecret?: string };
+        let decrypted: { apiKey?: string; apiSecret?: string } = {};
+        try {
+            decrypted = JSON.parse(decrypt(settings.credentialsEncrypted));
+        } catch (parseError) {
+            Logger.warn('[AusPostAdapter] Failed to parse decrypted credentials', { error: parseError });
+            throw new Error('AusPost credentials are corrupted');
+        }
         if (!decrypted.apiKey) throw new Error('AusPost API key is not configured');
 
         const config = (settings.config as Record<string, unknown> | null) || {};
@@ -264,8 +278,10 @@ class AusPostShippingTrackingAdapter {
 
         const method = String(init.method || 'GET').toUpperCase();
         const endpointPath = `/${path.replace(/^\//, '')}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
         try {
-            const response = await fetch(`${baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`, { ...init, headers });
+            const response = await fetch(`${baseUrl.replace(/\/$/, '')}${endpointPath}`, { ...init, headers, signal: controller.signal });
             const body = await response.text();
             const parsed = body ? this.parseBody(body) : null;
             if (!response.ok) {
@@ -281,6 +297,7 @@ class AusPostShippingTrackingAdapter {
             }
             return parsed as T;
         } catch (error: any) {
+            if (error?.name === 'AbortError') throw new Error('AusPost API request timed out');
             if (!String(error?.message || '').includes('AusPost API request failed')) {
                 Logger.error('[AusPostAdapter] Carrier request transport failure', {
                     environment: credentials.environment,
@@ -291,6 +308,8 @@ class AusPostShippingTrackingAdapter {
                 });
             }
             throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
@@ -307,7 +326,7 @@ class AusPostShippingTrackingAdapter {
         if (typeof body === 'string') return body.slice(0, 500);
         if (typeof body === 'object' && 'message' in body) return String((body as { message?: unknown }).message);
         if (typeof body === 'object' && 'error' in body) return String((body as { error?: unknown }).error);
-        return JSON.stringify(body).slice(0, 500);
+        try { return JSON.stringify(body).slice(0, 500); } catch { return String(body).slice(0, 500); }
     }
 
     private stringConfig(value: unknown) {
@@ -518,7 +537,8 @@ class AusPostShippingTrackingAdapter {
         }));
     }
 
-    private findEventArray(value: unknown): any[] {
+    private findEventArray(value: unknown, depth = 0): any[] {
+        if (depth > 20) return [];
         if (Array.isArray(value)) return value;
         if (!value || typeof value !== 'object') return [];
         const object = value as Record<string, unknown>;
@@ -526,7 +546,7 @@ class AusPostShippingTrackingAdapter {
             if (Array.isArray(object[key])) return object[key] as any[];
         }
         for (const nested of Object.values(object)) {
-            const events = this.findEventArray(nested);
+            const events = this.findEventArray(nested, depth + 1);
             if (events.length > 0) return events;
         }
         return [];
