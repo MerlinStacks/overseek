@@ -1,3 +1,5 @@
+import { sanitizeEmailHtml } from '../utils/emailHtml';
+
 export type EmailDeviceVisibility = 'all' | 'desktop' | 'mobile';
 export type EmailStackMode = 'stack' | 'reverse' | 'none';
 export type SocialIconStyle = 'solid' | 'outline' | 'glyph';
@@ -53,6 +55,9 @@ export interface EmailSection {
 export interface EmailColumn {
     id: string;
     width: number;
+    backgroundColor?: string;
+    padding?: string;
+    verticalAlign?: 'top' | 'middle' | 'bottom';
     blocks: EmailBlock[];
 }
 
@@ -612,7 +617,10 @@ function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
     const radius = section.borderRadius || [0, 0, 0, 0];
     const columnHtml = columns.map((column, index) => {
         const stackClass = getStackClass(section.stackMode, index, columns.length);
-        return `<td class="${stackClass}" width="${column.width}%" valign="top" style="vertical-align:top;width:${column.width}%;">${column.blocks.map((block) => renderBlock(block, theme)).join('')}</td>`;
+        const columnPadding = column.padding || '0';
+        const columnBackground = column.backgroundColor ? `background:${column.backgroundColor};` : '';
+        const verticalAlign = column.verticalAlign || 'top';
+        return `<td class="${stackClass}" width="${column.width}%" valign="${verticalAlign}" style="vertical-align:${verticalAlign};width:${column.width}%;padding:${columnPadding};${columnBackground}">${column.blocks.map((block) => renderBlock(block, theme)).join('')}</td>`;
     }).join('');
 
     const borderDeclaration = borderStyle === 'none' || borderWidth <= 0 ? 'border:none;' : `border:${borderWidth}px ${borderStyle} ${borderColor};`;
@@ -637,7 +645,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'text') {
         const props = block.props;
-        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${props.html}</div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${sanitizeEmailHtml(props.html)}</div>`;
     }
 
     if (block.type === 'image') {

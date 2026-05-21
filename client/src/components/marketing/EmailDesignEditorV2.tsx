@@ -10,6 +10,7 @@ import {
     createEmailDesignId,
     getEmailDesignV2BlockLabel,
     type EmailBlock,
+    type EmailColumn,
     type EmailDesignV2Envelope,
     type EmailDeviceVisibility,
     type EmailSection,
@@ -22,6 +23,7 @@ import { EmailDropCanvas } from './emailDesignerV2/EmailDropCanvas';
 import { PaletteGrid } from './emailDesignerV2/PaletteGrid';
 import { ProductPicker } from './emailDesignerV2/ProductPicker';
 import { productToBlockProps } from './emailDesignerV2/productBlockProps';
+import { getEmailDesignWarnings, sanitizeEmailHtml } from '../../utils/emailHtml';
 
 interface Props {
     initialDesign?: unknown;
@@ -37,12 +39,19 @@ interface Snapshot {
     design: EmailDesignV2Envelope;
 }
 
+interface SavedSectionPreset {
+    id: string;
+    name: string;
+    section: EmailSection;
+}
+
 interface InvoiceTemplateRecord {
     layout?: string | { items?: Array<{ type?: string; logo?: string; content?: string }> };
 }
 
 const DRAFT_STORAGE_KEY = 'overseek-email-builder-v2-draft';
 const HISTORY_STORAGE_KEY = 'overseek-email-builder-v2-history';
+const SAVED_SECTIONS_STORAGE_KEY = 'overseek-email-builder-v2-saved-sections';
 const MAX_HISTORY = 12;
 
 type BuilderTab = 'structure' | 'blocks' | 'layouts' | 'global';
@@ -302,6 +311,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const [issues, setIssues] = useState<PreflightIssue[]>([]);
     const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+    const [savedSections, setSavedSections] = useState<SavedSectionPreset[]>([]);
     const [testEmail, setTestEmail] = useState(user?.email || '');
     const [testStatus, setTestStatus] = useState<string | null>(null);
     const [sendingTest, setSendingTest] = useState(false);
@@ -324,6 +334,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const selectedSection = design.document.sections.find((section) => section.id === selectedSectionId) || design.document.sections[0];
     const selectedBlock = selectedSection?.columns.flatMap((column) => column.blocks).find((block) => block.id === selectedBlockId) || null;
     const groupedIssues = groupPreflightIssues(issues);
+    const designWarnings = useMemo(() => getEmailDesignWarnings(design), [design]);
     const visiblePaletteItems = paletteItems.filter((item) => item.label.toLowerCase().includes(blockSearch.trim().toLowerCase()));
     const saveStatus = saving ? 'Autosaving...' : saveError ? 'Autosave failed, draft kept' : hasUnsavedChanges ? 'Autosave pending' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
     const hideOnDesktop = selectedSection?.visibility === 'mobile';
@@ -622,12 +633,56 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         });
     };
 
+    const updateSectionColumn = (columnId: string, updater: (column: EmailColumn) => void) => {
+        updateSelectedSection((section) => {
+            const column = section.columns.find((item) => item.id === columnId);
+            if (column) updater(column);
+        });
+    };
+
+    const updateSectionColumnPaddingSide = (columnId: string, sideIndex: number, value: string) => {
+        updateSectionColumn(columnId, (column) => {
+            const next = parseBoxSpacing(column.padding || '0');
+            next[sideIndex] = Math.max(0, Number(value) || 0);
+            column.padding = toBoxSpacing(next);
+        });
+    };
+
     const addSectionColumn = () => {
         updateSelectedSection((section) => {
             const nextCount = section.columns.length + 1;
             const width = Math.max(10, Math.floor(100 / nextCount));
             section.columns.push({ id: createEmailDesignId('column'), width, blocks: [] });
             normalizeColumnWidths(section);
+        });
+    };
+
+    const cloneSectionWithFreshIds = (section: EmailSection): EmailSection => {
+        const next = cloneDesign({ engine: 'overseek-v2', version: 1, document: { meta: { title: '' }, theme: design.document.theme, sections: [section] } }).document.sections[0];
+        next.id = createEmailDesignId('section');
+        next.columns.forEach((column) => {
+            column.id = createEmailDesignId('column');
+            column.blocks.forEach((block) => { block.id = createEmailDesignId(block.type); });
+        });
+        return next;
+    };
+
+    const saveSelectedSectionPreset = () => {
+        if (!selectedSection) return;
+        const name = window.prompt('Save structure as', selectedSection.name || 'Reusable section')?.trim();
+        if (!name) return;
+        const nextPreset: SavedSectionPreset = { id: createEmailDesignId('section-preset'), name, section: cloneSectionWithFreshIds(selectedSection) };
+        const next = [nextPreset, ...savedSections.filter((preset) => preset.name !== name)].slice(0, 12);
+        setSavedSections(next);
+        localStorage.setItem(SAVED_SECTIONS_STORAGE_KEY, JSON.stringify(next));
+    };
+
+    const insertSavedSectionPreset = (preset: SavedSectionPreset) => {
+        setDirtyDesign((draft) => {
+            const section = cloneSectionWithFreshIds(preset.section);
+            draft.document.sections.push(section);
+            setSelectedSectionId(section.id);
+            setSelectedBlockId(null);
         });
     };
 
@@ -823,7 +878,10 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     };
 
     const runChecklist = () => {
-        setIssues(evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory: design.document.meta.category || 'MARKETING' }));
+        setIssues([
+            ...evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory: design.document.meta.category || 'MARKETING' }),
+            ...designWarnings.map((warning) => ({ id: warning.id, severity: 'warning' as const, message: warning.message })),
+        ]);
         setLeftSidebarMode('checklist');
     };
 
@@ -984,6 +1042,15 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 setSnapshots(Array.isArray(parsed) ? parsed : []);
             } catch {
                 setSnapshots([]);
+            }
+        }
+        const savedSectionsRaw = localStorage.getItem(SAVED_SECTIONS_STORAGE_KEY);
+        if (savedSectionsRaw) {
+            try {
+                const parsed = JSON.parse(savedSectionsRaw) as SavedSectionPreset[];
+                setSavedSections(Array.isArray(parsed) ? parsed : []);
+            } catch {
+                setSavedSections([]);
             }
         }
         const recipientRaw = localStorage.getItem(RECENT_TEST_RECIPIENTS_KEY);
@@ -1164,6 +1231,13 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                         <button key={type} onClick={() => applyStarterLayout(type)} className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Layers size={15} />{label}</button>
                                     ))}
                                 </div>
+                                <p className="mb-2 mt-6 text-sm font-medium text-slate-950 dark:text-white">Reusable sections</p>
+                                <div className="space-y-2">
+                                    {savedSections.length === 0 && <p className="rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">Save a structure from Structure settings to reuse it here.</p>}
+                                    {savedSections.map((preset) => (
+                                        <button key={preset.id} onClick={() => insertSavedSectionPreset(preset)} className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Layers size={15} />{preset.name}</button>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
@@ -1224,6 +1298,9 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                                 <button onClick={() => removeSectionColumn(column.id)} disabled={selectedSection.columns.length <= 1} className="text-xs text-red-600 disabled:opacity-40">Remove</button>
                                             </div>
                                             <Field label="Width %" type="number" value={String(column.width)} onChange={(value) => updateSectionColumnWidth(column.id, value)} />
+                                            <ColorField label="Background color" value={column.backgroundColor || selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.backgroundColor = value; })} />
+                                            <FourSideField label="Padding" values={parseBoxSpacing(column.padding || '0')} onChange={(sideIndex, value) => updateSectionColumnPaddingSide(column.id, sideIndex, value)} />
+                                            <SelectField label="Vertical align" value={column.verticalAlign || 'top'} options={['top', 'middle', 'bottom']} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.verticalAlign = value as EmailColumn['verticalAlign']; })} />
                                         </div>
                                     ))}
                                 </div>
@@ -1262,6 +1339,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         {leftSidebarMode === 'sectionSettings' && selectedSection && (
                             <div className="min-h-0 flex-1 overflow-auto p-4 space-y-3">
                                 <PanelHeader title="Structure settings" onClose={() => setLeftSidebarMode('builder')} />
+                                <Field label="Name" value={selectedSection.name || ''} onChange={(value) => updateSection('name', value)} />
+                                <ColorField label="Background color" value={selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSection('backgroundColor', value)} />
                                 <LabeledSelectField
                                     label="Border style"
                                     value={selectedSection.borderStyle || 'none'}
@@ -1283,6 +1362,19 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                 <LinkedFourSideField label="Padding" values={parseBoxSpacing(selectedSection.padding || '0')} onChange={updateSectionPaddingSide} defaultLinked />
                                 <ToggleField label="Responsive structure" checked={(selectedSection.stackMode || 'stack') !== 'none'} onChange={(checked) => updateSection('stackMode', checked ? 'stack' : 'none')} />
                                 <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={setSectionHideOnMobile} />
+                                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Columns</p>
+                                    {selectedSection.columns.map((column, index) => (
+                                        <div key={column.id} className="space-y-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                                            <p className="text-xs text-slate-600 dark:text-slate-300">Column {index + 1}</p>
+                                            <Field label="Width %" type="number" value={String(column.width)} onChange={(value) => updateSectionColumnWidth(column.id, value)} />
+                                            <ColorField label="Background color" value={column.backgroundColor || selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.backgroundColor = value; })} />
+                                            <LinkedFourSideField label="Padding" values={parseBoxSpacing(column.padding || '0')} onChange={(sideIndex, value) => updateSectionColumnPaddingSide(column.id, sideIndex, value)} />
+                                            <SelectField label="Vertical align" value={column.verticalAlign || 'top'} options={['top', 'middle', 'bottom']} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.verticalAlign = value as EmailColumn['verticalAlign']; })} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <button type="button" onClick={saveSelectedSectionPreset} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200"><Layers size={14} />Save as reusable section</button>
                             </div>
                         )}
 
@@ -1299,6 +1391,18 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         <div className="mx-auto mb-3 flex max-w-4xl items-center justify-between gap-3">
                             <p className="text-sm text-slate-600 dark:text-slate-300">{previewSurface === 'canvas' ? 'Live email canvas. Drag blocks into place and edit content directly.' : 'Real email preview from compiled HTML. This is the exact markup that gets saved and sent.'}</p>
                         </div>
+                        {designWarnings.length > 0 && (
+                            <div className="mx-auto mb-3 max-w-4xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-sm dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-100">
+                                <div className="flex items-start gap-2">
+                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="font-semibold">Designer warnings</p>
+                                        {designWarnings.slice(0, 3).map((warning) => <p key={warning.id}>{warning.message}</p>)}
+                                        {designWarnings.length > 3 && <p>{designWarnings.length - 3} more warnings in the checklist.</p>}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {previewSurface === 'canvas' ? (
                             <ErrorBoundary
                                 onReset={() => {
@@ -1582,7 +1686,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             <ToggleField label="Responsive structure" checked={Boolean(block.responsive)} onChange={(checked) => onUpdate((draft) => { draft.responsive = checked; })} />
             <SelectField label="Visibility" value={block.visibility || 'all'} options={['all', 'desktop', 'mobile']} onChange={setVisibility} />
             {block.type === 'siteLogo' && <><Field label="Logo URL" value={block.props.src} onChange={(value) => patchProps({ src: value })} /><Field label="Fallback text" value={block.props.fallbackText || ''} onChange={(value) => patchProps({ fallbackText: value })} /></>}
-            {block.type === 'text' && <TextArea label="HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
+            {block.type === 'text' && <TextArea label="HTML" value={block.props.html} onChange={(value) => patchProps({ html: sanitizeEmailHtml(value) })} />}
             {block.type === 'image' && <>
                 <input
                     ref={fileInputRef}

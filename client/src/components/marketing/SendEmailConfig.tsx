@@ -3,7 +3,7 @@
  * Includes visual builder, rich text, raw HTML modes, template management, and preview
  */
 import { useRef, useState, type RefObject } from 'react';
-import { Search, Copy, X } from 'lucide-react';
+import { CheckCircle, Circle, Search, Copy, X } from 'lucide-react';
 import { RichTextEditor } from '../common/RichTextEditor';
 import { MarketingEmailDesigner } from './MarketingEmailDesigner';
 import { EmailTemplateSelectorModal } from './flow/EmailTemplateSelectorModal';
@@ -60,6 +60,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
     const [showVisualBuilder, setShowVisualBuilder] = useState(false);
     const [showPreflightModal, setShowPreflightModal] = useState(false);
     const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([]);
+    const [previewChecked, setPreviewChecked] = useState(false);
     const [showMergeTagModal, setShowMergeTagModal] = useState(false);
     const [mergeTagSearch, setMergeTagSearch] = useState('');
     const [mergeTagCategory, setMergeTagCategory] = useState<MergeTagDefinition['category']>('customer');
@@ -70,6 +71,14 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
 
     const templateType = config.templateType || 'visual';
     const emailCategory = config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING');
+    const setupSteps = [
+        { label: 'Recipient', done: Boolean((config.to || '{{customer.email}}').trim()) },
+        { label: 'Subject', done: Boolean((config.subject || '').trim()) },
+        { label: 'Content', done: Boolean((config.htmlContent || '').trim()) },
+        { label: 'Category', done: Boolean(emailCategory) },
+        { label: 'Preview/test', done: previewChecked },
+    ];
+    const completedSetupSteps = setupSteps.filter((step) => step.done).length;
 
     const handleTemplateSelect = (template: EmailTemplate) => {
         const updates: Record<string, unknown> = {
@@ -124,6 +133,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
 
     const handlePreviewAndTest = () => {
         const issues = runPreflightChecks();
+        setPreviewChecked(true);
         setPreflightIssues(issues);
         if (issues.length === 0) {
             setShowPreview(true);
@@ -181,6 +191,24 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
 
     return (
         <div className="space-y-4">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h4 className="text-sm font-semibold text-indigo-950">Email step setup</h4>
+                        <p className="mt-1 text-xs text-indigo-800">Complete these fields, then preview and send a test before activating the flow.</p>
+                    </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-indigo-700 shadow-xs">{completedSetupSteps}/{setupSteps.length}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                    {setupSteps.map((step) => (
+                        <div key={step.label} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs ${step.done ? 'border-emerald-200 bg-white text-emerald-700' : 'border-indigo-100 bg-white/70 text-indigo-700'}`}>
+                            {step.done ? <CheckCircle size={14} /> : <Circle size={14} />}
+                            <span>{step.label}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                     To <span className="text-red-500">*</span>

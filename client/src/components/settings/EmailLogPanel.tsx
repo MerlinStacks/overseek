@@ -48,6 +48,14 @@ export function EmailLogPanel() {
     const location = useLocation();
     const navigate = useNavigate();
     const limit = 20;
+    const sourceOptions = [
+        { value: '', label: 'All types' },
+        { value: 'AUTOMATION', label: 'Automation' },
+        { value: 'CAMPAIGN', label: 'Campaign' },
+        { value: 'MANUAL', label: 'Manual' },
+        { value: 'REPORT', label: 'Scheduled Report' },
+        { value: 'INVENTORY_ALERT', label: 'Inventory Alert' }
+    ];
 
     const searchParams = new URLSearchParams(location.search);
     const statusFilter = searchParams.get('status') || '';
@@ -96,6 +104,16 @@ export function EmailLogPanel() {
         navigate('/emails/logs');
     };
 
+    const setTypeFilter = (source: string) => {
+        const params = new URLSearchParams(location.search);
+        if (source) {
+            params.set('source', source);
+        } else {
+            params.delete('source');
+        }
+        navigate(`/emails/logs${params.toString() ? `?${params.toString()}` : ''}`);
+    };
+
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
         return date.toLocaleString();
@@ -105,6 +123,7 @@ export function EmailLogPanel() {
         if (!source) return null;
         const labels: Record<string, string> = {
             'AUTOMATION': 'Automation',
+            'CAMPAIGN': 'Campaign',
             'REPORT': 'Scheduled Report',
             'INVENTORY_ALERT': 'Inventory Alert',
             'MANUAL': 'Manual'
@@ -269,6 +288,23 @@ export function EmailLogPanel() {
                         <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
                     </button>
                 </div>
+            </div>
+
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
+                <label className="flex w-full max-w-xs flex-col gap-1 text-sm">
+                    <span className="font-medium text-gray-700">Type</span>
+                    <select
+                        value={sourceFilter}
+                        onChange={(event) => setTypeFilter(event.target.value)}
+                        className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    >
+                        {sourceOptions.map((option) => (
+                            <option key={option.value || 'all'} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </label>
             </div>
 
             {/* Logs Table */}

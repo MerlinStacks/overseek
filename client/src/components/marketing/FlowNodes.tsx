@@ -10,6 +10,7 @@ import {
     NodeStats, OnAddStepCallback, OnCopyNodeCallback, OnDeleteNodeCallback,
     OnViewNodeAnalyticsCallback, getTriggerIcon, getTriggerLabel, getActionIcon, getActionLabel, getActionGradient
 } from './flowNodeUtils';
+import type { FlowIssue } from './flowValidation';
 
 interface FlowNodeConfig {
     actionType?: string;
@@ -36,6 +37,7 @@ interface FlowNodeData {
     onViewAnalytics?: OnViewNodeAnalyticsCallback;
     onSettingsClick?: () => void;
     density?: 'compact' | 'comfortable';
+    issues?: FlowIssue[];
 }
 
 const OPERATORS_WITHOUT_VALUE = new Set(['is_set', 'not_set']);
@@ -58,6 +60,7 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
+    const issues = nodeData.issues ?? [];
     const triggerLabel = getTriggerLabel(config);
 
     return (
@@ -79,6 +82,7 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
                 statOrder={['queued', 'completed', 'skipped', 'failed']}
                 onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
+                issues={issues}
             >
                 <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">Flow trigger</div>
                 <div className="mt-2 leading-relaxed text-slate-700">Starts when <span className="font-semibold text-slate-900">{triggerLabel}</span> happens.</div>
@@ -101,8 +105,12 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
+    const issues = nodeData.issues ?? [];
     const isExitNode = config?.actionType === 'EXIT';
     const actionLabel = getActionLabel(config);
+    const emailCategory = config?.actionType === 'SEND_EMAIL' ? String((config as Record<string, unknown>).emailCategory || ((config as Record<string, unknown>).isTransactional ? 'TRANSACTIONAL' : 'MARKETING')) : '';
+    const recipient = config?.actionType === 'SEND_EMAIL' ? String((config as Record<string, unknown>).to || '{{customer.email}}') : '';
+    const templateType = config?.actionType === 'SEND_EMAIL' ? String((config as Record<string, unknown>).templateType || 'visual') : '';
 
     return (
         <>
@@ -124,9 +132,19 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                 statOrder={['queued', 'completed', 'skipped', 'failed']}
                 onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
+                issues={issues}
             >
                 <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">{config?.actionType === 'SEND_EMAIL' ? 'Email step' : 'Action step'}</div>
                 <div className="font-semibold text-slate-900 mt-2">{actionLabel}</div>
+                {config?.actionType === 'SEND_EMAIL' && (
+                    <div className="mt-2 space-y-1 text-xs text-slate-600">
+                        <div className="truncate max-w-[240px]">To: <span className="font-medium text-slate-800">{recipient}</span></div>
+                        <div className="flex flex-wrap gap-1.5">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{emailCategory}</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{templateType}</span>
+                        </div>
+                    </div>
+                )}
                 {config?.subject
                     ? <div className="text-xs text-slate-600 truncate mt-1.5 max-w-[240px]">{config.subject}</div>
                     : <div className="text-xs text-slate-500 mt-1.5">Set up this step in the sidebar.</div>}
@@ -149,6 +167,7 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
+    const issues = nodeData.issues ?? [];
 
     const duration = config?.duration || 1;
     const unit = config?.unit || 'hours';
@@ -176,6 +195,7 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
                 statOrder={['queued', 'completed', 'skipped', 'failed']}
                 onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
+                issues={issues}
             >
                 <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">Wait step</div>
                 <div className="font-semibold text-slate-900 mt-2">{delayDescription}</div>
@@ -199,6 +219,7 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
+    const issues = nodeData.issues ?? [];
 
     const conditionRules = Array.isArray(config?.conditions)
         ? config.conditions.filter((rule: { field?: string; operator?: string; value?: string }) => rule?.field && rule?.operator && hasConditionValue(rule))
@@ -229,6 +250,7 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
                 statOrder={['queued', 'completed', 'skipped', 'failed']}
                 onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
+                issues={issues}
             >
                 <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 mb-2">Branch logic</div>
                 <div className="font-semibold text-slate-900 mb-1">{data.label as string}</div>

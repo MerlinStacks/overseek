@@ -8,6 +8,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 import { api } from '../../../services/api';
 import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
+import { getSupportedFlowActionIds } from '../flowValidation';
 
 interface ActionNodeConfig {
     actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK' | 'GENERATE_COUPON' | 'ADD_ORDER_NOTE' | 'UPDATE_ORDER_STATUS';
@@ -44,6 +45,8 @@ const ACTION_TYPES = [
     { value: 'WEBHOOK', label: 'Webhook' },
 ];
 
+const SUPPORTED_ACTION_IDS = getSupportedFlowActionIds();
+
 const GSM_7BIT_REGEX = /^[\r\n @\u00A3$\u00A5\u00E8\u00E9\u00F9\u00EC\u00F2\u00C7\u00D8\u00F8\u00C5\u00E5\u0394_\u03A6\u0393\u039B\u03A9\u03A0\u03A8\u03A3\u0398\u039E\u00C6\u00E6\u00DF\u00C9!"#\u00A4%&'()*+,\-./0-9:;<=>?\u00A1A-Z\u00C4\u00D6\u00D1\u00DC\u00A7\u00BFa-z\u00E4\u00F6\u00F1\u00FC\u00E0^{}\\[~\]|\u20AC]*$/;
 const GSM_EXTENDED_REGEX = /[{}\\[~\]|\u20AC^]/g;
 
@@ -79,6 +82,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const selectedActionType = config.actionType || 'SEND_EMAIL';
+    const isUnsupportedAction = !SUPPORTED_ACTION_IDS.has(selectedActionType);
     const smsMetrics = getSmsMetrics(String(config.smsMessage || ''));
     const [smsCostPerSegment, setSmsCostPerSegment] = useState(0);
 
@@ -118,6 +122,15 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
 
             {selectedActionType === 'SEND_EMAIL' && (
                 <SendEmailConfig config={config} onUpdate={onUpdate} onUpdateMany={onUpdateMany} />
+            )}
+
+            {isUnsupportedAction && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <h4 className="text-sm font-semibold text-amber-900">Action coming soon</h4>
+                    <p className="mt-1 text-sm text-amber-800">
+                        This action can stay in existing flows, but it is not currently configurable or executable. Choose a supported action before activating this path.
+                    </p>
+                </div>
             )}
 
             {selectedActionType === 'SEND_SMS' && (

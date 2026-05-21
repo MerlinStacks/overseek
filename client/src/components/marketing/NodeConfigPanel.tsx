@@ -6,12 +6,14 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Node } from '@xyflow/react';
 import { X, Trash2, Zap, Mail, Clock, Split, Save } from 'lucide-react';
 import { TriggerConfig, ActionConfig, DelayConfig, ConditionConfig } from './nodeConfigs';
+import type { FlowIssue } from './flowValidation';
 
 interface NodeConfigPanelProps {
     node: Node | null;
     onClose: () => void;
     onUpdate: (nodeId: string, data: NodeDataState) => void;
     onDelete: (nodeId: string) => void;
+    issues?: FlowIssue[];
 }
 
 interface NodeDataState {
@@ -24,7 +26,8 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     node,
     onClose,
     onUpdate,
-    onDelete
+    onDelete,
+    issues = []
 }) => {
     const initialData = { ...((node?.data as Record<string, unknown> | undefined) || {}) };
     const [localData, setLocalData] = useState<NodeDataState>(initialData);
@@ -197,6 +200,17 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                 </div>
 
                 {/* Footer Actions */}
+                {issues.length > 0 && (
+                    <div className="border-t border-amber-100 bg-amber-50 px-6 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">Non-blocking setup checks</div>
+                        <div className="mt-2 space-y-1">
+                            {issues.slice(0, 3).map((issue) => (
+                                <div key={issue.id} className={`text-sm ${issue.severity === 'blocking' ? 'text-red-700' : 'text-amber-800'}`}>{issue.message}</div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
                     <button
                         onClick={handleDelete}

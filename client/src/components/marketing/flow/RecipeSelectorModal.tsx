@@ -27,6 +27,15 @@ function RecipeCard({
     recipe: AutomationRecipe;
     onSelect: () => void;
 }) {
+    const emailSteps = recipe.nodes.filter((node) => {
+        const config = ((node.data as Record<string, unknown>)?.config || {}) as Record<string, unknown>;
+        return node.type === 'action' && String(config.actionType || 'SEND_EMAIL') === 'SEND_EMAIL';
+    });
+    const stepsNeedingContent = emailSteps.filter((node) => {
+        const config = ((node.data as Record<string, unknown>)?.config || {}) as Record<string, unknown>;
+        return !String(config.htmlContent || '').trim();
+    }).length;
+
     return (
         <button
             onClick={onSelect}
@@ -46,10 +55,20 @@ function RecipeCard({
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-sm">
                         {recipe.nodes.length} steps
                     </span>
+                    {emailSteps.length > 0 && (
+                        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-sm">
+                            {emailSteps.length} email{emailSteps.length === 1 ? '' : 's'}
+                        </span>
+                    )}
                     <span className="text-xs text-gray-400">
                         {recipe.category}
                     </span>
                 </div>
+                {stepsNeedingContent > 0 && (
+                    <p className="mt-2 text-xs text-amber-700">
+                        {stepsNeedingContent} email step{stepsNeedingContent === 1 ? '' : 's'} need content after import.
+                    </p>
+                )}
             </div>
         </button>
     );

@@ -62,38 +62,38 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     if (context.order) {
         const order = context.order;
 
-        result = result.replace(/\{\{order\.number\}\}/g, order.orderNumber || order.id || '');
-        result = result.replace(/\{\{order_id\}\}/g, order.orderNumber || order.id || '');
-        result = result.replace(/\{\{order\.date\}\}/g, formatDate(order.dateCreated));
-        result = result.replace(/\{\{order\.status\}\}/g, formatStatus(order.status));
-        result = result.replace(/\{\{order\.paymentMethod\}\}/g, order.paymentMethodTitle || '');
-        result = result.replace(/\{\{order\.subtotal\}\}/g, formatCurrency(order.subtotal, order.currency));
-        result = result.replace(/\{\{order\.shippingTotal\}\}/g, formatCurrency(order.shippingTotal, order.currency));
-        result = result.replace(/\{\{order\.discountTotal\}\}/g, formatCurrency(order.discountTotal, order.currency));
-        result = result.replace(/\{\{order\.total\}\}/g, formatCurrency(order.total, order.currency));
-        result = result.replace(/\{\{order\.customerNote\}\}/g, order.customerNote || '');
+        replaceMergeTag('{{order.number}}', order.orderNumber || order.id || '');
+        replaceMergeTag('{{order_id}}', order.orderNumber || order.id || '');
+        replaceMergeTag('{{order.date}}', formatDate(order.dateCreated));
+        replaceMergeTag('{{order.status}}', formatStatus(order.status));
+        replaceMergeTag('{{order.paymentMethod}}', order.paymentMethodTitle || '');
+        replaceMergeTag('{{order.subtotal}}', formatCurrency(order.subtotal, order.currency));
+        replaceMergeTag('{{order.shippingTotal}}', formatCurrency(order.shippingTotal, order.currency));
+        replaceMergeTag('{{order.discountTotal}}', formatCurrency(order.discountTotal, order.currency));
+        replaceMergeTag('{{order.total}}', formatCurrency(order.total, order.currency));
+        replaceMergeTag('{{order.customerNote}}', order.customerNote || '');
 
         const trackingItems = getOrderTrackingItems(order);
         const primaryTracking = trackingItems[0];
         const trackingNumber = primaryTracking?.trackingNumber || '';
         const trackingUrl = primaryTracking?.trackingUrl || buildAusPostTrackingUrl(trackingNumber);
-        result = result.replace(/\{\{order\.trackingNumber\}\}/g, trackingNumber);
-        result = result.replace(/\{\{order\.trackingUrl\}\}/g, trackingUrl);
-        result = result.replace(/\{\{order\.auspostTrackingUrl\}\}/g, buildAusPostTrackingUrl(trackingNumber));
-        result = result.replace(/\{\{tracking_number\}\}/g, trackingNumber);
-        result = result.replace(/\{\{tracking_url\}\}/g, trackingUrl);
+        replaceMergeTag('{{order.trackingNumber}}', trackingNumber);
+        replaceMergeTag('{{order.trackingUrl}}', trackingUrl);
+        replaceMergeTag('{{order.auspostTrackingUrl}}', buildAusPostTrackingUrl(trackingNumber));
+        replaceMergeTag('{{tracking_number}}', trackingNumber);
+        replaceMergeTag('{{tracking_url}}', trackingUrl);
 
         // Address blocks
-        result = result.replace(/\{\{order\.billingAddress\}\}/g, formatAddress(order.billingAddress || order.billing));
-        result = result.replace(/\{\{order\.shippingAddress\}\}/g, formatAddress(order.shippingAddress || order.shipping));
+        replaceMergeTag('{{order.billingAddress}}', formatAddress(order.billingAddress || order.billing));
+        replaceMergeTag('{{order.shippingAddress}}', formatAddress(order.shippingAddress || order.shipping));
 
         // Items table
         const orderItems = order.lineItems || order.items || order.line_items || [];
-        result = result.replace(/\{\{order\.itemsTable\}\}/g, renderOrderItemsTable(orderItems));
+        replaceMergeTag('{{order.itemsTable}}', renderOrderItemsTable(orderItems));
         result = result.replace(/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, renderOrderItemsText(orderItems));
 
         // Downloads
-        result = result.replace(/\{\{order\.downloads\}\}/g, renderDownloadsTable(order.downloads || []));
+        replaceMergeTag('{{order.downloads}}', renderDownloadsTable(order.downloads || []));
 
         const invoiceUrl =
             order.invoiceUrl
@@ -116,57 +116,57 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         const lastName = customer.lastName || customer.last_name || '';
         const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
 
-        result = result.replace(/\{\{\s*customer\.firstName\s*\}\}/g, firstName);
-        result = result.replace(/\{\{\s*customer\.lastName\s*\}\}/g, lastName);
-        result = result.replace(/\{\{\s*customer\.email\s*\}\}/g, customer.email || '');
-        result = result.replace(/\{\{\s*customer\.phone\s*\}\}/g, customer.phone || customer.billing?.phone || '');
-        result = result.replace(/\{\{\s*contact_first_name\s*\}\}/g, firstName);
-        result = result.replace(/\{\{\s*contact_last_name\s*\}\}/g, lastName);
-        result = result.replace(/\{\{\s*contact_email\s*\}\}/g, customer.email || '');
-        result = result.replace(/\{\{\s*contact_full_name\s*\}\}/g, fullName);
-        result = result.replace(/\{\{\s*contact_id\s*\}\}/g, customer.id ? String(customer.id) : '');
+        replaceMergeTag('{{customer.firstName}}', firstName);
+        replaceMergeTag('{{customer.lastName}}', lastName);
+        replaceMergeTag('{{customer.email}}', customer.email || '');
+        replaceMergeTag('{{customer.phone}}', customer.phone || customer.billing?.phone || '');
+        replaceMergeTag('{{contact_first_name}}', firstName);
+        replaceMergeTag('{{contact_last_name}}', lastName);
+        replaceMergeTag('{{contact_email}}', customer.email || '');
+        replaceMergeTag('{{contact_full_name}}', fullName);
+        replaceMergeTag('{{contact_id}}', customer.id ? String(customer.id) : '');
     }
 
     // Product merge tags
     if (context.product) {
         const product = context.product;
 
-        result = result.replace(/\{\{product\.name\}\}/g, product.name || '');
-        result = result.replace(/\{\{product\.price\}\}/g, formatCurrency(product.price, 'AUD'));
-        result = result.replace(/\{\{product\.image\}\}/g, product.images?.[0]?.src || '');
-        result = result.replace(/\{\{product\.description\}\}/g, product.shortDescription || product.description || '');
+        replaceMergeTag('{{product.name}}', product.name || '');
+        replaceMergeTag('{{product.price}}', formatCurrency(product.price, 'AUD'));
+        replaceMergeTag('{{product.image}}', product.images?.[0]?.src || '');
+        replaceMergeTag('{{product.description}}', product.shortDescription || product.description || '');
     }
 
     // Coupon merge tags
     if (context.coupon) {
         const coupon = context.coupon;
 
-        result = result.replace(/\{\{coupon\.code\}\}/g, coupon.code || '');
-        result = result.replace(/\{\{coupon\.discount\}\}/g, coupon.discountType === 'percent'
+        replaceMergeTag('{{coupon.code}}', coupon.code || '');
+        replaceMergeTag('{{coupon.discount}}', coupon.discountType === 'percent'
             ? `${coupon.amount}%`
             : formatCurrency(coupon.amount, 'AUD'));
-        result = result.replace(/\{\{coupon\.description\}\}/g, coupon.description || '');
-        result = result.replace(/\{\{coupon\.expiry\}\}/g, formatDate(coupon.expiresAt));
+        replaceMergeTag('{{coupon.description}}', coupon.description || '');
+        replaceMergeTag('{{coupon.expiry}}', formatDate(coupon.expiresAt));
     }
 
     // Cart merge tags
     if (context.cart) {
         const cart = context.cart;
-        result = result.replace(/\{\{cart\.recoveryUrl\}\}/g, cart.recoveryUrl || '');
-        result = result.replace(/\{\{cart\.checkoutUrl\}\}/g, cart.checkoutUrl || '');
-        result = result.replace(/\{\{cart\.total\}\}/g, formatCurrency(cart.total ?? cart.cartValue, cart.currency));
-        result = result.replace(/\{\{cart\.currency\}\}/g, cart.currency || '');
-        result = result.replace(/\{\{cart\.itemsTable\}\}/g, renderOrderItemsTable(cart.items || cart.cartItems || []));
+        replaceMergeTag('{{cart.recoveryUrl}}', cart.recoveryUrl || '');
+        replaceMergeTag('{{cart.checkoutUrl}}', cart.checkoutUrl || '');
+        replaceMergeTag('{{cart.total}}', formatCurrency(cart.total ?? cart.cartValue, cart.currency));
+        replaceMergeTag('{{cart.currency}}', cart.currency || '');
+        replaceMergeTag('{{cart.itemsTable}}', renderOrderItemsTable(cart.items || cart.cartItems || []));
     }
 
     // Review merge tags
     if (context.review) {
         const review = context.review;
-        result = result.replace(/\{\{review\.reviewer\}\}/g, review.reviewer || review.reviewerName || '');
-        result = result.replace(/\{\{review\.rating\}\}/g, review.rating ? String(review.rating) : '');
-        result = result.replace(/\{\{review\.content\}\}/g, review.content || review.review || '');
-        result = result.replace(/\{\{review\.productName\}\}/g, review.productName || review.product_name || '');
-        result = result.replace(/\{\{review\.productUrl\}\}/g, review.productUrl || review.product_url || '');
+        replaceMergeTag('{{review.reviewer}}', review.reviewer || review.reviewerName || '');
+        replaceMergeTag('{{review.rating}}', review.rating ? String(review.rating) : '');
+        replaceMergeTag('{{review.content}}', review.content || review.review || '');
+        replaceMergeTag('{{review.productName}}', review.productName || review.product_name || '');
+        replaceMergeTag('{{review.productUrl}}', review.productUrl || review.product_url || '');
     } else {
         const reviewer = [
             context.customer?.firstName || context.customer?.first_name,
@@ -174,11 +174,11 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         ].filter(Boolean).join(' ').trim();
         const fallbackProductUrl = context.product?.permalink || context.product?.url || storeUrl;
 
-        result = result.replace(/\{\{review\.reviewer\}\}/g, reviewer || 'Customer');
-        result = result.replace(/\{\{review\.rating\}\}/g, '5');
-        result = result.replace(/\{\{review\.content\}\}/g, 'Thanks for your order. We would love to hear your feedback.');
-        result = result.replace(/\{\{review\.productName\}\}/g, context.product?.name || 'your recent purchase');
-        result = result.replace(/\{\{review\.productUrl\}\}/g, fallbackProductUrl || storeUrl);
+        replaceMergeTag('{{review.reviewer}}', reviewer || 'Customer');
+        replaceMergeTag('{{review.rating}}', '5');
+        replaceMergeTag('{{review.content}}', 'Thanks for your order. We would love to hear your feedback.');
+        replaceMergeTag('{{review.productName}}', context.product?.name || 'your recent purchase');
+        replaceMergeTag('{{review.productUrl}}', fallbackProductUrl || storeUrl);
     }
 
     return result;
