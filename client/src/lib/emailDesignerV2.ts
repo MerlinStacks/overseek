@@ -589,6 +589,7 @@ export function compileEmailDesignV2(envelope: EmailDesignV2Envelope): string {
 function toAbsoluteUrl(url: string): string {
     const value = url.trim();
     if (!value) return value;
+    if (value.includes('{{') || value.includes('}}')) return value;
     if (/^(https?:|mailto:|tel:|data:|cid:)/i.test(value)) return value;
     if (typeof window === 'undefined' || !window.location?.origin) return value;
     try {

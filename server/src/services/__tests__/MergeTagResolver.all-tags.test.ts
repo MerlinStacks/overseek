@@ -21,6 +21,11 @@ describe('MergeTagResolver all merge tags', () => {
             '{{order.discountTotal}}',
             '{{order.total}}',
             '{{order.customerNote}}',
+            '{{order.trackingNumber}}',
+            '{{order.trackingUrl}}',
+            '{{order.auspostTrackingUrl}}',
+            '{{tracking_number}}',
+            '{{tracking_url}}',
             '{{order.billingAddress}}',
             '{{order.shippingAddress}}',
             '{{order.itemsTable}}',
@@ -65,6 +70,14 @@ describe('MergeTagResolver all merge tags', () => {
                 total: 102,
                 currency: 'AUD',
                 customerNote: 'Leave at reception',
+                tracking_items: [
+                    {
+                        provider: 'Australia Post',
+                        trackingNumber: '33A1234567890',
+                        trackingUrl: 'https://auspost.com.au/mypost/track/#/details/33A1234567890',
+                        dateShipped: null,
+                    },
+                ],
                 billingAddress: {
                     firstName: 'Alex',
                     lastName: 'Doe',
@@ -137,7 +150,34 @@ describe('MergeTagResolver all merge tags', () => {
         expect(html).toContain('Alex');
         expect(html).toContain('Classic Hoodie');
         expect(html).toContain('WELCOME10');
+        expect(html).toContain('33A1234567890');
+        expect(html).toContain('https://auspost.com.au/mypost/track/#/details/33A1234567890');
 
         expect(html).not.toMatch(/\{\{[^}]+\}\}/);
+    });
+
+    it('builds AusPost tracking URLs from Woo shipment tracking metadata', () => {
+        const html = resolveMergeTags(
+            '{{order.trackingNumber}} | {{order.trackingUrl}} | {{order.auspostTrackingUrl}}',
+            {
+                order: {
+                    id: 100,
+                    meta_data: [
+                        {
+                            key: '_wc_shipment_tracking_items',
+                            value: [
+                                {
+                                    tracking_provider: 'Australia Post',
+                                    tracking_number: 'ABC 123',
+                                },
+                            ],
+                        },
+                    ],
+                },
+            }
+        );
+
+        expect(html).toContain('ABC 123');
+        expect(html).toContain('https://auspost.com.au/mypost/track/#/details/ABC%20123');
     });
 });

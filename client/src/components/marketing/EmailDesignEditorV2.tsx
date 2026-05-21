@@ -106,6 +106,9 @@ interface PreviewMergeContext {
     orderDiscountTotal: string;
     orderTotal: string;
     orderCustomerNote: string;
+    orderTrackingNumber: string;
+    orderTrackingUrl: string;
+    orderAuspostTrackingUrl: string;
     billingAddress: string;
     shippingAddress: string;
     productName: string;
@@ -143,6 +146,11 @@ function applyPreviewMergeTags(html: string, context: PreviewMergeContext): stri
         [/\{\{order\.discountTotal\}\}/g, context.orderDiscountTotal],
         [/\{\{order\.total\}\}/g, context.orderTotal],
         [/\{\{order\.customerNote\}\}/g, context.orderCustomerNote],
+        [/\{\{order\.trackingNumber\}\}/g, context.orderTrackingNumber],
+        [/\{\{order\.trackingUrl\}\}/g, context.orderTrackingUrl],
+        [/\{\{order\.auspostTrackingUrl\}\}/g, context.orderAuspostTrackingUrl],
+        [/\{\{tracking_number\}\}/g, context.orderTrackingNumber],
+        [/\{\{tracking_url\}\}/g, context.orderTrackingUrl],
         [/\{\{order\.billingAddress\}\}/g, context.billingAddress],
         [/\{\{order\.shippingAddress\}\}/g, context.shippingAddress],
         [/\{\{product\.name\}\}/g, context.productName],
@@ -178,6 +186,9 @@ function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContex
         orderDiscountTotal: '$0.00',
         orderTotal: '$99.00',
         orderCustomerNote: 'Please leave at front door.',
+        orderTrackingNumber: '33A1234567890',
+        orderTrackingUrl: 'https://auspost.com.au/mypost/track/#/details/33A1234567890',
+        orderAuspostTrackingUrl: 'https://auspost.com.au/mypost/track/#/details/33A1234567890',
         billingAddress: 'Alex Taylor<br />12 Market Street<br />Sydney, NSW, 2000<br />AU',
         shippingAddress: 'Alex Taylor<br />12 Market Street<br />Sydney, NSW, 2000<br />AU',
         productName: 'Classic Hoodie',
@@ -197,6 +208,40 @@ function normalizePreviewStoreUrl(raw: unknown): string {
     if (!value || value.includes('{{')) return 'https://example.com';
     if (/^https?:\/\//i.test(value)) return value;
     return `https://${value}`;
+}
+
+function buildAusPostPreviewTrackingUrl(trackingNumber: string): string {
+    const trimmed = trackingNumber.trim();
+    if (!trimmed) return '';
+    return `https://auspost.com.au/mypost/track/#/details/${encodeURIComponent(trimmed)}`;
+}
+
+function extractPreviewTracking(order: Record<string, unknown>): { trackingNumber: string; trackingUrl: string; auspostTrackingUrl: string } {
+    const directItems = Array.isArray(order.tracking_items)
+        ? order.tracking_items as Array<Record<string, unknown>>
+        : Array.isArray(order.trackingItems)
+            ? order.trackingItems as Array<Record<string, unknown>>
+            : [];
+    const firstItem = directItems[0] || {};
+    const trackingNumber = String(
+        firstItem.trackingNumber
+        || firstItem.tracking_number
+        || order.trackingNumber
+        || order.tracking_number
+        || ''
+    ).trim();
+    const auspostTrackingUrl = buildAusPostPreviewTrackingUrl(trackingNumber);
+    const trackingUrl = String(
+        firstItem.trackingUrl
+        || firstItem.tracking_url
+        || firstItem.tracking_link
+        || order.trackingUrl
+        || order.tracking_url
+        || auspostTrackingUrl
+        || ''
+    ).trim();
+
+    return { trackingNumber, trackingUrl, auspostTrackingUrl };
 }
 
 function parseBoxSpacing(value: string): [number, number, number, number] {
@@ -367,6 +412,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 const lineItemPermalink = String(firstItem.permalink || firstItem.product_permalink || '').trim();
                 const productPath = firstItem.slug ? `/product/${String(firstItem.slug)}` : `/?p=${String(firstItem.product_id || '')}`;
                 const resolvedProductUrl = lineItemPermalink || `${storeUrl.replace(/\/$/, '')}${productPath}`;
+                const tracking = extractPreviewTracking(order);
 
                 setPreviewMergeContext({
                     storeUrl,
@@ -382,6 +428,9 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     orderDiscountTotal: fmtMoney(order.discount_total),
                     orderTotal: fmtMoney(order.total),
                     orderCustomerNote: String(order.customer_note || ''),
+                    orderTrackingNumber: tracking.trackingNumber,
+                    orderTrackingUrl: tracking.trackingUrl,
+                    orderAuspostTrackingUrl: tracking.auspostTrackingUrl,
                     billingAddress: fmtAddress(billing),
                     shippingAddress: fmtAddress(shipping),
                     productName,

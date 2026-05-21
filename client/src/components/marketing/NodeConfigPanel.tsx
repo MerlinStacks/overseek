@@ -26,8 +26,9 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     onUpdate,
     onDelete
 }) => {
-    const [localData, setLocalData] = useState<NodeDataState>({});
-    const [originalData, setOriginalData] = useState<NodeDataState>({});
+    const initialData = { ...((node?.data as Record<string, unknown> | undefined) || {}) };
+    const [localData, setLocalData] = useState<NodeDataState>(initialData);
+    const [originalData, setOriginalData] = useState<NodeDataState>(initialData);
     const nodeId = node?.id;
     const syncedNodeIdRef = useRef<string | undefined>(undefined);
 
@@ -43,11 +44,9 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
         if (syncedNodeIdRef.current === nodeId) return;
         syncedNodeIdRef.current = nodeId;
 
-        queueMicrotask(() => {
-            const snapshot = { ...(node.data as Record<string, unknown>) };
-            setLocalData(snapshot);
-            setOriginalData(snapshot);
-        });
+        const snapshot = { ...(node.data as Record<string, unknown>) };
+        setLocalData(snapshot);
+        setOriginalData(snapshot);
     }, [node, nodeId]);
 
     const handleSave = () => {

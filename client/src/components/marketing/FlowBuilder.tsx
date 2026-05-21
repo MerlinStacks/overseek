@@ -833,6 +833,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
             {/* Node Configuration Panel */}
             {selectedNode && (
                 <NodeConfigPanel
+                    key={selectedNode.id}
                     node={selectedNode}
                     onClose={() => setSelectedNode(null)}
                     onUpdate={updateNodeData}

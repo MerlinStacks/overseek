@@ -76,6 +76,20 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).not.toContain('{{pdf_url}}');
     });
 
+    it('renders encoded invoice merge tags in href values', () => {
+        const html = resolveMergeTags(
+            '<a href="https://overseek.com.au/%7B%7Border.invoiceUrl%7D%7D">Invoice</a>',
+            {
+                order: {
+                    invoice_url: 'https://example.com/invoices/1234.pdf'
+                }
+            }
+        );
+
+        expect(html).toContain('href="https://example.com/invoices/1234.pdf"');
+        expect(html).not.toContain('%7B%7Border.invoiceUrl%7D%7D');
+    });
+
     it('renders review merge tags', () => {
         const html = resolveMergeTags(
             'Review by {{review.reviewer}} rated {{review.rating}} on {{review.productName}}: {{review.content}} - {{review.productUrl}}',

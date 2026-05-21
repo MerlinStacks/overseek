@@ -7,6 +7,7 @@
 
 import { normalizeOrderStatus } from '../constants/orderStatus';
 import { getInvoiceItemMeta } from '@overseek/core';
+import { extractOrderTracking, TrackingItem } from '../utils/orderTracking';
 
 interface MergeTagContext {
     order?: any;
@@ -35,16 +36,27 @@ interface MergeTagContext {
 export function resolveMergeTags(html: string, context: MergeTagContext): string {
     let result = html;
 
+    const replaceMergeTag = (tag: string, value: string): void => {
+        const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        result = result.replace(new RegExp(`https?:\\/\\/[^\\s"'<>]+\\/${escapedTag}`, 'gi'), value);
+        result = result.replace(new RegExp(escapedTag, 'g'), value);
+
+        const encodedTag = encodeURIComponent(tag);
+        const escapedEncodedTag = encodedTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        result = result.replace(new RegExp(`https?:\\/\\/[^\\s"'<>]+\\/${escapedEncodedTag}`, 'gi'), value);
+        result = result.replace(new RegExp(escapedEncodedTag, 'gi'), value);
+    };
+
     const storeUrl = normalizeStoreUrl(
         context.store?.url || context.storeUrl || context.store_url || context.order?.storeUrl || context.order?.store_url
     );
-    result = result.replace(/\{\{store_url\}\}/g, storeUrl);
+    replaceMergeTag('{{store_url}}', storeUrl);
     const linkTriggerUrl = normalizeStoreUrl(context.linkTriggerUrl || context.link_trigger) || storeUrl;
-    result = result.replace(/\{\{link_trigger\}\}/g, linkTriggerUrl);
+    replaceMergeTag('{{link_trigger}}', linkTriggerUrl);
     const preferencesUrl = context.preferencesUrl || context.preferences_url || '';
-    result = result.replace(/\{\{preferences_url\}\}/g, preferencesUrl);
+    replaceMergeTag('{{preferences_url}}', preferencesUrl);
     const unsubscribeUrl = context.unsubscribeUrl || context.unsubscribe_url || (storeUrl ? `${storeUrl.replace(/\/$/, '')}/?unsubscribe=1` : '');
-    result = result.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl);
+    replaceMergeTag('{{unsubscribe_url}}', unsubscribeUrl);
 
     // Order merge tags
     if (context.order) {
@@ -60,6 +72,16 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         result = result.replace(/\{\{order\.discountTotal\}\}/g, formatCurrency(order.discountTotal, order.currency));
         result = result.replace(/\{\{order\.total\}\}/g, formatCurrency(order.total, order.currency));
         result = result.replace(/\{\{order\.customerNote\}\}/g, order.customerNote || '');
+
+        const trackingItems = getOrderTrackingItems(order);
+        const primaryTracking = trackingItems[0];
+        const trackingNumber = primaryTracking?.trackingNumber || '';
+        const trackingUrl = primaryTracking?.trackingUrl || buildAusPostTrackingUrl(trackingNumber);
+        result = result.replace(/\{\{order\.trackingNumber\}\}/g, trackingNumber);
+        result = result.replace(/\{\{order\.trackingUrl\}\}/g, trackingUrl);
+        result = result.replace(/\{\{order\.auspostTrackingUrl\}\}/g, buildAusPostTrackingUrl(trackingNumber));
+        result = result.replace(/\{\{tracking_number\}\}/g, trackingNumber);
+        result = result.replace(/\{\{tracking_url\}\}/g, trackingUrl);
 
         // Address blocks
         result = result.replace(/\{\{order\.billingAddress\}\}/g, formatAddress(order.billingAddress || order.billing));
@@ -79,9 +101,9 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
             || order.pdfUrl
             || order.pdf_url
             || '';
-        result = result.replace(/\{\{order\.invoiceUrl\}\}/g, invoiceUrl);
-        result = result.replace(/\{\{invoice_url\}\}/g, invoiceUrl);
-        result = result.replace(/\{\{pdf_url\}\}/g, invoiceUrl);
+        replaceMergeTag('{{order.invoiceUrl}}', invoiceUrl);
+        replaceMergeTag('{{invoice_url}}', invoiceUrl);
+        replaceMergeTag('{{pdf_url}}', invoiceUrl);
     }
 
     result = result.replace(/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, 'your order');
@@ -168,6 +190,43 @@ function normalizeStoreUrl(rawUrl?: string): string {
     if (!trimmed) return '';
     if (/^https?:\/\//i.test(trimmed)) return trimmed;
     return `https://${trimmed}`;
+}
+
+function buildAusPostTrackingUrl(trackingNumber: string): string {
+    const trimmed = String(trackingNumber || '').trim();
+    if (!trimmed) return '';
+    return `https://auspost.com.au/mypost/track/#/details/${encodeURIComponent(trimmed)}`;
+}
+
+function getOrderTrackingItems(order: any): TrackingItem[] {
+    const directItems = order.trackingItems || order.tracking_items || order.shipments || order.shipmentTracking;
+    if (Array.isArray(directItems) && directItems.length > 0) {
+        return directItems
+            .map((item) => {
+                const trackingNumber = String(item?.trackingNumber || item?.tracking_number || item?.number || '').trim();
+                if (!trackingNumber) return null;
+                return {
+                    provider: String(item?.provider || item?.tracking_provider || item?.carrier || 'Unknown').trim(),
+                    trackingNumber,
+                    trackingUrl: item?.trackingUrl || item?.tracking_url || item?.tracking_link || null,
+                    dateShipped: item?.dateShipped || item?.date_shipped || null,
+                } as TrackingItem;
+            })
+            .filter((item): item is TrackingItem => Boolean(item));
+    }
+
+    const extracted = extractOrderTracking(order.rawData || order.raw_data || order);
+    if (extracted.length > 0) return extracted;
+
+    const trackingNumber = String(order.trackingNumber || order.tracking_number || order._tracking_number || '').trim();
+    if (!trackingNumber) return [];
+
+    return [{
+        provider: String(order.trackingProvider || order.tracking_provider || order.shippingProvider || 'Unknown').trim(),
+        trackingNumber,
+        trackingUrl: order.trackingUrl || order.tracking_url || order.trackingLink || order.tracking_link || null,
+        dateShipped: order.dateShipped || order.date_shipped || null,
+    }];
 }
 
 /**
