@@ -82,6 +82,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const [selectedNode, setSelectedNode] = useState<Node | null>(null);
     const loadedFlowIdRef = useRef<string | null>(null);
+    const skipNextFlowChangeRef = useRef(false);
 
     // Modal states
     const [showEventSelector, setShowEventSelector] = useState(false);
@@ -271,17 +272,23 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
 
     // Update node data from config panel
     const updateNodeData = useCallback((nodeId: string, newData: Node['data']) => {
-        setNodes((nds) =>
-            nds.map((node) => {
+        setNodes((nds) => {
+            const nextNodes = nds.map((node) => {
                 if (node.id === nodeId) {
                     return { ...node, data: newData };
                 }
                 return node;
-            })
-        );
+            });
+
+            // Push node config updates upstream immediately so autosave/close
+            // flows cannot miss a just-edited condition.
+            skipNextFlowChangeRef.current = true;
+            onFlowChange?.({ nodes: nextNodes, edges });
+            return nextNodes;
+        });
         // Update selected node reference
         setSelectedNode((prev) => prev?.id === nodeId ? { ...prev, data: newData } : prev);
-    }, [setNodes]);
+    }, [setNodes, onFlowChange, edges]);
 
     // Delete node from config panel
     const deleteNode = useCallback((nodeId: string) => {
@@ -693,6 +700,10 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
 
     useEffect(() => {
         if (!onFlowChange) return;
+        if (skipNextFlowChangeRef.current) {
+            skipNextFlowChangeRef.current = false;
+            return;
+        }
         onFlowChange({ nodes, edges });
     }, [nodes, edges, onFlowChange]);
 
