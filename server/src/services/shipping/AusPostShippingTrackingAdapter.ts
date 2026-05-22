@@ -168,15 +168,16 @@ class AusPostShippingTrackingAdapter {
             });
             return result;
         } catch (error: any) {
+            const reason = this.sanitizedErrorReason(error);
             Logger.warn('[AusPostAdapter] Falling back to static service catalog', {
                 accountId,
-                error: error?.message || error,
+                error: reason,
             });
             return {
                 services: AUSPOST_SERVICE_CATALOG,
                 updatedAt: AUSPOST_SERVICE_CATALOG_UPDATED_AT,
                 source: 'static_fallback',
-                warning: 'Live account service discovery failed. Showing static catalog values.',
+                warning: `Live account service discovery failed. Showing static catalog values. Reason: ${reason}`,
             };
         }
     }
@@ -408,6 +409,11 @@ class AusPostShippingTrackingAdapter {
             if (first && typeof first === 'object' && 'message' in first) return String((first as { message?: unknown }).message);
         }
         try { return JSON.stringify(body).slice(0, 500); } catch { return String(body).slice(0, 500); }
+    }
+
+    private sanitizedErrorReason(error: unknown) {
+        const raw = error instanceof Error ? error.message : String(error || 'Unknown error');
+        return raw.replace(/\s+/g, ' ').trim().slice(0, 240) || 'Unknown error';
     }
 
     private stringConfig(value: unknown) {

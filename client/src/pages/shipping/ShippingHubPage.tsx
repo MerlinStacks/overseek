@@ -3,8 +3,9 @@ import { AlertTriangle, Calculator, CheckCircle2, PackageCheck, Printer, Save, T
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
+import { serviceCodeNaturalLabel } from './auspostServiceCatalog';
 import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
-import { gramsToKg, mmToCm, openShippingLabelPdf, shippingFetch, type ShippingBulkLabelResult, type ShippingDispatchOrder, type ShippingHubSummary, type ShippingPackagePreset, type ShippingSettingsResponse } from './shippingApi';
+import { gramsToKg, mmToCm, openShippingLabelPdf, shippingFetch, type AusPostServiceCatalogResponse, type ShippingBulkLabelResult, type ShippingDispatchOrder, type ShippingHubSummary, type ShippingPackagePreset, type ShippingSettingsResponse } from './shippingApi';
 
 type QueueFilter = 'all' | 'ready' | 'attention';
 type QueueSort = 'oldest' | 'newest' | 'order' | 'customer';
@@ -52,6 +53,11 @@ export function ShippingHubPage() {
         queryKey: ['shipping-settings', currentAccount?.id],
         enabled: canFetch,
         queryFn: () => shippingFetch('/settings', token!, currentAccount!.id),
+    });
+    const serviceCatalogQuery = useApiQuery<AusPostServiceCatalogResponse>({
+        queryKey: ['shipping-auspost-service-catalog', currentAccount?.id],
+        enabled: canFetch,
+        queryFn: () => shippingFetch('/settings/auspost-service-catalog', token!, currentAccount!.id),
     });
     const bulkLabels = useApiMutation<ShippingBulkLabelResult, number[]>({
         invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id], ['shipping-labels', currentAccount?.id]],
@@ -359,7 +365,7 @@ export function ShippingHubPage() {
                                 {blockers?.length ? <p className="mt-3 text-sm text-red-600">Needs attention: {blockers.map((error) => error.message || error.field).join(', ')}</p> : null}
                                 {manualPrint.error && manualPrintOrderId === order.wooId ? <p className="mt-3 text-sm text-red-600">{manualPrint.error.message}</p> : null}
                                 {requestRates.error && rateOrderId === order.wooId ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">{requestRates.error.message}</p> : null}
-                                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(260px,420px)_1fr]">
+                                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(260px,420px)_minmax(260px,360px)]">
                                     <PackageSelector
                                         packages={packagesQuery.data?.packages.filter((pkg) => pkg.isActive) || []}
                                         selectedPackage={selectedPackagePreset}
@@ -368,22 +374,16 @@ export function ShippingHubPage() {
                                         disabled={selectPackage.isPending}
                                         onSelect={(packagePresetId) => selectPackage.mutate({ wooOrderId: order.wooId, packagePresetId })}
                                     />
-                                    <div className="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">
-                                        <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Print station</p>
-                                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200">Account default</span>
-                                            <span className="text-xs text-slate-500 dark:text-slate-400">Use manual print to create this order's label now.</span>
-                                        </div>
-                                    </div>
+                                    <RatePreview
+                                        response={draft.lastRateResponse && Object.keys(draft.lastRateResponse).length > 0 ? draft.lastRateResponse : null}
+                                        serviceCatalog={serviceCatalogQuery.data}
+                                        selectedServiceCode={draft.selectedServiceCode || null}
+                                        onRequest={() => void handleRequestRates(order.wooId)}
+                                        onSelect={(serviceCode) => selectRateService.mutate({ wooOrderId: order.wooId, serviceCode })}
+                                        isLoading={requestRates.isPending && rateOrderId === order.wooId}
+                                        isSaving={selectRateService.isPending}
+                                    />
                                 </div>
-                                <RatePreview
-                                    response={draft.lastRateResponse && Object.keys(draft.lastRateResponse).length > 0 ? draft.lastRateResponse : null}
-                                    selectedServiceCode={draft.selectedServiceCode || null}
-                                    onRequest={() => void handleRequestRates(order.wooId)}
-                                    onSelect={(serviceCode) => selectRateService.mutate({ wooOrderId: order.wooId, serviceCode })}
-                                    isLoading={requestRates.isPending && rateOrderId === order.wooId}
-                                    isSaving={selectRateService.isPending}
-                                />
                             </div>
                         );
                     })}
@@ -522,6 +522,7 @@ function PackageSelector({
 
 function RatePreview({
     response,
+    serviceCatalog,
     selectedServiceCode,
     onRequest,
     onSelect,
@@ -529,6 +530,7 @@ function RatePreview({
     isSaving,
 }: {
     response: Record<string, unknown> | null;
+    serviceCatalog: AusPostServiceCatalogResponse | undefined;
     selectedServiceCode: string | null;
     onRequest: () => void;
     onSelect: (serviceCode: string) => void;
@@ -540,7 +542,7 @@ function RatePreview({
     const errors = Array.isArray(response?.errors) ? response.errors.map((error) => String(error)) : [];
     if (!response) {
         return (
-            <div className="mt-3 max-w-sm rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="h-full rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex items-center justify-between gap-3">
                     <p className="text-[11px] font-semibold underline text-indigo-700 dark:text-indigo-300">Available Rates</p>
                     <button type="button" onClick={onRequest} disabled={isLoading} className="rounded-full border border-indigo-200 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
@@ -553,7 +555,7 @@ function RatePreview({
     }
     if (rates.length === 0) {
         return (
-            <div className="mt-3 max-w-sm rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+            <div className="h-full rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
                 <div className="flex items-center justify-between gap-3">
                     <p className="text-[11px] font-semibold underline">Available Rates</p>
                     <button type="button" onClick={onRequest} disabled={isLoading} className="rounded-full border border-amber-200 px-2 py-1 text-[11px] font-semibold hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/40 dark:hover:bg-amber-500/10">
@@ -569,7 +571,7 @@ function RatePreview({
         );
     }
     return (
-        <div className="mt-3 max-w-sm rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="h-full rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] font-semibold underline text-indigo-700 dark:text-indigo-300">Available Rates</p>
                 <button type="button" onClick={onRequest} disabled={isLoading} className="rounded-full border border-indigo-200 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
@@ -581,7 +583,8 @@ function RatePreview({
             <div className="mt-2 space-y-1">
                 {rates.map((rate, index) => {
                     const serviceCode = String(rate.productId || rate.product_id || rate.serviceCode || rate.service_code || '');
-                    const serviceName = String(rate.serviceName || rate.service_name || rate.productType || rate.product_type || rate.productId || rate.product_id || rate.serviceCode || rate.service_code || 'Service');
+                    const serviceFallback = String(rate.serviceName || rate.service_name || rate.productType || rate.product_type || '');
+                    const serviceName = serviceCodeNaturalLabel(serviceCatalog, serviceCode, serviceFallback);
                     const amount = String(rate.totalCost || rate.amount || rate.price || '-');
                     const formattedAmount = amount === '-' || amount.startsWith('$') ? amount : `$${amount}`;
                     return (
@@ -590,7 +593,7 @@ function RatePreview({
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold leading-none text-white">AP</span>
                                 <div className="min-w-0">
                                     <p className="truncate font-bold text-slate-900 dark:text-white">{serviceName}</p>
-                                    {serviceCode ? <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{serviceCode}</p> : null}
+                                    {serviceFallback && serviceFallback !== serviceName ? <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{serviceFallback}</p> : null}
                                 </div>
                             </div>
                             <div className="text-right">
