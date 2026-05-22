@@ -48,8 +48,10 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
         syncedNodeIdRef.current = nodeId;
 
         const snapshot = { ...(node.data as Record<string, unknown>) };
-        setLocalData(snapshot);
-        setOriginalData(snapshot);
+        queueMicrotask(() => {
+            setLocalData(snapshot);
+            setOriginalData(snapshot);
+        });
     }, [node, nodeId]);
 
     const handleSave = () => {

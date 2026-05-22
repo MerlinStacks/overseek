@@ -780,10 +780,6 @@ function normalizeEditorDirection(editor: HTMLElement): void {
     }
 }
 
-function sanitizeRtlHtml(html: string): string {
-    return sanitizeEmailHtml(html);
-}
-
 function sanitizeRtlText(text: string): string {
     return stripBidiControls(text);
 }

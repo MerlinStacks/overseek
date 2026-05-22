@@ -13,7 +13,7 @@ export function ThemeInjector() {
     useEffect(() => {
         if (!currentAccount?.appearance) return;
 
-        const { primaryColor, appName } = currentAccount.appearance;
+        const { primaryColor } = currentAccount.appearance;
 
 
         if (primaryColor && isSafeCssColor(primaryColor)) {

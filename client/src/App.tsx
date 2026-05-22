@@ -263,47 +263,6 @@ function App() {
                                             </Route>
 
                                             <Route element={<DashboardLayout><ErrorBoundary><Outlet /></ErrorBoundary></DashboardLayout>}>
-<<<<<<< Updated upstream
-                                                <Route path="/dashboard" element={<AccountGuard><DashboardPage /></AccountGuard>} />
-                                                <Route path="/orders" element={<AccountGuard><OrdersPage /></AccountGuard>} />
-                                                <Route path="/orders/:id" element={<AccountGuard><OrderDetailPage /></AccountGuard>} />
-                                                <Route path="/inventory" element={<AccountGuard><InventoryPage /></AccountGuard>} />
-                                                <Route path="/inventory/bom-sync" element={<AccountGuard><BOMSyncPage /></AccountGuard>} />
-                                                <Route path="/inventory/forecasts" element={<AccountGuard><InventoryForecastPage /></AccountGuard>} />
-                                                <Route path="/inventory/product/:id" element={<AccountGuard><ProductEditPage /></AccountGuard>} />
-                                                <Route path="/inventory/purchase-orders/new" element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
-                                                <Route path="/inventory/purchase-orders/:id" element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
-                                                <Route path="/customers" element={<AccountGuard><CustomersPage /></AccountGuard>} />
-                                                <Route path="/customers/segments" element={<AccountGuard><SegmentsPage /></AccountGuard>} />
-                                                <Route path="/customers/:id" element={<AccountGuard><CustomerDetailsPage /></AccountGuard>} />
-                                                <Route path="/marketing" element={<AccountGuard><MarketingPage /></AccountGuard>} />
-                                                <Route path="/ads" element={<AccountGuard><PaidAdsPage /></AccountGuard>} />
-                                                <Route path="/conversions/health" element={<AccountGuard><CAPIHealthPage /></AccountGuard>} />
-                                                <Route path="/seo" element={<AccountGuard><SeoPage /></AccountGuard>} />
-                                                <Route path="/seo/content" element={<AccountGuard><SeoContentPage /></AccountGuard>} />
-                                                <Route path="/feeds" element={<AccountGuard><FeatureGuard featureKey="FEED_EXPORTS"><FeedsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingHubPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/packages" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingPackagesPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/item-overwrites" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingItemOverwritesPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/labels" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingLabelsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/operations" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingOperationsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/shipping/settings" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingSettingsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/ai-manager" element={<AccountGuard><FeatureGuard featureKey="AI_MANAGER"><AiManagerPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/broadcasts" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BroadcastsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/emails/lists" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailListsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/emails" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailDashboardPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/emails/settings" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailSettingsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/emails/logs" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailLogsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/emails/blocked-contacts" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BlockedContactsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/flows" element={<AccountGuard><FeatureGuard featureKey="EMAIL"><FlowsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path="/inbox" element={<AccountGuard><InboxPage /></AccountGuard>} />
-                                                <Route path="/live" element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />
-                                                <Route path="/analytics" element={<AccountGuard><AnalyticsOverviewPage /></AccountGuard>} />
-                                                <Route path="/analytics/revenue" element={<AccountGuard><RevenuePage /></AccountGuard>} />
-                                                <Route path="/analytics/attribution" element={<AccountGuard><AttributionPage /></AccountGuard>} />
-                                                <Route path="/analytics/cohorts" element={<Navigate to="/analytics/attribution" replace />} />
-                                                <Route path="/analytics/clv" element={<AccountGuard><CLVPage /></AccountGuard>} />
-=======
                                                 <Route path={ROUTE_PATHS.dashboard} element={<AccountGuard><DashboardPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.orders} element={<AccountGuard><OrdersPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.orderDetails} element={<AccountGuard><OrderDetailPage /></AccountGuard>} />
@@ -322,6 +281,12 @@ function App() {
                                                 <Route path={ROUTE_PATHS.seo} element={<AccountGuard><SeoPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.seoContent} element={<AccountGuard><SeoContentPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.feeds} element={<AccountGuard><FeatureGuard featureKey="FEED_EXPORTS"><FeedsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/shipping" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingHubPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/shipping/packages" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingPackagesPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/shipping/item-overwrites" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingItemOverwritesPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/shipping/labels" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingLabelsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/shipping/operations" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingOperationsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path="/shipping/settings" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingSettingsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.aiManager} element={<AccountGuard><FeatureGuard featureKey="AI_MANAGER"><AiManagerPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.broadcasts} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BroadcastsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emailLists} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailListsPage /></FeatureGuard></AccountGuard>} />
@@ -337,7 +302,6 @@ function App() {
                                                 <Route path={ROUTE_PATHS.analyticsAttribution} element={<AccountGuard><AttributionPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.analyticsCohorts} element={<Navigate to={ROUTE_PATHS.analyticsAttribution} replace />} />
                                                 <Route path={ROUTE_PATHS.analyticsClv} element={<AccountGuard><CLVPage /></AccountGuard>} />
->>>>>>> Stashed changes
 
                                                 <Route path={ROUTE_PATHS.reviews} element={<AccountGuard><ReviewsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.help} element={<AccountGuard><HelpCenterHome /></AccountGuard>} />

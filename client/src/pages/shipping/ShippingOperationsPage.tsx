@@ -81,7 +81,8 @@ export function ShippingOperationsPage() {
     const trackedLabels = labels.filter((label) => Boolean(label.trackingNumber));
     const terminalStatuses = new Set(['cancelled', 'delivered', 'returned', 'expired', 'exception']);
     const activeTracked = trackedLabels.filter((label) => !terminalStatuses.has(label.status));
-    const staleBefore = Date.now() - pollIntervalMinutes * 60 * 1000;
+    const freshnessReference = labelsQuery.dataUpdatedAt || trackingHealthQuery.dataUpdatedAt || 0;
+    const staleBefore = freshnessReference - pollIntervalMinutes * 60 * 1000;
     const staleTracked = activeTracked.filter((label) => {
         const syncedAt = label.trackingSyncedAt;
         if (!syncedAt) return true;

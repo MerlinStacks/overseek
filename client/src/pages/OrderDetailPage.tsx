@@ -18,7 +18,7 @@ import { OrderCOGSPanel } from '../components/orders/OrderCOGSPanel';
 import { OrderDetailPageSkeleton } from '../components/ui/PageSkeletons';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useToast } from '../context/ToastContext';
-import { getSafeHref, openSafeUrl } from '../utils/url';
+import { openSafeUrl } from '../utils/url';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 import { ShipmentMonitoringPanel } from '../components/shipping/ShipmentMonitoringPanel';
 
