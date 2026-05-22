@@ -8,6 +8,19 @@ import { shippingFulfillmentService } from './ShippingFulfillmentService';
 import { ausPostShippingTrackingAdapter } from './AusPostShippingTrackingAdapter';
 
 export const SHIPPING_FEATURE_KEY = 'SHIPPING_HUB';
+const AUSPOST_SERVICE_CATALOG: Array<{ code: string; label: string }> = [
+    { code: '3D55', label: 'Parcel Post satchel 500g' },
+    { code: '3D61', label: 'Parcel Post satchel 1kg' },
+    { code: '3D67', label: 'Parcel Post satchel 3kg' },
+    { code: '3D73', label: 'Parcel Post satchel 5kg' },
+    { code: '7E55', label: 'Express Post satchel 500g' },
+    { code: '7E61', label: 'Express Post satchel 1kg' },
+    { code: '7E67', label: 'Express Post satchel 3kg' },
+    { code: '7E73', label: 'Express Post satchel 5kg' },
+    { code: 'INT_PARCEL_STD', label: 'International Standard' },
+    { code: 'INT_PARCEL_EXP', label: 'International Express' },
+    { code: 'INT_PARCEL_COURIER', label: 'International Courier' },
+];
 
 export interface ShippingPackageInput {
     name: string;
@@ -1203,6 +1216,13 @@ export class ShippingService {
         return {
             shippingMethods: Array.from(unique).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' })),
             sampledOrders: orders.length,
+        };
+    }
+
+    listAusPostServiceCatalog() {
+        return {
+            services: AUSPOST_SERVICE_CATALOG,
+            updatedAt: '2026-05-22',
         };
     }
 

@@ -5,7 +5,7 @@ import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
 import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
-import { shippingFetch, ShippingMethodCandidatesResponse, ShippingPrintStation, ShippingSettingsResponse } from './shippingApi';
+import { AusPostServiceCatalogResponse, shippingFetch, ShippingMethodCandidatesResponse, ShippingPrintStation, ShippingSettingsResponse } from './shippingApi';
 
 const AUSPOST_DEFAULT_BASE_URL = 'https://digitalapi.auspost.com.au/shipping/v1';
 const TRACKING_TRIGGER_OPTIONS = [
@@ -126,6 +126,7 @@ export function ShippingSettingsPage() {
     const [newStationToken, setNewStationToken] = useState<string | null>(null);
     const [testResult, setTestResult] = useState<string | null>(null);
     const [importResult, setImportResult] = useState<string | null>(null);
+    const [shippingMethodOptions, setShippingMethodOptions] = useState<string[]>([]);
 
     const tabFromUrl = searchParams.get('tab');
     const activeTab: TabId = tabFromUrl && VALID_TABS.includes(tabFromUrl as TabId) ? tabFromUrl as TabId : 'carrier';
@@ -136,6 +137,7 @@ export function ShippingSettingsPage() {
             return next;
         }, { replace: true });
     };
+    const uniqueSortedStrings = (values: string[]): string[] => Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
 
     const canFetch = Boolean(token && currentAccount?.id);
     const settingsQuery = useApiQuery<ShippingSettingsResponse>({
@@ -148,6 +150,11 @@ export function ShippingSettingsPage() {
         enabled: canFetch,
         queryFn: () => shippingFetch('/print-stations', token!, currentAccount!.id),
     });
+    const serviceCatalogQuery = useApiQuery<AusPostServiceCatalogResponse>({
+        queryKey: ['shipping-auspost-service-catalog', currentAccount?.id],
+        enabled: canFetch,
+        queryFn: () => shippingFetch('/settings/auspost-service-catalog', token!, currentAccount!.id),
+    });
 
     useEffect(() => {
         const settings = settingsQuery.data?.carrierAccount;
@@ -155,6 +162,9 @@ export function ShippingSettingsPage() {
         const config = settings.config || {};
         const sender = settings.senderAddress || {};
         queueMicrotask(() => {
+            const normalizedMappings = normalizeShippingMethodMappings(config.shippingMethodServiceMappings);
+            const mappedMethods = normalizedMappings.map((mapping) => mapping.wooShippingMethod).filter(Boolean);
+            setShippingMethodOptions((prev) => uniqueSortedStrings([...prev, ...mappedMethods]));
             setForm(prev => ({
                 ...prev,
                 displayName: settings.displayName || prev.displayName,
@@ -186,7 +196,7 @@ export function ShippingSettingsPage() {
                 defaultDomesticService: String(config.defaultDomesticService || ''),
                 defaultExpressService: String(config.defaultExpressService || ''),
                 defaultInternationalService: String(config.defaultInternationalService || ''),
-                shippingMethodServiceMappings: normalizeShippingMethodMappings(config.shippingMethodServiceMappings),
+                shippingMethodServiceMappings: normalizedMappings,
                 labelFormat: String(config.labelFormat || 'PDF'),
                 labelPrintGroup: config.labelPrintGroup === 'Express Post' ? 'Express Post' : 'Parcel Post',
                 labelLayout: ['A4-1pp', 'A4-3pp', 'A4-4pp', 'A6-1pp'].includes(String(config.labelLayout)) ? String(config.labelLayout) as SettingsFormState['labelLayout'] : 'A6-1pp',
@@ -299,6 +309,7 @@ export function ShippingSettingsPage() {
                 added = additions.length;
                 return { ...prev, shippingMethodServiceMappings: [...prev.shippingMethodServiceMappings, ...additions] };
             });
+            setShippingMethodOptions((prev) => uniqueSortedStrings([...prev, ...data.shippingMethods]));
             setImportResult(added > 0
                 ? `Imported ${added} shipping method${added === 1 ? '' : 's'} from ${data.sampledOrders} recent orders.`
                 : `No new shipping methods found in ${data.sampledOrders} recent orders.`);
@@ -332,6 +343,19 @@ export function ShippingSettingsPage() {
         saveSettings.mutate(form);
     };
 
+    const catalogServices = serviceCatalogQuery.data?.services || [];
+    const serviceCodeOptions = uniqueSortedStrings([
+        ...catalogServices.map((service) => service.code),
+        form.defaultDomesticService,
+        form.defaultExpressService,
+        form.defaultInternationalService,
+        ...form.shippingMethodServiceMappings.map((mapping) => mapping.auspostServiceCode),
+    ].filter(Boolean));
+    const serviceCodeLabelByCode = new Map(catalogServices.map((service) => [service.code, service.label]));
+    const formatServiceCodeOption = (code: string) => serviceCodeLabelByCode.has(code)
+        ? `${code} - ${serviceCodeLabelByCode.get(code)}`
+        : code;
+
     const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; description: string }> = [
         { id: 'carrier', label: 'Carrier Setup', icon: ShieldCheck, description: 'Credentials, sender details, and API paths.' },
         { id: 'services', label: 'Rules & Tracking', icon: Cog, description: 'Service defaults, mappings, fulfillment, and polling.' },
@@ -344,8 +368,8 @@ export function ShippingSettingsPage() {
             description="Configure AusPost credentials, sender details, payment method, dispatch status, label format, print stations, and tracking sync behavior."
         >
             <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="overflow-x-auto border-b border-slate-200 dark:border-slate-700">
-                    <div className="flex min-w-max items-end gap-2 pb-2">
+                <div className="lg:hidden">
+                    <div className="flex overflow-x-auto border-b border-slate-200 dark:border-slate-700 no-scrollbar -mx-4 px-4">
                         {tabs.map((tab) => {
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;
@@ -354,7 +378,7 @@ export function ShippingSettingsPage() {
                                     key={tab.id}
                                     type="button"
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                                    className={`flex items-center gap-2 px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap transition-colors ${isActive ? 'border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                                 >
                                     <Icon size={16} />
                                     {tab.label}
@@ -363,7 +387,30 @@ export function ShippingSettingsPage() {
                         })}
                     </div>
                 </div>
-                <p className="text-sm text-slate-600 dark:text-slate-300">{tabs.find((tab) => tab.id === activeTab)?.description}</p>
+
+                <div className="lg:flex lg:gap-8">
+                    <aside className="hidden w-64 shrink-0 px-1 lg:block">
+                        <nav className="sticky top-24 space-y-2">
+                            <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-3 mb-2">Shipping Hub</h3>
+                            {tabs.map((tab) => {
+                                const Icon = tab.icon;
+                                const isActive = activeTab === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                                    >
+                                        <span className="flex items-center gap-2"><Icon size={16} />{tab.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </nav>
+                    </aside>
+
+                    <div className="min-w-0 flex-1 space-y-6">
+                        <p className="text-sm text-slate-600 dark:text-slate-300">{tabs.find((tab) => tab.id === activeTab)?.description}</p>
 
                 {activeTab === 'carrier' ? <div className="grid gap-6 xl:grid-cols-2">
                 <ShippingComingSoonCard>
@@ -434,9 +481,26 @@ export function ShippingSettingsPage() {
                     <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">AusPost Service Defaults</h2>
                     <div className="space-y-4">
                         <p className="text-sm text-slate-600 dark:text-slate-300">These AusPost product IDs are used to auto-select the label service from the WooCommerce order shipping method. Express shipping uses the express default; non-AU addresses use the international default; all other domestic orders use the domestic default.</p>
-                        <TextField label="Default domestic AusPost service code" value={form.defaultDomesticService} onChange={(v) => update('defaultDomesticService', v)} placeholder="AusPost product ID" />
-                        <TextField label="Default express AusPost service code" value={form.defaultExpressService} onChange={(v) => update('defaultExpressService', v)} placeholder="AusPost product ID" />
-                        <TextField label="Default international AusPost service code" value={form.defaultInternationalService} onChange={(v) => update('defaultInternationalService', v)} placeholder="AusPost product ID" />
+                        <div className="grid gap-3 md:grid-cols-3">
+                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Default domestic AusPost service code
+                                <select value={form.defaultDomesticService} onChange={(event) => update('defaultDomesticService', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
+                                    <option value="">Select service code</option>
+                                    {serviceCodeOptions.map((option) => <option key={`domestic-${option}`} value={option}>{formatServiceCodeOption(option)}</option>)}
+                                </select>
+                            </label>
+                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Default express AusPost service code
+                                <select value={form.defaultExpressService} onChange={(event) => update('defaultExpressService', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
+                                    <option value="">Select service code</option>
+                                    {serviceCodeOptions.map((option) => <option key={`express-${option}`} value={option}>{formatServiceCodeOption(option)}</option>)}
+                                </select>
+                            </label>
+                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Default international AusPost service code
+                                <select value={form.defaultInternationalService} onChange={(event) => update('defaultInternationalService', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
+                                    <option value="">Select service code</option>
+                                    {serviceCodeOptions.map((option) => <option key={`international-${option}`} value={option}>{formatServiceCodeOption(option)}</option>)}
+                                </select>
+                            </label>
+                        </div>
                         <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                             <div className="flex items-center justify-between gap-3">
                                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Shipping method service mappings</p>
@@ -448,14 +512,22 @@ export function ShippingSettingsPage() {
                             <p className="text-xs text-slate-500 dark:text-slate-400">Match WooCommerce shipping method text to an AusPost service code before fallback defaults are used.</p>
                             {importResult ? <p className="text-xs text-emerald-700 dark:text-emerald-300">{importResult}</p> : null}
                             {importShippingMethods.error ? <p className="text-xs text-red-600">{importShippingMethods.error.message}</p> : null}
+                            {shippingMethodOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No shipping methods available yet. Use "Import from orders" first.</p> : null}
+                            {serviceCodeOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No service code options available yet. Set default service codes first.</p> : null}
                             {form.shippingMethodServiceMappings.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No mappings added yet.</p> : null}
                             {form.shippingMethodServiceMappings.map((mapping, index) => (
                                 <div key={`${index}-${mapping.wooShippingMethod}-${mapping.auspostServiceCode}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-7 dark:border-slate-700">
                                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-3">Woo shipping method
-                                        <input value={mapping.wooShippingMethod} onChange={(event) => updateShippingMethodMapping(index, 'wooShippingMethod', event.target.value)} placeholder="e.g. Auspost Express" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                                        <select value={mapping.wooShippingMethod} onChange={(event) => updateShippingMethodMapping(index, 'wooShippingMethod', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900">
+                                            <option value="">Select shipping method</option>
+                                            {shippingMethodOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                                        </select>
                                     </label>
                                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-2">AusPost service code
-                                        <input value={mapping.auspostServiceCode} onChange={(event) => updateShippingMethodMapping(index, 'auspostServiceCode', event.target.value)} placeholder="e.g. 3J55" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                                        <select value={mapping.auspostServiceCode} onChange={(event) => updateShippingMethodMapping(index, 'auspostServiceCode', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900">
+                                            <option value="">Select service code</option>
+                                            {serviceCodeOptions.map((option) => <option key={option} value={option}>{formatServiceCodeOption(option)}</option>)}
+                                        </select>
                                     </label>
                                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-1">Match
                                         <select value={mapping.matchType} onChange={(event) => updateShippingMethodMapping(index, 'matchType', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900"><option value="exact">Exact</option><option value="contains">Contains</option></select>
@@ -515,10 +587,13 @@ export function ShippingSettingsPage() {
                     </div>
                 </ShippingComingSoonCard> : null}
 
-                {saveSettings.error ? <p className="text-sm text-red-600">{saveSettings.error.message}</p> : null}
-                <div className="sticky bottom-4 z-10 flex justify-end">
-                    <button type="submit" disabled={saveSettings.isPending} className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-60"><Save size={16} /> Save Settings</button>
+                        {saveSettings.error ? <p className="text-sm text-red-600">{saveSettings.error.message}</p> : null}
+                        <div className="sticky bottom-4 z-10 flex justify-end">
+                            <button type="submit" disabled={saveSettings.isPending} className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-60"><Save size={16} /> Save Settings</button>
+                        </div>
+                    </div>
                 </div>
+
             </form>
         </ShippingPageShell>
     );

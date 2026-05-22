@@ -143,6 +143,11 @@ export interface ShippingMethodCandidatesResponse {
     sampledOrders: number;
 }
 
+export interface AusPostServiceCatalogResponse {
+    services: Array<{ code: string; label: string }>;
+    updatedAt: string;
+}
+
 export interface ShippingTrackingHealthSummary {
     status: 'healthy' | 'degraded' | 'attention';
     windowHours: number;
@@ -194,6 +199,31 @@ export interface ShippingBulkLabelResult {
     results: Array<{ wooOrderId: number; ok: boolean; label?: ShippingLabelRecord; error?: string }>;
 }
 
+interface ShippingErrorDetails {
+    fieldErrors?: Record<string, string[] | undefined>;
+    formErrors?: string[];
+}
+
+interface ShippingErrorBody {
+    error?: string;
+    message?: string;
+    details?: ShippingErrorDetails;
+}
+
+function formatShippingError(body: ShippingErrorBody, fallback: string): string {
+    const baseMessage = body.error || body.message || fallback;
+    const details = body.details;
+    if (!details) return baseMessage;
+
+    const fieldMessages = Object.entries(details.fieldErrors || {})
+        .flatMap(([field, messages]) => (messages || []).map((message) => `${field}: ${message}`));
+    const formMessages = details.formErrors || [];
+    const allMessages = [...formMessages, ...fieldMessages].filter(Boolean);
+    if (allMessages.length === 0) return baseMessage;
+
+    return `${baseMessage}. ${allMessages.join('; ')}`;
+}
+
 export async function shippingFetch<T>(path: string, token: string, accountId: string, options: RequestInit = {}): Promise<T> {
     const res = await fetch(`/api/shipping${path}`, {
         ...options,
@@ -206,8 +236,8 @@ export async function shippingFetch<T>(path: string, token: string, accountId: s
     });
 
     if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || 'Shipping request failed');
+        const body = await res.json().catch(() => ({} as ShippingErrorBody));
+        throw new Error(formatShippingError(body, res.statusText || 'Shipping request failed'));
     }
 
     const ct = res.headers.get('content-type');

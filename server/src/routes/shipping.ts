@@ -735,6 +735,17 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get('/settings/auspost-service-catalog', async (request, reply) => {
+        try {
+            const denied = await requireShippingPermission(request, reply, 'view_shipping');
+            if (denied) return denied;
+            return shippingService.listAusPostServiceCatalog();
+        } catch (error: any) {
+            Logger.error('[ShippingRoutes] Failed to fetch AusPost service catalog', { error: error?.message || error });
+            return reply.code(500).send({ error: 'Failed to fetch AusPost service catalog' });
+        }
+    });
+
     fastify.patch('/settings', async (request, reply) => {
         try {
             const denied = await requireShippingPermission(request, reply, 'manage_shipping_settings');
