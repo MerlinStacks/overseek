@@ -45,6 +45,16 @@ const emptyForm: PackageFormState = {
     isActive: true,
 };
 
+const packageTypeOptions = [
+    { value: 'custom_box', label: 'Box / Rigid Carton' },
+    { value: 'satchel', label: 'Satchel (Flexible)' },
+    { value: 'poly_mailer', label: 'Poly Mailer (Flexible)' },
+    { value: 'mailer_bag', label: 'Mailer Bag (Flexible)' },
+    { value: 'flat_mailer', label: 'Flat Mailer (Flexible)' },
+];
+
+const isFlexibleType = (type: string) => type === 'satchel' || type === 'poly_mailer' || type === 'flat_mailer' || type === 'mailer_bag';
+
 function toForm(pkg: ShippingPackagePreset): PackageFormState {
     return {
         id: pkg.id,
@@ -125,6 +135,7 @@ export function ShippingPackagesPage() {
     };
 
     const update = (key: keyof PackageFormState, value: string | boolean) => setForm(prev => ({ ...prev, [key]: value }));
+    const flexibleType = isFlexibleType(form.type);
 
     return (
         <ShippingPageShell
@@ -152,6 +163,7 @@ export function ShippingPackagesPage() {
                                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
                                     <tr>
                                         <th className="px-4 py-3">Package</th>
+                                        <th className="px-4 py-3">Type</th>
                                         <th className="px-4 py-3">Outer Size</th>
                                         <th className="px-4 py-3">Max Weight</th>
                                         <th className="px-4 py-3">Status</th>
@@ -163,6 +175,7 @@ export function ShippingPackagesPage() {
                                             <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">
                                                 {pkg.name}{pkg.isDefault ? <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700">Default</span> : null}
                                             </td>
+                                            <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{pkg.type}</td>
                                             <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{mmToCm(pkg.outerLengthMm)} x {mmToCm(pkg.outerWidthMm)} x {mmToCm(pkg.outerHeightMm)} cm</td>
                                             <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{gramsToKg(pkg.maxWeightGrams) || '-'} kg</td>
                                             <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{pkg.isActive ? 'Active' : 'Inactive'}</td>
@@ -178,15 +191,25 @@ export function ShippingPackagesPage() {
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <h2 className="text-lg font-bold text-slate-900 dark:text-white">{form.id ? 'Edit Package' : 'New Package'}</h2>
                         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Package Title<input value={form.name} onChange={(e) => update('name', e.target.value)} required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900" /></label>
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Package Type<select value={form.type} onChange={(e) => update('type', e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">{packageTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+                        {flexibleType ? (
+                            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                                Flexible package mode is active. Auto-selection treats this as form-fitting, including fold-over seal allowance and relaxed depth checks.
+                            </p>
+                        ) : (
+                            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                                Rigid package mode is active. Auto-selection uses box-style orientation, usable volume, and stacked-dimension checks.
+                            </p>
+                        )}
                         <div className="grid grid-cols-3 gap-3">
-                            <NumberField label="Outer L (cm)" value={form.outerLengthCm} onChange={(v) => update('outerLengthCm', v)} required />
-                            <NumberField label="Outer W (cm)" value={form.outerWidthCm} onChange={(v) => update('outerWidthCm', v)} required />
-                            <NumberField label="Outer H (cm)" value={form.outerHeightCm} onChange={(v) => update('outerHeightCm', v)} required />
+                            <NumberField label={flexibleType ? 'Layflat L (cm)' : 'Outer L (cm)'} value={form.outerLengthCm} onChange={(v) => update('outerLengthCm', v)} required />
+                            <NumberField label={flexibleType ? 'Layflat W (cm)' : 'Outer W (cm)'} value={form.outerWidthCm} onChange={(v) => update('outerWidthCm', v)} required />
+                            <NumberField label={flexibleType ? 'Depth Limit (cm)' : 'Outer H (cm)'} value={form.outerHeightCm} onChange={(v) => update('outerHeightCm', v)} required />
                         </div>
                         <div className="grid grid-cols-3 gap-3">
-                            <NumberField label="Inner L (cm)" value={form.innerLengthCm} onChange={(v) => update('innerLengthCm', v)} />
-                            <NumberField label="Inner W (cm)" value={form.innerWidthCm} onChange={(v) => update('innerWidthCm', v)} />
-                            <NumberField label="Inner H (cm)" value={form.innerHeightCm} onChange={(v) => update('innerHeightCm', v)} />
+                            <NumberField label={flexibleType ? 'Usable L Override (cm)' : 'Inner L (cm)'} value={form.innerLengthCm} onChange={(v) => update('innerLengthCm', v)} />
+                            <NumberField label={flexibleType ? 'Usable W Override (cm)' : 'Inner W (cm)'} value={form.innerWidthCm} onChange={(v) => update('innerWidthCm', v)} />
+                            <NumberField label={flexibleType ? 'Usable D Override (cm)' : 'Inner H (cm)'} value={form.innerHeightCm} onChange={(v) => update('innerHeightCm', v)} />
                         </div>
                         <NumberField label="Fallback item weight (kg)" value={form.fallbackItemWeightKg} onChange={(v) => update('fallbackItemWeightKg', v)} />
                         <NumberField label="Force package weight (kg)" value={form.forcedPackageWeightKg} onChange={(v) => update('forcedPackageWeightKg', v)} />

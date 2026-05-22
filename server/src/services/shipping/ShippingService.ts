@@ -102,6 +102,11 @@ export interface ShippingBulkLabelInput {
 
 export class ShippingService {
     private static readonly LABEL_STORAGE_BASE_DIR = path.resolve(__dirname, '../../uploads/shipping-labels');
+    private categoryInferenceCache = new Map<string, {
+        expiresAt: number;
+        global: { weightGrams: number | null; lengthMm: number | null; widthMm: number | null; heightMm: number | null };
+        byCategory: Map<string, { weightGrams: number | null; lengthMm: number | null; widthMm: number | null; heightMm: number | null }>;
+    }>();
 
     async getHubSummary(accountId: string) {
         const [draftCount, labelCount, packageCount, printStationCount] = await Promise.all([
@@ -1413,12 +1418,20 @@ export class ShippingService {
         const productByWooId = new Map<number, any>(products.map((product: any) => [Number(product.wooId), product]));
         let totalWeightGrams = 0;
         let hasMissingWeight = false;
-        let maxLengthMm = 0;
-        let maxWidthMm = 0;
-        let maxHeightMm = 0;
         let hasMissingDimensions = false;
+        const packableUnits: Array<{ lengthMm: number; widthMm: number; heightMm: number; quantity: number }> = [];
+        const categoryHints = new Set<string>();
         const overridePackageIds = new Set<string>();
         let overridePackageMatches = 0;
+        const inferredProfiles = await this.getCategoryInferredProfiles(accountId);
+
+        const resolveDimensionSource = (product: any, override: any, categoryNames: string[]) => {
+            const categoryProfile = this.pickCategoryProfile(inferredProfiles, categoryNames);
+            const lengthMm = override?.lengthMm ?? this.cmLikeToMm(product?.length) ?? categoryProfile.lengthMm;
+            const widthMm = override?.widthMm ?? this.cmLikeToMm(product?.width) ?? categoryProfile.widthMm;
+            const heightMm = override?.heightMm ?? this.cmLikeToMm(product?.height) ?? categoryProfile.heightMm;
+            return { lengthMm, widthMm, heightMm };
+        };
 
         for (const item of lineItems) {
             const productId = Number(item.product_id);
@@ -1433,17 +1446,16 @@ export class ShippingService {
             }
 
             const product = productByWooId.get(variationId || productId) || productByWooId.get(productId);
-            const weightGrams = override?.weightGrams ?? this.kgLikeToGrams(product?.weight);
+            const categories = this.extractProductCategories(product);
+            categories.forEach((name) => categoryHints.add(name));
+            const categoryProfile = this.pickCategoryProfile(inferredProfiles, categories);
+            const weightGrams = override?.weightGrams ?? this.kgLikeToGrams(product?.weight) ?? categoryProfile.weightGrams;
             if (weightGrams) totalWeightGrams += weightGrams * quantity;
             else hasMissingWeight = true;
 
-            const lengthMm = override?.lengthMm ?? this.cmLikeToMm(product?.length);
-            const widthMm = override?.widthMm ?? this.cmLikeToMm(product?.width);
-            const heightMm = override?.heightMm ?? this.cmLikeToMm(product?.height);
+            const { lengthMm, widthMm, heightMm } = resolveDimensionSource(product, override, categories);
             if (lengthMm && widthMm && heightMm) {
-                maxLengthMm = Math.max(maxLengthMm, lengthMm);
-                maxWidthMm = Math.max(maxWidthMm, widthMm);
-                maxHeightMm = Math.max(maxHeightMm, heightMm);
+                packableUnits.push({ lengthMm, widthMm, heightMm, quantity });
             } else {
                 hasMissingDimensions = true;
             }
@@ -1458,24 +1470,294 @@ export class ShippingService {
             }
         }
 
+        const candidates: Array<{ pkg: any; score: number; fitReason: string; weight: number; usedFallback: boolean }> = [];
         for (const pkg of packages as any[]) {
             const weight = pkg.forcedPackageWeightGrams
                 || ((hasMissingWeight ? pkg.fallbackItemWeightGrams : totalWeightGrams) || 0) + pkg.packagingWeightGrams;
             if (pkg.maxWeightGrams && weight > pkg.maxWeightGrams) continue;
             if (hasMissingDimensions) {
                 if (pkg.fallbackItemWeightGrams || pkg.forcedPackageWeightGrams) {
-                    return { packageId: pkg.id, confidence: 'fallback_weight_used', reason: 'Missing product dimensions or weight; package fallback was used', weightGrams: weight || null };
+                    candidates.push({ pkg, score: -50, fitReason: 'Missing product dimensions or weight; package fallback was used', weight, usedFallback: true });
                 }
                 continue;
             }
-            if (maxLengthMm <= (pkg.innerLengthMm || pkg.outerLengthMm) && maxWidthMm <= (pkg.innerWidthMm || pkg.outerWidthMm) && maxHeightMm <= (pkg.innerHeightMm || pkg.outerHeightMm)) {
-                return { packageId: pkg.id, confidence: 'fits_by_dimensions', reason: 'Smallest configured package that fits the largest item (multi-item cumulative dimensions not yet supported)', weightGrams: weight || null };
+            const fit = this.evaluatePackageFit(packableUnits, pkg);
+            if (!fit.fits) continue;
+            const score = this.scorePackageCandidate(fit, pkg, weight, Boolean(hasMissingWeight));
+            candidates.push({ pkg, score, fitReason: fit.reason, weight, usedFallback: false });
+        }
+
+        if (candidates.length > 0) {
+            candidates.sort((a, b) => b.score - a.score || a.pkg.selectionPriority - b.pkg.selectionPriority);
+            const best = candidates[0];
+            if (best.usedFallback) {
+                return { packageId: best.pkg.id, confidence: 'fallback_weight_used', reason: best.fitReason, weightGrams: best.weight || null };
             }
+            return {
+                packageId: best.pkg.id,
+                confidence: 'fits_by_dimensions',
+                reason: `${best.fitReason}; scored ${best.score.toFixed(1)} for space, weight, and handling efficiency`,
+                weightGrams: best.weight || null,
+            };
         }
 
         const anyPackageCanTakeWeight = packages.some((pkg: any) => !pkg.maxWeightGrams || totalWeightGrams <= pkg.maxWeightGrams);
         if (!anyPackageCanTakeWeight && totalWeightGrams > 0) return { packageId: null, confidence: 'overweight', reason: 'Order exceeds all configured package weight limits', weightGrams: totalWeightGrams };
-        return { packageId: null, confidence: hasMissingDimensions ? 'missing_dimensions' : 'manual_required', reason: hasMissingDimensions ? 'Product dimensions are missing for package auto-selection' : 'No configured package can fit this order', weightGrams: totalWeightGrams || null };
+        const categoryHintText = categoryHints.size ? ` Checked category defaults for: ${Array.from(categoryHints).slice(0, 3).join(', ')}.` : '';
+        return { packageId: null, confidence: hasMissingDimensions ? 'missing_dimensions' : 'manual_required', reason: hasMissingDimensions ? `Product dimensions are missing for package auto-selection.${categoryHintText}` : 'No configured package can fit this order', weightGrams: totalWeightGrams || null };
+    }
+
+    private evaluatePackageFit(packableUnits: Array<{ lengthMm: number; widthMm: number; heightMm: number; quantity: number }>, pkg: any): { fits: boolean; reason: string; usedVolumeMm3: number; packageVolumeMm3: number; orientation: string | null } {
+        const packageLengthMm = pkg.innerLengthMm || pkg.outerLengthMm;
+        const packageWidthMm = pkg.innerWidthMm || pkg.outerWidthMm;
+        const packageHeightMm = pkg.innerHeightMm || pkg.outerHeightMm;
+        if (!packageLengthMm || !packageWidthMm || !packageHeightMm) return { fits: false, reason: 'Package dimensions are incomplete', usedVolumeMm3: 0, packageVolumeMm3: 0, orientation: null };
+
+        if (this.isFlexiblePackageType(pkg.type)) {
+            const flexibleFit = this.evaluateFlexiblePackageFit(packableUnits, packageLengthMm, packageWidthMm, packageHeightMm);
+            if (!flexibleFit.fits) return { fits: false, reason: flexibleFit.reason, usedVolumeMm3: flexibleFit.usedVolumeMm3, packageVolumeMm3: flexibleFit.packageVolumeMm3, orientation: null };
+            return {
+                fits: true,
+                reason: flexibleFit.reason,
+                usedVolumeMm3: flexibleFit.usedVolumeMm3,
+                packageVolumeMm3: flexibleFit.packageVolumeMm3,
+                orientation: flexibleFit.orientation,
+            };
+        }
+
+        const clearanceMm = 5;
+        const usableLengthMm = Math.max(0, packageLengthMm - clearanceMm * 2);
+        const usableWidthMm = Math.max(0, packageWidthMm - clearanceMm * 2);
+        const usableHeightMm = Math.max(0, packageHeightMm - clearanceMm * 2);
+        const packageVolumeMm3 = usableLengthMm * usableWidthMm * usableHeightMm;
+        const usableVolumeMm3 = Math.floor(packageVolumeMm3 * 0.88);
+
+        let totalUsedVolumeMm3 = 0;
+        let totalStackHeightMm = 0;
+        let totalStackLengthMm = 0;
+        let totalStackWidthMm = 0;
+        let maxOrientedLengthMm = 0;
+        let maxOrientedWidthMm = 0;
+        let maxOrientedHeightMm = 0;
+
+        for (const unit of packableUnits) {
+            const orientation = this.chooseBestOrientation(unit, usableLengthMm, usableWidthMm, usableHeightMm);
+            if (!orientation) {
+                return { fits: false, reason: 'At least one item cannot fit in any orientation', usedVolumeMm3: totalUsedVolumeMm3, packageVolumeMm3: usableVolumeMm3, orientation: null };
+            }
+            const [l, w, h] = orientation;
+            totalUsedVolumeMm3 += l * w * h * unit.quantity;
+            totalStackHeightMm += h * unit.quantity;
+            totalStackLengthMm += l * unit.quantity;
+            totalStackWidthMm += w * unit.quantity;
+            maxOrientedLengthMm = Math.max(maxOrientedLengthMm, l);
+            maxOrientedWidthMm = Math.max(maxOrientedWidthMm, w);
+            maxOrientedHeightMm = Math.max(maxOrientedHeightMm, h);
+        }
+
+        const volumeFits = totalUsedVolumeMm3 <= usableVolumeMm3;
+        const stackByHeightFits = maxOrientedLengthMm <= usableLengthMm && maxOrientedWidthMm <= usableWidthMm && totalStackHeightMm <= usableHeightMm;
+        const stackByLengthFits = maxOrientedHeightMm <= usableHeightMm && maxOrientedWidthMm <= usableWidthMm && totalStackLengthMm <= usableLengthMm;
+        const stackByWidthFits = maxOrientedHeightMm <= usableHeightMm && maxOrientedLengthMm <= usableLengthMm && totalStackWidthMm <= usableWidthMm;
+        const fits = volumeFits || stackByHeightFits || stackByLengthFits || stackByWidthFits;
+        if (!fits) {
+            return { fits: false, reason: 'Items exceed usable package dimensions after orientation checks', usedVolumeMm3: totalUsedVolumeMm3, packageVolumeMm3: usableVolumeMm3, orientation: null };
+        }
+
+        const reason = volumeFits
+            ? 'Selected by orientation-aware fit with usable-volume threshold'
+            : 'Selected by orientation-aware stacked-dimension fit';
+        return { fits: true, reason, usedVolumeMm3: totalUsedVolumeMm3, packageVolumeMm3: usableVolumeMm3, orientation: volumeFits ? 'volume' : 'stacked' };
+    }
+
+    private evaluateFlexiblePackageFit(
+        packableUnits: Array<{ lengthMm: number; widthMm: number; heightMm: number; quantity: number }>,
+        packageLengthMm: number,
+        packageWidthMm: number,
+        packageHeightMm: number,
+    ): { fits: boolean; reason: string; usedVolumeMm3: number; packageVolumeMm3: number; orientation: 'foldover' | 'satchel_volume' | null } {
+        const sealAllowanceMm = 45;
+        const sideAllowanceMm = 12;
+        const usableLengthMm = Math.max(0, packageLengthMm - sealAllowanceMm);
+        const usableWidthMm = Math.max(0, packageWidthMm - sideAllowanceMm);
+        const relaxedHeightMm = Math.max(packageHeightMm * 2, packageHeightMm + 25);
+        const packageVolumeMm3 = Math.max(0, usableLengthMm * usableWidthMm * relaxedHeightMm);
+        const usableVolumeMm3 = Math.floor(packageVolumeMm3 * 0.95);
+
+        let totalUsedVolumeMm3 = 0;
+        let maxFlatLengthMm = 0;
+        let maxFlatWidthMm = 0;
+        let totalThicknessMm = 0;
+        for (const unit of packableUnits) {
+            const orientation = this.chooseBestOrientation(unit, usableLengthMm, usableWidthMm, relaxedHeightMm);
+            if (!orientation) {
+                return {
+                    fits: false,
+                    reason: 'At least one item cannot fit the satchel opening or fold-over depth',
+                    usedVolumeMm3: totalUsedVolumeMm3,
+                    packageVolumeMm3: usableVolumeMm3,
+                    orientation: null,
+                };
+            }
+            const [l, w, h] = orientation;
+            totalUsedVolumeMm3 += l * w * h * unit.quantity;
+            maxFlatLengthMm = Math.max(maxFlatLengthMm, l);
+            maxFlatWidthMm = Math.max(maxFlatWidthMm, w);
+            totalThicknessMm += h * unit.quantity;
+        }
+
+        const flatAreaFit = maxFlatLengthMm <= usableLengthMm && maxFlatWidthMm <= usableWidthMm;
+        const foldoverDepthFit = totalThicknessMm <= relaxedHeightMm;
+        const volumeFit = totalUsedVolumeMm3 <= usableVolumeMm3;
+        const fits = flatAreaFit && (foldoverDepthFit || volumeFit);
+        if (!fits) {
+            return {
+                fits: false,
+                reason: 'Satchel fit failed after fold-over allowance and flexible-depth checks',
+                usedVolumeMm3: totalUsedVolumeMm3,
+                packageVolumeMm3: usableVolumeMm3,
+                orientation: null,
+            };
+        }
+
+        return {
+            fits: true,
+            reason: foldoverDepthFit
+                ? 'Selected by satchel fold-over depth and flat footprint fit'
+                : 'Selected by satchel flexible-volume fit',
+            usedVolumeMm3: totalUsedVolumeMm3,
+            packageVolumeMm3: usableVolumeMm3,
+            orientation: foldoverDepthFit ? 'foldover' : 'satchel_volume',
+        };
+    }
+
+    private scorePackageCandidate(fit: { usedVolumeMm3: number; packageVolumeMm3: number; orientation: string | null }, pkg: any, weightGrams: number, usedWeightFallback: boolean): number {
+        const utilization = fit.packageVolumeMm3 > 0 ? Math.min(1, fit.usedVolumeMm3 / fit.packageVolumeMm3) : 0;
+        const deadSpacePenalty = (1 - utilization) * 40;
+        const packagingPenalty = Math.min(25, (Number(pkg.packagingWeightGrams || 0) / 1000) * 20);
+        const fallbackPenalty = usedWeightFallback ? 15 : 0;
+        const weightLimit = Number(pkg.maxWeightGrams || 0);
+        const weightHeadroomPenalty = weightLimit > 0 ? Math.max(0, 12 - ((weightLimit - weightGrams) / weightLimit) * 12) : 2;
+        const priorityBonus = Math.max(0, 8 - Number(pkg.selectionPriority || 0));
+        const orientationBonus = fit.orientation === 'stacked'
+            ? 2
+            : (fit.orientation === 'foldover' || fit.orientation === 'satchel_volume' ? 6 : 5);
+        return 100 - deadSpacePenalty - packagingPenalty - fallbackPenalty - weightHeadroomPenalty + priorityBonus + orientationBonus;
+    }
+
+    private isFlexiblePackageType(value: unknown): boolean {
+        const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+        return normalized === 'satchel' || normalized === 'mailer_bag' || normalized === 'poly_mailer' || normalized === 'flat_mailer';
+    }
+
+    private chooseBestOrientation(item: { lengthMm: number; widthMm: number; heightMm: number }, maxLengthMm: number, maxWidthMm: number, maxHeightMm: number): [number, number, number] | null {
+        const rotations: Array<[number, number, number]> = [
+            [item.lengthMm, item.widthMm, item.heightMm],
+            [item.lengthMm, item.heightMm, item.widthMm],
+            [item.widthMm, item.lengthMm, item.heightMm],
+            [item.widthMm, item.heightMm, item.lengthMm],
+            [item.heightMm, item.lengthMm, item.widthMm],
+            [item.heightMm, item.widthMm, item.lengthMm],
+        ];
+        const fitRotations = rotations.filter(([l, w, h]) => l <= maxLengthMm && w <= maxWidthMm && h <= maxHeightMm);
+        if (fitRotations.length === 0) return null;
+        fitRotations.sort((a, b) => a[2] - b[2] || (a[0] * a[1]) - (b[0] * b[1]));
+        return fitRotations[0];
+    }
+
+    private extractProductCategories(product: any): string[] {
+        const raw = (product?.rawData && typeof product.rawData === 'object') ? product.rawData as Record<string, any> : {};
+        const categories = Array.isArray(raw.categories) ? raw.categories : [];
+        return categories
+            .map((category: any) => String(category?.slug || category?.name || '').trim().toLowerCase())
+            .filter(Boolean);
+    }
+
+    private pickCategoryProfile(
+        profiles: {
+            global: { weightGrams: number | null; lengthMm: number | null; widthMm: number | null; heightMm: number | null };
+            byCategory: Map<string, { weightGrams: number | null; lengthMm: number | null; widthMm: number | null; heightMm: number | null }>;
+        },
+        categories: string[],
+    ) {
+        for (const category of categories) {
+            const profile = profiles.byCategory.get(category);
+            if (profile) return profile;
+        }
+        return profiles.global;
+    }
+
+    private async getCategoryInferredProfiles(accountId: string): Promise<{
+        global: { weightGrams: number | null; lengthMm: number | null; widthMm: number | null; heightMm: number | null };
+        byCategory: Map<string, { weightGrams: number | null; lengthMm: number | null; widthMm: number | null; heightMm: number | null }>;
+    }> {
+        const now = Date.now();
+        const cached = this.categoryInferenceCache.get(accountId);
+        if (cached && cached.expiresAt > now) return { global: cached.global, byCategory: cached.byCategory };
+
+        const products = await prisma.wooProduct.findMany({
+            where: { accountId },
+            select: { weight: true, length: true, width: true, height: true, rawData: true },
+            take: 1500,
+            orderBy: { updatedAt: 'desc' },
+        });
+
+        const globalWeights: number[] = [];
+        const globalLengths: number[] = [];
+        const globalWidths: number[] = [];
+        const globalHeights: number[] = [];
+        const byCategoryValues = new Map<string, { weights: number[]; lengths: number[]; widths: number[]; heights: number[] }>();
+
+        for (const product of products) {
+            const weightGrams = this.kgLikeToGrams(product.weight);
+            const lengthMm = this.cmLikeToMm(product.length);
+            const widthMm = this.cmLikeToMm(product.width);
+            const heightMm = this.cmLikeToMm(product.height);
+
+            if (weightGrams) globalWeights.push(weightGrams);
+            if (lengthMm) globalLengths.push(lengthMm);
+            if (widthMm) globalWidths.push(widthMm);
+            if (heightMm) globalHeights.push(heightMm);
+
+            const categories = this.extractProductCategories(product);
+            for (const category of categories) {
+                const bucket = byCategoryValues.get(category) || { weights: [], lengths: [], widths: [], heights: [] };
+                if (weightGrams) bucket.weights.push(weightGrams);
+                if (lengthMm) bucket.lengths.push(lengthMm);
+                if (widthMm) bucket.widths.push(widthMm);
+                if (heightMm) bucket.heights.push(heightMm);
+                byCategoryValues.set(category, bucket);
+            }
+        }
+
+        const global = {
+            weightGrams: this.median(globalWeights) ?? 500,
+            lengthMm: this.median(globalLengths) ?? 140,
+            widthMm: this.median(globalWidths) ?? 110,
+            heightMm: this.median(globalHeights) ?? 35,
+        };
+
+        const byCategory = new Map<string, { weightGrams: number | null; lengthMm: number | null; widthMm: number | null; heightMm: number | null }>();
+        byCategoryValues.forEach((values, category) => {
+            if (values.weights.length < 3 && values.lengths.length < 3) return;
+            byCategory.set(category, {
+                weightGrams: this.median(values.weights) ?? global.weightGrams,
+                lengthMm: this.median(values.lengths) ?? global.lengthMm,
+                widthMm: this.median(values.widths) ?? global.widthMm,
+                heightMm: this.median(values.heights) ?? global.heightMm,
+            });
+        });
+
+        this.categoryInferenceCache.set(accountId, { global, byCategory, expiresAt: now + (10 * 60 * 1000) });
+        return { global, byCategory };
+    }
+
+    private median(values: number[]): number | null {
+        if (!values.length) return null;
+        const sorted = [...values].sort((a, b) => a - b);
+        const middle = Math.floor(sorted.length / 2);
+        if (sorted.length % 2 === 0) return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+        return sorted[middle];
     }
 
     private kgLikeToGrams(value: unknown): number | null {
