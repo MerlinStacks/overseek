@@ -119,12 +119,12 @@ class AusPostShippingTrackingAdapter {
         };
     }
 
-    async listAvailableServiceCatalog(accountId: string): Promise<AusPostServiceDiscoveryResult> {
+    async listAvailableServiceCatalog(accountId: string, options: { forceRefresh?: boolean } = {}): Promise<AusPostServiceDiscoveryResult> {
         try {
             const credentials = await this.getCredentials(accountId);
             const cacheKey = `${accountId}:${credentials.environment}:${credentials.accountNumber || 'no-account'}`;
             const cached = AusPostShippingTrackingAdapter.serviceDiscoveryCache.get(cacheKey);
-            if (cached && cached.expiresAt > Date.now()) {
+            if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) {
                 return {
                     ...cached.result,
                     source: cached.result.source === 'live_account' ? 'live_account_cached' : cached.result.source,
@@ -141,7 +141,12 @@ class AusPostShippingTrackingAdapter {
             const available: Array<{ code: string; label: string }> = [];
             for (const service of AUSPOST_SERVICE_CATALOG) {
                 try {
-                    await this.validateShipmentWithCredentials(credentials, { ...probeRequestBase, serviceCode: service.code });
+                    if (!credentials.endpoints.rates) throw new Error('AusPost rates endpoint mapping is not configured yet');
+                    const payload = this.buildShipmentRatePayload(credentials, { ...probeRequestBase, serviceCode: service.code });
+                    await this.request(credentials, credentials.endpoints.rates, {
+                        method: 'POST',
+                        body: JSON.stringify(payload),
+                    });
                     available.push(service);
                 } catch {
                     // unsupported product for this account/environment
@@ -418,14 +423,14 @@ class AusPostShippingTrackingAdapter {
     }
 
     private buildShipmentRatePayload(credentials: AusPostCredentials, request: AusPostRateRequest) {
-        return this.buildShipmentPayload(credentials, request, { requireProduct: false, errorContext: 'requesting AusPost rates' });
+        return this.buildShipmentPayload(credentials, request, { includeProduct: false, requireProduct: false, errorContext: 'requesting AusPost rates' });
     }
 
     private buildShipmentValidationPayload(credentials: AusPostCredentials, request: AusPostRateRequest) {
-        return this.buildShipmentPayload(credentials, request, { requireProduct: true, errorContext: 'validating an AusPost shipment' });
+        return this.buildShipmentPayload(credentials, request, { includeProduct: true, requireProduct: true, errorContext: 'validating an AusPost shipment' });
     }
 
-    private buildShipmentPayload(credentials: AusPostCredentials, request: AusPostRateRequest, options: { requireProduct: boolean; errorContext: string }) {
+    private buildShipmentPayload(credentials: AusPostCredentials, request: AusPostRateRequest, options: { includeProduct: boolean; requireProduct: boolean; errorContext: string }) {
         const dimensions = request.dimensions || {};
         const weight = this.gramsToKg(dimensions.weightGrams);
         if (!weight) throw new Error(`Package weight is required before ${options.errorContext}`);
@@ -437,7 +442,7 @@ class AusPostShippingTrackingAdapter {
             authority_to_leave: true,
         };
         const productId = this.stringConfig(request.serviceCode) || credentials.defaultDomesticService;
-        if (productId) item.product_id = productId;
+        if (options.includeProduct && productId) item.product_id = productId;
         if (options.requireProduct && !productId) throw new Error(`AusPost service code is required before ${options.errorContext}`);
 
         const length = this.mmToCm(dimensions.lengthMm);
@@ -501,6 +506,7 @@ class AusPostShippingTrackingAdapter {
                         rates.push({
                             productId: price.product_id,
                             productType: price.product_type,
+                            serviceName: price.product_type || price.product_name || price.product_id,
                             totalCost: price.calculated_price,
                             totalGst: price.calculated_gst,
                             raw: price,
@@ -510,6 +516,7 @@ class AusPostShippingTrackingAdapter {
                 if (summary.total_cost !== undefined) {
                     rates.push({
                         productId: item.product_id,
+                        serviceName: item.product_type || item.product_name || item.product_id,
                         totalCost: summary.total_cost,
                         shippingCost: summary.shipping_cost,
                         totalGst: summary.total_gst,
@@ -525,6 +532,7 @@ class AusPostShippingTrackingAdapter {
                 rates.push({
                     productId: price.product_id,
                     productType: price.product_type,
+                    serviceName: price.product_type || price.product_name || price.product_id,
                     totalCost: price.calculated_price,
                     totalGst: price.calculated_gst,
                     raw: price,

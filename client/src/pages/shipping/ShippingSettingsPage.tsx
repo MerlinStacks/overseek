@@ -214,7 +214,7 @@ export function ShippingSettingsPage() {
     }, [settingsQuery.data]);
 
     const saveSettings = useApiMutation<ShippingSettingsResponse, SettingsFormState>({
-        invalidateQueries: [['shipping-settings', currentAccount?.id]],
+        invalidateQueries: [['shipping-settings', currentAccount?.id], ['shipping-auspost-service-catalog', currentAccount?.id]],
         mutationFn: (values) => shippingFetch('/settings', token!, currentAccount!.id, {
             method: 'PATCH',
             body: JSON.stringify({
@@ -293,7 +293,7 @@ export function ShippingSettingsPage() {
         onSuccess: (data) => setNewStationToken(data.token),
     });
     const testConnection = useApiMutation<{ ok: boolean; status: string; message: string }, void>({
-        invalidateQueries: [['shipping-settings', currentAccount?.id]],
+        invalidateQueries: [['shipping-settings', currentAccount?.id], ['shipping-auspost-service-catalog', currentAccount?.id]],
         mutationFn: () => shippingFetch('/settings/test-connection', token!, currentAccount!.id, { method: 'POST' }),
         onSuccess: (data) => setTestResult(data.message),
     });
@@ -314,6 +314,14 @@ export function ShippingSettingsPage() {
             setImportResult(added > 0
                 ? `Imported ${added} shipping method${added === 1 ? '' : 's'} from ${data.sampledOrders} recent orders.`
                 : `No new shipping methods found in ${data.sampledOrders} recent orders.`);
+        },
+    });
+    const refreshServiceCodes = useApiMutation<AusPostServiceCatalogResponse, void>({
+        invalidateQueries: [['shipping-auspost-service-catalog', currentAccount?.id]],
+        mutationFn: () => shippingFetch('/settings/auspost-service-catalog?refresh=true', token!, currentAccount!.id),
+        onSuccess: (data) => {
+            const count = Array.isArray(data.services) ? data.services.length : 0;
+            setImportResult(`Service code catalog refreshed. ${count} code${count === 1 ? '' : 's'} available (${data.source || 'unknown source'}).`);
         },
     });
 
@@ -346,6 +354,16 @@ export function ShippingSettingsPage() {
 
     const serviceCodeOptions = serviceCodeOptionsFromCatalog(serviceCatalogQuery.data);
     const formatServiceCodeOption = serviceCodeLabelFormatter(serviceCatalogQuery.data);
+    const catalogSourceLabel = serviceCatalogQuery.data?.source === 'live_account'
+        ? 'Live account codes'
+        : serviceCatalogQuery.data?.source === 'live_account_cached'
+            ? 'Live account codes (cached)'
+            : serviceCatalogQuery.data?.source === 'static_fallback'
+                ? 'Static fallback catalog'
+                : 'Catalog source unknown';
+    const catalogSourceTone = serviceCatalogQuery.data?.source === 'static_fallback'
+        ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
+        : 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200';
 
     const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; description: string }> = [
         { id: 'carrier', label: 'Carrier Setup', icon: ShieldCheck, description: 'Credentials, sender details, and API paths.' },
@@ -472,8 +490,16 @@ export function ShippingSettingsPage() {
                     <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">AusPost Service Defaults</h2>
                     <div className="space-y-4">
                         <p className="text-sm text-slate-600 dark:text-slate-300">These AusPost product IDs are discovered from your connected account and are used to auto-select the label service from the WooCommerce order shipping method. Express shipping uses the express default; non-AU addresses use the international default; all other domestic orders use the domestic default.</p>
+                        {serviceCatalogQuery.data ? (
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className={`inline-flex items-center rounded-full border px-2 py-1 font-semibold ${catalogSourceTone}`}>{catalogSourceLabel}</span>
+                                <span className="text-slate-500 dark:text-slate-400">Updated {new Date(serviceCatalogQuery.data.updatedAt).toLocaleString()}</span>
+                                <button type="button" onClick={() => refreshServiceCodes.mutate()} disabled={refreshServiceCodes.isPending} className="rounded-lg border border-slate-300 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Refresh service codes now</button>
+                            </div>
+                        ) : null}
                         {serviceCatalogQuery.data?.warning ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{serviceCatalogQuery.data.warning}</p> : null}
                         {serviceCatalogQuery.error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">{serviceCatalogQuery.error.message}</p> : null}
+                        {refreshServiceCodes.error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">{refreshServiceCodes.error.message}</p> : null}
                         <div className="grid gap-3 md:grid-cols-3">
                             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Default domestic AusPost service code
                                 <select value={form.defaultDomesticService} onChange={(event) => update('defaultDomesticService', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">

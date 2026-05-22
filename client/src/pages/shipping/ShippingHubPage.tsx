@@ -376,14 +376,14 @@ export function ShippingHubPage() {
                                         </div>
                                     </div>
                                 </div>
-                                {draft.lastRateResponse && Object.keys(draft.lastRateResponse).length > 0 ? (
-                                    <RatePreview
-                                        response={draft.lastRateResponse}
-                                        selectedServiceCode={draft.selectedServiceCode || null}
-                                        onSelect={(serviceCode) => selectRateService.mutate({ wooOrderId: order.wooId, serviceCode })}
-                                        isSaving={selectRateService.isPending}
-                                    />
-                                ) : null}
+                                <RatePreview
+                                    response={draft.lastRateResponse && Object.keys(draft.lastRateResponse).length > 0 ? draft.lastRateResponse : null}
+                                    selectedServiceCode={draft.selectedServiceCode || null}
+                                    onRequest={() => void handleRequestRates(order.wooId)}
+                                    onSelect={(serviceCode) => selectRateService.mutate({ wooOrderId: order.wooId, serviceCode })}
+                                    isLoading={requestRates.isPending && rateOrderId === order.wooId}
+                                    isSaving={selectRateService.isPending}
+                                />
                             </div>
                         );
                     })}
@@ -523,20 +523,43 @@ function PackageSelector({
 function RatePreview({
     response,
     selectedServiceCode,
+    onRequest,
     onSelect,
+    isLoading,
     isSaving,
 }: {
-    response: Record<string, unknown>;
+    response: Record<string, unknown> | null;
     selectedServiceCode: string | null;
+    onRequest: () => void;
     onSelect: (serviceCode: string) => void;
+    isLoading: boolean;
     isSaving: boolean;
 }) {
-    const rates = Array.isArray(response.rates) ? response.rates as Array<Record<string, unknown>> : [];
-    const warnings = Array.isArray(response.warnings) ? response.warnings.map((warning) => String(warning)) : [];
-    const errors = Array.isArray(response.errors) ? response.errors.map((error) => String(error)) : [];
+    const rates = Array.isArray(response?.rates) ? response.rates as Array<Record<string, unknown>> : [];
+    const warnings = Array.isArray(response?.warnings) ? response.warnings.map((warning) => String(warning)) : [];
+    const errors = Array.isArray(response?.errors) ? response.errors.map((error) => String(error)) : [];
+    if (!response) {
+        return (
+            <div className="mt-3 max-w-sm rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-semibold underline text-indigo-700 dark:text-indigo-300">Available Rates</p>
+                    <button type="button" onClick={onRequest} disabled={isLoading} className="rounded-full border border-indigo-200 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
+                        {isLoading ? 'Loading...' : 'Get rates'}
+                    </button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Request rates to choose the AusPost service for this order.</p>
+            </div>
+        );
+    }
     if (rates.length === 0) {
         return (
-            <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+            <div className="mt-3 max-w-sm rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-semibold underline">Available Rates</p>
+                    <button type="button" onClick={onRequest} disabled={isLoading} className="rounded-full border border-amber-200 px-2 py-1 text-[11px] font-semibold hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/40 dark:hover:bg-amber-500/10">
+                        {isLoading ? 'Loading...' : 'Refresh'}
+                    </button>
+                </div>
                 <p>{friendlyRateMessage(response)}</p>
                 <details className="mt-2 text-xs">
                     <summary className="cursor-pointer font-semibold">Raw diagnostics</summary>
@@ -547,13 +570,18 @@ function RatePreview({
     }
     return (
         <div className="mt-3 max-w-sm rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <p className="text-[11px] font-semibold underline text-indigo-700 dark:text-indigo-300">Available Rates</p>
+            <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-semibold underline text-indigo-700 dark:text-indigo-300">Available Rates</p>
+                <button type="button" onClick={onRequest} disabled={isLoading} className="rounded-full border border-indigo-200 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
+                    {isLoading ? 'Loading...' : 'Refresh'}
+                </button>
+            </div>
             {warnings.length > 0 ? <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Carrier warning: {warnings.join(' | ')}</p> : null}
             {errors.length > 0 ? <p className="mt-2 text-sm text-red-700 dark:text-red-300">Carrier error: {errors.join(' | ')}</p> : null}
             <div className="mt-2 space-y-1">
                 {rates.map((rate, index) => {
-                    const serviceCode = String(rate.productId || rate.serviceCode || '');
-                    const serviceName = String(rate.serviceName || rate.productId || rate.serviceCode || 'Service');
+                    const serviceCode = String(rate.productId || rate.product_id || rate.serviceCode || rate.service_code || '');
+                    const serviceName = String(rate.serviceName || rate.service_name || rate.productType || rate.product_type || rate.productId || rate.product_id || rate.serviceCode || rate.service_code || 'Service');
                     const amount = String(rate.totalCost || rate.amount || rate.price || '-');
                     const formattedAmount = amount === '-' || amount.startsWith('$') ? amount : `$${amount}`;
                     return (

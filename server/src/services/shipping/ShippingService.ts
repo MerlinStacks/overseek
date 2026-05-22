@@ -1192,8 +1192,8 @@ export class ShippingService {
         };
     }
 
-    async listAusPostServiceCatalog(accountId: string) {
-        return await ausPostShippingTrackingAdapter.listAvailableServiceCatalog(accountId);
+    async listAusPostServiceCatalog(accountId: string, options: { forceRefresh?: boolean } = {}) {
+        return await ausPostShippingTrackingAdapter.listAvailableServiceCatalog(accountId, options);
     }
 
     async saveSettings(accountId: string, data: ShippingSettingsInput) {

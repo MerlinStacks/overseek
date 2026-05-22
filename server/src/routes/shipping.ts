@@ -11,6 +11,10 @@ const listQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(200).default(50),
 });
 
+const serviceCatalogQuerySchema = z.object({
+    refresh: z.coerce.boolean().optional(),
+});
+
 const orderParamsSchema = z.object({
     wooOrderId: z.coerce.number().int().positive(),
 });
@@ -739,7 +743,8 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const denied = await requireShippingPermission(request, reply, 'view_shipping');
             if (denied) return denied;
-            return await shippingService.listAusPostServiceCatalog(request.accountId!);
+            const query = serviceCatalogQuerySchema.parse(request.query || {});
+            return await shippingService.listAusPostServiceCatalog(request.accountId!, { forceRefresh: query.refresh === true });
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to fetch AusPost service catalog', { error: error?.message || error });
             return reply.code(500).send({ error: 'Failed to fetch AusPost service catalog' });
