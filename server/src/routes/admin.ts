@@ -16,7 +16,6 @@ import { platformSettingsRoutes } from './admin/platformSettings';
 import { geoipRoutes } from './admin/geoip';
 import { diagnosticsRoutes } from './admin/diagnostics';
 import { backupRoutes } from './admin/backup';
-import { mockDataRoutes } from './admin/mockData';
 
 
 /**
@@ -50,7 +49,6 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(geoipRoutes);
     await fastify.register(diagnosticsRoutes);
     await fastify.register(backupRoutes);
-    await fastify.register(mockDataRoutes);
 
     // Verify Admin Status
     fastify.get('/verify', async () => ({ isAdmin: true }));

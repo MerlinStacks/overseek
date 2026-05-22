@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
-import { Settings, Upload, Check, AlertCircle, Loader2, Globe, HardDrive, RefreshCw, UserPlus, Database, RotateCcw } from 'lucide-react';
+import { Settings, Upload, Check, AlertCircle, Loader2, Globe, HardDrive, RefreshCw, UserPlus } from 'lucide-react';
 
 interface DatabaseInfo {
     source: 'manual' | 'auto';
@@ -19,22 +19,6 @@ interface GeoIPStatus {
 interface PlatformSettings {
     registrationEnabled: boolean;
     updatedAt: string;
-}
-
-interface MockDataStatus {
-    accountId: string;
-    loginEmail: string;
-    loginPassword: string;
-    counts: {
-        products: number;
-        customers: number;
-        orders: number;
-    };
-    configured: {
-        productsCount: number;
-        customersCount: number;
-        ordersCount: number;
-    };
 }
 
 /**
@@ -55,9 +39,6 @@ export function AdminSettingsPage() {
     // Platform settings state
     const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
     const [togglingRegistration, setTogglingRegistration] = useState(false);
-    const [mockData, setMockData] = useState<MockDataStatus | null>(null);
-    const [seedingMockData, setSeedingMockData] = useState(false);
-    const [resettingMockData, setResettingMockData] = useState(false);
 
     const fetchStatus = useCallback(async () => {
         try {
@@ -86,20 +67,6 @@ export function AdminSettingsPage() {
             }
         } catch (e) {
             Logger.error('Failed to fetch platform settings:', { error: e });
-        }
-    }, [token]);
-
-    const fetchMockDataStatus = useCallback(async () => {
-        try {
-            const res = await fetch('/api/admin/mock-data/status', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setMockData(data);
-            }
-        } catch (e) {
-            Logger.error('Failed to fetch mock data status:', { error: e });
         }
     }, [token]);
 
@@ -141,56 +108,7 @@ export function AdminSettingsPage() {
     useEffect(() => {
         fetchStatus();
         fetchPlatformSettings();
-        fetchMockDataStatus();
-    }, [fetchStatus, fetchPlatformSettings, fetchMockDataStatus]);
-
-    const handleSeedMockData = async () => {
-        setSeedingMockData(true);
-        setMessage(null);
-        try {
-            const res = await fetch('/api/admin/mock-data/seed', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({}),
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setMessage({ type: 'success', text: data.message || 'Mock data seeded successfully' });
-                fetchMockDataStatus();
-            } else {
-                setMessage({ type: 'error', text: data.error || 'Failed to seed mock data' });
-            }
-        } catch (_e) {
-            setMessage({ type: 'error', text: 'Network request failed' });
-        } finally {
-            setSeedingMockData(false);
-        }
-    };
-
-    const handleResetMockData = async () => {
-        setResettingMockData(true);
-        setMessage(null);
-        try {
-            const res = await fetch('/api/admin/mock-data/reset', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setMessage({ type: 'success', text: data.message || 'Mock data reset successfully' });
-                fetchMockDataStatus();
-            } else {
-                setMessage({ type: 'error', text: data.error || 'Failed to reset mock data' });
-            }
-        } catch (_e) {
-            setMessage({ type: 'error', text: 'Network request failed' });
-        } finally {
-            setResettingMockData(false);
-        }
-    };
+    }, [fetchStatus, fetchPlatformSettings]);
 
     const handleForceUpdate = async () => {
         setForcingUpdate(true);
@@ -504,67 +422,6 @@ export function AdminSettingsPage() {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                            <Database size={20} className="text-indigo-600" />
-                            Mock Company Data
-                        </h2>
-                        <p className="text-sm text-slate-500 mt-1">
-                            Seed or reset local mock company data without running CLI scripts.
-                        </p>
-                    </div>
-                    <button
-                        onClick={fetchMockDataStatus}
-                        className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                        title="Refresh status"
-                    >
-                        <RefreshCw size={18} />
-                    </button>
-                </div>
-
-                <div className="p-6 space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        <div className="rounded-lg border border-slate-200 p-3">
-                            <p className="text-xs text-slate-500">Products</p>
-                            <p className="text-xl font-semibold text-slate-800">{mockData?.counts.products ?? 0}</p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 p-3">
-                            <p className="text-xs text-slate-500">Customers</p>
-                            <p className="text-xl font-semibold text-slate-800">{mockData?.counts.customers ?? 0}</p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 p-3">
-                            <p className="text-xs text-slate-500">Orders</p>
-                            <p className="text-xl font-semibold text-slate-800">{mockData?.counts.orders ?? 0}</p>
-                        </div>
-                    </div>
-
-                    <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600">
-                        <p><strong>Mock login:</strong> {mockData?.loginEmail ?? 'mock@overseek.local'} / {mockData?.loginPassword ?? 'MockPassword123'}</p>
-                        <p><strong>Default seed counts:</strong> {mockData?.configured.productsCount ?? 12} products, {mockData?.configured.customersCount ?? 8} customers, {mockData?.configured.ordersCount ?? 20} orders</p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
-                        <button
-                            onClick={handleSeedMockData}
-                            disabled={seedingMockData || resettingMockData}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                        >
-                            {seedingMockData ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
-                            Seed Mock Data
-                        </button>
-                        <button
-                            onClick={handleResetMockData}
-                            disabled={seedingMockData || resettingMockData}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                        >
-                            {resettingMockData ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
-                            Reset + Reseed
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 }
