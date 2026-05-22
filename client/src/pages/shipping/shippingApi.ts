@@ -211,7 +211,9 @@ interface ShippingErrorBody {
 }
 
 function formatShippingError(body: ShippingErrorBody, fallback: string): string {
-    const baseMessage = body.error || body.message || fallback;
+    const baseMessage = body.error === 'Bad Request' && body.message
+        ? body.message
+        : body.error || body.message || fallback;
     const details = body.details;
     if (!details) return baseMessage;
 
@@ -225,12 +227,13 @@ function formatShippingError(body: ShippingErrorBody, fallback: string): string 
 }
 
 export async function shippingFetch<T>(path: string, token: string, accountId: string, options: RequestInit = {}): Promise<T> {
+    const hasBody = options.body != null;
     const res = await fetch(`/api/shipping${path}`, {
         ...options,
         headers: {
-            'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
             'X-Account-ID': accountId,
+            ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
             ...(options.headers || {}),
         },
     });
