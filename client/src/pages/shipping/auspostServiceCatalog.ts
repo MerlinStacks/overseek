@@ -38,7 +38,7 @@ const AUSPOST_NATURAL_LABELS: Record<string, string> = {
 };
 
 function looksLikeCode(value: string) {
-    return /^[A-Z0-9_\-]{4,}$/.test(value.trim());
+    return /^[A-Z0-9_-]{4,}$/.test(value.trim());
 }
 
 function uniqueSortedStrings(values: string[]): string[] {
