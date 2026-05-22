@@ -236,8 +236,30 @@ export async function shippingFetch<T>(path: string, token: string, accountId: s
     });
 
     if (!res.ok) {
-        const body = await res.json().catch(() => ({} as ShippingErrorBody));
-        throw new Error(formatShippingError(body, res.statusText || 'Shipping request failed'));
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        let body: ShippingErrorBody = {};
+        let textBody = '';
+
+        if (contentType.includes('application/json')) {
+            body = await res.json().catch(() => ({} as ShippingErrorBody));
+        } else {
+            textBody = (await res.text().catch(() => '')).trim();
+            if (textBody) {
+                try {
+                    body = JSON.parse(textBody) as ShippingErrorBody;
+                } catch {
+                    // Keep plain text fallback.
+                }
+            }
+        }
+
+        const fallback = res.statusText || `Request failed (${res.status})`;
+        const parsedMessage = formatShippingError(body, fallback);
+        const finalMessage = (parsedMessage === 'Bad Request' || parsedMessage === fallback) && textBody
+            ? textBody
+            : parsedMessage;
+
+        throw new Error(finalMessage || `Request failed (${res.status})`);
     }
 
     const ct = res.headers.get('content-type');

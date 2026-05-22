@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
+import { serviceCodeLabelFormatter, serviceCodeOptionsFromCatalog } from './auspostServiceCatalog';
 import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
 import { AusPostServiceCatalogResponse, shippingFetch, ShippingMethodCandidatesResponse, ShippingPrintStation, ShippingSettingsResponse } from './shippingApi';
 
@@ -343,18 +344,13 @@ export function ShippingSettingsPage() {
         saveSettings.mutate(form);
     };
 
-    const catalogServices = serviceCatalogQuery.data?.services || [];
-    const serviceCodeOptions = uniqueSortedStrings([
-        ...catalogServices.map((service) => service.code),
+    const serviceCodeOptions = serviceCodeOptionsFromCatalog(serviceCatalogQuery.data, [
         form.defaultDomesticService,
         form.defaultExpressService,
         form.defaultInternationalService,
         ...form.shippingMethodServiceMappings.map((mapping) => mapping.auspostServiceCode),
-    ].filter(Boolean));
-    const serviceCodeLabelByCode = new Map(catalogServices.map((service) => [service.code, service.label]));
-    const formatServiceCodeOption = (code: string) => serviceCodeLabelByCode.has(code)
-        ? `${code} - ${serviceCodeLabelByCode.get(code)}`
-        : code;
+    ]);
+    const formatServiceCodeOption = serviceCodeLabelFormatter(serviceCatalogQuery.data);
 
     const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; description: string }> = [
         { id: 'carrier', label: 'Carrier Setup', icon: ShieldCheck, description: 'Credentials, sender details, and API paths.' },

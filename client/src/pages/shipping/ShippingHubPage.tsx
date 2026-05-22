@@ -3,8 +3,9 @@ import { AlertTriangle, Calculator, CheckCircle2, Edit3, PackageCheck, Printer, 
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
+import { serviceCodeLabelFormatter, serviceCodeOptionsFromCatalog } from './auspostServiceCatalog';
 import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
-import { cmToMm, gramsToKg, kgToGrams, mmToCm, openShippingLabelPdf, shippingFetch, type ShippingBulkLabelResult, type ShippingDispatchOrder, type ShippingHubSummary, type ShippingPackagePreset, type ShippingPrintStation, type ShippingSettingsResponse } from './shippingApi';
+import { cmToMm, gramsToKg, kgToGrams, mmToCm, openShippingLabelPdf, shippingFetch, type AusPostServiceCatalogResponse, type ShippingBulkLabelResult, type ShippingDispatchOrder, type ShippingHubSummary, type ShippingPackagePreset, type ShippingPrintStation, type ShippingSettingsResponse } from './shippingApi';
 
 type QueueFilter = 'all' | 'ready' | 'attention';
 type QueueSort = 'oldest' | 'newest' | 'order' | 'customer';
@@ -62,6 +63,11 @@ export function ShippingHubPage() {
         queryKey: ['shipping-settings', currentAccount?.id],
         enabled: canFetch,
         queryFn: () => shippingFetch('/settings', token!, currentAccount!.id),
+    });
+    const serviceCatalogQuery = useApiQuery<AusPostServiceCatalogResponse>({
+        queryKey: ['shipping-auspost-service-catalog', currentAccount?.id],
+        enabled: canFetch,
+        queryFn: () => shippingFetch('/settings/auspost-service-catalog', token!, currentAccount!.id),
     });
     const bulkLabels = useApiMutation<ShippingBulkLabelResult, number[]>({
         invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id], ['shipping-labels', currentAccount?.id]],
@@ -148,6 +154,10 @@ export function ShippingHubPage() {
         .map(({ order }) => order.wooId);
     const selectedReadyOrders = selectedOrders.filter((wooOrderId) => readyOrderIds.includes(wooOrderId));
     const allReadySelected = readyOrderIds.length > 0 && readyOrderIds.every((wooOrderId) => selectedOrders.includes(wooOrderId));
+    const draftServiceCodeOptions = serviceCodeOptionsFromCatalog(serviceCatalogQuery.data, [
+        draftForm?.selectedServiceCode || '',
+    ]);
+    const formatServiceCodeOption = serviceCodeLabelFormatter(serviceCatalogQuery.data);
 
     const toggleReadySelection = () => {
         setSelectedOrders((current) => allReadySelected ? current.filter((wooOrderId) => !readyOrderIds.includes(wooOrderId)) : Array.from(new Set([...current, ...readyOrderIds])));
@@ -376,7 +386,7 @@ export function ShippingHubPage() {
                                             <DraftField label="Outer W (cm)" type="number" value={draftForm.manualOuterWidthCm} onChange={(value) => updateDraftForm('manualOuterWidthCm', value)} />
                                             <DraftField label="Outer H (cm)" type="number" value={draftForm.manualOuterHeightCm} onChange={(value) => updateDraftForm('manualOuterHeightCm', value)} />
                                             <DraftField label="Weight (kg)" type="number" value={draftForm.manualWeightKg} onChange={(value) => updateDraftForm('manualWeightKg', value)} />
-                                            <DraftField label="Service code" value={draftForm.selectedServiceCode} onChange={(value) => updateDraftForm('selectedServiceCode', value)} />
+                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Service code<select value={draftForm.selectedServiceCode} onChange={(event) => updateDraftForm('selectedServiceCode', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="">Use default service</option>{draftServiceCodeOptions.map((option) => <option key={option} value={option}>{formatServiceCodeOption(option)}</option>)}</select></label>
                                             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Print station<select value={draftForm.selectedPrintStationId} onChange={(event) => updateDraftForm('selectedPrintStationId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="">Account default</option>{printStationsQuery.data?.printStations.map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}</select></label>
                                         </div>
                                         {saveDraft.error ? <p className="mt-3 text-sm text-red-600">{saveDraft.error.message}</p> : null}
