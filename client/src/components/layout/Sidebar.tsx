@@ -242,8 +242,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
         });
     }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled, isFeedsEnabled, isShippingEnabled]);
 
-    // State for expanded groups
-    const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+    // State for expanded group
+    const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
     // State for unread inbox count
     const [hasUnread, setHasUnread] = useState(false);
@@ -326,13 +326,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
         if (activeGroup && !isCollapsedView) {
             // Defer state update to avoid cascading renders
             const timeoutId = setTimeout(() => {
-                // Use functional update to avoid dependency on expandedGroups
-                setExpandedGroups(prev => {
-                    if (!prev.includes(activeGroup.label)) {
-                        return [...prev, activeGroup.label];
-                    }
-                    return prev;
-                });
+                setExpandedGroup(activeGroup.label);
             }, 0);
             return () => clearTimeout(timeoutId);
         }
@@ -353,13 +347,9 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     const toggleGroup = (label: string) => {
         if (isCollapsedView) {
             setCollapsed(false);
-            setExpandedGroups([label]);
+            setExpandedGroup(label);
         } else {
-            setExpandedGroups(prev =>
-                prev.includes(label)
-                    ? prev.filter(l => l !== label)
-                    : [...prev, label]
-            );
+            setExpandedGroup(prev => (prev === label ? null : label));
         }
     };
 
@@ -433,7 +423,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
 
 
                     // Group Item
-                    const isExpanded = expandedGroups.includes(item.label);
+                    const isExpanded = expandedGroup === item.label;
                     const isActiveGroup = item.children?.some(child => location.pathname.startsWith(child.path));
 
                     return (

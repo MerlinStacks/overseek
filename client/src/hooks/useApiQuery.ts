@@ -19,6 +19,7 @@ interface UseApiQueryResult<TData> {
     data: TData | undefined;
     isLoading: boolean;
     error: Error | null;
+    dataUpdatedAt: number;
     refetch: () => Promise<TData | undefined>;
 }
 
@@ -52,6 +53,7 @@ export function useApiQuery<TData>({
         data: result.data,
         isLoading: result.isLoading,
         error: result.error as Error | null,
+        dataUpdatedAt: result.dataUpdatedAt,
         refetch,
     };
 }

@@ -39,7 +39,7 @@ interface SettingsFormState {
     trackingEndpointPath: string;
     cancellationEndpointPath: string;
     accountNumber: string;
-    paymentMethod: string;
+    paymentMethod: '' | 'CHARGE_ACCOUNT' | 'CREDIT_CARD' | 'PAYPAL';
     dispatchStatus: string;
     senderName: string;
     senderCompany: string;
@@ -151,7 +151,9 @@ export function ShippingSettingsPage() {
                 trackingEndpointPath: String(config.trackingEndpointPath || AUSPOST_DEFAULT_ENDPOINTS.trackingEndpointPath),
                 cancellationEndpointPath: String(config.cancellationEndpointPath || AUSPOST_DEFAULT_ENDPOINTS.cancellationEndpointPath),
                 accountNumber: String(config.accountNumber || ''),
-                paymentMethod: String(config.paymentMethod || ''),
+                paymentMethod: ['CHARGE_ACCOUNT', 'CREDIT_CARD', 'PAYPAL'].includes(String(config.paymentMethod || ''))
+                    ? String(config.paymentMethod) as SettingsFormState['paymentMethod']
+                    : '',
                 dispatchStatus: String(config.dispatchStatus || 'In Dispatch'),
                 senderName: String(sender.name || ''),
                 senderCompany: String(sender.company || ''),
@@ -286,7 +288,19 @@ export function ShippingSettingsPage() {
                         <TextField label="API key" value={form.apiKey} onChange={(v) => update('apiKey', v)} autoComplete="off" />
                         <TextField label="API password / secret" value={form.apiSecret} onChange={(v) => update('apiSecret', v)} type="password" autoComplete="new-password" />
                         <TextField label="AusPost account number / charge account" value={form.accountNumber} onChange={(v) => update('accountNumber', v)} />
-                        <TextField label="Payment method" value={form.paymentMethod} onChange={(v) => update('paymentMethod', v)} />
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            Payment method
+                            <select
+                                value={form.paymentMethod}
+                                onChange={(event) => update('paymentMethod', event.target.value as SettingsFormState['paymentMethod'])}
+                                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                            >
+                                <option value="">Use carrier default</option>
+                                <option value="CHARGE_ACCOUNT">AusPost Charge Account (Automatic)</option>
+                                <option value="CREDIT_CARD">Credit Card (Automatic)</option>
+                                <option value="PAYPAL">PayPal (Manual)</option>
+                            </select>
+                        </label>
                         <TextField label="Dispatch status trigger" value={form.dispatchStatus} onChange={(v) => update('dispatchStatus', v)} />
                         <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
                             <p className="font-semibold text-slate-900 dark:text-white">Advanced API endpoint mapping</p>
@@ -323,11 +337,12 @@ export function ShippingSettingsPage() {
                 </ShippingComingSoonCard>
 
                 <ShippingComingSoonCard>
-                    <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Defaults</h2>
+                    <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">AusPost Service Defaults</h2>
                     <div className="space-y-4">
-                        <TextField label="Default domestic service" value={form.defaultDomesticService} onChange={(v) => update('defaultDomesticService', v)} />
-                        <TextField label="Default express service" value={form.defaultExpressService} onChange={(v) => update('defaultExpressService', v)} />
-                        <TextField label="Default international service" value={form.defaultInternationalService} onChange={(v) => update('defaultInternationalService', v)} />
+                        <p className="text-sm text-slate-600 dark:text-slate-300">These AusPost product IDs are used to auto-select the label service from the WooCommerce order shipping method. Express shipping uses the express default; non-AU addresses use the international default; all other domestic orders use the domestic default.</p>
+                        <TextField label="Default domestic AusPost service code" value={form.defaultDomesticService} onChange={(v) => update('defaultDomesticService', v)} placeholder="AusPost product ID" />
+                        <TextField label="Default express AusPost service code" value={form.defaultExpressService} onChange={(v) => update('defaultExpressService', v)} placeholder="AusPost product ID" />
+                        <TextField label="Default international AusPost service code" value={form.defaultInternationalService} onChange={(v) => update('defaultInternationalService', v)} placeholder="AusPost product ID" />
                         <TextField label="Label format" value={form.labelFormat} onChange={(v) => update('labelFormat', v)} />
                         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Label print group<select value={form.labelPrintGroup} onChange={(event) => update('labelPrintGroup', event.target.value as SettingsFormState['labelPrintGroup'])} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="Parcel Post">Parcel Post</option><option value="Express Post">Express Post</option></select></label>
                         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Label paper<select value={form.labelPaperType} onChange={(event) => update('labelPaperType', event.target.value as SettingsFormState['labelPaperType'])} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="single_shipping_label">Single standard shipping label</option><option value="a4_label_sheet">A4 label sheets</option></select></label>

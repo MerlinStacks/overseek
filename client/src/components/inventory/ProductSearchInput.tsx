@@ -77,6 +77,7 @@ interface FlatItem {
 
 interface ProductSearchInputProps {
     onSelect: (product: ProductSelection) => void;
+    onClear?: () => void;
     placeholder?: string;
     disabled?: boolean;
     initialValue?: string;
@@ -84,6 +85,7 @@ interface ProductSearchInputProps {
 
 export function ProductSearchInput({
     onSelect,
+    onClear,
     placeholder = 'Search by SKU or product name...',
     disabled = false,
     initialValue = ''
@@ -100,6 +102,10 @@ export function ProductSearchInput({
     const inputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        setQuery(initialValue);
+    }, [initialValue]);
 
     /**
      * Flatten products + their variants into a single list.
@@ -290,6 +296,8 @@ export function ProductSearchInput({
 
     const clearSelection = () => {
         setQuery('');
+        setFlatResults([]);
+        onClear?.();
         inputRef.current?.focus();
     };
 

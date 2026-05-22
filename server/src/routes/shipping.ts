@@ -74,7 +74,7 @@ const settingsSchema = z.object({
     trackingEndpointPath: z.string().max(255).optional(),
     cancellationEndpointPath: z.string().max(255).optional(),
     accountNumber: z.string().max(120).optional(),
-    paymentMethod: z.string().max(120).optional(),
+    paymentMethod: z.enum(['', 'CHARGE_ACCOUNT', 'CREDIT_CARD', 'PAYPAL']).optional(),
     dispatchStatus: z.string().max(80).optional(),
     senderAddress: z.record(z.string(), z.unknown()).optional(),
     defaultDomesticService: z.string().max(80).optional(),

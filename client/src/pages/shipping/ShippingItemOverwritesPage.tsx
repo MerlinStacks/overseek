@@ -3,6 +3,7 @@ import { Save, Trash2 } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
+import { ProductSearchInput, ProductSelection } from '../../components/inventory/ProductSearchInput';
 import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
 import { cmToMm, gramsToKg, kgToGrams, mmToCm, shippingFetch, ShippingItemOverride, ShippingPackagePreset } from './shippingApi';
 
@@ -10,6 +11,7 @@ interface OverrideFormState {
     id?: string;
     wooProductId: string;
     wooVariationId: string;
+    selectedProductLabel: string;
     packagePresetId: string;
     weightKg: string;
     lengthCm: string;
@@ -27,6 +29,7 @@ interface OverrideFormState {
 const emptyForm: OverrideFormState = {
     wooProductId: '',
     wooVariationId: '',
+    selectedProductLabel: '',
     packagePresetId: '',
     weightKg: '',
     lengthCm: '',
@@ -46,6 +49,7 @@ function toForm(item: ShippingItemOverride): OverrideFormState {
         id: item.id,
         wooProductId: String(item.wooProductId),
         wooVariationId: item.wooVariationId ? String(item.wooVariationId) : '',
+        selectedProductLabel: `Product #${item.wooProductId}${item.wooVariationId ? ` / Variation #${item.wooVariationId}` : ''}`,
         packagePresetId: item.packagePresetId || '',
         weightKg: String(gramsToKg(item.weightGrams)),
         lengthCm: String(mmToCm(item.lengthMm)),
@@ -113,6 +117,17 @@ export function ShippingItemOverwritesPage() {
     });
 
     const update = (key: keyof OverrideFormState, value: string | boolean) => setForm(prev => ({ ...prev, [key]: value }));
+    const handleProductSelect = (product: ProductSelection) => {
+        setForm(prev => ({
+            ...prev,
+            wooProductId: String(product.wooId),
+            wooVariationId: product.variationWooId ? String(product.variationWooId) : '',
+            selectedProductLabel: product.name,
+        }));
+    };
+    const clearProduct = () => {
+        setForm(prev => ({ ...prev, wooProductId: '', wooVariationId: '', selectedProductLabel: '' }));
+    };
     const handleSubmit = (event: FormEvent) => {
         event.preventDefault();
         saveOverride.mutate(form);
@@ -121,6 +136,23 @@ export function ShippingItemOverwritesPage() {
     return (
         <ShippingPageShell title="Item Overwrites" description="Override product and variation packing data without mutating WooCommerce product records.">
             <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
+                <ShippingComingSoonCard>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">{form.id ? 'Edit Override' : 'New Override'}</h2>
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Product<ProductSearchInput initialValue={form.selectedProductLabel} placeholder="Search by SKU or product name..." onSelect={handleProductSelect} onClear={clearProduct} /></label>
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Package preset<select value={form.packagePresetId} onChange={(e) => update('packagePresetId', e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="">No preset</option>{packagesQuery.data?.packages.map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name}</option>)}</select></label>
+                        <TextField label="Packed weight (kg)" value={form.weightKg} onChange={(v) => update('weightKg', v)} type="number" />
+                        <div className="grid grid-cols-3 gap-3"><TextField label="L (cm)" value={form.lengthCm} onChange={(v) => update('lengthCm', v)} type="number" /><TextField label="W (cm)" value={form.widthCm} onChange={(v) => update('widthCm', v)} type="number" /><TextField label="H (cm)" value={form.heightCm} onChange={(v) => update('heightCm', v)} type="number" /></div>
+                        <TextField label="Customs description" value={form.customsDescription} onChange={(v) => update('customsDescription', v)} />
+                        <div className="grid grid-cols-2 gap-3"><TextField label="Country of origin" value={form.countryOfOrigin} onChange={(v) => update('countryOfOrigin', v)} /><TextField label="HS code" value={form.hsCode} onChange={(v) => update('hsCode', v)} /></div>
+                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={form.dangerousGoods} onChange={(e) => update('dangerousGoods', e.target.checked)} /> Dangerous goods</label>
+                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={form.fragile} onChange={(e) => update('fragile', e.target.checked)} /> Fragile</label>
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Packer notes<textarea value={form.notes} onChange={(e) => update('notes', e.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900" /></label>
+                        {saveOverride.error ? <p className="text-sm text-red-600">{saveOverride.error.message}</p> : null}
+                        <div className="flex gap-2"><button type="submit" disabled={!form.wooProductId} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"><Save size={16} /> Save</button>{form.id ? <button type="button" onClick={() => deleteOverride.mutate(form.id!)} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 size={16} /> Delete</button> : null}</div>
+                    </form>
+                </ShippingComingSoonCard>
+
                 <ShippingComingSoonCard>
                     <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Overrides</h2>
                     {overridesQuery.isLoading ? <p className="text-sm text-slate-500">Loading overrides...</p> : null}
@@ -134,24 +166,6 @@ export function ShippingItemOverwritesPage() {
                             </button>
                         ))}
                     </div>
-                </ShippingComingSoonCard>
-
-                <ShippingComingSoonCard>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">{form.id ? 'Edit Override' : 'New Override'}</h2>
-                        <TextField label="Woo product ID" value={form.wooProductId} onChange={(v) => update('wooProductId', v)} required type="number" />
-                        <TextField label="Woo variation ID" value={form.wooVariationId} onChange={(v) => update('wooVariationId', v)} type="number" />
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Package preset<select value={form.packagePresetId} onChange={(e) => update('packagePresetId', e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="">No preset</option>{packagesQuery.data?.packages.map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name}</option>)}</select></label>
-                        <TextField label="Packed weight (kg)" value={form.weightKg} onChange={(v) => update('weightKg', v)} type="number" />
-                        <div className="grid grid-cols-3 gap-3"><TextField label="L (cm)" value={form.lengthCm} onChange={(v) => update('lengthCm', v)} type="number" /><TextField label="W (cm)" value={form.widthCm} onChange={(v) => update('widthCm', v)} type="number" /><TextField label="H (cm)" value={form.heightCm} onChange={(v) => update('heightCm', v)} type="number" /></div>
-                        <TextField label="Customs description" value={form.customsDescription} onChange={(v) => update('customsDescription', v)} />
-                        <div className="grid grid-cols-2 gap-3"><TextField label="Country of origin" value={form.countryOfOrigin} onChange={(v) => update('countryOfOrigin', v)} /><TextField label="HS code" value={form.hsCode} onChange={(v) => update('hsCode', v)} /></div>
-                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={form.dangerousGoods} onChange={(e) => update('dangerousGoods', e.target.checked)} /> Dangerous goods</label>
-                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={form.fragile} onChange={(e) => update('fragile', e.target.checked)} /> Fragile</label>
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Packer notes<textarea value={form.notes} onChange={(e) => update('notes', e.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900" /></label>
-                        {saveOverride.error ? <p className="text-sm text-red-600">{saveOverride.error.message}</p> : null}
-                        <div className="flex gap-2"><button type="submit" className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"><Save size={16} /> Save</button>{form.id ? <button type="button" onClick={() => deleteOverride.mutate(form.id!)} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 size={16} /> Delete</button> : null}</div>
-                    </form>
                 </ShippingComingSoonCard>
             </div>
         </ShippingPageShell>

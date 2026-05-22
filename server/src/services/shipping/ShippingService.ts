@@ -43,7 +43,7 @@ export interface ShippingSettingsInput {
     trackingEndpointPath?: string;
     cancellationEndpointPath?: string;
     accountNumber?: string;
-    paymentMethod?: string;
+    paymentMethod?: '' | 'CHARGE_ACCOUNT' | 'CREDIT_CARD' | 'PAYPAL';
     dispatchStatus?: string;
     senderAddress?: Record<string, unknown>;
     defaultDomesticService?: string;
@@ -143,6 +143,8 @@ export class ShippingService {
             if (!draft) {
                 draft = await this.ensureDraftForOrder(accountId, order, dispatchStatus);
                 draftByWooOrderId.set(order.wooId, draft);
+            } else {
+                draft = await this.applyResolvedServiceToDraft(accountId, order, draft);
             }
             rows.push({ order: this.toShippingOrderSummary(order), draft });
         }
@@ -161,6 +163,7 @@ export class ShippingService {
             || data.manualWeightGrams !== undefined;
         const packageResolved = Boolean(data.selectedPackagePresetId)
             || Boolean(data.manualOuterLengthMm && data.manualOuterWidthMm && data.manualOuterHeightMm && data.manualWeightGrams);
+        const serviceTouched = data.selectedServiceCode !== undefined;
         const existingReadinessErrors = Array.isArray(draft.readinessErrors) ? draft.readinessErrors as any[] : [];
         const serviceError = await this.getServiceReadinessError(accountId, {
             ...draft,
@@ -187,6 +190,8 @@ export class ShippingService {
             ...(packageTouched ? {
                 packageSelectionConfidence: 'manual_override',
                 packageSelectionReason: 'Package details manually updated by staff',
+            } : {}),
+            ...(packageTouched || serviceTouched ? {
                 readinessErrors: readinessErrors as Prisma.InputJsonValue,
                 readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked',
             } : {}),
@@ -865,7 +870,7 @@ export class ShippingService {
             serviceCode: draft.selectedServiceCode,
         };
         const config = (settings.config as Record<string, unknown> | null) || {};
-        const labelPrintGroup = this.stringSetting(config.labelPrintGroup) as 'Parcel Post' | 'Express Post' | undefined;
+        const labelPrintGroup = this.resolveLabelPrintGroupForOrder(order.rawData as Record<string, any>, config);
         const labelLayout = this.getConfiguredLabelLayout(config);
         const printDeliveryMethod = this.getPrintDeliveryMethod(config);
         if (!labelPrintGroup || !['Parcel Post', 'Express Post'].includes(labelPrintGroup)) throw new Error('AusPost label print group must be configured in Shipping Settings');
@@ -1197,7 +1202,7 @@ export class ShippingService {
             trackingEndpointPath: data.trackingEndpointPath,
             cancellationEndpointPath: data.cancellationEndpointPath,
             accountNumber: data.accountNumber,
-            paymentMethod: data.paymentMethod,
+            paymentMethod: this.normalizePaymentMethod(data.paymentMethod),
             dispatchStatus: data.dispatchStatus || 'In Dispatch',
             defaultDomesticService: data.defaultDomesticService,
             defaultExpressService: data.defaultExpressService,
@@ -1282,6 +1287,12 @@ export class ShippingService {
         return existing;
     }
 
+    private normalizePaymentMethod(value: unknown): '' | 'CHARGE_ACCOUNT' | 'CREDIT_CARD' | 'PAYPAL' | undefined {
+        if (value === '') return '';
+        if (value === 'CHARGE_ACCOUNT' || value === 'CREDIT_CARD' || value === 'PAYPAL') return value;
+        return undefined;
+    }
+
     private async getItemOverrideOrThrow(accountId: string, id: string) {
         const existing = await prisma.shippingItemOverride.findFirst({ where: { id, accountId } });
         if (!existing) throw new Error('Item override not found');
@@ -1314,11 +1325,12 @@ export class ShippingService {
         const raw = order.rawData as Record<string, any>;
         const addressErrors = this.validateAddressShape(this.getShippingAddress(raw));
         const packageSelection = await this.selectPackageForOrder(accountId, raw);
+        const selectedServiceCode = await this.resolveServiceCodeForOrder(accountId, raw);
         const readinessErrors = [...addressErrors];
         if (packageSelection.confidence === 'manual_required' || packageSelection.confidence === 'missing_dimensions' || packageSelection.confidence === 'overweight') {
             readinessErrors.push({ field: 'package', message: packageSelection.reason });
         }
-        const serviceError = await this.getServiceReadinessError(accountId, { selectedServiceCode: null });
+        const serviceError = await this.getServiceReadinessError(accountId, { selectedServiceCode });
         if (serviceError) readinessErrors.push(serviceError);
         try {
             return await prisma.shippingShipmentDraft.create({
@@ -1335,6 +1347,7 @@ export class ShippingService {
                     packageSelectionConfidence: packageSelection.confidence,
                     packageSelectionReason: packageSelection.reason || `Order matched dispatch status: ${dispatchStatus}`,
                     manualWeightGrams: packageSelection.weightGrams,
+                    selectedServiceCode,
                 },
             });
         } catch (error: any) {
@@ -1472,6 +1485,52 @@ export class ShippingService {
             postcode: source.postcode || '',
             country: source.country || '',
         };
+    }
+
+    private async applyResolvedServiceToDraft(accountId: string, order: any, draft: any) {
+        if (this.stringSetting(draft.selectedServiceCode)) return draft;
+        const selectedServiceCode = await this.resolveServiceCodeForOrder(accountId, order.rawData as Record<string, any>);
+        if (!selectedServiceCode) return draft;
+
+        const existingReadinessErrors = Array.isArray(draft.readinessErrors) ? draft.readinessErrors as any[] : [];
+        const readinessErrors = existingReadinessErrors.filter((error) => error?.field !== 'service');
+        return prisma.shippingShipmentDraft.update({
+            where: { accountId_wooOrderId: { accountId, wooOrderId: order.wooId } },
+            data: {
+                selectedServiceCode,
+                readinessErrors: readinessErrors as Prisma.InputJsonValue,
+                readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked',
+            },
+        });
+    }
+
+    private async resolveServiceCodeForOrder(accountId: string, raw: Record<string, any>): Promise<string | null> {
+        const settings = await prisma.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST' }, select: { config: true } });
+        const config = (settings?.config as Record<string, unknown> | null) || {};
+        const country = String(raw.shipping?.country || raw.billing?.country || '').toUpperCase();
+        if (country && country !== 'AU') return this.stringSetting(config.defaultInternationalService) || null;
+
+        const shippingMethod = this.getWooShippingMethodText(raw).toLowerCase();
+        if (shippingMethod.includes('express')) {
+            return this.stringSetting(config.defaultExpressService) || this.stringSetting(config.defaultDomesticService) || null;
+        }
+
+        return this.stringSetting(config.defaultDomesticService) || null;
+    }
+
+    private getWooShippingMethodText(raw: Record<string, any>) {
+        const shippingLines = Array.isArray(raw.shipping_lines) ? raw.shipping_lines : [];
+        return shippingLines.map((line: Record<string, unknown>) => [
+            line.method_title,
+            line.methodTitle,
+            line.method_id,
+            line.methodId,
+        ].filter(Boolean).join(' ')).filter(Boolean).join(' ') || String(raw.shipping_method_title || raw.shipping_method || '');
+    }
+
+    private resolveLabelPrintGroupForOrder(raw: Record<string, any>, config: Record<string, unknown>): 'Parcel Post' | 'Express Post' | undefined {
+        if (this.getWooShippingMethodText(raw).toLowerCase().includes('express')) return 'Express Post';
+        return this.stringSetting(config.labelPrintGroup) as 'Parcel Post' | 'Express Post' | undefined;
     }
 
     private validateAddressShape(address: Record<string, unknown>) {

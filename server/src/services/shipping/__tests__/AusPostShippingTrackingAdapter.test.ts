@@ -25,6 +25,7 @@ describe('AusPostShippingTrackingAdapter', () => {
                 apiEnvironment: 'sandbox',
                 apiBaseUrl: 'https://example.test',
                 accountNumber: '123456',
+                paymentMethod: 'CHARGE_ACCOUNT',
                 testEndpointPath: '/test',
                 trackingEndpointPath: '/track/{trackingNumber}',
                 defaultDomesticService: '7E55',
@@ -105,6 +106,7 @@ describe('AusPostShippingTrackingAdapter', () => {
                 shipment_reference: 'OVERSEEK-101',
                 customer_reference_1: 'Woo order 101',
                 email_tracking_enabled: false,
+                payment_method: 'CHARGE_ACCOUNT',
                 from: expect.objectContaining({ type: 'MERCHANT_LOCATION', lines: ['1 Sender Street'], postcode: '2000' }),
                 to: expect.objectContaining({ type: 'STANDARD_ADDRESS', lines: ['2 Recipient Road'], postcode: '3000' }),
                 items: [{
@@ -166,6 +168,7 @@ describe('AusPostShippingTrackingAdapter', () => {
         expect(JSON.parse(init.body)).toEqual({
             shipments: [expect.objectContaining({
                 shipment_reference: 'OVERSEEK-202',
+                payment_method: 'CHARGE_ACCOUNT',
                 items: [expect.objectContaining({
                     item_reference: 'ORDER-202-1',
                     product_id: '7E55',
@@ -335,7 +338,7 @@ describe('AusPostShippingTrackingAdapter', () => {
         const pdf = await ausPostShippingTrackingAdapter.downloadLabelPdf(status.labelRequest.url!);
 
         expect(fetch).toHaveBeenNthCalledWith(1, 'https://example.test/labels/REQ-123', expect.objectContaining({ method: 'GET' }));
-        expect(fetch).toHaveBeenNthCalledWith(2, 'https://labels.example.test/REQ-123.pdf');
+        expect(fetch).toHaveBeenNthCalledWith(2, 'https://labels.example.test/REQ-123.pdf', expect.any(Object));
         expect(status.labelRequest).toEqual({ requestId: 'REQ-123', status: 'AVAILABLE', url: 'https://labels.example.test/REQ-123.pdf', message: null, code: null, shipmentIds: ['SHIP-123'] });
         expect(pdf.equals(Buffer.from([37, 80, 68, 70]))).toBe(true);
     });

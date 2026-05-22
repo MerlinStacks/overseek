@@ -10,6 +10,7 @@ interface AusPostCredentials {
     environment: 'sandbox' | 'production';
     senderAddress: Record<string, unknown>;
     defaultDomesticService?: string;
+    paymentMethod?: 'CHARGE_ACCOUNT' | 'CREDIT_CARD' | 'PAYPAL';
     endpoints: {
         test?: string;
         rates?: string;
@@ -166,7 +167,7 @@ class AusPostShippingTrackingAdapter {
         const parsed = new URL(labelUrl);
         if (parsed.protocol !== 'https:') throw new Error('AusPost label PDF URL must use HTTPS');
         const hostname = parsed.hostname.toLowerCase();
-        if (hostname === 'localhost' || hostname === '127.0.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.16.') || hostname.startsWith('169.254.') || hostname.endsWith('.internal') || hostname.endsWith('.local')) {
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.16.') || hostname.startsWith('169.254.') || hostname.endsWith('.internal') || hostname.endsWith('.local')) {
             throw new Error('AusPost label PDF URL points to an internal or private address');
         }
         const controller = new AbortController();
@@ -248,6 +249,7 @@ class AusPostShippingTrackingAdapter {
             environment: config.apiEnvironment === 'sandbox' ? 'sandbox' : 'production',
             senderAddress: (settings.senderAddress as Record<string, unknown> | null) || {},
             defaultDomesticService: this.stringConfig(config.defaultDomesticService),
+            paymentMethod: this.paymentMethodConfig(config.paymentMethod),
             endpoints: {
                 test: this.stringConfig(config.testEndpointPath) || DEFAULT_ENDPOINTS.test,
                 rates: this.stringConfig(config.ratesEndpointPath) || DEFAULT_ENDPOINTS.rates,
@@ -293,7 +295,7 @@ class AusPostShippingTrackingAdapter {
                     status: response.status,
                     error: this.errorMessage(parsed),
                 });
-                throw new Error(`AusPost API request failed (${response.status}): ${this.errorMessage(parsed)}`);
+                throw new Error(`AusPost API request failed (${response.status} ${method} ${endpointPath}): ${this.errorMessage(parsed)}`);
             }
             return parsed as T;
         } catch (error: any) {
@@ -324,13 +326,22 @@ class AusPostShippingTrackingAdapter {
     private errorMessage(body: unknown) {
         if (!body) return 'No response body';
         if (typeof body === 'string') return body.slice(0, 500);
+        if (typeof body === 'object' && 'error_description' in body) return String((body as { error_description?: unknown }).error_description);
         if (typeof body === 'object' && 'message' in body) return String((body as { message?: unknown }).message);
         if (typeof body === 'object' && 'error' in body) return String((body as { error?: unknown }).error);
+        if (typeof body === 'object' && 'errors' in body && Array.isArray((body as { errors?: unknown[] }).errors)) {
+            const first = (body as { errors?: unknown[] }).errors?.[0];
+            if (first && typeof first === 'object' && 'message' in first) return String((first as { message?: unknown }).message);
+        }
         try { return JSON.stringify(body).slice(0, 500); } catch { return String(body).slice(0, 500); }
     }
 
     private stringConfig(value: unknown) {
         return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+    }
+
+    private paymentMethodConfig(value: unknown): 'CHARGE_ACCOUNT' | 'CREDIT_CARD' | 'PAYPAL' | undefined {
+        return value === 'CHARGE_ACCOUNT' || value === 'CREDIT_CARD' || value === 'PAYPAL' ? value : undefined;
     }
 
     private applyTemplate(path: string, values: Record<string, string>) {
@@ -372,6 +383,7 @@ class AusPostShippingTrackingAdapter {
                 shipment_reference: this.truncate(`OVERSEEK-${request.wooOrderId}`, 50),
                 customer_reference_1: this.truncate(`Woo order ${request.wooOrderId}`, 50),
                 email_tracking_enabled: false,
+                ...(credentials.paymentMethod ? { payment_method: credentials.paymentMethod } : {}),
                 from: this.toAusPostAddress(credentials.senderAddress, true),
                 to: this.toAusPostAddress(request.address, false),
                 items: [item],
