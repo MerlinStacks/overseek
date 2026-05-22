@@ -8,7 +8,11 @@ export function serviceCodeOptionsFromCatalog(catalog: AusPostServiceCatalogResp
 
 export function serviceCodeLabelFormatter(catalog: AusPostServiceCatalogResponse | undefined) {
     const labelByCode = new Map((catalog?.services || []).map((service) => [service.code, service.label]));
-    return (code: string) => labelByCode.has(code) ? `${code} - ${labelByCode.get(code)}` : code;
+    return (code: string) => {
+        const label = labelByCode.get(code);
+        if (!label) return code;
+        return label === code ? code : `${code} - ${label}`;
+    };
 }
 
 export function serviceCodeNaturalLabel(catalog: AusPostServiceCatalogResponse | undefined, code: string, fallback?: string) {

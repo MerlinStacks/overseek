@@ -196,6 +196,8 @@ export class ShippingService {
             ...(packageTouched ? {
                 packageSelectionConfidence: 'manual_override',
                 packageSelectionReason: 'Package details manually updated by staff',
+                lastRateRequest: {},
+                lastRateResponse: {},
             } : {}),
             ...(packageTouched || serviceTouched ? {
                 readinessErrors: readinessErrors as Prisma.InputJsonValue,

@@ -155,29 +155,16 @@ class AusPostShippingTrackingAdapter {
                 method: 'POST',
                 body: JSON.stringify(baselinePayload),
             });
-            const baselineProductIds = Array.from(new Set(
-                this.extractRates(baselineResponse)
-                    .map((rate) => this.stringConfig(rate.productId))
-                    .filter(Boolean) as string[]
-            ));
-            if (baselineProductIds.length > 0) {
-                const knownLabelByCode = new Map(AUSPOST_SERVICE_CATALOG.map((service) => [service.code, service.label]));
-                const services = baselineProductIds
-                    .map((code) => ({ code, label: knownLabelByCode.get(code) || code }))
-                    .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }));
-                const result: AusPostServiceDiscoveryResult = {
-                    services,
-                    updatedAt: new Date().toISOString(),
-                    source: 'live_account',
-                };
-                AusPostShippingTrackingAdapter.serviceDiscoveryCache.set(cacheKey, {
-                    expiresAt: Date.now() + AusPostShippingTrackingAdapter.serviceDiscoveryTtlMs,
-                    result,
-                });
-                return result;
+            const knownLabelByCode = new Map(AUSPOST_SERVICE_CATALOG.map((service) => [service.code, service.label]));
+            const discoveredLabelByCode = new Map<string, string>();
+            for (const rate of this.extractRates(baselineResponse)) {
+                const code = this.stringConfig(rate.productId);
+                if (!code) continue;
+                const naturalLabel = this.stringConfig(rate.productType) || knownLabelByCode.get(code) || code;
+                discoveredLabelByCode.set(code, naturalLabel);
             }
 
-            const available: Array<{ code: string; label: string }> = [];
+            const discoveredCodes = new Set(discoveredLabelByCode.keys());
             for (const service of AUSPOST_SERVICE_CATALOG) {
                 try {
                     const payload = this.buildShipmentRatePayload(credentials, { ...probeRequestBase, serviceCode: service.code });
@@ -185,18 +172,23 @@ class AusPostShippingTrackingAdapter {
                         method: 'POST',
                         body: JSON.stringify(payload),
                     });
-                    available.push(service);
+                    discoveredCodes.add(service.code);
+                    if (!discoveredLabelByCode.has(service.code)) discoveredLabelByCode.set(service.code, knownLabelByCode.get(service.code) || service.code);
                 } catch {
                     // unsupported product for this account/environment
                 }
             }
 
-            if (available.length === 0) {
+            if (discoveredCodes.size === 0) {
                 throw new Error('No usable AusPost service codes were discovered for this account');
             }
 
+            const services = Array.from(discoveredCodes)
+                .map((code) => ({ code, label: discoveredLabelByCode.get(code) || knownLabelByCode.get(code) || code }))
+                .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }));
+
             const result: AusPostServiceDiscoveryResult = {
-                services: available,
+                services,
                 updatedAt: new Date().toISOString(),
                 source: 'live_account',
             };
@@ -467,14 +459,14 @@ class AusPostShippingTrackingAdapter {
     }
 
     private buildShipmentRatePayload(credentials: AusPostCredentials, request: AusPostRateRequest) {
-        return this.buildShipmentPayload(credentials, request, { includeProduct: false, requireProduct: false, errorContext: 'requesting AusPost rates' });
+        return this.buildShipmentPayload(credentials, request, { includeProduct: true, allowDefaultProduct: false, requireProduct: false, errorContext: 'requesting AusPost rates' });
     }
 
     private buildShipmentValidationPayload(credentials: AusPostCredentials, request: AusPostRateRequest) {
-        return this.buildShipmentPayload(credentials, request, { includeProduct: true, requireProduct: true, errorContext: 'validating an AusPost shipment' });
+        return this.buildShipmentPayload(credentials, request, { includeProduct: true, allowDefaultProduct: true, requireProduct: true, errorContext: 'validating an AusPost shipment' });
     }
 
-    private buildShipmentPayload(credentials: AusPostCredentials, request: AusPostRateRequest, options: { includeProduct: boolean; requireProduct: boolean; errorContext: string }) {
+    private buildShipmentPayload(credentials: AusPostCredentials, request: AusPostRateRequest, options: { includeProduct: boolean; allowDefaultProduct: boolean; requireProduct: boolean; errorContext: string }) {
         const dimensions = request.dimensions || {};
         const weight = this.gramsToKg(dimensions.weightGrams);
         if (!weight) throw new Error(`Package weight is required before ${options.errorContext}`);
@@ -485,7 +477,7 @@ class AusPostShippingTrackingAdapter {
             contains_dangerous_goods: false,
             authority_to_leave: true,
         };
-        const productId = this.stringConfig(request.serviceCode) || credentials.defaultDomesticService;
+        const productId = this.stringConfig(request.serviceCode) || (options.allowDefaultProduct ? credentials.defaultDomesticService : undefined);
         if (options.includeProduct && productId) item.product_id = productId;
         if (options.requireProduct && !productId) throw new Error(`AusPost service code is required before ${options.errorContext}`);
 

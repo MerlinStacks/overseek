@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
 import { serviceCodeNaturalLabel } from './auspostServiceCatalog';
 import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
-import { gramsToKg, mmToCm, openShippingLabelPdf, shippingFetch, type AusPostServiceCatalogResponse, type ShippingBulkLabelResult, type ShippingDispatchOrder, type ShippingHubSummary, type ShippingPackagePreset, type ShippingSettingsResponse } from './shippingApi';
+import { mmToCm, openShippingLabelPdf, shippingFetch, type AusPostServiceCatalogResponse, type ShippingBulkLabelResult, type ShippingDispatchOrder, type ShippingHubSummary, type ShippingPackagePreset, type ShippingSettingsResponse } from './shippingApi';
 
 type QueueFilter = 'all' | 'ready' | 'attention';
 type QueueSort = 'oldest' | 'newest' | 'order' | 'customer';
@@ -147,6 +147,13 @@ export function ShippingHubPage() {
                 manualWeightGrams: Math.round(weightKg * 1000),
             }),
         }),
+        onSuccess: (_data, variables) => {
+            setCustomPackageDrafts((current) => {
+                const next = { ...current };
+                delete next[variables.wooOrderId];
+                return next;
+            });
+        },
     });
     const manualPrint = useApiMutation<unknown, number>({
         invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id], ['shipping-labels', currentAccount?.id]],
@@ -224,9 +231,9 @@ export function ShippingHubPage() {
         if (draftForm) saveAddress.mutate(draftForm);
     };
 
-    const updateCustomPackageDraft = (wooOrderId: number, key: keyof PackageDraftState, value: string) => {
+    const updateCustomPackageDraft = (wooOrderId: number, fallback: PackageDraftState, key: keyof PackageDraftState, value: string) => {
         setCustomPackageDrafts((current) => {
-            const existing = current[wooOrderId] || { lengthCm: '', widthCm: '', heightCm: '', weightKg: '' };
+            const existing = current[wooOrderId] || fallback;
             return { ...current, [wooOrderId]: { ...existing, [key]: value } };
         });
     };
@@ -419,7 +426,6 @@ export function ShippingHubPage() {
                                     <div>
                                         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Package</p>
                                         <PackageSelector
-                                            wooOrderId={order.wooId}
                                             packages={packagesQuery.data?.packages.filter((pkg) => pkg.isActive) || []}
                                             selectedPackage={selectedPackagePreset}
                                             selectedPackageId={draft.selectedPackagePresetId || ''}
@@ -429,8 +435,15 @@ export function ShippingHubPage() {
                                             totalWeightGrams={draft.manualWeightGrams || null}
                                             customDraft={customPackageDrafts[order.wooId] || null}
                                             disabled={selectPackage.isPending || setCustomPackage.isPending}
-                                            onSelect={(packagePresetId) => selectPackage.mutate({ wooOrderId: order.wooId, packagePresetId })}
-                                            onCustomChange={(key, value) => updateCustomPackageDraft(order.wooId, key, value)}
+                                            onSelect={(packagePresetId) => {
+                                                setCustomPackageDrafts((current) => {
+                                                    const next = { ...current };
+                                                    delete next[order.wooId];
+                                                    return next;
+                                                });
+                                                selectPackage.mutate({ wooOrderId: order.wooId, packagePresetId });
+                                            }}
+                                            onCustomChange={(fallback, key, value) => updateCustomPackageDraft(order.wooId, fallback, key, value)}
                                             onCustomSubmit={() => submitCustomPackage(order.wooId)}
                                         />
                                     </div>
@@ -566,7 +579,6 @@ function AddressModal({
 }
 
 function PackageSelector({
-    wooOrderId,
     packages,
     selectedPackage,
     selectedPackageId,
@@ -580,7 +592,6 @@ function PackageSelector({
     onCustomChange,
     onCustomSubmit,
 }: {
-    wooOrderId: number;
     packages: ShippingPackagePreset[];
     selectedPackage: ShippingPackagePreset | null;
     selectedPackageId: string;
@@ -591,14 +602,24 @@ function PackageSelector({
     customDraft: PackageDraftState | null;
     disabled: boolean;
     onSelect: (packagePresetId: string) => void;
-    onCustomChange: (key: keyof PackageDraftState, value: string) => void;
+    onCustomChange: (fallback: PackageDraftState, key: keyof PackageDraftState, value: string) => void;
     onCustomSubmit: () => void;
 }) {
-    const lengthCm = customDraft?.lengthCm ?? (manualOuterLengthMm ? (manualOuterLengthMm / 10).toFixed(1) : '');
-    const widthCm = customDraft?.widthCm ?? (manualOuterWidthMm ? (manualOuterWidthMm / 10).toFixed(1) : '');
-    const heightCm = customDraft?.heightCm ?? (manualOuterHeightMm ? (manualOuterHeightMm / 10).toFixed(1) : '');
-    const weightKg = customDraft?.weightKg ?? (totalWeightGrams ? (totalWeightGrams / 1000).toFixed(3) : '');
+    const fallbackDraft = {
+        lengthCm: manualOuterLengthMm ? (manualOuterLengthMm / 10).toFixed(1) : selectedPackage ? String(mmToCm(selectedPackage.outerLengthMm)) : '',
+        widthCm: manualOuterWidthMm ? (manualOuterWidthMm / 10).toFixed(1) : selectedPackage ? String(mmToCm(selectedPackage.outerWidthMm)) : '',
+        heightCm: manualOuterHeightMm ? (manualOuterHeightMm / 10).toFixed(1) : selectedPackage ? String(mmToCm(selectedPackage.outerHeightMm)) : '',
+        weightKg: totalWeightGrams ? (totalWeightGrams / 1000).toFixed(3) : '',
+    };
+    const lengthCm = customDraft?.lengthCm ?? fallbackDraft.lengthCm;
+    const widthCm = customDraft?.widthCm ?? fallbackDraft.widthCm;
+    const heightCm = customDraft?.heightCm ?? fallbackDraft.heightCm;
+    const weightKg = customDraft?.weightKg ?? fallbackDraft.weightKg;
     const showingCustomPackage = !selectedPackageId && Boolean(manualOuterLengthMm && manualOuterWidthMm && manualOuterHeightMm && totalWeightGrams);
+    const hasCompleteCustomValues = [lengthCm, widthCm, heightCm, weightKg].every((value) => {
+        const numberValue = Number(value);
+        return Number.isFinite(numberValue) && numberValue > 0;
+    });
 
     return (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -615,36 +636,25 @@ function PackageSelector({
                             ? `${mmToCm(manualOuterLengthMm!)} x ${mmToCm(manualOuterWidthMm!)} x ${mmToCm(manualOuterHeightMm!)} cm (custom)`
                             : 'No configured package selected'}
                 </p>
-                <p className="text-right text-xs text-slate-600 dark:text-slate-300">{selectedPackage ? `${gramsToKg(selectedPackage.packagingWeightGrams)} kg` : ''}</p>
+                <p className="text-right text-xs text-slate-600 dark:text-slate-300">{showingCustomPackage ? 'Custom' : ''}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 border-b border-slate-200 p-2 dark:border-slate-700">
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Length (cm)
+                    <input value={lengthCm} onChange={(event) => onCustomChange(fallbackDraft, 'lengthCm', event.target.value)} onBlur={() => { if (hasCompleteCustomValues) onCustomSubmit(); }} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                </label>
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Width (cm)
+                    <input value={widthCm} onChange={(event) => onCustomChange(fallbackDraft, 'widthCm', event.target.value)} onBlur={() => { if (hasCompleteCustomValues) onCustomSubmit(); }} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                </label>
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Height (cm)
+                    <input value={heightCm} onChange={(event) => onCustomChange(fallbackDraft, 'heightCm', event.target.value)} onBlur={() => { if (hasCompleteCustomValues) onCustomSubmit(); }} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                </label>
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Weight (kg)
+                    <input value={weightKg} onChange={(event) => onCustomChange(fallbackDraft, 'weightKg', event.target.value)} onBlur={() => { if (hasCompleteCustomValues) onCustomSubmit(); }} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                </label>
             </div>
             <div className="flex items-center justify-between bg-slate-50 px-2 py-1.5 text-xs text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-                <span>Total Weight: {totalWeightGrams ? `${gramsToKg(totalWeightGrams)}kg` : 'Unknown'}</span>
+                <span>{showingCustomPackage ? 'Custom package on this order' : 'Edit dimensions or weight to make this order custom'}</span>
                 <span className="text-lg leading-none text-slate-900 dark:text-white">+</span>
-            </div>
-            <div className="space-y-2 border-t border-slate-200 p-2 dark:border-slate-700">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Custom package</p>
-                <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Length (cm)
-                        <input value={lengthCm} onChange={(event) => onCustomChange('lengthCm', event.target.value)} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
-                    </label>
-                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Width (cm)
-                        <input value={widthCm} onChange={(event) => onCustomChange('widthCm', event.target.value)} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
-                    </label>
-                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Height (cm)
-                        <input value={heightCm} onChange={(event) => onCustomChange('heightCm', event.target.value)} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
-                    </label>
-                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Weight (kg)
-                        <input value={weightKg} onChange={(event) => onCustomChange('weightKg', event.target.value)} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
-                    </label>
-                </div>
-                <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={onCustomSubmit}
-                    className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                    Save custom package for #{wooOrderId}
-                </button>
             </div>
         </div>
     );
