@@ -20,6 +20,15 @@ interface TooltipParam {
     value: number;
 }
 
+function escapeHtml(value: unknown): string {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -94,7 +103,7 @@ export function CustomerGrowthWidget({ className, dateRange }: WidgetProps) {
                     const points = params as TooltipParam[];
                     const date = new Date(String(data[points[0].dataIndex]?.date));
                     const label = isNaN(date.getTime()) ? points[0].axisValue : date.toLocaleDateString();
-                    return `<div style="font-weight:600;margin-bottom:4px">${label}</div><div>New Customers: ${points[0].value}</div>`;
+                    return `<div style="font-weight:600;margin-bottom:4px">${escapeHtml(label)}</div><div>New Customers: ${escapeHtml(points[0].value)}</div>`;
                 }
             },
             series: [{

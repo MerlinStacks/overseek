@@ -5,7 +5,7 @@ import {
     mergeInvoiceSettings,
     resolveInvoiceTemplateString,
 } from '../../../packages/overseek-core/src/invoiceRenderModel';
-import { getInvoiceItemMeta } from '../../../packages/overseek-core/src/invoiceItemUtils';
+import { getInvoiceItemMeta, getOrderGiftWrappingMeta } from '../../../packages/overseek-core/src/invoiceItemUtils';
 
 /**
  * Legacy fallback invoice renderer.
@@ -153,7 +153,7 @@ export async function generateVectorInvoicePDF(
     const colWidthPx = (DESIGN_WIDTH_PX - (GRID_COLS - 1) * GRID_MARGIN_X_PX) / GRID_COLS;
     const rowSpanPx = GRID_ROW_HEIGHT_PX + GRID_MARGIN_Y_PX;
 
-    const orderNumber = order.number || order.order_number || order.id || 'N/A';
+    const orderNumber = String(order.number || order.order_number || order.id || 'N/A');
     const orderDate = order.date_created
         ? new Date(order.date_created).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : 'N/A';
@@ -344,13 +344,36 @@ export async function generateVectorInvoicePDF(
         }
 
         if (item.type === 'order_details') {
-            const lines = [
-                `Order Number: ${orderNumber}`,
-                `Order Date: ${orderDate}`,
-                `Payment Method: ${order.payment_method_title || order.payment_method || 'N/A'}`,
-                `Shipping Method: ${order.shipping_lines?.[0]?.method_title || order.shipping_method || 'N/A'}`,
-            ].join('\n');
-            renderTextBlock(lines, box, { fontSize: '9.5' }, 'left');
+            const giftWrapMeta = getOrderGiftWrappingMeta(order as Record<string, unknown>);
+            const detailRows: Array<{ label: string; value: string; highlight: boolean }> = [
+                { label: 'Order Number', value: orderNumber, highlight: false },
+                { label: 'Order Date', value: orderDate, highlight: false },
+                { label: 'Payment Method', value: String(order.payment_method_title || order.payment_method || 'N/A'), highlight: false },
+                { label: 'Shipping Method', value: String(order.shipping_lines?.[0]?.method_title || order.shipping_method || 'N/A'), highlight: false },
+            ];
+            if (giftWrapMeta) {
+                detailRows.push({ label: giftWrapMeta.label, value: giftWrapMeta.value, highlight: true });
+            }
+
+            const baseFontSize = 9.5;
+            const rowHeight = baseFontSize * 0.6;
+            let rowY = pageInfo.y + 3.8;
+            doc.setFontSize(baseFontSize);
+            for (const row of detailRows) {
+                if (row.highlight) {
+                    doc.setFillColor(254, 240, 138);
+                    doc.rect(box.x + 0.2, rowY - (rowHeight * 0.8), Math.max(10, box.w - 0.4), rowHeight + 1.6, 'F');
+                }
+                doc.setTextColor(0, 0, 0);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`${row.label}:`, box.x + 0.6, rowY, { baseline: 'top' });
+                doc.setFont('helvetica', 'bold');
+                doc.text(row.value, box.x + (box.w * 0.42), rowY, {
+                    baseline: 'top',
+                    maxWidth: Math.max(8, box.w * 0.56),
+                });
+                rowY += rowHeight + 1.1;
+            }
             continue;
         }
 

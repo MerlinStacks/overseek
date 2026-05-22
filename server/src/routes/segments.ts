@@ -8,6 +8,14 @@ import { segmentService } from '../services/SegmentService';
 import { Logger } from '../utils/logger';
 import { parseAdvancedFilters } from './routeHelpers';
 
+function validateSegmentBody(body: any): string | null {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return 'Invalid segment payload';
+    if ('name' in body && (typeof body.name !== 'string' || body.name.trim().length === 0)) return 'Segment name must be a non-empty string';
+    if ('description' in body && body.description !== null && typeof body.description !== 'string') return 'Segment description must be a string';
+    if ('conditions' in body && !Array.isArray(body.conditions)) return 'Segment conditions must be an array';
+    return null;
+}
+
 const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
     // Apply auth to all routes
     fastify.addHook('preHandler', requireAuthFastify);
@@ -28,6 +36,8 @@ const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/', async (request, reply) => {
         try {
             const accountId = request.accountId!;
+            const validationError = validateSegmentBody(request.body);
+            if (validationError) return reply.code(400).send({ error: validationError });
             const segment = await segmentService.createSegment(accountId, request.body as any);
             return segment;
         } catch (error) {
@@ -53,6 +63,8 @@ const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.put<{ Params: { id: string } }>('/:id', async (request, reply) => {
         try {
             const accountId = request.accountId!;
+            const validationError = validateSegmentBody(request.body);
+            if (validationError) return reply.code(400).send({ error: validationError });
             await segmentService.updateSegment(request.params.id, accountId, request.body as any);
             return { success: true };
         } catch (error) {

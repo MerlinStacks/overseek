@@ -131,13 +131,17 @@ export function SegmentsPage() {
 
     async function handleDelete(id: string) {
         if (!confirm('Are you sure you want to delete this segment?')) return;
+        if (!currentAccount?.id) {
+            showToast('Select an account before deleting a segment');
+            return;
+        }
 
         try {
             const res = await fetch(`/api/segments/${id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
+                    'X-Account-ID': currentAccount.id
                 }
             });
             if (res.ok) {

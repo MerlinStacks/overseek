@@ -96,7 +96,15 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(403).send({ error: 'Forbidden' });
             }
 
-            const data: any = { name, domain, sitemapUrl, wooUrl, wooConsumerKey, openRouterApiKey, aiModel, appearance };
+            const data: Record<string, unknown> = {};
+            if (typeof name === 'string') data.name = name.trim();
+            if (typeof domain === 'string') data.domain = domain.trim();
+            if (typeof sitemapUrl === 'string') data.sitemapUrl = sitemapUrl.trim();
+            if (typeof wooUrl === 'string') data.wooUrl = wooUrl.trim();
+            if (typeof wooConsumerKey === 'string') data.wooConsumerKey = wooConsumerKey.trim();
+            if (typeof openRouterApiKey === 'string') data.openRouterApiKey = openRouterApiKey.trim();
+            if (typeof aiModel === 'string') data.aiModel = aiModel.trim();
+            if (appearance && typeof appearance === 'object' && !Array.isArray(appearance)) data.appearance = appearance;
             if (typeof revenueTaxInclusive === 'boolean') data.revenueTaxInclusive = revenueTaxInclusive;
             if (typeof autoSendInvoiceOnNewOrder === 'boolean') data.autoSendInvoiceOnNewOrder = autoSendInvoiceOnNewOrder;
             if (invoiceRecipientEmail !== undefined) {

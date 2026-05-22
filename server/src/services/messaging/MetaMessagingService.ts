@@ -13,6 +13,17 @@ import { EventBus, EVENTS } from '../events';
 const GRAPH_API_VERSION = 'v24.0';
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
+async function safeMetaJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[MetaMessaging] Non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error(`Meta returned non-JSON response during ${context}`);
+    }
+
+    return response.json();
+}
+
 interface MetaMessagePayload {
     recipientId: string;
     message: string;
@@ -81,11 +92,11 @@ export class MetaMessagingService {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
+                const errorData = await safeMetaJson(response, 'sendMessage.error').catch(() => ({}));
                 throw new Error(JSON.stringify(errorData));
             }
 
-            const data = await response.json();
+            const data = await safeMetaJson(response, 'sendMessage');
 
             Logger.info('[MetaMessaging] Message sent', {
                 platform,
@@ -275,13 +286,12 @@ export class MetaMessagingService {
         try {
             const url = new URL(`${GRAPH_API_BASE}/${userId}`);
             url.searchParams.set('fields', 'name,profile_pic');
-            url.searchParams.set('access_token', accessToken);
 
-            const response = await fetch(url.toString());
+            const response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            return await response.json();
+            return await safeMetaJson(response, 'getUserProfile');
         } catch (error: any) {
             Logger.warn('[MetaMessaging] Failed to fetch user profile', {
                 userId,
@@ -302,14 +312,13 @@ export class MetaMessagingService {
         try {
             const url = new URL(`${GRAPH_API_BASE}/${pageId}`);
             url.searchParams.set('fields', 'instagram_business_account{id,username}');
-            url.searchParams.set('access_token', pageAccessToken);
 
-            const response = await fetch(url.toString());
+            const response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${pageAccessToken}` } });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
-            const data = await response.json();
+            const data = await safeMetaJson(response, 'getInstagramBusinessAccount');
             const igAccount = data.instagram_business_account;
             if (!igAccount) {
                 return null;
@@ -342,10 +351,9 @@ export class MetaMessagingService {
             .update(payload)
             .digest('hex');
 
-        return crypto.timingSafeEqual(
-            Buffer.from(signature),
-            Buffer.from(expectedSignature)
-        );
+        const actual = Buffer.from(signature);
+        const expected = Buffer.from(expectedSignature);
+        return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
     }
 
     /**
@@ -358,14 +366,13 @@ export class MetaMessagingService {
         try {
             const url = new URL(`${GRAPH_API_BASE}/me/accounts`);
             url.searchParams.set('fields', 'id,name,access_token');
-            url.searchParams.set('access_token', userAccessToken);
 
-            const response = await fetch(url.toString());
+            const response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${userAccessToken}` } });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
-            const data = await response.json();
+            const data = await safeMetaJson(response, 'listUserPages');
             // Map snake_case from API to camelCase for our code
             return (data.data || []).map((page: any) => ({
                 id: page.id,

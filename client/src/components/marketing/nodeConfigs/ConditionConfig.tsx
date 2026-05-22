@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 
 type MatchType = 'all' | 'any';
 
@@ -134,6 +135,8 @@ const NUMERIC_FIELDS = new Set([
     'customer.totalSpent',
     'customer.ordersCount',
     'customer.daysSinceLastOrder',
+    'customer.reviewedInLastDays',
+    'customer.latestReviewRating',
     'user.registeredDays',
 ]);
 
@@ -206,10 +209,13 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
         label: 'Engagement',
         icon: 'Engage',
         conditions: [
+            { field: 'customer.reviewedInLastDays', label: 'Left a review in last X days', operators: ['eq'] },
+            { field: 'customer.latestReviewRating', label: 'Latest review rating', operators: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] },
             { field: 'email.opened', label: 'Opened any email', operators: ['eq'] },
             { field: 'email.openedRecent', label: 'Opened email in last X days', operators: ['eq'] },
             { field: 'email.clicked', label: 'Clicked any link', operators: ['eq'] },
             { field: 'email.clickedRecent', label: 'Clicked link in last X days', operators: ['eq'] },
+            { field: 'inbox.customerSentEmail', label: 'Sent any email to inbox', operators: ['eq'] },
         ]
     },
     {
@@ -502,7 +508,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             );
         }
 
-        if (cond.field === 'user.isLoggedIn') {
+        if (cond.field === 'user.isLoggedIn' || cond.field === 'inbox.customerSentEmail') {
             return (
                 <select
                     value={cond.value || ''}
@@ -602,9 +608,11 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             <input
                 type="text"
                 value={cond.value || ''}
-                onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                onChange={(e) => updateCondition(idx, 'value', sanitizeBidiText(e.target.value))}
                 placeholder="Value..."
                 className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                dir="ltr"
+                style={LTR_TEXT_STYLE}
             />
         );
     };
@@ -632,7 +640,7 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             return formatStatusLabel(cond.value);
         }
 
-        if (cond.field === 'user.isLoggedIn') {
+        if (cond.field === 'user.isLoggedIn' || cond.field === 'inbox.customerSentEmail') {
             if (cond.value === 'true') return 'Yes';
             if (cond.value === 'false') return 'No';
         }

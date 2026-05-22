@@ -185,8 +185,9 @@ export const MessageBubble = memo(function MessageBubble({
 
         return DOMPurify.sanitize(cleanContent, {
             ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'ul', 'ol', 'li', 'blockquote', 'div', 'span', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-            ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'width', 'height', 'style', 'class'],
+            ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
             ALLOW_DATA_ATTR: false,
+            ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/))/i,
         });
     }, [mainContent]);
 
@@ -197,6 +198,8 @@ export const MessageBubble = memo(function MessageBubble({
         return DOMPurify.sanitize(cleanedQuoted, {
             ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'div', 'span'],
             ALLOWED_ATTR: ['href', 'target'],
+            ALLOW_DATA_ATTR: false,
+            ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/))/i,
         });
     }, [quotedContent]);
 

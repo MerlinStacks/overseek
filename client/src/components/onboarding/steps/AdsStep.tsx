@@ -11,6 +11,7 @@ import { OnboardingStepProps } from '../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 import { Logger } from '../../../utils/logger';
+import { navigateToSafeUrl } from '../../../utils/url';
 
 // Google Icon component
 function GoogleIcon({ className }: { className?: string }) {
@@ -102,7 +103,7 @@ export function AdsStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitting 
 
             const data = await res.json() as { authUrl?: string };
             if (data.authUrl) {
-                window.location.href = data.authUrl;
+                if (!navigateToSafeUrl(data.authUrl)) throw new Error('Invalid Google OAuth redirect URL');
             }
         } catch (error) {
             Logger.error('Google OAuth failed', { error });

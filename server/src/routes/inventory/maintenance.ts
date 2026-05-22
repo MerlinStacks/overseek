@@ -44,7 +44,10 @@ const maintenanceRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
     fastify.post('/repair-received-pos', async (request, reply) => {
-        const accountId = request.accountId!;
+        const accountId = request.accountId;
+        if (!accountId) {
+            return reply.code(400).send({ error: 'Account context required' });
+        }
         try {
             const { reindexed, errors } = await reindexAllProducts(accountId);
             Logger.info('Repair completed: re-indexed all products', { accountId, reindexed, errors: errors.length });
@@ -56,14 +59,39 @@ const maintenanceRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.post('/reprocess-received-pos', async (request, reply) => {
-        const accountId = request.accountId!;
+        const accountId = request.accountId;
+        if (!accountId) {
+            return reply.code(400).send({ error: 'Account context required' });
+        }
+
         const existing = reprocessProgress.get(accountId);
         if (existing?.status === 'running') {
             return reply.code(409).send({ success: false, message: 'Reprocessing already in progress', progress: existing });
         }
 
-        const poCount = await prisma.purchaseOrder.count({ where: { accountId, status: 'RECEIVED' } });
-        if (poCount === 0) return { success: true, message: 'No RECEIVED POs found', processed: 0 };
+        reprocessProgress.set(accountId, {
+            status: 'running',
+            startedAt: new Date().toISOString(),
+            totalPOs: 0,
+            processed: 0,
+            variationsBackfilled: 0,
+            errors: [],
+            errorCount: 0
+        });
+
+        let poCount = 0;
+        try {
+            poCount = await prisma.purchaseOrder.count({ where: { accountId, status: 'RECEIVED' } });
+        } catch (error) {
+            reprocessProgress.delete(accountId);
+            Logger.error('[Reprocess] Failed to count received POs', { accountId, error });
+            return reply.code(500).send({ error: 'Failed to start PO reprocessing' });
+        }
+
+        if (poCount === 0) {
+            reprocessProgress.delete(accountId);
+            return { success: true, message: 'No RECEIVED POs found', processed: 0 };
+        }
 
         reprocessProgress.set(accountId, {
             status: 'running',
@@ -83,7 +111,11 @@ const maintenanceRoutes: FastifyPluginAsync = async (fastify) => {
         setImmediate(() => {
             (async () => {
                 Logger.info('[Reprocess] Starting background PO reprocessing', { accountId, poCount });
-                const progress = reprocessProgress.get(accountId)!;
+                const progress = reprocessProgress.get(accountId);
+                if (!progress) {
+                    Logger.warn('[Reprocess] Progress entry disappeared before start', { accountId });
+                    return;
+                }
 
                 const receivedPOs = await prisma.purchaseOrder.findMany({
                     where: { accountId, status: 'RECEIVED' },
@@ -165,7 +197,8 @@ const maintenanceRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.get('/reprocess-status', async (request) => {
-        const accountId = request.accountId!;
+        const accountId = request.accountId;
+        if (!accountId) return { status: 'idle', message: 'Account context required' };
         const progress = reprocessProgress.get(accountId);
         if (!progress) return { status: 'idle', message: 'No reprocess operation running or recently completed' };
         return progress;

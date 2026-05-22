@@ -22,16 +22,20 @@ const botHitPayloadSchema = z.object({
 
 const BOT_HIT_IP_WINDOW_MS = 60 * 1000;
 const BOT_HIT_IP_MAX_REQUESTS = 180;
+const BOT_HIT_IP_MAX_KEYS = 5000;
 const botHitIpHits = new Map<string, { count: number; startedAt: number }>();
 
-function isBotHitIpRateLimited(ip: string): boolean {
-    const now = Date.now();
-
+function pruneBotHitIpHits(now: number): void {
     for (const [key, value] of botHitIpHits) {
-        if (now - value.startedAt > BOT_HIT_IP_WINDOW_MS) {
+        if (now - value.startedAt > BOT_HIT_IP_WINDOW_MS || botHitIpHits.size > BOT_HIT_IP_MAX_KEYS) {
             botHitIpHits.delete(key);
         }
     }
+}
+
+function isBotHitIpRateLimited(ip: string): boolean {
+    const now = Date.now();
+    pruneBotHitIpHits(now);
 
     const existing = botHitIpHits.get(ip);
     if (!existing || now - existing.startedAt > BOT_HIT_IP_WINDOW_MS) {
@@ -60,7 +64,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/events', async (request, reply) => {
         try {
             const body = request.body as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
 
             if (!accountId || !visitorId || !type) {
                 return reply.code(400).send({ error: 'Missing required fields' });
@@ -88,7 +92,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 accountId, visitorId, type, url, payload, pageTitle,
                 ipAddress: ip as string,
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
-                referrer, utmSource, utmMedium, utmCampaign, is404,
+                referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, is404,
                 clickId, clickPlatform, landingReferrer, eventId: resolvedEventId,
                 consentState
             });
@@ -112,7 +116,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/e', async (request, reply) => {
         try {
             const body = request.body as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
 
             if (!accountId || !visitorId || !type) {
                 return reply.code(400).send({ error: 'Missing required fields' });
@@ -138,7 +142,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 accountId, visitorId, type, url, payload, pageTitle,
                 ipAddress: ip as string,
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
-                referrer, utmSource, utmMedium, utmCampaign, is404,
+                referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, is404,
                 clickId, clickPlatform, landingReferrer, eventId: resolvedEventId,
                 consentState
             });

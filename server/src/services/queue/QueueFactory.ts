@@ -24,6 +24,7 @@ export const QUEUES = {
 
 // Global Store for Queues to adapter
 const queues = new Map<string, Queue>();
+const workers = new Set<Worker>();
 
 export class QueueFactory {
 
@@ -134,7 +135,24 @@ export class QueueFactory {
             Logger.error(`[QueueFactory] Worker error on queue "${name}"`, { error: err.message });
         });
 
+        workers.add(worker);
+        worker.on('closed', () => workers.delete(worker));
+
         return worker;
+    }
+
+    static async closeWorkers(): Promise<void> {
+        if (workers.size === 0) return;
+        const closing = Array.from(workers);
+        await Promise.allSettled(closing.map(worker => worker.close()));
+        closing.forEach(worker => workers.delete(worker));
+    }
+
+    static async closeQueues(): Promise<void> {
+        if (queues.size === 0) return;
+        const closing = Array.from(queues.values());
+        await Promise.allSettled(closing.map(queue => queue.close()));
+        queues.clear();
     }
 
     /**

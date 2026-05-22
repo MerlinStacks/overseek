@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { getSafeHref } from '../../utils/url';
 
 interface CrawlerEntry {
     name: string;
@@ -362,7 +363,7 @@ function CrawlerRow({ crawler, isToggling, onToggle }: {
                         {intentCfg.label}
                     </span>
                     {crawler.website && (
-                        <a href={crawler.website} target="_blank" rel="noopener noreferrer"
+                        <a href={getSafeHref(crawler.website)} target="_blank" rel="noopener noreferrer"
                            className="text-gray-400 dark:text-slate-500 hover:text-blue-500 transition-colors"
                            title="View bot documentation">
                             <ExternalLink size={12} />

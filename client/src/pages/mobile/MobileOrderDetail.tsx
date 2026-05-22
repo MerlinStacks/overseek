@@ -10,6 +10,7 @@ import { fixMojibake, formatCurrency, formatDateTime } from '../../utils/format'
 import { usePermissions } from '../../hooks/usePermissions';
 import { OrderCOGSPanel } from '../../components/orders/OrderCOGSPanel';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
+import { getSafeHref } from '../../utils/url';
 
 interface OrderApiLineItem {
     id: string;
@@ -303,7 +304,7 @@ export function MobileOrderDetail() {
                                     <code className="text-sm font-mono text-gray-900 bg-gray-50 px-2 py-1 rounded flex-1 truncate">{item.trackingNumber}</code>
                                     <button onClick={() => copyToClipboard(item.trackingNumber)} className="p-1.5 active:bg-gray-100 rounded text-gray-400"><Copy size={14} /></button>
                                     {item.trackingUrl && (
-                                        <a href={item.trackingUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 active:bg-blue-50 rounded text-blue-500"><ExternalLink size={14} /></a>
+                                        <a href={getSafeHref(item.trackingUrl)} target="_blank" rel="noopener noreferrer" className="p-1.5 active:bg-blue-50 rounded text-blue-500"><ExternalLink size={14} /></a>
                                     )}
                                 </div>
                             </div>
@@ -420,7 +421,7 @@ export function MobileOrderDetail() {
                         </button>
                     )}
                 </div>
-                {order.trackingItems[0]?.trackingUrl && <a href={order.trackingItems[0].trackingUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-lg shadow-sm"><ExternalLink size={20} className="text-gray-600" /></a>}
+                {order.trackingItems[0]?.trackingUrl && <a href={getSafeHref(order.trackingItems[0].trackingUrl)} target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-lg shadow-sm"><ExternalLink size={20} className="text-gray-600" /></a>}
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

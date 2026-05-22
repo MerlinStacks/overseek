@@ -133,7 +133,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
 (function() {
     const API_URL = '${escapeForJs(apiUrl)}';
     const accountId = '${escapeForJs(accountId)}';
-    const PRIMARY_COLOR = '${escapeForJs(primaryColor)}';
+    const RAW_PRIMARY_COLOR = '${escapeForJs(primaryColor)}';
     const HEADER_TEXT = '${escapeForJs(headerText)}';
     const WELCOME_MSG = '${escapeForJs(welcomeMessage)}';
     const BUSINESS_HOURS = ${JSON.stringify(businessHours)};
@@ -141,6 +141,21 @@ export function buildWidgetScript(config: WidgetConfig): string {
 
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const isMobile = window.innerWidth <= 640;
+
+    function normalizeColor(value) {
+        return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value) ? value : '#2563eb';
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    const PRIMARY_COLOR = normalizeColor(RAW_PRIMARY_COLOR);
 
     function isWithinBusinessHours() {
         if (!BUSINESS_HOURS.enabled) return true;
@@ -210,7 +225,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
 
     const container = document.createElement('div');
     container.id = 'os-chat-widget';
-    var html = '<div id="os-chat-window"><div class="os-header"><span class="os-header-title">' + HEADER_TEXT + '</span><span class="os-close" id="os-close">&times;</span></div>';
+    var html = '<div id="os-chat-window"><div class="os-header"><span class="os-header-title">' + escapeHtml(HEADER_TEXT) + '</span><span class="os-close" id="os-close">&times;</span></div>';
     html += '<div class="os-prechat" id="os-prechat"><h3>👋 Start a conversation</h3><p>Please enter your details so we can help you better.</p>';
     html += '<input type="text" id="os-prechat-name" placeholder="Your name" required /><input type="email" id="os-prechat-email" placeholder="Your email" required />';
     html += '<button id="os-prechat-submit">Start Chat</button></div><div class="os-messages" id="os-messages"></div>';
@@ -345,7 +360,14 @@ export function buildWidgetScript(config: WidgetConfig): string {
         const row = document.createElement('div');
         row.className = 'os-msg-row agent';
         row.id = 'os-typing-row';
-        row.innerHTML = '<div class="os-avatar">' + (agentAvatar ? '<img src="' + agentAvatar + '">' : '🤖') + '</div><div class="os-typing" id="os-typing"><span></span><span></span><span></span></div>';
+        row.appendChild(createAvatar('agent', agentAvatar));
+        const typing = document.createElement('div');
+        typing.className = 'os-typing';
+        typing.id = 'os-typing';
+        typing.appendChild(document.createElement('span'));
+        typing.appendChild(document.createElement('span'));
+        typing.appendChild(document.createElement('span'));
+        row.appendChild(typing);
         messagesEl.appendChild(row);
         scrollToBottom();
     }
@@ -424,7 +446,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
                 localStorage.setItem('os_conv_id_' + accountId, conversationId);
                 if (data.assignee?.avatarUrl) agentAvatar = data.assignee.avatarUrl;
                 if (data.messages && data.messages.length > 0) {
-                    messagesEl.innerHTML = '';
+                    messagesEl.replaceChildren();
                     data.messages.forEach(msg => {
                         const type = msg.senderType === 'CUSTOMER' ? 'user' : 'agent';
                         const avatar = msg.senderType !== 'CUSTOMER' && msg.sender?.avatarUrl;
@@ -461,29 +483,38 @@ export function buildWidgetScript(config: WidgetConfig): string {
         hideTyping();
         const row = document.createElement('div');
         row.className = 'os-msg-row ' + type;
-        
-        let avatarHtml = '';
-        if (type === 'agent') {
-            const src = avatarUrl || agentAvatar;
-            if (src) {
-                avatarHtml = '<div class="os-avatar"><img src="' + escapeAttr(src) + '"></div>';
-            } else {
-                avatarHtml = '<div class="os-avatar">🤖</div>';
-            }
-        } else {
-            const initials = visitorName ? escapeHtmlAttr(visitorName.charAt(0).toUpperCase()) : '👤';
-            avatarHtml = '<div class="os-avatar">' + initials + '</div>';
-        }
-        
-        let msgContent = '<div class="os-message ' + type + '">' + escapeHtml(text);
+        row.appendChild(createAvatar(type, avatarUrl || agentAvatar));
+
+        const message = document.createElement('div');
+        message.className = 'os-message ' + type;
+        message.textContent = stripHtml(text);
         if (imageUrl) {
-            msgContent += '<img src="' + escapeAttr(imageUrl) + '" alt="Attachment">';
+            const image = document.createElement('img');
+            image.src = imageUrl;
+            image.alt = 'Attachment';
+            message.appendChild(image);
         }
-        msgContent += '</div>';
-        
-        row.innerHTML = avatarHtml + msgContent;
+        row.appendChild(message);
         messagesEl.appendChild(row);
         scrollToBottom();
+    }
+
+    function createAvatar(type, src) {
+        const avatar = document.createElement('div');
+        avatar.className = 'os-avatar';
+        if (type === 'agent') {
+            if (src) {
+                const image = document.createElement('img');
+                image.src = src;
+                image.alt = '';
+                avatar.appendChild(image);
+            } else {
+                avatar.textContent = '🤖';
+            }
+        } else {
+            avatar.textContent = visitorName ? visitorName.charAt(0).toUpperCase() : '👤';
+        }
+        return avatar;
     }
 
     function escapeAttr(str) {
@@ -497,14 +528,17 @@ export function buildWidgetScript(config: WidgetConfig): string {
     }
 
     function escapeHtml(str) {
-        const cleanText = str
-            .replace(/<br\\s*\\/?>/gi, '\\n')
-            .replace(/<\\/p>/gi, '\\n')
-            .replace(/<[^>]*>/g, '');
-
+        const cleanText = stripHtml(str);
         const div = document.createElement('div');
         div.textContent = cleanText;
         return div.innerHTML.replace(/\\n/g, '<br>');
+    }
+
+    function stripHtml(str) {
+        return String(str || '')
+            .replace(/<br\\s*\\/?>/gi, '\\n')
+            .replace(/<\\/p>/gi, '\\n')
+            .replace(/<[^>]*>/g, '');
     }
 
     function scrollToBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }

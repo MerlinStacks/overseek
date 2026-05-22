@@ -9,6 +9,20 @@ interface PicklistItem {
     stockStatus: string;
 }
 
+function escapeHtml(value: unknown): string {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatQuantity(value: unknown): string {
+    const quantity = Number(value);
+    return Number.isFinite(quantity) ? escapeHtml(quantity) : '0';
+}
+
 export function printPicklist(items: PicklistItem[]) {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -59,16 +73,16 @@ export function printPicklist(items: PicklistItem[]) {
                 <tbody>
                     ${items.map(item => `
                         <tr>
-                            <td class="bin">${item.binLocation || 'N/A'}</td>
+                            <td class="bin">${escapeHtml(item.binLocation || 'N/A')}</td>
                             <td>
-                                <div>${item.name}</div>
-                                <div style="font-size: 0.8em; color: #666;">SKU: ${item.sku}</div>
+                                <div>${escapeHtml(item.name)}</div>
+                                <div style="font-size: 0.8em; color: #666;">SKU: ${escapeHtml(item.sku)}</div>
                                 ${item.stockStatus !== 'instock' ? '<div style="color: red; font-size: 0.8em; font-weight: bold;">⚠️ OUT OF STOCK</div>' : ''}
                             </td>
-                            <td class="qty">${item.totalQuantity}</td>
+                            <td class="qty">${formatQuantity(item.totalQuantity)}</td>
                             <td class="orders">
                                 ${item.quantityUpdates.map(u =>
-        `<span style="display: inline-block; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; padding: 2px 4px; margin: 2px;">#${u.orderNumber} (${u.quantity})</span>`
+        `<span style="display: inline-block; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; padding: 2px 4px; margin: 2px;">#${escapeHtml(u.orderNumber)} (${formatQuantity(u.quantity)})</span>`
     ).join('')}
                             </td>
                         </tr>

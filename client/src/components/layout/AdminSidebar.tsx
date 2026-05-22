@@ -16,7 +16,6 @@ import {
     HardDrive
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
@@ -32,10 +31,7 @@ const navItems = [
 
 export function AdminSidebar() {
     const [collapsed, setCollapsed] = useState(false);
-    const { token } = useAuth();
-
-    // Construct Bull Board URL with token for authentication in new tab
-    const queueMonitorUrl = `/admin/queues${token ? `?token=${token}` : ''}`;
+    const queueMonitorUrl = '/admin/queues';
 
     return (
         <aside

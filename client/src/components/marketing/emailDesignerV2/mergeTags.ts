@@ -1,5 +1,5 @@
 export interface MergeTagDefinition {
-    category: 'customer' | 'order' | 'product' | 'coupon' | 'cart' | 'general';
+    category: 'customer' | 'order' | 'product' | 'coupon' | 'review' | 'cart' | 'general';
     label: string;
     value: string;
 }
@@ -18,6 +18,9 @@ export const EMAIL_MERGE_TAGS: MergeTagDefinition[] = [
     { category: 'order', label: 'Order Discount Total', value: '{{order.discountTotal}}' },
     { category: 'order', label: 'Order Total', value: '{{order.total}}' },
     { category: 'order', label: 'Customer Note', value: '{{order.customerNote}}' },
+    { category: 'order', label: 'Tracking Number', value: '{{order.trackingNumber}}' },
+    { category: 'order', label: 'Tracking URL', value: '{{order.trackingUrl}}' },
+    { category: 'order', label: 'AusPost Tracking URL', value: '{{order.auspostTrackingUrl}}' },
     { category: 'order', label: 'Billing Address', value: '{{order.billingAddress}}' },
     { category: 'order', label: 'Shipping Address', value: '{{order.shippingAddress}}' },
     { category: 'order', label: 'Order Items Table', value: '{{order.itemsTable}}' },
@@ -31,6 +34,11 @@ export const EMAIL_MERGE_TAGS: MergeTagDefinition[] = [
     { category: 'coupon', label: 'Coupon Discount', value: '{{coupon.discount}}' },
     { category: 'coupon', label: 'Coupon Description', value: '{{coupon.description}}' },
     { category: 'coupon', label: 'Coupon Expiry', value: '{{coupon.expiry}}' },
+    { category: 'review', label: 'Reviewer Name', value: '{{review.reviewer}}' },
+    { category: 'review', label: 'Review Rating', value: '{{review.rating}}' },
+    { category: 'review', label: 'Review Content', value: '{{review.content}}' },
+    { category: 'review', label: 'Reviewed Product Name', value: '{{review.productName}}' },
+    { category: 'review', label: 'Reviewed Product URL', value: '{{review.productUrl}}' },
     { category: 'cart', label: 'Cart Recovery URL', value: '{{cart.recoveryUrl}}' },
     { category: 'cart', label: 'Cart Checkout URL', value: '{{cart.checkoutUrl}}' },
     { category: 'cart', label: 'Cart Total', value: '{{cart.total}}' },

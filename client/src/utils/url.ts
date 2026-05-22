@@ -25,3 +25,42 @@ export function getPublicApiUrl(): string {
     // Use the dashboard origin — nginx proxies /api to the backend
     return window.location.origin;
 }
+
+const SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+const SAFE_NAVIGATION_PROTOCOLS = new Set(['http:', 'https:']);
+
+export function getSafeHref(value: string | null | undefined, fallback = '#'): string {
+    if (!value) return fallback;
+
+    try {
+        const url = new URL(value, window.location.origin);
+        return SAFE_LINK_PROTOCOLS.has(url.protocol) ? url.href : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+export function getSafeNavigationUrl(value: string | null | undefined): string | null {
+    if (!value) return null;
+
+    try {
+        const url = new URL(value, window.location.origin);
+        return SAFE_NAVIGATION_PROTOCOLS.has(url.protocol) ? url.href : null;
+    } catch {
+        return null;
+    }
+}
+
+export function navigateToSafeUrl(value: string | null | undefined): boolean {
+    const safeUrl = getSafeNavigationUrl(value);
+    if (!safeUrl) return false;
+    window.location.href = safeUrl;
+    return true;
+}
+
+export function openSafeUrl(value: string | null | undefined, target = '_blank', features = 'noopener,noreferrer'): boolean {
+    const safeUrl = getSafeNavigationUrl(value);
+    if (!safeUrl) return false;
+    window.open(safeUrl, target, features);
+    return true;
+}

@@ -50,8 +50,9 @@ export function PluginStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitti
     // Only valid when account exists (accountId must be a UUID, not store name)
     const connectionConfig = hasValidAccount ? JSON.stringify({
         apiUrl: publicApiUrl,
-        accountId: currentAccount!.id
+        accountId: currentAccount?.id
     }, null, 2) : '';
+    const webhookUrl = currentAccount?.id ? `${publicApiUrl}/api/webhooks/${currentAccount.id}` : '';
 
     const handleDownload = () => {
         setDraft(prev => ({
@@ -209,7 +210,8 @@ export function PluginStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitti
                                 <div className="relative group">
                                     <button
                                         onClick={() => {
-                                            navigator.clipboard.writeText(`${publicApiUrl}/api/webhooks/${currentAccount!.id}`);
+                                            if (!webhookUrl) return;
+                                            navigator.clipboard.writeText(webhookUrl);
                                             setWebhookCopied(true);
                                             setTimeout(() => setWebhookCopied(false), 2000);
                                         }}
@@ -222,7 +224,7 @@ export function PluginStep({ draft, setDraft, onNext, onBack, onSkip, isSubmitti
                                         {webhookCopied ? 'Copied!' : 'Copy'}
                                     </button>
                                     <pre className="bg-slate-900 text-slate-100 p-4 pr-24 rounded-lg overflow-x-auto font-mono text-xs break-all whitespace-pre-wrap">
-                                        <code>{`${publicApiUrl}/api/webhooks/${currentAccount!.id}`}</code>
+                                        <code>{webhookUrl}</code>
                                     </pre>
                                 </div>
                                 <p className="text-xs text-indigo-600 mt-2">

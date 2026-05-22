@@ -99,9 +99,16 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Step 1: Exchange code for short-lived token
             Logger.info('[MetaAdsOAuth] Exchanging code for access token');
-            const tokenResponse = await fetch(
-                `https://graph.facebook.com/${API_VERSION}/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(callbackUrl)}&client_secret=${appSecret}&code=${code}`
-            );
+            const tokenResponse = await fetch(`https://graph.facebook.com/${API_VERSION}/oauth/access_token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    client_id: appId,
+                    redirect_uri: callbackUrl,
+                    client_secret: appSecret,
+                    code
+                })
+            });
             const tokenData = await tokenResponse.json() as any;
 
             if (tokenData.error) {
@@ -124,7 +131,8 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Step 3: Get ad accounts for user selection
             const adAccountsResponse = await fetch(
-                `https://graph.facebook.com/${API_VERSION}/me/adaccounts?fields=id,name,account_status,currency&access_token=${tokenResult.accessToken}`
+                `https://graph.facebook.com/${API_VERSION}/me/adaccounts?fields=id,name,account_status,currency`,
+                { headers: { Authorization: `Bearer ${tokenResult.accessToken}` } }
             );
             const adAccountsData = await adAccountsResponse.json() as any;
 
@@ -217,9 +225,16 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Step 1: Exchange code for short-lived token
             Logger.info('[MetaOAuth] Exchanging code for access token');
-            const tokenResponse = await fetch(
-                `https://graph.facebook.com/${API_VERSION}/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(callbackUrl)}&client_secret=${appSecret}&code=${code}`
-            );
+            const tokenResponse = await fetch(`https://graph.facebook.com/${API_VERSION}/oauth/access_token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    client_id: appId,
+                    redirect_uri: callbackUrl,
+                    client_secret: appSecret,
+                    code
+                })
+            });
             const tokenData = await tokenResponse.json() as any;
 
             if (tokenData.error) {

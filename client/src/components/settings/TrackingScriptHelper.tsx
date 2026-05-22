@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Logger } from '../../utils/logger';
-import { getPublicApiUrl } from '../../utils/url';
+import { getPublicApiUrl, getSafeHref } from '../../utils/url';
 import { Copy, Check, Info, Monitor, RefreshCw, AlertCircle, Zap, Store, ExternalLink } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
@@ -365,7 +365,7 @@ export function TrackingScriptHelper() {
 
                                     {storeResult.storeUrl && (
                                         <p className="text-gray-700 text-xs flex items-center gap-1">
-                                            Store: <a href={storeResult.storeUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                                            Store: <a href={getSafeHref(storeResult.storeUrl)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
                                                 {storeResult.storeUrl} <ExternalLink size={10} />
                                             </a>
                                         </p>

@@ -602,7 +602,7 @@ class OverSeek_Server_Tracking
      */
     public function track_checkout_start()
     {
-        $email = isset($_POST['billing_email']) ? sanitize_email($_POST['billing_email']) : '';
+        $email = isset($_POST['billing_email']) ? sanitize_email(wp_unslash($_POST['billing_email'])) : '';
         $request_event_id = $this->get_request_event_id();
 
         $cart = $this->get_cart_safely();

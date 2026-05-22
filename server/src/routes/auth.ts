@@ -348,7 +348,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     // leaks that the email/password combo is valid, enabling enumeration.
                     return reply.code(401).send({ requireTwoFactor: true });
                 }
-                const isTokenValid = SecurityService.verifyTwoFactorToken(twoFactorToken, user.twoFactorSecret!);
+                if (!user.twoFactorSecret) {
+                    Logger.error('2FA enabled without a configured secret', { userId: user.id });
+                    return reply.code(401).send({ error: 'Invalid 2FA configuration' });
+                }
+
+                const isTokenValid = SecurityService.verifyTwoFactorToken(twoFactorToken, user.twoFactorSecret);
                 if (!isTokenValid) {
                     // Increment failed attempt counter for bad 2FA
                     await incrementFailedLogin(ip, email);

@@ -94,7 +94,18 @@ export function EmailDropCanvas({ theme, previewMode, sections, selectedSectionI
                                 </div>
                                 <div className="flex gap-3">
                                     {section.columns.map((column) => (
-                                        <div key={column.id} style={{ width: `${column.width}%` }} onDragOver={(event) => handleSectionDragOver(event, sectionIndex)} onDrop={(event) => handleSectionDrop(event, sectionIndex, section.id, column.id)} className="min-h-16 rounded-lg border border-dashed border-slate-200 p-2">
+                                        <div
+                                            key={column.id}
+                                            style={{
+                                                width: `${column.width}%`,
+                                                background: column.backgroundColor || 'transparent',
+                                                padding: column.padding || '0',
+                                                alignSelf: column.verticalAlign === 'bottom' ? 'flex-end' : column.verticalAlign === 'middle' ? 'center' : 'stretch',
+                                            }}
+                                            onDragOver={(event) => handleSectionDragOver(event, sectionIndex)}
+                                            onDrop={(event) => handleSectionDrop(event, sectionIndex, section.id, column.id)}
+                                            className="min-h-16 rounded-lg border border-dashed border-slate-200 p-2"
+                                        >
                                             {column.blocks.length === 0 && <div className="flex min-h-16 items-center justify-center rounded-md text-xs text-slate-400">Drop here</div>}
                                             {column.blocks.map((block, index) => (
                                                 <div key={block.id} className="group/block relative" onDragOver={(event) => { if (isStructureDrag(event)) handleSectionDragOver(event, sectionIndex); else { event.preventDefault(); setDropTarget(`${column.id}:${index}`); } }} onDragLeave={() => setDropTarget(null)} onDrop={(event) => { if (event.dataTransfer.getData('application/x-overseek-structure')) handleSectionDrop(event, sectionIndex, section.id, column.id); else { setDropTarget(null); onDropOnSection(event, section.id, index, column.id); } }} onClick={(event) => { event.stopPropagation(); onSelectSection(section.id); onSelectBlock(block.id); onOpenSettings(); }}>

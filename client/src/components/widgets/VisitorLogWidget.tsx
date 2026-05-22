@@ -18,6 +18,7 @@ import VisitorProfileModal from '../analytics/VisitorProfileModal';
 import { DeviceBrowserBadge } from '../analytics/DeviceBrowserIcons';
 import { WidgetProps } from './WidgetRegistry';
 import { widgetCardClass } from './widgetStyles';
+import { getSafeHref } from '../../utils/url';
 
 interface PayloadItem {
     id?: number;
@@ -540,7 +541,7 @@ const VisitorLogWidget = (_props: WidgetProps) => {
                                                         return (
                                                             <a
                                                                 key={event.id}
-                                                                href={event.url || '#'}
+                                                                href={getSafeHref(event.url)}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
                                                                 onClick={(e) => e.stopPropagation()}

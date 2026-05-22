@@ -75,4 +75,81 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).not.toContain('{{invoice_url}}');
         expect(html).not.toContain('{{pdf_url}}');
     });
+
+    it('renders encoded invoice merge tags in href values', () => {
+        const html = resolveMergeTags(
+            '<a href="https://overseek.com.au/%7B%7Border.invoiceUrl%7D%7D">Invoice</a>',
+            {
+                order: {
+                    invoice_url: 'https://example.com/invoices/1234.pdf'
+                }
+            }
+        );
+
+        expect(html).toContain('href="https://example.com/invoices/1234.pdf"');
+        expect(html).not.toContain('%7B%7Border.invoiceUrl%7D%7D');
+    });
+
+    it('renders review merge tags', () => {
+        const html = resolveMergeTags(
+            'Review by {{review.reviewer}} rated {{review.rating}} on {{review.productName}}: {{review.content}} - {{review.productUrl}}',
+            {
+                review: {
+                    reviewer: 'Taylor',
+                    rating: 5,
+                    productName: 'Classic Hoodie',
+                    content: 'Great fit and quality.',
+                    productUrl: 'https://store.example.com/products/classic-hoodie'
+                }
+            }
+        );
+
+        expect(html).toContain('Taylor');
+        expect(html).toContain('5');
+        expect(html).toContain('Classic Hoodie');
+        expect(html).toContain('Great fit and quality.');
+        expect(html).toContain('https://store.example.com/products/classic-hoodie');
+    });
+
+    it('renders review merge tags from fallback field names', () => {
+        const html = resolveMergeTags(
+            '{{review.reviewer}} | {{review.content}} | {{review.productName}} | {{review.productUrl}}',
+            {
+                review: {
+                    reviewerName: 'Jordan',
+                    review: 'Arrived quickly.',
+                    product_name: 'Canvas Tote',
+                    product_url: 'https://store.example.com/products/canvas-tote'
+                }
+            }
+        );
+
+        expect(html).toContain('Jordan');
+        expect(html).toContain('Arrived quickly.');
+        expect(html).toContain('Canvas Tote');
+        expect(html).toContain('https://store.example.com/products/canvas-tote');
+    });
+
+    it('renders review merge tags with defaults when review context is missing', () => {
+        const html = resolveMergeTags(
+            '{{review.reviewer}} | {{review.rating}} | {{review.content}} | {{review.productName}} | {{review.productUrl}}',
+            {
+                customer: {
+                    firstName: 'Sam',
+                    lastName: 'Lee',
+                },
+                product: {
+                    name: 'Everyday Tee',
+                    permalink: 'https://store.example.com/products/everyday-tee',
+                },
+                storeUrl: 'https://store.example.com',
+            }
+        );
+
+        expect(html).toContain('Sam Lee');
+        expect(html).toContain('5');
+        expect(html).toContain('Thanks for your order. We would love to hear your feedback.');
+        expect(html).toContain('Everyday Tee');
+        expect(html).toContain('https://store.example.com/products/everyday-tee');
+    });
 });

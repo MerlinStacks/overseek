@@ -6,6 +6,17 @@ interface DateRange {
     endDate: string;   // ISO Date string YYYY-MM-DD
 }
 
+function isValidDate(date: Date): boolean {
+    return Number.isFinite(date.getTime());
+}
+
+function toLocalDateString(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 export const getDateRange = (option: DateRangeOption | string): DateRange => {
     const end = new Date();
     const start = new Date();
@@ -76,6 +87,7 @@ export const getDateRange = (option: DateRangeOption | string): DateRange => {
 function resolveSmartComparison(current: DateRange): { resolved: 'previous_week_same_day' | 'previous_period' | 'previous_year' | 'none' } {
     const start = new Date(current.startDate);
     const end = new Date(current.endDate);
+    if (!isValidDate(start) || !isValidDate(end)) return { resolved: 'none' };
     const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
     if (diffDays <= 2)  return { resolved: 'previous_week_same_day' };
@@ -91,7 +103,9 @@ export const getComparisonRange = (current: DateRange, type: ComparisonOption): 
 
     const start = new Date(current.startDate);
     const end = new Date(current.endDate);
+    if (!isValidDate(start) || !isValidDate(end)) return null;
     const duration = end.getTime() - start.getTime();
+    if (!Number.isFinite(duration) || duration < 0) return null;
 
     const compStart = new Date(start);
     const compEnd = new Date(end);
@@ -109,8 +123,8 @@ export const getComparisonRange = (current: DateRange, type: ComparisonOption): 
     }
 
     return {
-        startDate: compStart.toISOString().split('T')[0],
-        endDate: compEnd.toISOString().split('T')[0]
+        startDate: toLocalDateString(compStart),
+        endDate: toLocalDateString(compEnd)
     };
 };
 
@@ -131,6 +145,7 @@ export function getComparisonLabel(current: DateRange, type: ComparisonOption): 
         case 'previous_period': {
             const start = new Date(current.startDate);
             const end = new Date(current.endDate);
+            if (!isValidDate(start) || !isValidDate(end)) return 'vs previous period';
             const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
             if (diffDays === 0) return 'vs previous day';
             if (diffDays === 7) return 'vs previous 7 days';

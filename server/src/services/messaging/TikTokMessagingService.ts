@@ -16,6 +16,17 @@ import { EventBus, EVENTS } from '../events';
 
 const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2';
 
+async function safeTikTokJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('[TikTokMessaging] Non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error(`TikTok returned non-JSON response during ${context}`);
+    }
+
+    return response.json();
+}
+
 interface TikTokMessagePayload {
     recipientOpenId: string;
     message: string;
@@ -114,7 +125,7 @@ export class TikTokMessagingService {
                 }),
             });
 
-            const data = await response.json();
+            const data = await safeTikTokJson(response, 'sendMessage');
 
             if (data.error?.code !== 'ok') {
                 throw new Error(data.error?.message || 'TikTok API error');
@@ -279,10 +290,9 @@ export class TikTokMessagingService {
             .update(message)
             .digest('hex');
 
-        return crypto.timingSafeEqual(
-            Buffer.from(signature),
-            Buffer.from(expectedSignature)
-        );
+        const actual = Buffer.from(signature);
+        const expected = Buffer.from(expectedSignature);
+        return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
     }
 
     /**
@@ -309,7 +319,7 @@ export class TikTokMessagingService {
                 }),
             });
 
-            const data = await response.json();
+            const data = await safeTikTokJson(response, 'exchangeAuthCode');
             if (data.error) {
                 throw new Error(data.error_description || data.error);
             }
@@ -350,7 +360,7 @@ export class TikTokMessagingService {
                 }),
             });
 
-            const data = await response.json();
+            const data = await safeTikTokJson(response, 'refreshAccessToken');
             if (data.error) {
                 throw new Error(data.error_description || data.error);
             }

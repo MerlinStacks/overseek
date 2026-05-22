@@ -40,6 +40,7 @@ function getNetworkAddress(): string | null {
 // Global Error Handlers to prevent silent crashes
 process.on('uncaughtException', (error) => {
   Logger.error('[CRITICAL] Uncaught Exception', { error });
+  process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, _promise) => {
@@ -49,6 +50,7 @@ process.on('unhandledRejection', (reason, _promise) => {
     ? { name: reason.name, message: reason.message, stack: reason.stack }
     : reason;
   Logger.error('[CRITICAL] Unhandled Rejection', { reason: serializedReason });
+  process.exit(1);
 });
 
 // Main startup function
@@ -62,10 +64,19 @@ async function start() {
     stopMemoryMonitor();
   });
 
+  const { WebhookDeliveryService } = await import('./services/WebhookDeliveryService');
+  WebhookDeliveryService.startCleanupSchedule();
+  onShutdown(async () => {
+    WebhookDeliveryService.stopCleanupSchedule();
+  });
+
   // Start Internal Workers
   try {
     await startWorkers();
     Logger.info('[Startup] Workers initialized');
+
+    const { stopWorkers } = await import('./workers');
+    onShutdown(() => stopWorkers());
   } catch (error) {
     Logger.error('[Startup] Failed to start workers', { error });
   }

@@ -3,6 +3,16 @@ import { AIToolsService } from './ai_tools';
 import { Logger } from '../utils/logger';
 import { AI_LIMITS } from '../config/limits';
 
+async function safeOpenRouterJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('OpenRouter returned non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error('OpenRouter returned a non-JSON response');
+    }
+
+    return response.json();
+}
 
 /** Result from AI tool execution */
 interface ToolResult {
@@ -274,7 +284,7 @@ Current Date: ${new Date().toISOString().split('T')[0]}`;
                     };
                 }
 
-                const data = await response.json();
+                const data = await safeOpenRouterJson(response, 'chatCompletion');
                 const choice = data.choices[0];
                 const msg = choice.message;
 

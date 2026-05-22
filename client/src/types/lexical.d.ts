@@ -13,6 +13,7 @@ declare module 'lexical' {
         registerUpdateListener(listener: (payload: { editorState: EditorState }) => void): () => void;
         dispatchCommand<T>(command: any, payload?: T): boolean;
         getElementByKey(key: string): HTMLElement | null;
+        getEditorState(): EditorState;
     }
     export interface EditorThemeClasses {
         text?: {
@@ -56,6 +57,7 @@ declare module 'lexical' {
     export const COMMAND_PRIORITY_CRITICAL: number;
     export const KEY_ENTER_COMMAND: any;
     export const FORMAT_TEXT_COMMAND: any;
+    export const PASTE_COMMAND: any;
     export const SELECTION_CHANGE_COMMAND: any;
 }
 
@@ -130,6 +132,7 @@ declare module '@lexical/list' {
 declare module '@lexical/rich-text' {
     export class HeadingNode { }
     export class QuoteNode { }
+    export function $createHeadingNode(tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'): any;
 }
 
 declare module '@lexical/utils' {
@@ -139,5 +142,6 @@ declare module '@lexical/utils' {
 }
 
 declare module '@lexical/selection' {
+    export function $patchStyleText(selection: any, styles: Record<string, string>): void;
     export function $setBlocksType(selection: any, factory: () => any): void;
 }

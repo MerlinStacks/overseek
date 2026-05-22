@@ -73,13 +73,14 @@ export function SuppliersList() {
 
     async function handleCreateSupplier(e: React.FormEvent) {
         e.preventDefault();
+        if (!currentAccount?.id) return;
         try {
             const res = await fetch('/api/inventory/suppliers', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
+                    'X-Account-ID': currentAccount.id
                 },
                 body: JSON.stringify(newSupplier)
             });
@@ -98,6 +99,7 @@ export function SuppliersList() {
 
     async function handleUpdateSupplier() {
         if (!editingId) return;
+        if (!currentAccount?.id) return;
         setIsSaving(true);
         try {
             const res = await fetch(`/api/inventory/suppliers/${editingId}`, {
@@ -105,7 +107,7 @@ export function SuppliersList() {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
+                    'X-Account-ID': currentAccount.id
                 },
                 body: JSON.stringify(editData)
             });
@@ -125,12 +127,13 @@ export function SuppliersList() {
 
     async function handleDeleteSupplier(id: string, name: string) {
         if (!confirm(`Delete supplier "${name}"? This action cannot be undone.`)) return;
+        if (!currentAccount?.id) return;
         try {
             const res = await fetch(`/api/inventory/suppliers/${id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
+                    'X-Account-ID': currentAccount.id
                 }
             });
             if (res.ok) {
@@ -165,6 +168,7 @@ export function SuppliersList() {
     async function handleAddItem(e: React.FormEvent) {
         e.preventDefault();
         if (!addingItemTo) return;
+        if (!currentAccount?.id) return;
 
         try {
             const res = await fetch(`/api/inventory/suppliers/${addingItemTo}/items`, {
@@ -172,7 +176,7 @@ export function SuppliersList() {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
+                    'X-Account-ID': currentAccount.id
                 },
                 body: JSON.stringify(newItem)
             });

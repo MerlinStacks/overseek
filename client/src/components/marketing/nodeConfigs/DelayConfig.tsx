@@ -3,6 +3,7 @@
  * Extracted from NodeConfigPanel for modularity.
  */
 import React from 'react';
+import { LTR_TEXT_STYLE } from '../textInputBidi';
 
 type DelayMode = 'SPECIFIC_PERIOD' | 'SPECIFIC_DATE' | 'CUSTOM_FIELD';
 
@@ -108,6 +109,8 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                             value={config.duration || 1}
                             onChange={(e) => handleDurationChange(e.target.value)}
                             className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <select
                             value={config.unit || 'hours'}
@@ -152,6 +155,8 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                             value={config.delayUntilTime || '09:00'}
                             onChange={(e) => onUpdate('delayUntilTime', e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     )}
 
@@ -220,6 +225,8 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         value={config.specificDate || ''}
                         onChange={(e) => onUpdate('specificDate', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                 </div>
             )}

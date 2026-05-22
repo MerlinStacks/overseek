@@ -3,7 +3,7 @@
  * Includes visual builder, rich text, raw HTML modes, template management, and preview
  */
 import { useRef, useState, type RefObject } from 'react';
-import { Search, Copy, X } from 'lucide-react';
+import { CheckCircle, Circle, Search, Copy, X } from 'lucide-react';
 import { RichTextEditor } from '../common/RichTextEditor';
 import { MarketingEmailDesigner } from './MarketingEmailDesigner';
 import { EmailTemplateSelectorModal } from './flow/EmailTemplateSelectorModal';
@@ -12,6 +12,7 @@ import { EmailPreviewModal } from './flow/EmailPreviewModal';
 import type { EmailTemplate } from './flow/EmailTemplateSelectorModal';
 import { evaluateEmailPreflight, groupPreflightIssues, type PreflightIssue } from '../../utils/emailPreflight';
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './emailDesignerV2/mergeTags';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from './textInputBidi';
 
 interface SendEmailNodeConfig {
     templateType?: 'visual' | 'richtext' | 'html';
@@ -47,6 +48,7 @@ const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: s
     { id: 'order', label: 'Order' },
     { id: 'product', label: 'Product' },
     { id: 'coupon', label: 'Coupon' },
+    { id: 'review', label: 'Review' },
     { id: 'cart', label: 'Cart' },
     { id: 'general', label: 'General' },
 ];
@@ -58,6 +60,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
     const [showVisualBuilder, setShowVisualBuilder] = useState(false);
     const [showPreflightModal, setShowPreflightModal] = useState(false);
     const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([]);
+    const [previewChecked, setPreviewChecked] = useState(false);
     const [showMergeTagModal, setShowMergeTagModal] = useState(false);
     const [mergeTagSearch, setMergeTagSearch] = useState('');
     const [mergeTagCategory, setMergeTagCategory] = useState<MergeTagDefinition['category']>('customer');
@@ -68,6 +71,14 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
 
     const templateType = config.templateType || 'visual';
     const emailCategory = config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING');
+    const setupSteps = [
+        { label: 'Recipient', done: Boolean((config.to || '{{customer.email}}').trim()) },
+        { label: 'Subject', done: Boolean((config.subject || '').trim()) },
+        { label: 'Content', done: Boolean((config.htmlContent || '').trim()) },
+        { label: 'Category', done: Boolean(emailCategory) },
+        { label: 'Preview/test', done: previewChecked },
+    ];
+    const completedSetupSteps = setupSteps.filter((step) => step.done).length;
 
     const handleTemplateSelect = (template: EmailTemplate) => {
         const updates: Record<string, unknown> = {
@@ -85,7 +96,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
         setShowTemplateSelector(false);
     };
 
-    const handleVisualBuilderSave = (html: string, design: unknown, meta?: { subject: string; previewText: string }) => {
+    const handleVisualBuilderSave = (html: string, design: unknown, meta?: { subject: string; previewText: string; autosave?: boolean }) => {
         const updates: Record<string, unknown> = {
             htmlContent: html,
             designJson: design,
@@ -101,7 +112,9 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
         } else {
             Object.entries(updates).forEach(([key, value]) => onUpdate(key, value));
         }
-        setShowVisualBuilder(false);
+        if (!meta?.autosave) {
+            setShowVisualBuilder(false);
+        }
     };
 
     const handleRichTextChange = (value: string) => {
@@ -120,6 +133,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
 
     const handlePreviewAndTest = () => {
         const issues = runPreflightChecks();
+        setPreviewChecked(true);
         setPreflightIssues(issues);
         if (issues.length === 0) {
             setShowPreview(true);
@@ -177,6 +191,24 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
 
     return (
         <div className="space-y-4">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h4 className="text-sm font-semibold text-indigo-950">Email step setup</h4>
+                        <p className="mt-1 text-xs text-indigo-800">Complete these fields, then preview and send a test before activating the flow.</p>
+                    </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-indigo-700 shadow-xs">{completedSetupSteps}/{setupSteps.length}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                    {setupSteps.map((step) => (
+                        <div key={step.label} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs ${step.done ? 'border-emerald-200 bg-white text-emerald-700' : 'border-indigo-100 bg-white/70 text-indigo-700'}`}>
+                            {step.done ? <CheckCircle size={14} /> : <Circle size={14} />}
+                            <span>{step.label}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                     To <span className="text-red-500">*</span>
@@ -186,9 +218,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         ref={toInputRef}
                         type="text"
                         value={config.to || '{{customer.email}}'}
-                        onChange={(e) => onUpdate('to', e.target.value)}
+                        onChange={(e) => onUpdate('to', sanitizeBidiText(e.target.value))}
                         placeholder="{{customer.email}}"
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <button
                         type="button"
@@ -211,9 +245,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         ref={subjectInputRef}
                         type="text"
                         value={config.subject || ''}
-                        onChange={(e) => onUpdate('subject', e.target.value)}
+                        onChange={(e) => onUpdate('subject', sanitizeBidiText(e.target.value))}
                         placeholder="Thank you {{customer.firstName}}, Order {{order.number}} has been confirmed."
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <button
                         type="button"
@@ -233,9 +269,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         ref={previewTextInputRef}
                         type="text"
                         value={config.previewText || ''}
-                        onChange={(e) => onUpdate('previewText', e.target.value)}
+                        onChange={(e) => onUpdate('previewText', sanitizeBidiText(e.target.value))}
                         placeholder="This is your order confirmation email, let's double check everything."
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <button
                         type="button"
@@ -406,9 +444,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignSource || ''}
-                            onChange={(e) => onUpdate('campaignSource', e.target.value)}
+                            onChange={(e) => onUpdate('campaignSource', sanitizeBidiText(e.target.value))}
                             placeholder=""
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <p className="mt-1 text-xs text-gray-500">Referrer: (e.g., google, newsletter)</p>
                     </div>
@@ -420,9 +460,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignMedium || 'Email'}
-                            onChange={(e) => onUpdate('campaignMedium', e.target.value)}
+                            onChange={(e) => onUpdate('campaignMedium', sanitizeBidiText(e.target.value))}
                             placeholder="Email"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <p className="mt-1 text-xs text-gray-500">Marketing medium: (e.g., CPC, banner, email)</p>
                     </div>
@@ -434,9 +476,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignName || ''}
-                            onChange={(e) => onUpdate('campaignName', e.target.value)}
+                            onChange={(e) => onUpdate('campaignName', sanitizeBidiText(e.target.value))}
                             placeholder=""
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <p className="mt-1 text-xs text-gray-500">Product, promo code, or slogan (e.g., spring_sale)</p>
                     </div>
@@ -448,9 +492,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignTerm || ''}
-                            onChange={(e) => onUpdate('campaignTerm', e.target.value)}
+                            onChange={(e) => onUpdate('campaignTerm', sanitizeBidiText(e.target.value))}
                             placeholder="Enter UTM term"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                 </div>
@@ -461,9 +507,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.campaignContent || ''}
-                            onChange={(e) => onUpdate('campaignContent', e.target.value)}
+                            onChange={(e) => onUpdate('campaignContent', sanitizeBidiText(e.target.value))}
                             placeholder="Enter UTM content"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                 </div>
@@ -486,9 +534,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="text"
                             value={config.fromName || ''}
-                            onChange={(e) => onUpdate('fromName', e.target.value)}
+                            onChange={(e) => onUpdate('fromName', sanitizeBidiText(e.target.value))}
                             placeholder="Your Company"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                     <div className="grid grid-cols-[140px_1fr] items-center gap-3">
@@ -496,9 +546,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="email"
                             value={config.fromEmail || ''}
-                            onChange={(e) => onUpdate('fromEmail', e.target.value)}
+                            onChange={(e) => onUpdate('fromEmail', sanitizeBidiText(e.target.value))}
                             placeholder="hello@example.com"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                     <div className="grid grid-cols-[140px_1fr] items-center gap-3">
@@ -506,9 +558,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                         <input
                             type="email"
                             value={config.replyToEmail || ''}
-                            onChange={(e) => onUpdate('replyToEmail', e.target.value)}
+                            onChange={(e) => onUpdate('replyToEmail', sanitizeBidiText(e.target.value))}
                             placeholder="reply@example.com"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
                 </div>
@@ -610,9 +664,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                                 <Search className="h-4 w-4 text-gray-400" />
                                 <input
                                     value={mergeTagSearch}
-                                    onChange={(e) => setMergeTagSearch(e.target.value)}
+                                    onChange={(e) => setMergeTagSearch(sanitizeBidiText(e.target.value))}
                                     placeholder="Search by name"
                                     className="w-full border-0 text-sm text-gray-700 outline-none"
+                                    dir="ltr"
+                                    style={LTR_TEXT_STYLE}
                                 />
                             </div>
                             <button

@@ -7,6 +7,8 @@ import { SendEmailConfig } from '../SendEmailConfig';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 import { api } from '../../../services/api';
+import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
+import { getSupportedFlowActionIds } from '../flowValidation';
 
 interface ActionNodeConfig {
     actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK' | 'GENERATE_COUPON' | 'ADD_ORDER_NOTE' | 'UPDATE_ORDER_STATUS';
@@ -43,6 +45,8 @@ const ACTION_TYPES = [
     { value: 'WEBHOOK', label: 'Webhook' },
 ];
 
+const SUPPORTED_ACTION_IDS = getSupportedFlowActionIds();
+
 const GSM_7BIT_REGEX = /^[\r\n @\u00A3$\u00A5\u00E8\u00E9\u00F9\u00EC\u00F2\u00C7\u00D8\u00F8\u00C5\u00E5\u0394_\u03A6\u0393\u039B\u03A9\u03A0\u03A8\u03A3\u0398\u039E\u00C6\u00E6\u00DF\u00C9!"#\u00A4%&'()*+,\-./0-9:;<=>?\u00A1A-Z\u00C4\u00D6\u00D1\u00DC\u00A7\u00BFa-z\u00E4\u00F6\u00F1\u00FC\u00E0^{}\\[~\]|\u20AC]*$/;
 const GSM_EXTENDED_REGEX = /[{}\\[~\]|\u20AC^]/g;
 
@@ -78,6 +82,7 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const selectedActionType = config.actionType || 'SEND_EMAIL';
+    const isUnsupportedAction = !SUPPORTED_ACTION_IDS.has(selectedActionType);
     const smsMetrics = getSmsMetrics(String(config.smsMessage || ''));
     const [smsCostPerSegment, setSmsCostPerSegment] = useState(0);
 
@@ -119,16 +124,27 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                 <SendEmailConfig config={config} onUpdate={onUpdate} onUpdateMany={onUpdateMany} />
             )}
 
+            {isUnsupportedAction && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <h4 className="text-sm font-semibold text-amber-900">Action coming soon</h4>
+                    <p className="mt-1 text-sm text-amber-800">
+                        This action can stay in existing flows, but it is not currently configurable or executable. Choose a supported action before activating this path.
+                    </p>
+                </div>
+            )}
+
             {selectedActionType === 'SEND_SMS' && (
                 <>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">SMS Message</label>
                         <textarea
                             value={config.smsMessage || ''}
-                            onChange={(e) => onUpdate('smsMessage', e.target.value)}
+                            onChange={(e) => onUpdate('smsMessage', sanitizeBidiText(e.target.value))}
                             placeholder="Hi {{customer.firstName}}, thanks for your order!"
                             rows={3}
                             className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${smsMetrics.overLimit ? 'border-red-300' : 'border-gray-300'}`}
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <div className="mt-1 flex items-center justify-between gap-3 text-xs text-gray-500">
                             <p>Use {"{{variable}}"} for personalization</p>
@@ -177,9 +193,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <input
                         type="text"
                         value={config.tagName || ''}
-                        onChange={(e) => onUpdate('tagName', e.target.value)}
+                        onChange={(e) => onUpdate('tagName', sanitizeBidiText(e.target.value))}
                         placeholder="VIP Customer"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <p className="text-xs text-gray-500 mt-1">This tag will be added to the contact</p>
                 </div>
@@ -191,9 +209,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <input
                         type="text"
                         value={config.tagName || ''}
-                        onChange={(e) => onUpdate('tagName', e.target.value)}
+                        onChange={(e) => onUpdate('tagName', sanitizeBidiText(e.target.value))}
                         placeholder="Abandoned Cart"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                     <p className="text-xs text-gray-500 mt-1">This tag will be removed from the contact</p>
                 </div>
@@ -205,9 +225,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <input
                         type="url"
                         value={config.webhookUrl || ''}
-                        onChange={(e) => onUpdate('webhookUrl', e.target.value)}
+                        onChange={(e) => onUpdate('webhookUrl', sanitizeBidiText(e.target.value))}
                         placeholder="https://example.com/webhook"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        dir="ltr"
+                        style={LTR_TEXT_STYLE}
                     />
                 </div>
             )}
@@ -245,9 +267,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                             <input
                                 type="text"
                                 value={config.codePrefix || 'OS'}
-                                onChange={(e) => onUpdate('codePrefix', e.target.value)}
+                                onChange={(e) => onUpdate('codePrefix', sanitizeBidiText(e.target.value))}
                                 placeholder="WINBACK"
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                dir="ltr"
+                                style={LTR_TEXT_STYLE}
                             />
                         </div>
                         <div>
@@ -267,9 +291,11 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                         <input
                             type="text"
                             value={config.description || ''}
-                            onChange={(e) => onUpdate('description', e.target.value)}
+                            onChange={(e) => onUpdate('description', sanitizeBidiText(e.target.value))}
                             placeholder="Special recovery offer"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                     </div>
 
@@ -296,10 +322,12 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                         <label className="block text-sm font-medium text-gray-700 mb-1">Order Note</label>
                         <textarea
                             value={config.noteContent || ''}
-                            onChange={(e) => onUpdate('noteContent', e.target.value)}
+                            onChange={(e) => onUpdate('noteContent', sanitizeBidiText(e.target.value))}
                             placeholder="Order updated by automation for {{customer.email}}"
                             rows={4}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            dir="ltr"
+                            style={LTR_TEXT_STYLE}
                         />
                         <p className="text-xs text-gray-500 mt-1">Supports merge tags from the current automation context.</p>
                     </div>

@@ -8,6 +8,29 @@
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 
+const MAX_PAYLOAD_CHARS = 200_000;
+let cleanupTimer: NodeJS.Timeout | null = null;
+
+function compactPayload(payload: unknown): object {
+    try {
+        const json = JSON.stringify(payload ?? null);
+        if (json.length <= MAX_PAYLOAD_CHARS) {
+            return (payload ?? null) as object;
+        }
+
+        return {
+            __truncated: true,
+            originalLength: json.length,
+            preview: json.slice(0, MAX_PAYLOAD_CHARS),
+        };
+    } catch {
+        return {
+            __truncated: true,
+            reason: 'Payload could not be serialized',
+        };
+    }
+}
+
 /** Webhook source platforms */
 export type WebhookSource = 'WOOCOMMERCE' | 'META' | 'TIKTOK';
 
@@ -49,7 +72,7 @@ export class WebhookDeliveryService {
                 accountId,
                 topic,
                 source,
-                payload: payload as object,
+                payload: compactPayload(payload),
                 status: 'RECEIVED',
                 receivedAt: new Date(),
             },
@@ -112,22 +135,26 @@ export class WebhookDeliveryService {
         const where: Record<string, unknown> = { id: deliveryId };
         if (accountId) where.accountId = accountId;
 
-        const delivery = await prisma.webhookDelivery.findFirst({ where });
-
-        if (!delivery) {
-            Logger.warn('[Webhook] Replay requested for non-existent delivery', { deliveryId });
-            return null;
-        }
-
-        // Increment attempt counter and reset status
-        await prisma.webhookDelivery.update({
-            where: { id: deliveryId },
+        const claimed = await prisma.webhookDelivery.updateMany({
+            where: {
+                ...where,
+                status: { in: ['FAILED', 'PROCESSED'] },
+            },
             data: {
                 attempts: { increment: 1 },
                 status: 'RECEIVED',
                 lastError: null,
+                processedAt: null,
             },
         });
+
+        if (claimed.count === 0) {
+            Logger.warn('[Webhook] Replay requested for non-existent delivery', { deliveryId });
+            return null;
+        }
+
+        const delivery = await prisma.webhookDelivery.findFirst({ where });
+        if (!delivery) return null;
 
         Logger.info('[Webhook] Delivery queued for replay', {
             deliveryId,
@@ -295,5 +322,22 @@ export class WebhookDeliveryService {
             processedDeleted: processedResult.count,
             failedDeleted: failedResult.count,
         };
+    }
+
+    static startCleanupSchedule(intervalHours = 24): void {
+        if (cleanupTimer) return;
+
+        cleanupTimer = setInterval(() => {
+            void this.cleanup().catch((error) => {
+                Logger.error('[Webhook] Scheduled cleanup failed', { error });
+            });
+        }, intervalHours * 60 * 60 * 1000);
+        cleanupTimer.unref?.();
+    }
+
+    static stopCleanupSchedule(): void {
+        if (!cleanupTimer) return;
+        clearInterval(cleanupTimer);
+        cleanupTimer = null;
     }
 }

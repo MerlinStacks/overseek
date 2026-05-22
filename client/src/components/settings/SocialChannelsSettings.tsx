@@ -10,6 +10,7 @@ import { Facebook, Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, Check
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
+import { navigateToSafeUrl } from '../../utils/url';
 
 interface SocialAccount {
     id: string;
@@ -173,8 +174,9 @@ export function SocialChannelsSettings() {
                 currentAccount.id
             );
 
-            // Redirect to OAuth consent screen
-            window.location.href = response.authUrl;
+            if (!navigateToSafeUrl(response.authUrl)) {
+                throw new Error('Invalid OAuth redirect URL');
+            }
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : `Failed to start ${platform} connection.`);
             setConnecting(null);

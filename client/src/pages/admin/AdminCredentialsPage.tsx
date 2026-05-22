@@ -44,7 +44,13 @@ function useCredentials() {
     const fetchCredentials = useCallback(async () => {
         try {
             const res = await fetch('/api/admin/platform-credentials', { headers: authHeaders });
+            if (!res.ok) {
+                throw new Error(`Failed to fetch credentials (${res.status})`);
+            }
             const data = await res.json();
+            if (!Array.isArray(data)) {
+                throw new Error('Invalid credentials response');
+            }
             setCredentials(data);
 
             const initialForm: Record<string, Record<string, string>> = {};

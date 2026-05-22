@@ -39,13 +39,14 @@ export function AiManagerPage() {
         enabled: Boolean(token && currentAccount?.id),
         refetchOnWindowFocus: false,
         queryFn: async () => {
+            if (!token || !currentAccount?.id) throw new Error('Account context is required');
             const params = new URLSearchParams();
             if (statusFilter !== 'all') params.set('status', statusFilter);
             params.set('limit', '60');
             const res = await fetch(`/api/ai-manager/suggestions?${params.toString()}`, {
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount!.id,
+                    'x-account-id': currentAccount.id,
                 }
             });
             if (!res.ok) throw new Error('Failed to load AI manager suggestions');
@@ -58,10 +59,11 @@ export function AiManagerPage() {
         enabled: Boolean(token && currentAccount?.id),
         refetchOnWindowFocus: false,
         queryFn: async () => {
+            if (!token || !currentAccount?.id) throw new Error('Account context is required');
             const res = await fetch('/api/ai-manager/health', {
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount!.id,
+                    'x-account-id': currentAccount.id,
                 }
             });
             if (!res.ok) throw new Error('Failed to load source health');
@@ -71,11 +73,12 @@ export function AiManagerPage() {
 
     const refreshMutation = useApiMutation<{ created: number }>({
         mutationFn: async () => {
+            if (!token || !currentAccount?.id) throw new Error('Account context is required');
             const res = await fetch('/api/ai-manager/suggestions/refresh', {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount!.id,
+                    'x-account-id': currentAccount.id,
                     'content-type': 'application/json',
                 },
             });
@@ -89,11 +92,12 @@ export function AiManagerPage() {
 
     const statusMutation = useApiMutation<{ success: boolean }, { id: string; status: 'implemented' | 'dismissed' }>({
         mutationFn: async ({ id, status }) => {
+            if (!token || !currentAccount?.id) throw new Error('Account context is required');
             const res = await fetch(`/api/ai-manager/suggestions/${id}/status`, {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount!.id,
+                    'x-account-id': currentAccount.id,
                     'content-type': 'application/json',
                 },
                 body: JSON.stringify({ status }),

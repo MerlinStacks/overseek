@@ -69,6 +69,9 @@ export function InboxPage() {
             channel: activeConversation?.channel || 'CHAT',
         }));
 
+    const smsIdentifier = availableChannels
+        .find((option) => option.channel === 'SMS' && option.available)?.identifier;
+
     const parseNumber = (value: unknown): number | undefined => {
         if (value == null) return undefined;
         const parsed = Number(value);
@@ -163,6 +166,7 @@ export function InboxPage() {
                 <Suspense fallback={<ContactPanelSkeleton />}>
                     <ContactPanel
                         conversation={normalizedActiveConversation}
+                        smsIdentifier={smsIdentifier}
                         messageCount={messages.length}
                         onSelectConversation={(id) => setSelectedId(id)}
                     />

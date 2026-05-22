@@ -5,6 +5,8 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { requireAuthFastify } from '../middleware/auth';
 
+const TWILIO_SID_PATTERN = /^AC[a-f0-9]{32}$/i;
+
 export const createSmsRoutes = (chatService: ChatService) => async (fastify: FastifyInstance) => {
 
     fastify.addContentTypeParser(
@@ -51,8 +53,17 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
         const data = request.body as any;
         
         // Basic validation
-        if (!data.accountSid || !data.authToken || !data.fromNumber) {
+        if (!data || typeof data !== 'object' || !data.accountSid || !data.authToken || !data.fromNumber) {
             return reply.status(400).send({ error: 'Missing required fields' });
+        }
+        if (typeof data.accountSid !== 'string' || !TWILIO_SID_PATTERN.test(data.accountSid)) {
+            return reply.status(400).send({ error: 'Invalid Twilio Account SID' });
+        }
+        if (typeof data.authToken !== 'string' || data.authToken.trim().length < 16) {
+            return reply.status(400).send({ error: 'Invalid Twilio auth token' });
+        }
+        if (typeof data.fromNumber !== 'string' || !/^\+?\d{10,15}$/.test(data.fromNumber.replace(/[\s()-]/g, ''))) {
+            return reply.status(400).send({ error: 'Invalid sender phone number' });
         }
 
         const settings = await TwilioService.saveSettings(accountId, {

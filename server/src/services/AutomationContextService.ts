@@ -28,7 +28,7 @@ export class AutomationContextService {
         const needsCustomer =
             input.wooCustomerId
             || normalizedEmail
-            || Array.from(requiredFields).some((field) => field.startsWith('customer.') || field === 'segment.id');
+            || Array.from(requiredFields).some((field) => field.startsWith('customer.') || field === 'segment.id' || field === 'inbox.customerSentEmail');
 
         if (!needsCustomer) {
             return baseContext;
@@ -69,6 +69,12 @@ export class AutomationContextService {
         const segmentIds = customer && requiredFields.has('segment.id')
             ? await this.segmentService.getMatchingSegmentIdsForCustomer(input.accountId, customer.id)
             : undefined;
+        const hasInboxEmail = requiredFields.has('inbox.customerSentEmail')
+            ? await this.hasCustomerInboxEmail(input.accountId, customer?.id || null, normalizedEmail)
+            : undefined;
+        const latestReview = (requiredFields.has('customer.reviewedInLastDays') || requiredFields.has('customer.latestReviewRating'))
+            ? await this.getLatestReview(input.accountId, customer?.id || null, normalizedEmail)
+            : undefined;
 
         const latestOrderRaw = this.asRecord(latestOrder?.rawData);
         const customerRaw = this.asRecord(customer?.rawData);
@@ -94,12 +100,40 @@ export class AutomationContextService {
                 postcode: baseContext.customer?.postcode || customerRaw?.billing?.postcode || customerRaw?.shipping?.postcode || '',
                 emailDomain: normalizedEmail?.split('@')[1] || '',
                 lastOrderDate: baseContext.customer?.lastOrderDate || lastPurchaseDate?.toISOString() || null,
-                daysSinceLastOrder: baseContext.customer?.daysSinceLastOrder ?? this.getDaysSince(lastPurchaseDate)
+                daysSinceLastOrder: baseContext.customer?.daysSinceLastOrder ?? this.getDaysSince(lastPurchaseDate),
+                latestReviewDate: baseContext.customer?.latestReviewDate || latestReview?.dateCreated?.toISOString() || null,
+                latestReviewRating: baseContext.customer?.latestReviewRating ?? latestReview?.rating ?? null,
+                hasInboxEmail: baseContext.customer?.hasInboxEmail ?? hasInboxEmail ?? false
             },
             order: baseContext.order || latestOrderRaw || undefined,
             billing: baseContext.billing || latestOrderRaw?.billing || undefined,
-            segmentIds: baseContext.segmentIds || segmentIds || []
+            segmentIds: baseContext.segmentIds || segmentIds || [],
+            inbox: {
+                ...(this.asRecord(baseContext.inbox) || {}),
+                customerSentEmail: baseContext.inbox?.customerSentEmail ?? hasInboxEmail ?? false
+            }
         };
+    }
+
+    private async hasCustomerInboxEmail(accountId: string, wooCustomerRecordId?: string | null, email?: string | null): Promise<boolean> {
+        if (!wooCustomerRecordId && !email) return false;
+
+        const match = await prisma.message.findFirst({
+            where: {
+                senderType: 'CUSTOMER',
+                conversation: {
+                    accountId,
+                    channel: 'EMAIL',
+                    OR: [
+                        ...(wooCustomerRecordId ? [{ wooCustomerId: wooCustomerRecordId }] : []),
+                        ...(email ? [{ guestEmail: email }, { wooCustomer: { is: { email } } }] : [])
+                    ]
+                }
+            },
+            select: { id: true }
+        });
+
+        return Boolean(match);
     }
 
     private async getLatestOrder(accountId: string, wooCustomerId?: number | null, email?: string | null) {
@@ -120,6 +154,31 @@ export class AutomationContextService {
                 dateCreated: true
             }
         });
+    }
+
+    private async getLatestReview(
+        accountId: string,
+        wooCustomerRecordId?: string | null,
+        email?: string | null
+    ): Promise<{ dateCreated: Date; rating: number } | null> {
+        if (!wooCustomerRecordId && !email) return null;
+
+        const review = await prisma.wooReview.findFirst({
+            where: {
+                accountId,
+                OR: [
+                    ...(wooCustomerRecordId ? [{ wooCustomerId: wooCustomerRecordId }] : []),
+                    ...(email ? [{ reviewerEmail: email }] : [])
+                ]
+            },
+            orderBy: { dateCreated: 'desc' },
+            select: {
+                dateCreated: true,
+                rating: true
+            }
+        });
+
+        return review || null;
     }
 
     private normalizeEmail(value: unknown): string | null {

@@ -43,7 +43,6 @@
         "lucide-react": "^0.562.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
-        "react-email-editor": "^1.8.0",
         "react-grid-layout": "^2.2.2",
         "react-markdown": "^10.1.0",
         "react-router-dom": "^7.12.0",

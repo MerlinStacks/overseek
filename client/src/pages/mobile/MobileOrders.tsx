@@ -183,6 +183,8 @@ export function MobileOrders() {
     const advanceStatus = async (orderId: string, currentStatus: string) => {
         const config = getStatusConfig(currentStatus);
         if (!config.next) return;
+        if (!currentAccount || !token) return;
+        const accountId = currentAccount.id;
         const wooOrderId = Number(orderId);
         if (Number.isNaN(wooOrderId)) {
             Logger.warn('[MobileOrders] Cannot advance order with non-numeric Woo ID', { orderId });
@@ -202,7 +204,7 @@ export function MobileOrders() {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id,
+                    'X-Account-ID': accountId,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ orderIds: [wooOrderId], status: config.next })
@@ -211,7 +213,7 @@ export function MobileOrders() {
             emitCrossTabEvent({
                 resource: 'order',
                 type: 'status-updated',
-                accountId: currentAccount!.id,
+                accountId,
                 resourceId: orderId,
             });
         } catch (error) {

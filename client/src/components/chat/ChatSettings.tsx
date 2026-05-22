@@ -75,6 +75,7 @@ export function ChatSettings() {
     }, [currentAccount, token]);
 
     const handleSave = async () => {
+        if (!currentAccount?.id) return;
         setIsLoading(true);
         try {
             await fetch('/api/chat/settings', {
@@ -82,7 +83,7 @@ export function ChatSettings() {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount!.id
+                    'x-account-id': currentAccount.id
                 },
                 body: JSON.stringify(config)
             });

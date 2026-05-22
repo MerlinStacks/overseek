@@ -12,6 +12,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 import { SeoAnalysisPanel } from '../components/Seo/SeoAnalysisPanel';
+import { getSafeHref } from '../utils/url';
 import { MerchantCenterPanel } from '../components/Seo/MerchantCenterPanel';
 import { ProductSearchInsightsPanel } from '../components/Seo/ProductSearchInsightsPanel';
 import { MerchantCenterScoreBadge } from '../components/Seo/MerchantCenterScoreBadge';
@@ -403,7 +404,7 @@ function ProductEditPageContent({
                                         </span>
                                     )}
                                     <span>•</span>
-                                    <a href={product.permalink} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors">
+                                    <a href={getSafeHref(product.permalink)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors">
                                         View on Store <ExternalLink size={12} />
                                     </a>
                                     {lastSyncLabel && (

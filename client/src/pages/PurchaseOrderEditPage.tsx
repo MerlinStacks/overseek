@@ -11,6 +11,7 @@ import { POStatusStepper } from '../components/inventory/POStatusStepper';
 import { Toast, ToastType } from '../components/ui/Toast';
 import { usePODraftPersistence } from '../hooks/usePODraftPersistence';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
+import { getSafeHref } from '../utils/url';
 
 interface POItem {
     id?: string;
@@ -278,6 +279,10 @@ export function PurchaseOrderEditPage() {
         };
 
         try {
+            if (!currentAccount?.id) {
+                showToast('Select an account before saving a purchase order');
+                return;
+            }
             const url = isNew ? `/api/inventory/purchase-orders` : `/api/inventory/purchase-orders/${id}`;
             const method = isNew ? 'POST' : 'PUT';
 
@@ -286,7 +291,7 @@ export function PurchaseOrderEditPage() {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
+                    'X-Account-ID': currentAccount.id
                 },
                 body: JSON.stringify(payload)
             });
@@ -327,6 +332,10 @@ export function PurchaseOrderEditPage() {
     /** Delete a DRAFT PO after user confirmation */
     const handleDelete = async () => {
         if (!window.confirm('Are you sure you want to delete this purchase order? This cannot be undone.')) return;
+        if (!currentAccount?.id) {
+            showToast('Select an account before deleting a purchase order');
+            return;
+        }
 
         setIsLoading(true);
         try {
@@ -334,7 +343,7 @@ export function PurchaseOrderEditPage() {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
+                    'X-Account-ID': currentAccount.id
                 }
             });
 
@@ -638,7 +647,7 @@ export function PurchaseOrderEditPage() {
                                         />
                                         {trackingLink && (
                                             <a
-                                                href={trackingLink}
+                                                href={getSafeHref(trackingLink)}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center justify-center px-3 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"

@@ -12,6 +12,11 @@ interface BOMItemCostData {
     wasteFactor?: number | string | null;
 }
 
+function toFiniteNumber(value: string | number | null | undefined, fallback = 0): number {
+    const number = Number(value ?? fallback);
+    return Number.isFinite(number) ? number : fallback;
+}
+
 /**
  * Calculates the total cost of a single BOM item including waste factor.
  * Priority order: Internal Product > Variant > Product > Supplier Item
@@ -20,17 +25,17 @@ function calculateBomItemCost(item: BOMItemCostData): number {
     let unitCost = 0;
 
     if (item.internalProduct?.cogs != null) {
-        unitCost = Number(item.internalProduct.cogs);
+        unitCost = toFiniteNumber(item.internalProduct.cogs);
     } else if (item.childVariation?.cogs != null) {
-        unitCost = Number(item.childVariation.cogs);
+        unitCost = toFiniteNumber(item.childVariation.cogs);
     } else if (item.childProduct?.cogs != null) {
-        unitCost = Number(item.childProduct.cogs);
+        unitCost = toFiniteNumber(item.childProduct.cogs);
     } else if (item.supplierItem?.cost != null) {
-        unitCost = Number(item.supplierItem.cost);
+        unitCost = toFiniteNumber(item.supplierItem.cost);
     }
 
-    const quantity = Number(item.quantity);
-    const waste = Number(item.wasteFactor || 0);
+    const quantity = toFiniteNumber(item.quantity);
+    const waste = Math.max(0, toFiniteNumber(item.wasteFactor));
 
     return unitCost * quantity * (1 + waste);
 }

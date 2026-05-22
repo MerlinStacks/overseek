@@ -4,6 +4,7 @@
  */
 import React, { useState, useMemo } from 'react';
 import { X, Search, MessageSquare, Zap, ShoppingCart, Users, Send } from 'lucide-react';
+import { getSupportedFlowActionIds } from '../flowValidation';
 
 // Action category definitions
 const ACTION_CATEGORIES = [
@@ -92,6 +93,8 @@ interface ActionItem {
     label: string;
     icon: string;
 }
+
+const SUPPORTED_ACTION_IDS = getSupportedFlowActionIds();
 
 interface ActionSelectorModalProps {
     isOpen: boolean;
@@ -190,19 +193,27 @@ export const ActionSelectorModal: React.FC<ActionSelectorModalProps> = ({
                                     </h3>
                                 )}
                                 <div className="flex flex-wrap gap-2">
-                                    {group.actions.map((action) => (
-                                        <button
-                                            key={action.id}
-                                            onClick={() => setSelectedAction(action)}
-                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-full transition-all ${selectedAction?.id === action.id
-                                                ? 'bg-blue-50 border-blue-400 text-blue-700 ring-2 ring-blue-200'
-                                                : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                        >
-                                            <span>{action.icon}</span>
-                                            {action.label}
-                                        </button>
-                                    ))}
+                                    {group.actions.map((action) => {
+                                        const isSupported = SUPPORTED_ACTION_IDS.has(action.id);
+                                        return (
+                                            <button
+                                                key={action.id}
+                                                onClick={() => isSupported && setSelectedAction(action)}
+                                                disabled={!isSupported}
+                                                title={isSupported ? action.label : 'Coming soon'}
+                                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-full transition-all ${selectedAction?.id === action.id
+                                                    ? 'bg-blue-50 border-blue-400 text-blue-700 ring-2 ring-blue-200'
+                                                    : isSupported
+                                                        ? 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                                                        : 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
+                                                    }`}
+                                            >
+                                                <span>{action.icon}</span>
+                                                {action.label}
+                                                {!isSupported && <span className="ml-1 rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">Soon</span>}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         ))}

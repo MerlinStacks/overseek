@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { GoogleAdsCampaigns } from './GoogleAdsCampaigns';
 import { Loader2, Megaphone, Plus } from 'lucide-react';
+import { navigateToSafeUrl } from '../../utils/url';
 
 interface AdAccount {
     id: string;
@@ -42,7 +43,7 @@ export function AdPerformanceView() {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             const data = await res.json();
-            if (data.authUrl) window.location.href = data.authUrl;
+            if (data.authUrl && !navigateToSafeUrl(data.authUrl)) throw new Error('Invalid OAuth redirect URL');
         } catch (err) {
             Logger.error('Failed to initiate reconnect', { error: err });
         }

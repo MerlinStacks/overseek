@@ -8,11 +8,27 @@ const GOLD_API_URL = 'https://www.goldapi.io/api';
 // Using a placeholder token or env variable. In prod, use process.env.GOLD_API_KEY
 const API_TOKEN = process.env.GOLD_API_KEY || '';
 
+async function safeJson(response: Response, context: string): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const bodySnippet = (await response.text()).slice(0, 200);
+        Logger.warn('GoldPriceService: Non-JSON response', { context, status: response.status, contentType, bodySnippet });
+        throw new Error('Gold price API returned non-JSON response');
+    }
+
+    return response.json();
+}
+
+function normalizeCurrency(currency: string): string {
+    return /^[A-Z]{3}$/i.test(currency) ? currency.toUpperCase() : 'USD';
+}
+
 export class GoldPriceService {
     /**
      * Fetches the current gold price for a given currency from GoldAPI.io
      */
     static async fetchLivePrice(currency = 'USD'): Promise<number | null> {
+        currency = normalizeCurrency(currency);
         if (!API_TOKEN) {
             // Fallback to public endpoint
             Logger.info('GoldPriceService: No API Token, using public endpoint');
@@ -30,7 +46,7 @@ export class GoldPriceService {
                     throw new Error(`HTTP ${response.status}`);
                 }
 
-                const data = await response.json();
+                const data = await safeJson(response, 'goldprice.org');
                 if (data && data.items && data.items.length > 0) {
                     const item = data.items[0];
                     // The API returns keys like xauPrice (which is in the requested currency)
@@ -52,7 +68,7 @@ export class GoldPriceService {
                     if (!fallbackResponse.ok) {
                         throw new Error(`HTTP ${fallbackResponse.status}`);
                     }
-                    const fallbackData = await fallbackResponse.json();
+                    const fallbackData = await safeJson(fallbackResponse, 'metals.dev');
                     // metals.dev returns { metals: { gold: <price_per_gram> } }
                     if (fallbackData?.metals?.gold) {
                         return fallbackData.metals.gold;
@@ -82,7 +98,7 @@ export class GoldPriceService {
                 throw new Error(`HTTP ${response.status}`);
             }
 
-            const data = await response.json();
+            const data = await safeJson(response, 'goldapi.io');
             // Response example: { "price": 2745.30, "currency": "USD", ... }
             if (data && data.price) {
                 // Gold price is usually per Ounce (Troy Ounce ~ 31.1035g)

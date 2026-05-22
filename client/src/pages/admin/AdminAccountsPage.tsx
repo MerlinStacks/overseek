@@ -106,12 +106,16 @@ export function AdminAccountsPage() {
 
             // Just pick the first element (likely owner or first staff) for demo
             // In a real app we'd let admin pick WHICH user to impersonate
-            if (!users || users.length === 0) {
+            if (!Array.isArray(users) || users.length === 0) {
                 alert('No users found in this account');
                 return;
             }
 
-            const targetUser = users[0].user; // Assuming structure from account.ts: include: { user: ... }
+            const targetUser = users.find((entry) => entry?.user?.id)?.user;
+            if (!targetUser?.id) {
+                alert('No valid users found in this account');
+                return;
+            }
 
             if (!confirm(`Impersonate ${targetUser.fullName || targetUser.email}?`)) return;
 

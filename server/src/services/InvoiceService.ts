@@ -11,6 +11,7 @@ import {
     formatInvoiceCurrency,
     formatInvoiceDate,
     getInvoiceItemMeta,
+    getOrderGiftWrappingMeta,
     mergeInvoiceSettings,
     resolveInvoiceTemplateString,
 } from '@overseek/core';
@@ -806,37 +807,52 @@ export class InvoiceService {
                             || order.shippingMethod
                             || 'N/A';
                         const paymentMethod = rawData.payment_method_title || order.paymentMethod || 'N/A';
+                        const giftWrapMeta = getOrderGiftWrappingMeta(rawData);
                         // Use WooCommerce's date_created for consistency with client-side rendering
                         const orderDate = rawData.date_created
                             ? formatDate(new Date(rawData.date_created))
                             : formatDate(order.createdAt);
 
-                        const detailsData = [
-                            ['Order Number:', order.number],
-                            ['Order Date:', orderDate],
-                            ['Payment Method:', paymentMethod],
-                            ['Shipping Method:', shippingMethod]
+                        const detailsData: Array<{ label: string; value: string; highlight: boolean }> = [
+                            { label: 'Order Number:', value: decodeInvoiceEntities(String(order.number)), highlight: false },
+                            { label: 'Order Date:', value: decodeInvoiceEntities(String(orderDate)), highlight: false },
+                            { label: 'Payment Method:', value: decodeInvoiceEntities(String(paymentMethod)), highlight: false },
+                            { label: 'Shipping Method:', value: decodeInvoiceEntities(String(shippingMethod)), highlight: false },
                         ];
+                        if (giftWrapMeta) {
+                            detailsData.push({
+                                label: `${giftWrapMeta.label}:`,
+                                value: giftWrapMeta.value,
+                                highlight: true,
+                            });
+                        }
 
                         let detY = startY;
                         const detailLabelWidth = Math.min(140, Math.max(88, width * 0.42));
                         const detailValueWidth = Math.max(140, width - detailLabelWidth - 6);
                         const detailLineGap = 3;
-                        detailsData.forEach(([label, value]) => {
-                            const safeValue = String(value ?? 'N/A');
+                        detailsData.forEach((detail) => {
+                            const safeValue = String(detail.value ?? 'N/A');
 
                             doc.font('Helvetica').fontSize(9);
-                            const labelHeight = doc.heightOfString(label, { width: detailLabelWidth });
+                            const labelHeight = doc.heightOfString(detail.label, { width: detailLabelWidth });
 
                             doc.font('Helvetica-Bold').fontSize(9);
                             const valueHeight = doc.heightOfString(safeValue, { width: detailValueWidth });
+                            const rowHeight = Math.max(labelHeight, valueHeight);
 
-                            doc.font('Helvetica').fillColor('black').fontSize(9).text(label, x, detY, { width: detailLabelWidth });
+                            if (detail.highlight) {
+                                doc.save();
+                                doc.rect(x - 2, detY - 1, width + 4, rowHeight + 2).fill('#fef08a');
+                                doc.restore();
+                            }
+
+                            doc.font('Helvetica').fillColor('black').fontSize(9).text(detail.label, x, detY, { width: detailLabelWidth });
                             doc.font('Helvetica-Bold').fillColor('black').fontSize(9).text(safeValue, x + detailLabelWidth + 6, detY, {
                                 width: detailValueWidth
                             });
 
-                            detY += Math.max(labelHeight, valueHeight) + detailLineGap;
+                            detY += rowHeight + detailLineGap;
                         });
                         doc.fillColor('black').font('Helvetica').fontSize(10);
                         blockHeight = detY - startY + 10;
@@ -900,7 +916,7 @@ export class InvoiceService {
                         };
 
                         lineItems.forEach((item: any) => {
-                            const itemName = item.name || 'Product';
+                            const itemName = decodeInvoiceEntities(String(item.name || 'Product'));
                             const qty = item.quantity || 1;
                             const unitPrice = qty > 0 ? (parseFloat(item.total || 0) / qty) : 0;
                             const itemMeta = getInvoiceItemMeta(item)

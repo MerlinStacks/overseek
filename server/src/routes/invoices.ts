@@ -3,13 +3,49 @@
  * Handles invoice templates and image uploads for the invoice designer.
  */
 
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { InvoiceService } from '../services/InvoiceService';
+import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import path from 'path';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
+
+function getCanonicalSigningSecret(): string {
+    return String(
+        process.env.INVOICE_CANONICAL_SIGNING_SECRET
+        || process.env.RELAY_WEBHOOK_SECRET
+        || process.env.JWT_SECRET
+        || 'overseek-canonical-invoice-secret'
+    );
+}
+
+function signCanonicalPayload(artifactId: string, expires: number): string {
+    return createHmac('sha256', getCanonicalSigningSecret())
+        .update(`${artifactId}:${expires}`)
+        .digest('hex');
+}
+
+function buildArtifactDownloadUrl(request: FastifyRequest, artifactId: string): string {
+    const expires = Date.now() + (5 * 60 * 1000);
+    const sig = signCanonicalPayload(artifactId, expires);
+    const forwardedProtoHeader = request.headers['x-forwarded-proto'];
+    const forwardedProto = Array.isArray(forwardedProtoHeader)
+        ? forwardedProtoHeader[0]
+        : forwardedProtoHeader;
+    const proto = (forwardedProto || request.protocol || 'https').split(',')[0].trim();
+
+    const forwardedHostHeader = request.headers['x-forwarded-host'];
+    const forwardedHost = Array.isArray(forwardedHostHeader)
+        ? forwardedHostHeader[0]
+        : forwardedHostHeader;
+    const hostHeader = request.headers.host;
+    const host = (forwardedHost || hostHeader || request.hostname).split(',')[0].trim();
+
+    const base = `${proto}://${host}`;
+    return `${base}/api/invoices/relay/artifact/${encodeURIComponent(artifactId)}?expires=${encodeURIComponent(String(expires))}&sig=${encodeURIComponent(sig)}`;
+}
 
 const invoiceService = new InvoiceService();
 
@@ -158,6 +194,56 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
             if (writeStream) writeStream.destroy();
             Logger.error('Failed to upload invoice image', { error, accountId });
             return reply.code(500).send({ error: 'Failed to upload image' });
+        }
+    });
+
+    fastify.post<{ Params: { orderId: string }; Body: { forceRegenerate?: boolean } }>('/orders/:orderId/generate', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+
+        const orderId = String(request.params.orderId || '').trim();
+        if (!orderId) return reply.code(400).send({ error: 'Order ID required' });
+
+        try {
+            const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
+                forceRegenerate: request.body?.forceRegenerate === true,
+            });
+            const settled: any = await canonicalInvoiceService.waitForReady(artifact.id, 15000, 300);
+
+            if (canonicalInvoiceService.isReadableReady(settled)) {
+                const downloadUrl = buildArtifactDownloadUrl(request, settled.id);
+                return {
+                    success: true,
+                    status: 'ready',
+                    invoice_ref: settled.id,
+                    artifact_download_url: downloadUrl,
+                    renderer_used: settled.renderer,
+                    generated_at: settled.generatedAt,
+                };
+            }
+
+            if (settled?.status === 'failed') {
+                return reply.code(409).send({
+                    success: false,
+                    status: 'failed',
+                    invoice_ref: settled.id,
+                    error: settled.errorMessage || 'Invoice generation failed',
+                });
+            }
+
+            return reply.code(202).send({
+                success: false,
+                status: 'pending',
+                invoice_ref: settled?.id ?? artifact.id,
+                error: 'Invoice generation is pending',
+            });
+        } catch (error) {
+            Logger.error('Failed to generate canonical invoice from authenticated route', {
+                accountId,
+                orderId,
+                error,
+            });
+            return reply.code(500).send({ error: 'Failed to generate invoice' });
         }
     });
 };

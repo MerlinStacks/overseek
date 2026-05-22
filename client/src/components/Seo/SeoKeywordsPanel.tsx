@@ -28,6 +28,7 @@ import type {
     AIKeywordRecommendation,
 } from '../../hooks/useSeoKeywords';
 import { useApi } from '../../hooks/useApi';
+import { navigateToSafeUrl } from '../../utils/url';
 
 /** Priority badge color mapping */
 const PRIORITY_COLORS = {
@@ -138,7 +139,7 @@ function SearchConsoleActionPrompt({
         setLoading(true);
         try {
             const res = await api.get<{ authUrl: string }>('/api/oauth/search-console/authorize?redirect=/seo');
-            window.location.href = res.authUrl;
+            if (!navigateToSafeUrl(res.authUrl)) throw new Error('Invalid Search Console OAuth redirect URL');
         } catch {
             setLoading(false);
         }

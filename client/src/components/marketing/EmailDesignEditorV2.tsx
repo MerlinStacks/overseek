@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Lock, LockOpen, Monitor, Pencil, Save, Search, Send, Settings, Smartphone, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Lock, LockOpen, Monitor, Pencil, Search, Send, Settings, Smartphone, Trash2, Upload, X } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
@@ -10,10 +10,12 @@ import {
     createEmailDesignId,
     getEmailDesignV2BlockLabel,
     type EmailBlock,
+    type EmailColumn,
     type EmailDesignV2Envelope,
     type EmailDeviceVisibility,
     type EmailSection,
     type EmailStackMode,
+    type SocialIconSet,
     type SocialIconStyle,
 } from '../../lib/emailDesignerV2';
 import { createAccountFooterHtml, createBlock, createPaletteBlock, paletteItems, type PaletteKey } from './emailDesignerV2/blockFactory';
@@ -21,12 +23,13 @@ import { EmailDropCanvas } from './emailDesignerV2/EmailDropCanvas';
 import { PaletteGrid } from './emailDesignerV2/PaletteGrid';
 import { ProductPicker } from './emailDesignerV2/ProductPicker';
 import { productToBlockProps } from './emailDesignerV2/productBlockProps';
+import { getEmailDesignWarnings, sanitizeEmailHtml } from '../../utils/emailHtml';
 
 interface Props {
     initialDesign?: unknown;
     initialSubject?: string;
     initialPreviewText?: string;
-    onSave: (html: string, design: unknown, meta?: { subject: string; previewText: string }) => void;
+    onSave: (html: string, design: unknown, meta?: { subject: string; previewText: string; autosave?: boolean }) => void | Promise<void>;
     onCancel: () => void;
 }
 
@@ -36,12 +39,19 @@ interface Snapshot {
     design: EmailDesignV2Envelope;
 }
 
+interface SavedSectionPreset {
+    id: string;
+    name: string;
+    section: EmailSection;
+}
+
 interface InvoiceTemplateRecord {
     layout?: string | { items?: Array<{ type?: string; logo?: string; content?: string }> };
 }
 
 const DRAFT_STORAGE_KEY = 'overseek-email-builder-v2-draft';
 const HISTORY_STORAGE_KEY = 'overseek-email-builder-v2-history';
+const SAVED_SECTIONS_STORAGE_KEY = 'overseek-email-builder-v2-saved-sections';
 const MAX_HISTORY = 12;
 
 type BuilderTab = 'structure' | 'blocks' | 'layouts' | 'global';
@@ -72,6 +82,8 @@ const RECENT_TEST_RECIPIENTS_KEY = 'overseek-email-builder-v2-test-recipients';
 const MAX_TEST_RECIPIENTS = 5;
 const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'X', 'Twitter', 'LinkedIn', 'Pinterest'];
 const SOCIAL_ICON_STYLES: SocialIconStyle[] = ['solid', 'outline', 'glyph'];
+const SOCIAL_ICON_SETS: SocialIconSet[] = ['native', 'classic'];
+const LTR_TEXT_STYLE = { direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' } as const;
 const PRODUCT_VISIBILITY_FIELDS = [
     { key: 'showImage', label: 'Image' },
     { key: 'showTitle', label: 'Title' },
@@ -80,6 +92,166 @@ const PRODUCT_VISIBILITY_FIELDS = [
     { key: 'showRegularPrice', label: 'Regular Price' },
     { key: 'showButton', label: 'Button' },
 ] as const;
+const REVIEW_VISIBILITY_FIELDS = [
+    { key: 'showHeadline', label: 'Headline' },
+    { key: 'showRating', label: 'Rating' },
+    { key: 'showContent', label: 'Review Content' },
+    { key: 'showReviewer', label: 'Reviewer Name' },
+    { key: 'showProductName', label: 'Product Name' },
+    { key: 'showCta', label: 'CTA Button' },
+] as const;
+
+interface PreviewMergeContext {
+    storeUrl: string;
+    customerFirstName: string;
+    customerLastName: string;
+    customerEmail: string;
+    customerPhone: string;
+    orderNumber: string;
+    orderDate: string;
+    orderStatus: string;
+    orderSubtotal: string;
+    orderShippingTotal: string;
+    orderDiscountTotal: string;
+    orderTotal: string;
+    orderCustomerNote: string;
+    orderTrackingNumber: string;
+    orderTrackingUrl: string;
+    orderAuspostTrackingUrl: string;
+    billingAddress: string;
+    shippingAddress: string;
+    productName: string;
+    productPrice: string;
+    productImage: string;
+    productDescription: string;
+    reviewReviewer: string;
+    reviewRating: string;
+    reviewContent: string;
+    reviewProductName: string;
+    reviewProductUrl: string;
+}
+
+function applyPreviewMergeTags(html: string, context: PreviewMergeContext): string {
+    const replacements: Array<[RegExp, string]> = [
+        [/\{\{store_url\}\}/g, context.storeUrl],
+        [/\{\{preferences_url\}\}/g, `${context.storeUrl.replace(/\/$/, '')}/my-account/edit-account`],
+        [/\{\{unsubscribe_url\}\}/g, `${context.storeUrl.replace(/\/$/, '')}/?unsubscribe=preview`],
+        [/\{\{link_trigger\}\}/g, context.storeUrl],
+        [/\{\{customer\.firstName\}\}/g, context.customerFirstName],
+        [/\{\{customer\.lastName\}\}/g, context.customerLastName],
+        [/\{\{customer\.email\}\}/g, context.customerEmail],
+        [/\{\{customer\.phone\}\}/g, context.customerPhone],
+        [/\{\{contact_first_name\}\}/g, context.customerFirstName],
+        [/\{\{contact_last_name\}\}/g, context.customerLastName],
+        [/\{\{contact_email\}\}/g, context.customerEmail],
+        [/\{\{contact_full_name\}\}/g, [context.customerFirstName, context.customerLastName].filter(Boolean).join(' ')],
+        [/\{\{order\.number\}\}/g, context.orderNumber],
+        [/\{\{order_id\}\}/g, context.orderNumber],
+        [/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, context.productName || 'your order'],
+        [/\{\{order\.date\}\}/g, context.orderDate],
+        [/\{\{order\.status\}\}/g, context.orderStatus],
+        [/\{\{order\.subtotal\}\}/g, context.orderSubtotal],
+        [/\{\{order\.shippingTotal\}\}/g, context.orderShippingTotal],
+        [/\{\{order\.discountTotal\}\}/g, context.orderDiscountTotal],
+        [/\{\{order\.total\}\}/g, context.orderTotal],
+        [/\{\{order\.customerNote\}\}/g, context.orderCustomerNote],
+        [/\{\{order\.trackingNumber\}\}/g, context.orderTrackingNumber],
+        [/\{\{order\.trackingUrl\}\}/g, context.orderTrackingUrl],
+        [/\{\{order\.auspostTrackingUrl\}\}/g, context.orderAuspostTrackingUrl],
+        [/\{\{tracking_number\}\}/g, context.orderTrackingNumber],
+        [/\{\{tracking_url\}\}/g, context.orderTrackingUrl],
+        [/\{\{order\.billingAddress\}\}/g, context.billingAddress],
+        [/\{\{order\.shippingAddress\}\}/g, context.shippingAddress],
+        [/\{\{product\.name\}\}/g, context.productName],
+        [/\{\{product\.price\}\}/g, context.productPrice],
+        [/\{\{product\.image\}\}/g, context.productImage],
+        [/\{\{product\.description\}\}/g, context.productDescription],
+        [/\{\{review\.reviewer\}\}/g, context.reviewReviewer],
+        [/\{\{review\.rating\}\}/g, context.reviewRating],
+        [/\{\{review\.content\}\}/g, context.reviewContent],
+        [/\{\{review\.productName\}\}/g, context.reviewProductName],
+        [/\{\{review\.productUrl\}\}/g, context.reviewProductUrl],
+    ];
+
+    return replacements.reduce((result, [pattern, value]) => result.replace(pattern, value || ''), html);
+}
+
+function sanitizeBidiText(value: string): string {
+    return value.replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '');
+}
+
+function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContext {
+    return {
+        storeUrl,
+        customerFirstName: 'Alex',
+        customerLastName: 'Taylor',
+        customerEmail: 'alex@example.com',
+        customerPhone: '+61 400 000 000',
+        orderNumber: '1001',
+        orderDate: new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' }),
+        orderStatus: 'processing',
+        orderSubtotal: '$89.00',
+        orderShippingTotal: '$10.00',
+        orderDiscountTotal: '$0.00',
+        orderTotal: '$99.00',
+        orderCustomerNote: 'Please leave at front door.',
+        orderTrackingNumber: '33A1234567890',
+        orderTrackingUrl: 'https://auspost.com.au/mypost/track/#/details/33A1234567890',
+        orderAuspostTrackingUrl: 'https://auspost.com.au/mypost/track/#/details/33A1234567890',
+        billingAddress: 'Alex Taylor<br />12 Market Street<br />Sydney, NSW, 2000<br />AU',
+        shippingAddress: 'Alex Taylor<br />12 Market Street<br />Sydney, NSW, 2000<br />AU',
+        productName: 'Classic Hoodie',
+        productPrice: '$89.00',
+        productImage: 'https://via.placeholder.com/600x600?text=Product+Image',
+        productDescription: 'Comfortable everyday hoodie with a relaxed fit.',
+        reviewReviewer: 'Alex Taylor',
+        reviewRating: '5',
+        reviewContent: 'Great quality and very fast shipping.',
+        reviewProductName: 'Classic Hoodie',
+        reviewProductUrl: `${storeUrl.replace(/\/$/, '')}/products/classic-hoodie`,
+    };
+}
+
+function normalizePreviewStoreUrl(raw: unknown): string {
+    const value = String(raw || '').trim();
+    if (!value || value.includes('{{')) return 'https://example.com';
+    if (/^https?:\/\//i.test(value)) return value;
+    return `https://${value}`;
+}
+
+function buildAusPostPreviewTrackingUrl(trackingNumber: string): string {
+    const trimmed = trackingNumber.trim();
+    if (!trimmed) return '';
+    return `https://auspost.com.au/mypost/track/#/details/${encodeURIComponent(trimmed)}`;
+}
+
+function extractPreviewTracking(order: Record<string, unknown>): { trackingNumber: string; trackingUrl: string; auspostTrackingUrl: string } {
+    const directItems = Array.isArray(order.tracking_items)
+        ? order.tracking_items as Array<Record<string, unknown>>
+        : Array.isArray(order.trackingItems)
+            ? order.trackingItems as Array<Record<string, unknown>>
+            : [];
+    const firstItem = directItems[0] || {};
+    const trackingNumber = String(
+        firstItem.trackingNumber
+        || firstItem.tracking_number
+        || order.trackingNumber
+        || order.tracking_number
+        || ''
+    ).trim();
+    const auspostTrackingUrl = buildAusPostPreviewTrackingUrl(trackingNumber);
+    const trackingUrl = String(
+        firstItem.trackingUrl
+        || firstItem.tracking_url
+        || firstItem.tracking_link
+        || order.trackingUrl
+        || order.tracking_url
+        || auspostTrackingUrl
+        || ''
+    ).trim();
+
+    return { trackingNumber, trackingUrl, auspostTrackingUrl };
+}
 
 function parseBoxSpacing(value: string): [number, number, number, number] {
     const parts = value.trim().split(/\s+/).map((part) => Number(part.replace('px', '')) || 0);
@@ -134,30 +306,37 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
     const [previewSurface, setPreviewSurface] = useState<'canvas' | 'html'>('canvas');
     const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const [issues, setIssues] = useState<PreflightIssue[]>([]);
     const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+    const [savedSections, setSavedSections] = useState<SavedSectionPreset[]>([]);
     const [testEmail, setTestEmail] = useState(user?.email || '');
     const [testStatus, setTestStatus] = useState<string | null>(null);
     const [sendingTest, setSendingTest] = useState(false);
     const [recentRecipients, setRecentRecipients] = useState<string[]>([]);
     const [missingEmailAccount, setMissingEmailAccount] = useState(false);
     const [invoiceLogoUrl, setInvoiceLogoUrl] = useState('');
+    const [previewMergeContext, setPreviewMergeContext] = useState<PreviewMergeContext | null>(null);
 
     const html = useMemo(() => compileEmailDesignV2(design), [design]);
+    const mergedPreviewHtml = useMemo(() => (
+        previewMergeContext ? applyPreviewMergeTags(html, previewMergeContext) : html
+    ), [html, previewMergeContext]);
     const iframePreviewHtml = useMemo(() => {
         const baseHref = typeof window !== 'undefined' ? window.location.origin : '';
-        if (!baseHref) return html;
-        return html.includes('<head>')
-            ? html.replace('<head>', `<head><base href="${baseHref}/">`)
-            : html;
-    }, [html]);
+        if (!baseHref) return mergedPreviewHtml;
+        return mergedPreviewHtml.includes('<head>')
+            ? mergedPreviewHtml.replace('<head>', `<head><base href="${baseHref}/">`)
+            : mergedPreviewHtml;
+    }, [mergedPreviewHtml]);
     const selectedSection = design.document.sections.find((section) => section.id === selectedSectionId) || design.document.sections[0];
     const selectedBlock = selectedSection?.columns.flatMap((column) => column.blocks).find((block) => block.id === selectedBlockId) || null;
     const groupedIssues = groupPreflightIssues(issues);
+    const designWarnings = useMemo(() => getEmailDesignWarnings(design), [design]);
     const visiblePaletteItems = paletteItems.filter((item) => item.label.toLowerCase().includes(blockSearch.trim().toLowerCase()));
-    const saveStatus = saving ? 'Saving...' : hasUnsavedChanges ? 'Autosaved draft' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
+    const saveStatus = saving ? 'Autosaving...' : saveError ? 'Autosave failed, draft kept' : hasUnsavedChanges ? 'Autosave pending' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
     const hideOnDesktop = selectedSection?.visibility === 'mobile';
     const hideOnMobile = selectedSection?.visibility === 'desktop';
 
@@ -166,12 +345,146 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const accountName = currentAccount?.appearance?.appName || currentAccount?.name || 'Your Store';
     const accountFooterHtml = currentAccount?.appearance?.emailFooterHtml || createAccountFooterHtml(accountName);
 
+    useEffect(() => {
+        const accountMeta = currentAccount as unknown as Record<string, unknown>;
+        const baseStoreUrl = normalizePreviewStoreUrl(accountMeta?.woocommerceUrl || accountMeta?.url);
+        const fallbackContext = createFallbackPreviewMergeContext(baseStoreUrl);
+
+        if (!token || !currentAccount?.id) {
+            setPreviewMergeContext(fallbackContext);
+            return;
+        }
+
+        setPreviewMergeContext(fallbackContext);
+
+        const controller = new AbortController();
+
+        const fetchPreviewData = async () => {
+            try {
+                const listResponse = await fetch('/api/orders?limit=1', {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'X-Account-ID': currentAccount.id,
+                    },
+                    signal: controller.signal,
+                });
+
+                if (!listResponse.ok) return;
+                const listPayload = await listResponse.json() as { orders?: Array<{ id?: string; wooId?: number }> };
+                const newest = listPayload.orders?.[0];
+                if (!newest?.id) return;
+
+                const detailResponse = await fetch(`/api/orders/${newest.id}`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'X-Account-ID': currentAccount.id,
+                    },
+                    signal: controller.signal,
+                });
+                if (!detailResponse.ok) return;
+
+                const order = await detailResponse.json() as Record<string, unknown>;
+                const billing = (order.billing as Record<string, unknown> | undefined) || {};
+                const shipping = (order.shipping as Record<string, unknown> | undefined) || {};
+                const lineItems = Array.isArray(order.line_items) ? order.line_items as Array<Record<string, unknown>> : [];
+                const firstItem = lineItems[0] || {};
+
+                const firstName = String(billing.first_name || '').trim();
+                const lastName = String(billing.last_name || '').trim();
+                const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || 'Customer';
+                const productName = String(firstItem.name || 'Product');
+                const productTotal = String(firstItem.total || firstItem.price || order.total || '');
+                const currency = String(order.currency || 'AUD');
+                const storeUrl = normalizePreviewStoreUrl(accountMeta.woocommerceUrl || accountMeta.url);
+
+                const fmtDate = (raw: unknown) => {
+                    const value = String(raw || '');
+                    if (!value) return '';
+                    const parsed = new Date(value);
+                    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' });
+                };
+                const fmtMoney = (raw: unknown) => {
+                    const value = Number(raw);
+                    if (!Number.isFinite(value)) return String(raw || '');
+                    return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(value);
+                };
+                const fmtAddress = (address: Record<string, unknown>) => {
+                    const parts = [
+                        [address.first_name, address.last_name].filter(Boolean).join(' '),
+                        address.company,
+                        address.address_1,
+                        address.address_2,
+                        [address.city, address.state, address.postcode].filter(Boolean).join(', '),
+                        address.country,
+                    ].filter(Boolean);
+                    return parts.join('<br />');
+                };
+
+                const lineItemPermalink = String(firstItem.permalink || firstItem.product_permalink || '').trim();
+                const productPath = firstItem.slug ? `/product/${String(firstItem.slug)}` : `/?p=${String(firstItem.product_id || '')}`;
+                const resolvedProductUrl = lineItemPermalink || `${storeUrl.replace(/\/$/, '')}${productPath}`;
+                const tracking = extractPreviewTracking(order);
+
+                setPreviewMergeContext({
+                    storeUrl,
+                    customerFirstName: firstName,
+                    customerLastName: lastName,
+                    customerEmail: String(billing.email || ''),
+                    customerPhone: String(billing.phone || ''),
+                    orderNumber: String(order.number || order.id || ''),
+                    orderDate: fmtDate(order.date_created),
+                    orderStatus: String(order.status || ''),
+                    orderSubtotal: fmtMoney(order.subtotal),
+                    orderShippingTotal: fmtMoney(order.shipping_total),
+                    orderDiscountTotal: fmtMoney(order.discount_total),
+                    orderTotal: fmtMoney(order.total),
+                    orderCustomerNote: String(order.customer_note || ''),
+                    orderTrackingNumber: tracking.trackingNumber,
+                    orderTrackingUrl: tracking.trackingUrl,
+                    orderAuspostTrackingUrl: tracking.auspostTrackingUrl,
+                    billingAddress: fmtAddress(billing),
+                    shippingAddress: fmtAddress(shipping),
+                    productName,
+                    productPrice: fmtMoney(productTotal),
+                    productImage: String((firstItem.image as Record<string, unknown> | undefined)?.src || ''),
+                    productDescription: String(firstItem.name ? `From your latest order: ${firstItem.name}` : ''),
+                    reviewReviewer: fullName,
+                    reviewRating: '5',
+                    reviewContent: `I love my ${productName}. Great quality and fast shipping.`,
+                    reviewProductName: productName,
+                    reviewProductUrl: resolvedProductUrl,
+                });
+            } catch {
+                // Preview data is best-effort and should not block editing.
+            }
+        };
+
+        fetchPreviewData();
+
+        return () => {
+            controller.abort();
+        };
+    }, [token, currentAccount]);
+
+    const autosaveTimerRef = useRef<number | null>(null);
+    const latestDesignRef = useRef(design);
+    const latestHtmlRef = useRef(html);
+    const baselineDesignRef = useRef(JSON.stringify(design));
+    const autosaveInFlightRef = useRef(false);
+    const autosaveAgainRef = useRef(false);
+    const didMountRef = useRef(false);
+
     const setDirtyDesign = useCallback((updater: (draft: EmailDesignV2Envelope) => void) => {
         setDesign((current) => {
             const next = cloneDesign(current);
             updater(next);
-            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ design: next, updatedAt: new Date().toISOString() }));
+            try {
+                localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ design: next, updatedAt: new Date().toISOString() }));
+            } catch {
+                // Draft persistence is best-effort and should not block editing.
+            }
             setHasUnsavedChanges(true);
+            setSaveError(false);
             return next;
         });
     }, []);
@@ -320,12 +633,56 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         });
     };
 
+    const updateSectionColumn = (columnId: string, updater: (column: EmailColumn) => void) => {
+        updateSelectedSection((section) => {
+            const column = section.columns.find((item) => item.id === columnId);
+            if (column) updater(column);
+        });
+    };
+
+    const updateSectionColumnPaddingSide = (columnId: string, sideIndex: number, value: string) => {
+        updateSectionColumn(columnId, (column) => {
+            const next = parseBoxSpacing(column.padding || '0');
+            next[sideIndex] = Math.max(0, Number(value) || 0);
+            column.padding = toBoxSpacing(next);
+        });
+    };
+
     const addSectionColumn = () => {
         updateSelectedSection((section) => {
             const nextCount = section.columns.length + 1;
             const width = Math.max(10, Math.floor(100 / nextCount));
             section.columns.push({ id: createEmailDesignId('column'), width, blocks: [] });
             normalizeColumnWidths(section);
+        });
+    };
+
+    const cloneSectionWithFreshIds = (section: EmailSection): EmailSection => {
+        const next = cloneDesign({ engine: 'overseek-v2', version: 1, document: { meta: { title: '' }, theme: design.document.theme, sections: [section] } }).document.sections[0];
+        next.id = createEmailDesignId('section');
+        next.columns.forEach((column) => {
+            column.id = createEmailDesignId('column');
+            column.blocks.forEach((block) => { block.id = createEmailDesignId(block.type); });
+        });
+        return next;
+    };
+
+    const saveSelectedSectionPreset = () => {
+        if (!selectedSection) return;
+        const name = window.prompt('Save structure as', selectedSection.name || 'Reusable section')?.trim();
+        if (!name) return;
+        const nextPreset: SavedSectionPreset = { id: createEmailDesignId('section-preset'), name, section: cloneSectionWithFreshIds(selectedSection) };
+        const next = [nextPreset, ...savedSections.filter((preset) => preset.name !== name)].slice(0, 12);
+        setSavedSections(next);
+        localStorage.setItem(SAVED_SECTIONS_STORAGE_KEY, JSON.stringify(next));
+    };
+
+    const insertSavedSectionPreset = (preset: SavedSectionPreset) => {
+        setDirtyDesign((draft) => {
+            const section = cloneSectionWithFreshIds(preset.section);
+            draft.document.sections.push(section);
+            setSelectedSectionId(section.id);
+            setSelectedBlockId(null);
         });
     };
 
@@ -462,7 +819,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         }
     };
 
-    const applyStarterLayout = (type: 'promo' | 'product' | 'cart' | 'followup' | 'coupon') => {
+    const applyStarterLayout = (type: 'promo' | 'product' | 'cart' | 'followup' | 'coupon' | 'review') => {
         const logoUrl = brandLogoUrl;
         const heroCopy: Record<typeof type, string> = {
             promo: '<h2>Something new just landed</h2><p>Give customers a clear reason to click with a focused offer and one strong call to action.</p>',
@@ -470,6 +827,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
             cart: '<h2>You left something behind</h2><p>Your basket is still waiting. Complete checkout before your items sell out.</p>',
             followup: '<h2>Thanks for your order</h2><p>Here is everything you need to know about what happens next.</p>',
             coupon: '<h2>A little thank you</h2><p>Use this code on your next order before it expires.</p>',
+            review: '<h2>Share your experience</h2><p>Your feedback helps other shoppers and helps us keep improving every order.</p>',
         };
         setDirtyDesign((draft) => {
             draft.document.sections = [
@@ -494,7 +852,13 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         width: 100,
                         blocks: [
                             { id: createEmailDesignId('text'), type: 'text', props: { html: heroCopy[type], align: 'center', size: 16, lineHeight: 1.65 } },
-                            type === 'product' ? createBlock('product') : type === 'coupon' ? createBlock('coupon') : createBlock('button'),
+                            type === 'product'
+                                ? createBlock('product')
+                                : type === 'coupon'
+                                    ? createBlock('coupon')
+                                    : type === 'review'
+                                        ? createBlock('review')
+                                        : createBlock('button'),
                         ],
                     }],
                 },
@@ -514,19 +878,70 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     };
 
     const runChecklist = () => {
-        setIssues(evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory: design.document.meta.category || 'MARKETING' }));
+        setIssues([
+            ...evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory: design.document.meta.category || 'MARKETING' }),
+            ...designWarnings.map((warning) => ({ id: warning.id, severity: 'warning' as const, message: warning.message })),
+        ]);
         setLeftSidebarMode('checklist');
     };
 
-    const saveDesign = () => {
+    const persistLatestDesign = useCallback(async () => {
+        const nextDesign = latestDesignRef.current;
+        const serializedAtStart = JSON.stringify(nextDesign);
+        if (serializedAtStart === baselineDesignRef.current) return;
+
+        if (autosaveInFlightRef.current) {
+            autosaveAgainRef.current = true;
+            return;
+        }
+
+        autosaveInFlightRef.current = true;
         setSaving(true);
-        saveSnapshot(design);
-        onSave(html, design, { subject: design.document.meta.title, previewText: design.document.meta.previewText || '' });
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-        setHasUnsavedChanges(false);
-        setLastSavedAt(new Date());
-        setSaving(false);
-    };
+        setSaveError(false);
+
+        try {
+            await onSave(latestHtmlRef.current, nextDesign, {
+                subject: nextDesign.document.meta.title,
+                previewText: nextDesign.document.meta.previewText || '',
+                autosave: true,
+            });
+
+            try {
+                saveSnapshot(nextDesign);
+            } catch {
+                // Version history is best-effort and should not mark server autosave as failed.
+            }
+            baselineDesignRef.current = serializedAtStart;
+
+            if (JSON.stringify(latestDesignRef.current) === serializedAtStart) {
+                try {
+                    localStorage.removeItem(DRAFT_STORAGE_KEY);
+                } catch {
+                    // Ignore local draft cleanup failures.
+                }
+                setHasUnsavedChanges(false);
+                setLastSavedAt(new Date());
+            } else {
+                setHasUnsavedChanges(true);
+                autosaveAgainRef.current = true;
+            }
+        } catch {
+            setSaveError(true);
+            setHasUnsavedChanges(true);
+        } finally {
+            autosaveInFlightRef.current = false;
+            setSaving(false);
+
+            if (autosaveAgainRef.current) {
+                autosaveAgainRef.current = false;
+                if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+                autosaveTimerRef.current = window.setTimeout(() => {
+                    autosaveTimerRef.current = null;
+                    void persistLatestDesign();
+                }, 500);
+            }
+        }
+    }, [onSave, saveSnapshot]);
 
     const sendTestEmail = async () => {
         const recipient = testEmail.trim();
@@ -566,6 +981,59 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         }
     };
 
+    const handleClose = async () => {
+        if (autosaveTimerRef.current) {
+            window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+
+        if (hasUnsavedChanges) {
+            await persistLatestDesign();
+        }
+
+        onCancel();
+    };
+
+    useEffect(() => {
+        latestDesignRef.current = design;
+        latestHtmlRef.current = html;
+
+        if (!didMountRef.current) {
+            didMountRef.current = true;
+            baselineDesignRef.current = JSON.stringify(design);
+            return;
+        }
+
+        const serialized = JSON.stringify(design);
+        const dirty = serialized !== baselineDesignRef.current;
+        setHasUnsavedChanges(dirty);
+
+        if (autosaveTimerRef.current) {
+            window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+
+        if (!dirty) return;
+
+        try {
+            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ design, updatedAt: new Date().toISOString() }));
+        } catch {
+            // Draft persistence is best-effort. Server autosave still runs below.
+        }
+
+        autosaveTimerRef.current = window.setTimeout(() => {
+            autosaveTimerRef.current = null;
+            void persistLatestDesign();
+        }, 1000);
+
+        return () => {
+            if (autosaveTimerRef.current) {
+                window.clearTimeout(autosaveTimerRef.current);
+                autosaveTimerRef.current = null;
+            }
+        };
+    }, [design, html, persistLatestDesign]);
+
     useEffect(() => {
         const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
         if (raw) {
@@ -574,6 +1042,15 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 setSnapshots(Array.isArray(parsed) ? parsed : []);
             } catch {
                 setSnapshots([]);
+            }
+        }
+        const savedSectionsRaw = localStorage.getItem(SAVED_SECTIONS_STORAGE_KEY);
+        if (savedSectionsRaw) {
+            try {
+                const parsed = JSON.parse(savedSectionsRaw) as SavedSectionPreset[];
+                setSavedSections(Array.isArray(parsed) ? parsed : []);
+            } catch {
+                setSavedSections([]);
             }
         }
         const recipientRaw = localStorage.getItem(RECENT_TEST_RECIPIENTS_KEY);
@@ -668,15 +1145,19 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         <div className="min-w-0 flex-1">
                             <input
                                 value={design.document.meta.title}
-                                onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.title = event.target.value; })}
+                                onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.title = sanitizeBidiText(event.target.value); })}
                                 placeholder="Add a Subject Text"
                                 className="block w-full border-0 bg-transparent p-0 text-base font-semibold text-slate-950 placeholder:text-slate-950 focus:ring-0 dark:text-white dark:placeholder:text-white"
+                                dir="ltr"
+                                style={LTR_TEXT_STYLE}
                             />
                             <input
                                 value={design.document.meta.previewText || ''}
-                                onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.previewText = event.target.value; })}
+                                onChange={(event) => setDirtyDesign((draft) => { draft.document.meta.previewText = sanitizeBidiText(event.target.value); })}
                                 placeholder="Add a Preview Text"
                                 className="mt-0.5 block w-full border-0 bg-transparent p-0 text-sm text-indigo-500 placeholder:text-indigo-500 focus:ring-0 dark:text-indigo-300"
+                                dir="ltr"
+                                style={LTR_TEXT_STYLE}
                             />
                         </div>
                         <Pencil size={17} className="shrink-0 text-slate-500 dark:text-slate-400" />
@@ -692,14 +1173,13 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                        <span className={`hidden rounded-full px-2.5 py-1 text-xs font-semibold md:inline-flex ${hasUnsavedChanges ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                        <span className={`hidden rounded-full px-2.5 py-1 text-xs font-semibold md:inline-flex ${saveError ? 'bg-red-100 text-red-800' : hasUnsavedChanges || saving ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
                             {saveStatus}
                         </span>
                         <button onClick={runChecklist} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><ClipboardList size={16} />Checklist</button>
                         <button onClick={() => setLeftSidebarMode('history')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><History size={16} />History</button>
                         <button onClick={() => setLeftSidebarMode('test')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><Send size={16} />Test</button>
-                        <button onClick={onCancel} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><X size={16} />Close</button>
-                        <button onClick={saveDesign} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">{saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}Save</button>
+                        <button onClick={() => void handleClose()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{saving ? <Loader2 className="animate-spin" size={16} /> : <X size={16} />}Close</button>
                     </div>
                 </header>
 
@@ -717,7 +1197,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                             <div className="min-h-0 flex-1 overflow-auto px-3 pb-4">
                                 <label className="mb-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950">
                                     <Search size={15} />
-                                    <input value={blockSearch} onChange={(event) => setBlockSearch(event.target.value)} placeholder="Search blocks" className="w-full border-0 bg-transparent p-0 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-0 dark:text-slate-100" />
+                                    <input value={blockSearch} onChange={(event) => setBlockSearch(sanitizeBidiText(event.target.value))} placeholder="Search blocks" className="w-full border-0 bg-transparent p-0 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-0 dark:text-slate-100" dir="ltr" style={LTR_TEXT_STYLE} />
                                 </label>
                                 <div>
                                     <p className="mb-3 text-sm font-medium text-slate-950 dark:text-white">General</p>
@@ -746,8 +1226,16 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                         ['cart', 'Abandoned cart'],
                                         ['followup', 'Order follow-up'],
                                         ['coupon', 'Coupon drop'],
+                                        ['review', 'Review request'],
                                     ] as const).map(([type, label]) => (
                                         <button key={type} onClick={() => applyStarterLayout(type)} className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Layers size={15} />{label}</button>
+                                    ))}
+                                </div>
+                                <p className="mb-2 mt-6 text-sm font-medium text-slate-950 dark:text-white">Reusable sections</p>
+                                <div className="space-y-2">
+                                    {savedSections.length === 0 && <p className="rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">Save a structure from Structure settings to reuse it here.</p>}
+                                    {savedSections.map((preset) => (
+                                        <button key={preset.id} onClick={() => insertSavedSectionPreset(preset)} className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Layers size={15} />{preset.name}</button>
                                     ))}
                                 </div>
                             </div>
@@ -810,6 +1298,9 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                                 <button onClick={() => removeSectionColumn(column.id)} disabled={selectedSection.columns.length <= 1} className="text-xs text-red-600 disabled:opacity-40">Remove</button>
                                             </div>
                                             <Field label="Width %" type="number" value={String(column.width)} onChange={(value) => updateSectionColumnWidth(column.id, value)} />
+                                            <ColorField label="Background color" value={column.backgroundColor || selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.backgroundColor = value; })} />
+                                            <FourSideField label="Padding" values={parseBoxSpacing(column.padding || '0')} onChange={(sideIndex, value) => updateSectionColumnPaddingSide(column.id, sideIndex, value)} />
+                                            <SelectField label="Vertical align" value={column.verticalAlign || 'top'} options={['top', 'middle', 'bottom']} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.verticalAlign = value as EmailColumn['verticalAlign']; })} />
                                         </div>
                                     ))}
                                 </div>
@@ -848,6 +1339,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         {leftSidebarMode === 'sectionSettings' && selectedSection && (
                             <div className="min-h-0 flex-1 overflow-auto p-4 space-y-3">
                                 <PanelHeader title="Structure settings" onClose={() => setLeftSidebarMode('builder')} />
+                                <Field label="Name" value={selectedSection.name || ''} onChange={(value) => updateSection('name', value)} />
+                                <ColorField label="Background color" value={selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSection('backgroundColor', value)} />
                                 <LabeledSelectField
                                     label="Border style"
                                     value={selectedSection.borderStyle || 'none'}
@@ -869,6 +1362,19 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                 <LinkedFourSideField label="Padding" values={parseBoxSpacing(selectedSection.padding || '0')} onChange={updateSectionPaddingSide} defaultLinked />
                                 <ToggleField label="Responsive structure" checked={(selectedSection.stackMode || 'stack') !== 'none'} onChange={(checked) => updateSection('stackMode', checked ? 'stack' : 'none')} />
                                 <ToggleField label="Hide on mobile" checked={hideOnMobile} onChange={setSectionHideOnMobile} />
+                                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Columns</p>
+                                    {selectedSection.columns.map((column, index) => (
+                                        <div key={column.id} className="space-y-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                                            <p className="text-xs text-slate-600 dark:text-slate-300">Column {index + 1}</p>
+                                            <Field label="Width %" type="number" value={String(column.width)} onChange={(value) => updateSectionColumnWidth(column.id, value)} />
+                                            <ColorField label="Background color" value={column.backgroundColor || selectedSection.backgroundColor || design.document.theme.contentBackgroundColor || '#ffffff'} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.backgroundColor = value; })} />
+                                            <LinkedFourSideField label="Padding" values={parseBoxSpacing(column.padding || '0')} onChange={(sideIndex, value) => updateSectionColumnPaddingSide(column.id, sideIndex, value)} />
+                                            <SelectField label="Vertical align" value={column.verticalAlign || 'top'} options={['top', 'middle', 'bottom']} onChange={(value) => updateSectionColumn(column.id, (draft) => { draft.verticalAlign = value as EmailColumn['verticalAlign']; })} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <button type="button" onClick={saveSelectedSectionPreset} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200"><Layers size={14} />Save as reusable section</button>
                             </div>
                         )}
 
@@ -885,6 +1391,18 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         <div className="mx-auto mb-3 flex max-w-4xl items-center justify-between gap-3">
                             <p className="text-sm text-slate-600 dark:text-slate-300">{previewSurface === 'canvas' ? 'Live email canvas. Drag blocks into place and edit content directly.' : 'Real email preview from compiled HTML. This is the exact markup that gets saved and sent.'}</p>
                         </div>
+                        {designWarnings.length > 0 && (
+                            <div className="mx-auto mb-3 max-w-4xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-sm dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-100">
+                                <div className="flex items-start gap-2">
+                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="font-semibold">Designer warnings</p>
+                                        {designWarnings.slice(0, 3).map((warning) => <p key={warning.id}>{warning.message}</p>)}
+                                        {designWarnings.length > 3 && <p>{designWarnings.length - 3} more warnings in the checklist.</p>}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {previewSurface === 'canvas' ? (
                             <ErrorBoundary
                                 onReset={() => {
@@ -918,7 +1436,7 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
     return (
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-            <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <input type={type} value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
         </label>
     );
 }
@@ -929,7 +1447,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
             <div className="flex gap-2">
                 <input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-800" />
-                <input value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                <input value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
             </div>
         </label>
     );
@@ -1168,7 +1686,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             <ToggleField label="Responsive structure" checked={Boolean(block.responsive)} onChange={(checked) => onUpdate((draft) => { draft.responsive = checked; })} />
             <SelectField label="Visibility" value={block.visibility || 'all'} options={['all', 'desktop', 'mobile']} onChange={setVisibility} />
             {block.type === 'siteLogo' && <><Field label="Logo URL" value={block.props.src} onChange={(value) => patchProps({ src: value })} /><Field label="Fallback text" value={block.props.fallbackText || ''} onChange={(value) => patchProps({ fallbackText: value })} /></>}
-            {block.type === 'text' && <TextArea label="HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
+            {block.type === 'text' && <TextArea label="HTML" value={block.props.html} onChange={(value) => patchProps({ html: sanitizeEmailHtml(value) })} />}
             {block.type === 'image' && <>
                 <input
                     ref={fileInputRef}
@@ -1253,8 +1771,39 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'orderSummary' && <Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} />}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
+            {block.type === 'review' && <>
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Visible Review Fields</p>
+                    <div className="space-y-2">
+                        {REVIEW_VISIBILITY_FIELDS.map((field) => {
+                            const enabled = block.props[field.key] !== false;
+                            return (
+                                <label key={field.key} className="flex items-center justify-between text-sm text-slate-700 dark:text-slate-200">
+                                    <span>{field.label}</span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={enabled}
+                                        onClick={() => patchProps({ [field.key]: !enabled })}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${enabled ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                                    >
+                                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                                    </button>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </div>
+                <Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} />
+                <Field label="Rating (1-5)" type="number" value={block.props.rating} onChange={(value) => patchProps({ rating: value })} />
+                <TextArea label="Review content" value={block.props.content} onChange={(value) => patchProps({ content: value })} />
+                <Field label="Reviewer name" value={block.props.reviewer} onChange={(value) => patchProps({ reviewer: value })} />
+                <Field label="Product name" value={block.props.productName} onChange={(value) => patchProps({ productName: value })} />
+                <Field label="CTA label" value={block.props.ctaLabel} onChange={(value) => patchProps({ ctaLabel: value })} />
+                <Field label="CTA URL" value={block.props.ctaHref} onChange={(value) => patchProps({ ctaHref: value })} />
+            </>}
             {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
-            {block.type === 'social' && <><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
+            {block.type === 'social' && <><SelectField label="Icon pack" value={block.props.iconSet || 'native'} options={SOCIAL_ICON_SETS} onChange={(value) => patchProps({ iconSet: value as SocialIconSet })} /><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
             {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Email and is locked in the designer.</div>}
             {block.type === 'rawHtml' && <TextArea label="Raw HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
         </div>
@@ -1320,7 +1869,7 @@ function ListEditor({ items, onChange }: { items: string[]; onChange: (items: st
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">List items</p>
             {items.map((item, index) => (
                 <div key={index} className="flex gap-2">
-                    <input value={item} onChange={(event) => onChange(items.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    <input value={item} onChange={(event) => onChange(items.map((value, itemIndex) => itemIndex === index ? sanitizeBidiText(event.target.value) : value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
                     <button onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))} className="rounded-lg border border-red-200 px-2 text-sm text-red-600 hover:bg-red-50">Remove</button>
                 </div>
             ))}
@@ -1333,7 +1882,7 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
     return (
         <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-            <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={8} className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <textarea value={value} onChange={(event) => onChange(sanitizeBidiText(event.target.value))} rows={8} className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" dir="ltr" style={LTR_TEXT_STYLE} />
         </label>
     );
 }
@@ -1356,7 +1905,7 @@ function HistoryPanel({ snapshots, onRestore }: { snapshots: Snapshot[]; onResto
     return (
         <div className="space-y-3">
             <p className="font-semibold text-slate-900 dark:text-white">Version history</p>
-            {snapshots.length === 0 ? <p className="text-sm text-slate-500">Save to create the first snapshot.</p> : snapshots.map((snapshot) => (
+            {snapshots.length === 0 ? <p className="text-sm text-slate-500">Autosave will create the first snapshot.</p> : snapshots.map((snapshot) => (
                 <button key={snapshot.id} onClick={() => onRestore(snapshot)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800">
                     {new Date(snapshot.createdAt).toLocaleString()} <span className="text-indigo-600">Restore</span>
                 </button>

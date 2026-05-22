@@ -176,6 +176,7 @@ export function MobileInbox() {
     }, [socket, currentAccount, fetchConversations, triggerHaptic]);
 
     const handleArchive = async (id: string) => {
+        if (!currentAccount) return;
         triggerHaptic(15);
         setConversations(prev => prev.filter(c => c.id !== id));
 
@@ -184,7 +185,7 @@ export function MobileInbox() {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id,
+                    'X-Account-ID': currentAccount.id,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ status: 'CLOSED' })
@@ -200,6 +201,7 @@ export function MobileInbox() {
     };
 
     const handleMarkRead = async (id: string) => {
+        if (!currentAccount) return;
         triggerHaptic(10);
         setConversations(prev => prev.map(c =>
             c.id === id ? { ...c, unread: false } : c
@@ -210,7 +212,7 @@ export function MobileInbox() {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount!.id
+                    'X-Account-ID': currentAccount.id
                 }
             });
 

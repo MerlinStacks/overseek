@@ -59,42 +59,25 @@ function showReloadToast(): void {
 
     const toast = document.createElement('div');
     toast.id = 'deployment-reload-toast';
-    toast.innerHTML = `
-        <div style="
-            position: fixed;
-            bottom: 24px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            color: white;
-            padding: 16px 24px;
-            border-radius: 12px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-size: 14px;
-            font-weight: 500;
-            box-shadow: 0 10px 40px rgba(99, 102, 241, 0.4);
-            z-index: 99999;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            animation: slideUp 0.3s ease-out;
-        ">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-            </svg>
-            New version available, refreshing...
-        </div>
-        <style>
-            @keyframes slideUp {
-                from { transform: translateX(-50%) translateY(20px); opacity: 0; }
-                to { transform: translateX(-50%) translateY(0); opacity: 1; }
-            }
-            @keyframes spin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-            }
-        </style>
-    `;
+    const content = document.createElement('div');
+    content.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;padding:16px 24px;border-radius:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;font-weight:500;box-shadow:0 10px 40px rgba(99,102,241,0.4);z-index:99999;display:flex;align-items:center;gap:12px;animation:slideUp 0.3s ease-out;";
+    const spinner = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    spinner.setAttribute('width', '20');
+    spinner.setAttribute('height', '20');
+    spinner.setAttribute('viewBox', '0 0 24 24');
+    spinner.setAttribute('fill', 'none');
+    spinner.setAttribute('stroke', 'currentColor');
+    spinner.setAttribute('stroke-width', '2');
+    spinner.style.animation = 'spin 1s linear infinite';
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M21 12a9 9 0 1 1-6.219-8.56');
+    spinner.appendChild(path);
+    content.appendChild(spinner);
+    content.appendChild(document.createTextNode('New version available, refreshing...'));
+
+    const style = document.createElement('style');
+    style.textContent = '@keyframes slideUp{from{transform:translateX(-50%) translateY(20px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+    toast.append(content, style);
     document.body.appendChild(toast);
 }
 
@@ -134,7 +117,13 @@ function canAttemptReload(): boolean {
     const lastAttempt = sessionStorage.getItem(RELOAD_TIMESTAMP_KEY);
     if (!lastAttempt) return true;
 
-    const elapsed = Date.now() - parseInt(lastAttempt, 10);
+    const parsed = parseInt(lastAttempt, 10);
+    if (!Number.isFinite(parsed)) {
+        sessionStorage.removeItem(RELOAD_TIMESTAMP_KEY);
+        return true;
+    }
+
+    const elapsed = Date.now() - parsed;
     return elapsed > RELOAD_COOLDOWN_MS;
 }
 
@@ -190,10 +179,11 @@ export function isChunkLoadError(error: Error | string): boolean {
  * Returns true if handling was performed, false if skipped.
  */
 export function handleChunkLoadError(error?: Error | string): boolean {
-    const errorToCheck = error || '';
+    if (!error) return false;
+    const errorToCheck = error;
 
     // Only handle chunk errors
-    if (error && !isChunkLoadError(errorToCheck)) {
+    if (!isChunkLoadError(errorToCheck)) {
         return false;
     }
 
@@ -234,7 +224,7 @@ export function installDeploymentRecovery(): void {
     window.addEventListener('error', (event) => {
         if (isChunkLoadError(event.message || '')) {
             event.preventDefault();
-            handleChunkLoadError();
+            handleChunkLoadError(event.error || event.message);
         }
     });
 
@@ -245,7 +235,7 @@ export function installDeploymentRecovery(): void {
 
         if (isChunkLoadError(message)) {
             event.preventDefault();
-            handleChunkLoadError();
+            handleChunkLoadError(error || message);
         }
     });
 

@@ -45,10 +45,32 @@ export class StockValidationService {
                 // Fetch variation-level stock via the variations endpoint
                 const variations = await wooService.getProductVariations(wooProductId);
                 const target = variations?.find((v: any) => v.id === variationId);
+                if (!target) {
+                    Logger.warn(`[StockValidation] WooCommerce variation ${variationId} not found for product ${wooProductId}`, { accountId });
+                    return {
+                        valid: false,
+                        wooStock: null,
+                        expectedStock: expectedCurrentStock,
+                        diff: 0,
+                        productName: `Variation #${variationId}`
+                    };
+                }
+
                 wooStock = target?.stock_quantity ?? null;
                 productName = target?.name || `Variation #${variationId}`;
             } else {
                 const wooProduct = await wooService.getProduct(wooProductId);
+                if (!wooProduct) {
+                    Logger.warn(`[StockValidation] WooCommerce product ${wooProductId} not found`, { accountId });
+                    return {
+                        valid: false,
+                        wooStock: null,
+                        expectedStock: expectedCurrentStock,
+                        diff: 0,
+                        productName: `Product #${wooProductId}`
+                    };
+                }
+
                 wooStock = wooProduct.stock_quantity;
                 productName = wooProduct.name;
             }
@@ -81,9 +103,8 @@ export class StockValidationService {
             };
         } catch (error: any) {
             Logger.error(`[StockValidation] Failed to validate stock for product ${wooProductId}${variationId ? ` variation ${variationId}` : ''}`, { error: error.message, accountId });
-            // On error, allow the operation but mark as skipped
             return {
-                valid: true, // Allow to proceed
+                valid: false,
                 wooStock: null,
                 expectedStock: expectedCurrentStock,
                 diff: 0

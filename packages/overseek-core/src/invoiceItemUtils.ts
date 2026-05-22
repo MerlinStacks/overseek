@@ -3,14 +3,37 @@
  * WooCommerce metadata often contains raw HTML entities that should display as symbols.
  */
 export const decodeInvoiceEntities = (text: string): string => {
+  const decodeNumericEntity = (rawCode: string, radix: number, fallback: string) => {
+    const codePoint = Number.parseInt(rawCode, radix);
+    if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+      return fallback;
+    }
+
+    try {
+      return String.fromCodePoint(codePoint);
+    } catch {
+      return fallback;
+    }
+  };
+
   return text
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (match, code) => decodeNumericEntity(code, 10, match))
+    .replace(/&#x([0-9a-fA-F]+);/g, (match, code) => decodeNumericEntity(code, 16, match))
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'");
+};
+
+const sanitizeInvoiceDisplayText = (text: string): string => {
+  return decodeInvoiceEntities(text)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/www\.\S+/gi, ' ')
+    .replace(/\b\S*wp-content\/uploads\/\S*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
 /**
@@ -20,7 +43,7 @@ export const decodeInvoiceEntities = (text: string): string => {
  */
 export const stringifyInvoiceValue = (val: unknown): string => {
   if (val === null || val === undefined) return '';
-  if (typeof val === 'string') return decodeInvoiceEntities(val);
+  if (typeof val === 'string') return sanitizeInvoiceDisplayText(val);
   if (typeof val === 'number' || typeof val === 'boolean') return String(val);
   if (Array.isArray(val)) return val.map((value) => stringifyInvoiceValue(value)).join(', ');
   if (typeof val === 'object') {
@@ -69,6 +92,45 @@ export interface InvoiceItemMeta {
   value: string;
 }
 
+export interface InvoiceOrderLike {
+  meta_data?: InvoiceMetaEntry[];
+  [key: string]: unknown;
+}
+
+const GIFT_WRAP_KEY_PATTERN = /(gift[\s_-]*wrap(?:p?ing)?|giftwrapp?ing)/i;
+
+const isFalsyGiftWrapValue = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  return normalized === ''
+    || normalized === '0'
+    || normalized === 'false'
+    || normalized === 'no'
+    || normalized === 'none'
+    || normalized === 'n/a';
+};
+
+export const getOrderGiftWrappingMeta = (order: InvoiceOrderLike): InvoiceItemMeta | null => {
+  const rawData = order?.rawData as InvoiceOrderLike | undefined;
+  const metaEntries = Array.isArray(order?.meta_data)
+    ? order.meta_data
+    : (Array.isArray(rawData?.meta_data) ? rawData.meta_data : []);
+  for (const entry of metaEntries) {
+    const rawKey = String(entry?.key || entry?.name || entry?.display_key || '').trim();
+    if (!rawKey || !GIFT_WRAP_KEY_PATTERN.test(rawKey)) continue;
+
+    const value = stringifyInvoiceValue(entry?.display_value ?? entry?.value).trim();
+    if (isFalsyGiftWrapValue(value)) continue;
+
+    const label = sanitizeInvoiceDisplayText(String(entry?.display_key || rawKey).replace(/_/g, ' ')) || 'Gift Wrapping';
+    return {
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+      value,
+    };
+  }
+
+  return null;
+};
+
 /**
  * Extracts user-facing metadata from an order line item.
  * Filters out internal plugin/system keys and prevents duplicate labels.
@@ -106,7 +168,7 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
       .replace(/^pa_/i, '')
       .replace(/[_-]/g, ' ')
       .trim();
-    const label = attr.display_key || fallbackLabel;
+    const label = sanitizeInvoiceDisplayText(attr.display_key || fallbackLabel);
     const rawValue = attr.display_value || attr.value;
     addMeta(label, stringifyInvoiceValue(rawValue));
   });
@@ -129,7 +191,7 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
       const value = stringifyInvoiceValue(rawValue).trim();
       if (!value) return false;
 
-      const label = String(entry.display_key || key).trim();
+      const label = sanitizeInvoiceDisplayText(String(entry.display_key || key));
       if (!label) return false;
       return true;
     }) || [];
@@ -139,7 +201,7 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
     const value = stringifyInvoiceValue(rawValue);
     if (value.length > 0) {
       const baseLabel = entry.display_key || entry.key || entry.name || '';
-      const label = String(baseLabel).replace(/_/g, ' ');
+      const label = sanitizeInvoiceDisplayText(String(baseLabel).replace(/_/g, ' '));
       addMeta(label, value);
     }
   });

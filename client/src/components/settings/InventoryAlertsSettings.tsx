@@ -19,11 +19,12 @@ export function InventoryAlertsSettings() {
     const [emails, setEmails] = useState<string[]>([]);
 
     const fetchSettings = useCallback(async () => {
+        if (!currentAccount?.id) return;
         try {
             // Need a backend endpoint for settings. 
             // Assuming GET /api/inventory/settings
             const res = await fetch('/api/inventory/settings', {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount!.id }
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
             if (res.ok) {
                 const data = await res.json();

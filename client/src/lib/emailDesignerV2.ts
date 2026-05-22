@@ -1,7 +1,10 @@
+import { sanitizeEmailHtml } from '../utils/emailHtml';
+
 export type EmailDeviceVisibility = 'all' | 'desktop' | 'mobile';
 export type EmailStackMode = 'stack' | 'reverse' | 'none';
 export type SocialIconStyle = 'solid' | 'outline' | 'glyph';
 export type SocialPlatform = 'facebook' | 'instagram' | 'tiktok' | 'youtube' | 'x' | 'linkedin' | 'pinterest' | 'generic';
+export type SocialIconSet = 'native' | 'classic';
 
 export interface EmailDesignV2Envelope {
     engine: 'overseek-v2';
@@ -52,6 +55,9 @@ export interface EmailSection {
 export interface EmailColumn {
     id: string;
     width: number;
+    backgroundColor?: string;
+    padding?: string;
+    verticalAlign?: 'top' | 'middle' | 'bottom';
     blocks: EmailBlock[];
 }
 
@@ -67,6 +73,7 @@ export type EmailBlock =
     | OrderSummaryBlock
     | AddressBlock
     | CouponBlock
+    | ReviewBlock
     | MenuBlock
     | SocialBlock
     | FooterBlock
@@ -203,6 +210,25 @@ export interface CouponBlock extends BaseBlock {
     };
 }
 
+export interface ReviewBlock extends BaseBlock {
+    type: 'review';
+    props: {
+        headline: string;
+        rating: string;
+        content: string;
+        reviewer: string;
+        productName: string;
+        ctaLabel: string;
+        ctaHref: string;
+        showHeadline?: boolean;
+        showRating?: boolean;
+        showContent?: boolean;
+        showReviewer?: boolean;
+        showProductName?: boolean;
+        showCta?: boolean;
+    };
+}
+
 export interface MenuBlock extends BaseBlock {
     type: 'menu';
     props: {
@@ -221,6 +247,7 @@ export interface SocialBlock extends BaseBlock {
         color?: string;
         padding?: string;
         iconStyle?: SocialIconStyle;
+        iconSet?: SocialIconSet;
     };
 }
 
@@ -567,6 +594,7 @@ export function compileEmailDesignV2(envelope: EmailDesignV2Envelope): string {
 function toAbsoluteUrl(url: string): string {
     const value = url.trim();
     if (!value) return value;
+    if (value.includes('{{') || value.includes('}}')) return value;
     if (/^(https?:|mailto:|tel:|data:|cid:)/i.test(value)) return value;
     if (typeof window === 'undefined' || !window.location?.origin) return value;
     try {
@@ -589,7 +617,10 @@ function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
     const radius = section.borderRadius || [0, 0, 0, 0];
     const columnHtml = columns.map((column, index) => {
         const stackClass = getStackClass(section.stackMode, index, columns.length);
-        return `<td class="${stackClass}" width="${column.width}%" valign="top" style="vertical-align:top;width:${column.width}%;">${column.blocks.map((block) => renderBlock(block, theme)).join('')}</td>`;
+        const columnPadding = column.padding || '0';
+        const columnBackground = column.backgroundColor ? `background:${column.backgroundColor};` : '';
+        const verticalAlign = column.verticalAlign || 'top';
+        return `<td class="${stackClass}" width="${column.width}%" valign="${verticalAlign}" style="vertical-align:${verticalAlign};width:${column.width}%;padding:${columnPadding};${columnBackground}">${column.blocks.map((block) => renderBlock(block, theme)).join('')}</td>`;
     }).join('');
 
     const borderDeclaration = borderStyle === 'none' || borderWidth <= 0 ? 'border:none;' : `border:${borderWidth}px ${borderStyle} ${borderColor};`;
@@ -614,7 +645,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'text') {
         const props = block.props;
-        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${props.html}</div>`;
+        return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'left'};font-size:${props.size || 15}px;line-height:${props.lineHeight || 1.6};color:${props.color || theme.textColor};">${sanitizeEmailHtml(props.html)}</div>`;
     }
 
     if (block.type === 'image') {
@@ -682,9 +713,26 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#eef2ff;border:1px dashed ${theme.primaryColor};border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'center'};"><p style="margin:0 0 6px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline)}</p><p style="margin:0 0 8px;color:${theme.primaryColor};font-size:22px;font-weight:800;letter-spacing:1px;">${escapeHtml(block.props.code || '{{coupon.code}}')}</p><p style="margin:0;color:${theme.mutedTextColor};line-height:1.5;">${escapeHtml(block.props.description || '{{coupon.description}}')}</p></div>`;
     }
 
+    if (block.type === 'review') {
+        const ratingNumber = Math.min(5, Math.max(1, Number(block.props.rating || '5') || 5));
+        const stars = '&#9733;'.repeat(ratingNumber);
+        const showHeadline = block.props.showHeadline !== false;
+        const showRating = block.props.showRating !== false;
+        const showContent = block.props.showContent !== false;
+        const showReviewer = block.props.showReviewer !== false;
+        const showProductName = block.props.showProductName !== false;
+        const showCta = block.props.showCta !== false;
+        const attribution = [
+            showReviewer ? escapeHtml(block.props.reviewer || '{{review.reviewer}}') : '',
+            showProductName ? `on ${escapeHtml(block.props.productName || '{{review.productName}}')}` : '',
+        ].filter(Boolean).join(' ');
+        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#fffbeb;border:1px solid #fde68a;border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'left'};">${showHeadline ? `<p style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p>` : ''}${showRating ? `<p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p>` : ''}${showContent ? `<p style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p>` : ''}${attribution ? `<p style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${attribution}</p>` : ''}${showCta ? `<a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.productUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a>` : ''}</div>`;
+    }
+
     if (block.type === 'social') {
         const props = block.props;
-        const links = props.links.map((link) => renderSocialIconLink(link.label, toAbsoluteUrl(link.href), link.iconStyle || props.iconStyle || 'solid', props.color || theme.primaryColor)).join('');
+        const iconSet = props.iconSet || 'native';
+        const links = props.links.map((link) => renderSocialIconLink(link.label, toAbsoluteUrl(link.href), link.iconStyle || props.iconStyle || 'solid', props.color || theme.primaryColor, iconSet)).join('');
         return `<div class="${blockClass}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:14px;line-height:1.5;">${links}</div>`;
     }
 
@@ -715,19 +763,29 @@ export function getSocialPlatform(label: string): SocialPlatform {
     return 'generic';
 }
 
-export function getSocialIconSvg(label: string, iconStyle: SocialIconStyle = 'solid', color = '#4f46e5'): string {
+export function getSocialIconSvg(label: string, iconStyle: SocialIconStyle = 'solid', color = '#4f46e5', iconSet: SocialIconSet = 'native'): string {
     const platform = getSocialPlatform(label);
     const fill = iconStyle === 'solid' ? '#ffffff' : color;
     const stroke = iconStyle === 'solid' ? '#ffffff' : color;
     const common = 'width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" role="img"';
 
-    if (platform === 'facebook') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M14.2 8.5H17V5h-3.3C10.5 5 9 6.8 9 9.5V12H6v3.6h3V24h3.8v-8.4h3.1l.6-3.6h-3.7V9.9c0-.9.3-1.4 1.4-1.4Z"/></svg>`;
-    if (platform === 'instagram') return `<svg ${common} fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="12" cy="12" r="3.5"/><circle cx="17" cy="7" r="1" fill="${stroke}" stroke="none"/></svg>`;
-    if (platform === 'tiktok') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M14.6 3h3.1c.2 1.4 1 2.7 2.3 3.5a6 6 0 0 0 2.6.9v3.1a8.7 8.7 0 0 1-5-1.6v6.6c0 3.4-2.5 5.8-5.8 5.8A5.5 5.5 0 0 1 6.2 16c0-3.3 2.7-5.7 6-5.5v3.2c-1.4-.2-2.6.8-2.6 2.2 0 1.3 1 2.3 2.3 2.3 1.5 0 2.5-.9 2.5-2.7V3Z"/></svg>`;
-    if (platform === 'youtube') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M21.6 7.2a3 3 0 0 0-2.1-2.1C17.6 4.6 12 4.6 12 4.6s-5.6 0-7.5.5a3 3 0 0 0-2.1 2.1A31 31 0 0 0 2 12a31 31 0 0 0 .4 4.8 3 3 0 0 0 2.1 2.1c1.9.5 7.5.5 7.5.5s5.6 0 7.5-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 22 12a31 31 0 0 0-.4-4.8ZM10 15.5v-7l6 3.5-6 3.5Z"/></svg>`;
-    if (platform === 'x') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M15.3 10.2 21.5 3h-1.9l-5.1 6-4-6H3.3l7.4 10.7L3 21h1.9l6.6-6.1 4.1 6.1h7.1l-7.4-10.8Zm-2.5 2.9-.8-1.2L6.7 4.5h2.9l9.6 15h-2.8l-3.6-6.4Z"/></svg>`;
-    if (platform === 'linkedin') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M6.8 8.8H3.4V21h3.4V8.8ZM5.1 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm15.5 11.1c0-3.3-1.8-5.6-4.8-5.6-1.8 0-2.9 1-3.4 1.9V8.8H9.1V21h3.4v-6.6c0-1.7.9-2.8 2.3-2.8 1.3 0 2.3.9 2.3 2.8V21h3.5v-6.9Z"/></svg>`;
-    if (platform === 'pinterest') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M12.2 3C7.3 3 4.7 6.2 4.7 9.7c0 2.1 1.1 4.8 2.8 5.6.3.1.4.1.5-.2l.4-1.5c.1-.2 0-.4-.1-.6-.6-.8-.9-1.8-.9-2.9 0-3 2.2-5.8 6-5.8 3.3 0 5.4 2.2 5.4 5.4 0 3.6-1.8 6.1-4.1 6.1-1.3 0-2.3-1.1-2-2.5.4-1.6 1.1-3.3 1.1-4.4 0-1-.5-1.9-1.7-1.9-1.3 0-2.4 1.4-2.4 3.2 0 1.2.4 2 .4 2l-1.6 6.7c-.3 1.2-.2 2.9-.1 4 .1.3.4.4.6.1.4-.8 1.1-2.2 1.5-3.4l.8-3.1c.4.8 1.6 1.5 2.9 1.5 3.8 0 6.5-3.5 6.5-8.2C21 6.1 17.8 3 12.2 3Z"/></svg>`;
+    if (iconSet === 'classic') {
+        if (platform === 'facebook') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M14.2 8.5H17V5h-3.3C10.5 5 9 6.8 9 9.5V12H6v3.6h3V24h3.8v-8.4h3.1l.6-3.6h-3.7V9.9c0-.9.3-1.4 1.4-1.4Z"/></svg>`;
+        if (platform === 'instagram') return `<svg ${common} fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="12" cy="12" r="3.5"/><circle cx="17" cy="7" r="1" fill="${stroke}" stroke="none"/></svg>`;
+        if (platform === 'tiktok') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M14.6 3h3.1c.2 1.4 1 2.7 2.3 3.5a6 6 0 0 0 2.6.9v3.1a8.7 8.7 0 0 1-5-1.6v6.6c0 3.4-2.5 5.8-5.8 5.8A5.5 5.5 0 0 1 6.2 16c0-3.3 2.7-5.7 6-5.5v3.2c-1.4-.2-2.6.8-2.6 2.2 0 1.3 1 2.3 2.3 2.3 1.5 0 2.5-.9 2.5-2.7V3Z"/></svg>`;
+        if (platform === 'youtube') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M21.6 7.2a3 3 0 0 0-2.1-2.1C17.6 4.6 12 4.6 12 4.6s-5.6 0-7.5.5a3 3 0 0 0-2.1 2.1A31 31 0 0 0 2 12a31 31 0 0 0 .4 4.8 3 3 0 0 0 2.1 2.1c1.9.5 7.5.5 7.5.5s5.6 0 7.5-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 22 12a31 31 0 0 0-.4-4.8ZM10 15.5v-7l6 3.5-6 3.5Z"/></svg>`;
+        if (platform === 'x') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M15.3 10.2 21.5 3h-1.9l-5.1 6-4-6H3.3l7.4 10.7L3 21h1.9l6.6-6.1 4.1 6.1h7.1l-7.4-10.8Zm-2.5 2.9-.8-1.2L6.7 4.5h2.9l9.6 15h-2.8l-3.6-6.4Z"/></svg>`;
+        if (platform === 'linkedin') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M6.8 8.8H3.4V21h3.4V8.8ZM5.1 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm15.5 11.1c0-3.3-1.8-5.6-4.8-5.6-1.8 0-2.9 1-3.4 1.9V8.8H9.1V21h3.4v-6.6c0-1.7.9-2.8 2.3-2.8 1.3 0 2.3.9 2.3 2.8V21h3.5v-6.9Z"/></svg>`;
+        if (platform === 'pinterest') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M12.2 3C7.3 3 4.7 6.2 4.7 9.7c0 2.1 1.1 4.8 2.8 5.6.3.1.4.1.5-.2l.4-1.5c.1-.2 0-.4-.1-.6-.6-.8-.9-1.8-.9-2.9 0-3 2.2-5.8 6-5.8 3.3 0 5.4 2.2 5.4 5.4 0 3.6-1.8 6.1-4.1 6.1-1.3 0-2.3-1.1-2-2.5.4-1.6 1.1-3.3 1.1-4.4 0-1-.5-1.9-1.7-1.9-1.3 0-2.4 1.4-2.4 3.2 0 1.2.4 2 .4 2l-1.6 6.7c-.3 1.2-.2 2.9-.1 4 .1.3.4.4.6.1.4-.8 1.1-2.2 1.5-3.4l.8-3.1c.4.8 1.6 1.5 2.9 1.5 3.8 0 6.5-3.5 6.5-8.2C21 6.1 17.8 3 12.2 3Z"/></svg>`;
+    }
+
+    if (platform === 'facebook') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M13.3 20v-7h2.3l.4-2.8h-2.7V8.4c0-.8.2-1.5 1.4-1.5h1.5V4.4c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8v2.1H8v2.8h2.3v7h3Z"/></svg>`;
+    if (platform === 'instagram') return `<svg ${common} fill="none" stroke="${stroke}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.7" r="1.1" fill="${stroke}" stroke="none"/></svg>`;
+    if (platform === 'tiktok') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M14 3c.4 2 1.7 3.3 3.7 3.8v2.8c-1.5-.1-2.7-.6-3.7-1.3v5.5c0 3.4-2.4 5.7-5.7 5.7a5.5 5.5 0 0 1 0-11c.4 0 .8 0 1.1.1v2.8a2.7 2.7 0 0 0-1.1-.2 2.7 2.7 0 0 0 0 5.4c1.5 0 2.7-1 2.7-2.8V3H14Z"/></svg>`;
+    if (platform === 'youtube') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M19.6 6.8a2.8 2.8 0 0 0-2-2c-1.8-.5-5.6-.5-5.6-.5s-3.8 0-5.6.5a2.8 2.8 0 0 0-2 2A29.2 29.2 0 0 0 4 12c0 1.8.2 3.5.5 5.2a2.8 2.8 0 0 0 2 2c1.8.5 5.6.5 5.6.5s3.8 0 5.6-.5a2.8 2.8 0 0 0 2-2c.3-1.7.5-3.4.5-5.2 0-1.8-.2-3.5-.6-5.2ZM10.3 15.3V8.7l5.5 3.3-5.5 3.3Z"/></svg>`;
+    if (platform === 'x') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M18.9 3h2.8l-6.1 7 7.2 11h-5.7l-4.4-6.8L6.8 21H4l6.5-7.5L3.6 3h5.8l4 6.2L18.9 3Zm-1 16.2h1.6L8.5 4.7H6.8l11.1 14.5Z"/></svg>`;
+    if (platform === 'linkedin') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M6 8.5H3V21h3V8.5ZM4.5 3A1.8 1.8 0 1 0 4.5 6.6 1.8 1.8 0 0 0 4.5 3ZM21 13.8c0-3.3-1.8-5.3-4.5-5.3-2 0-2.9 1.1-3.4 1.9v-1.7h-3V21h3v-6.1c0-1.6.3-3.1 2.2-3.1 1.9 0 2 1.8 2 3.2V21h3v-7.2Z"/></svg>`;
+    if (platform === 'pinterest') return `<svg ${common} fill="${fill}" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.2c-5 0-7.6 3.6-7.6 6.7 0 1.9 1 4.2 2.6 5 .2.1.3.1.4-.2l.4-1.5c0-.2 0-.3-.1-.5-.5-.7-.8-1.6-.8-2.6 0-2.6 2-5.1 5.4-5.1 2.9 0 4.9 2 4.9 4.7 0 3.1-1.5 5.3-3.6 5.3-1.1 0-2-1-1.7-2.2.3-1.4 1-2.9 1-3.9 0-.9-.5-1.7-1.5-1.7-1.2 0-2.1 1.2-2.1 2.9 0 1 .3 1.8.3 1.8l-1.4 5.9c-.2 1-.1 2.5 0 3.5 0 .2.3.3.5.1.3-.7 1-2 1.3-3l.7-2.7c.3.7 1.4 1.3 2.6 1.3 3.3 0 5.7-3.1 5.7-7.2C19.7 6 16.8 3.2 12 3.2Z"/></svg>`;
     return `<svg ${common} fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>`;
 }
 
@@ -737,8 +795,21 @@ export function getSocialIconContainerStyle(iconStyle: SocialIconStyle = 'solid'
     return `background:${color};border:1.5px solid ${color};color:#ffffff;`;
 }
 
-function renderSocialIconLink(label: string, href: string, iconStyle: SocialIconStyle, color: string): string {
-    return `<a href="${escapeHtml(href)}" title="${escapeHtml(label)}" style="display:inline-block;margin:0 6px;width:34px;height:34px;line-height:34px;border-radius:999px;text-align:center;text-decoration:none;vertical-align:middle;${getSocialIconContainerStyle(iconStyle, color)}"><span style="display:inline-block;width:18px;height:18px;line-height:18px;margin-top:8px;vertical-align:top;">${getSocialIconSvg(label, iconStyle, color)}</span></a>`;
+export function getSocialPlatformColor(platform: SocialPlatform, fallbackColor: string): string {
+    if (platform === 'facebook') return '#1877F2';
+    if (platform === 'instagram') return '#E4405F';
+    if (platform === 'tiktok') return '#111111';
+    if (platform === 'youtube') return '#FF0000';
+    if (platform === 'x') return '#111111';
+    if (platform === 'linkedin') return '#0A66C2';
+    if (platform === 'pinterest') return '#E60023';
+    return fallbackColor;
+}
+
+function renderSocialIconLink(label: string, href: string, iconStyle: SocialIconStyle, color: string, iconSet: SocialIconSet): string {
+    const platform = getSocialPlatform(label);
+    const iconColor = iconSet === 'native' ? getSocialPlatformColor(platform, color) : color;
+    return `<a href="${escapeHtml(href)}" title="${escapeHtml(label)}" style="display:inline-block;margin:0 6px;width:34px;height:34px;line-height:34px;border-radius:999px;text-align:center;text-decoration:none;vertical-align:middle;${getSocialIconContainerStyle(iconStyle, iconColor)}"><span style="display:inline-block;width:18px;height:18px;line-height:18px;margin-top:8px;vertical-align:top;">${getSocialIconSvg(label, iconStyle, iconColor, iconSet)}</span></a>`;
 }
 
 function getVisibilityClass(visibility?: EmailDeviceVisibility): string {
@@ -775,6 +846,7 @@ export function getEmailDesignV2BlockLabel(block: EmailBlock): string {
         orderSummary: 'Order Summary',
         address: 'Address',
         coupon: 'Coupon',
+        review: 'Review',
         menu: 'Menu',
         social: 'Social',
         footer: 'Footer',

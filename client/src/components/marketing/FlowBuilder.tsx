@@ -17,6 +17,7 @@ import {
     Panel,
     useReactFlow,
     NodeTypes,
+    EdgeTypes,
     MarkerType,
     MiniMap,
 } from '@xyflow/react';
@@ -35,6 +36,7 @@ const defaultEdgeOptions = {
     },
 };
 import { TriggerNode, ActionNode, DelayNode, ConditionNode } from './FlowNodes';
+import { FlowEdge } from './FlowEdge';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import {
     StartingPointCard,
@@ -45,6 +47,7 @@ import {
     StepType,
     AutomationRecipe,
 } from './flow';
+import { groupFlowIssuesByNode, validateFlow, type FlowIssue } from './flowValidation';
 
 // Define Node Types - Cast needed for React 19 compatibility with @xyflow/react types
 const nodeTypes = {
@@ -54,47 +57,133 @@ const nodeTypes = {
     condition: ConditionNode,
 } as NodeTypes;
 
+const edgeTypes = {
+    flow: FlowEdge,
+} as EdgeTypes;
+
 const INVALID_NODE_CLASS = 'overseek-node-invalid';
 const FLOW_DENSITY_KEY = 'overseek-flow-density';
 
 let id = 0;
 const getId = () => `node_${Date.now()}_${id++}`;
 
-interface ControlsProps {
-    onSave: (nodes: Node[], edges: Edge[]) => void;
-    onCancel: () => void;
-    isSaveDisabled?: boolean;
-    isSaving?: boolean;
-}
-
-const FlowControls: React.FC<ControlsProps> = ({ onSave, onCancel, isSaveDisabled = false, isSaving = false }) => {
-    const { getNodes, getEdges } = useReactFlow();
+function FlowHealthPanel({ issues, onOpenTest }: { issues: FlowIssue[]; onOpenTest: () => void }) {
+    const blocking = issues.filter((issue) => issue.severity === 'blocking');
+    const warnings = issues.filter((issue) => issue.severity === 'warning');
+    const visibleIssues = issues.slice(0, 5);
 
     return (
-        <div className="flex gap-2 bg-white p-2 rounded-sm shadow-xs border">
-            <button
-                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
-                onClick={onCancel}
-            >
-                Cancel
-            </button>
-            <button
-                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={() => onSave(getNodes(), getEdges())}
-                disabled={isSaveDisabled}
-            >
-                {isSaving ? 'Saving...' : 'Save Flow'}
-            </button>
+        <div className="w-80 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <div className="text-sm font-semibold text-slate-900">Flow Health</div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                        {issues.length === 0 ? 'No obvious setup issues found.' : `${blocking.length} blocking, ${warnings.length} warning`}
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-400">Edits sync to the automation draft immediately.</div>
+                </div>
+                <button
+                    type="button"
+                    onClick={onOpenTest}
+                    className="rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                >
+                    Test Path
+                </button>
+            </div>
+            {visibleIssues.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                    {visibleIssues.map((issue) => (
+                        <div key={issue.id} className={`rounded-lg border px-2.5 py-2 text-xs ${issue.severity === 'blocking' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                            {issue.message}
+                        </div>
+                    ))}
+                    {issues.length > visibleIssues.length && (
+                        <div className="text-xs text-slate-500">+{issues.length - visibleIssues.length} more issue{issues.length - visibleIssues.length === 1 ? '' : 's'} on nodes.</div>
+                    )}
+                </div>
+            )}
         </div>
     );
-};
+}
+
+function FlowPathTestModal({ nodes, edges, issues, onClose }: { nodes: Node[]; edges: Edge[]; issues: FlowIssue[]; onClose: () => void }) {
+    const trigger = nodes.find((node) => node.type === 'trigger');
+    const orderedNodes: Node[] = [];
+    const visited = new Set<string>();
+    let current = trigger;
+
+    while (current && !visited.has(current.id)) {
+        orderedNodes.push(current);
+        visited.add(current.id);
+        const nextEdge = edges.find((edge) => edge.source === current?.id && (!edge.sourceHandle || edge.sourceHandle === 'true'));
+        current = nextEdge ? nodes.find((node) => node.id === nextEdge.target) : undefined;
+    }
+
+    const emailSteps = orderedNodes.filter((node) => {
+        const config = ((node.data as Record<string, unknown>)?.config || {}) as Record<string, unknown>;
+        return node.type === 'action' && String(config.actionType || 'SEND_EMAIL') === 'SEND_EMAIL';
+    });
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs">
+            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+                <div className="border-b px-6 py-4">
+                    <div className="text-lg font-semibold text-slate-900">Test This Path</div>
+                    <p className="text-sm text-slate-500">Client-side preview using the first YES/default route. No emails are sent.</p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                        Mock contact: Alex Customer, alex@example.com, order #1001, cart recovery URL available.
+                    </div>
+                    <div>
+                        <div className="mb-2 text-sm font-semibold text-slate-900">Path</div>
+                        <div className="space-y-2">
+                            {orderedNodes.length === 0 ? <div className="text-sm text-slate-500">Add a trigger to preview a path.</div> : orderedNodes.map((node, index) => (
+                                <div key={node.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                    <span className="font-semibold text-slate-900">{index + 1}. {String((node.data as Record<string, unknown>).label || node.type)}</span>
+                                    <span className="ml-2 text-xs uppercase text-slate-400">{node.type}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="mb-2 text-sm font-semibold text-slate-900">Email Steps</div>
+                        <div className="space-y-2">
+                            {emailSteps.length === 0 ? <div className="text-sm text-slate-500">No email steps on this path.</div> : emailSteps.map((node) => {
+                                const config = ((node.data as Record<string, unknown>).config || {}) as Record<string, unknown>;
+                                return (
+                                    <div key={node.id} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm">
+                                        <div className="font-semibold text-indigo-950">{String((node.data as Record<string, unknown>).label || 'Send Email')}</div>
+                                        <div className="mt-1 text-xs text-indigo-900">To: {String(config.to || '{{customer.email}}').replace(/{{\s*customer\.email\s*}}/g, 'alex@example.com')}</div>
+                                        <div className="text-xs text-indigo-900">Subject: {String(config.subject || 'Missing subject').replace(/{{\s*customer\.firstName\s*}}/g, 'Alex')}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                    {issues.length > 0 && (
+                        <div>
+                            <div className="mb-2 text-sm font-semibold text-slate-900">Checks</div>
+                            <div className="space-y-1.5">
+                                {issues.slice(0, 6).map((issue) => (
+                                    <div key={issue.id} className={`rounded-lg border px-3 py-2 text-xs ${issue.severity === 'blocking' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                                        {issue.message}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <div className="flex justify-end border-t bg-slate-50 px-6 py-4">
+                    <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">Close</button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 interface Props {
     initialFlow?: { nodes: Node[], edges: Edge[] } | null;
-    onSave: (flow: { nodes: Node[], edges: Edge[] }) => void;
-    onCancel: () => void;
-    isSaveDisabled?: boolean;
-    isSaving?: boolean;
     onFlowChange?: (flow: { nodes: Node[], edges: Edge[] }) => void;
     onUndoRedoStateChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
     onUndoRedoHandlersChange?: (handlers: { undo: () => void; redo: () => void }) => void;
@@ -103,11 +192,13 @@ interface Props {
     onViewNodeAnalytics?: (nodeId: string) => void;
 }
 
-const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, isSaveDisabled = false, isSaving = false, onFlowChange, onUndoRedoStateChange, onUndoRedoHandlersChange, invalidNodeIds = [], flowId, onViewNodeAnalytics }) => {
+const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndoRedoStateChange, onUndoRedoHandlersChange, invalidNodeIds = [], flowId, onViewNodeAnalytics }) => {
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+    const loadedFlowIdRef = useRef<string | null>(null);
+    const skipNextFlowChangeRef = useRef(false);
 
     // Modal states
     const [showEventSelector, setShowEventSelector] = useState(false);
@@ -116,11 +207,13 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     const [showRecipeSelector, setShowRecipeSelector] = useState(false);
     const [stepPopupPosition, setStepPopupPosition] = useState({ x: 0, y: 0 });
     const [pendingNodeParent, setPendingNodeParent] = useState<string | null>(null);
+    const [pendingInsertEdgeId, setPendingInsertEdgeId] = useState<string | null>(null);
     const [pendingActionParent, setPendingActionParent] = useState<string | null>(null);
     const [pendingConditionSourceHandle, setPendingConditionSourceHandle] = useState<string | null>(null);
     const [pendingActionSourceHandle, setPendingActionSourceHandle] = useState<string | null>(null);
     const pendingActionParentRef = useRef<string | null>(null);
     const [selectionCount, setSelectionCount] = useState(0);
+    const [showPathTest, setShowPathTest] = useState(false);
     const [flowDensity, setFlowDensity] = useState<'compact' | 'comfortable'>(() => {
         if (typeof window === 'undefined') return 'comfortable';
         const saved = window.localStorage.getItem(FLOW_DENSITY_KEY);
@@ -196,8 +289,12 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
         onUndoRedoHandlersChange?.({ undo, redo });
     }, [undo, redo, onUndoRedoHandlersChange]);
 
-    // Load initial flow - start with empty canvas if no existing flow
+    // Load initial flow once per flow id. Autosave responses must not reset the active canvas.
     useEffect(() => {
+        const nextFlowId = flowId || '__new_flow__';
+        if (loadedFlowIdRef.current === nextFlowId) return;
+        loadedFlowIdRef.current = nextFlowId;
+
         if (initialFlow && initialFlow.nodes && initialFlow.nodes.length > 0) {
             setNodes(initialFlow.nodes);
             setEdges(initialFlow.edges || []);
@@ -213,7 +310,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
         }
         historyIndexRef.current = 0;
         onUndoRedoStateChange?.({ canUndo: false, canRedo: false });
-    }, [initialFlow, onUndoRedoStateChange, setNodes, setEdges]);
+    }, [flowId, initialFlow, onUndoRedoStateChange, setNodes, setEdges]);
 
     useEffect(() => {
         pushHistorySnapshot(nodes, edges);
@@ -292,17 +389,23 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
     // Update node data from config panel
     const updateNodeData = useCallback((nodeId: string, newData: Node['data']) => {
-        setNodes((nds) =>
-            nds.map((node) => {
+        setNodes((nds) => {
+            const nextNodes = nds.map((node) => {
                 if (node.id === nodeId) {
                     return { ...node, data: newData };
                 }
                 return node;
-            })
-        );
+            });
+
+            // Push node config updates upstream immediately so autosave/close
+            // flows cannot miss a just-edited condition.
+            skipNextFlowChangeRef.current = true;
+            onFlowChange?.({ nodes: nextNodes, edges });
+            return nextNodes;
+        });
         // Update selected node reference
         setSelectedNode((prev) => prev?.id === nodeId ? { ...prev, data: newData } : prev);
-    }, [setNodes]);
+    }, [setNodes, onFlowChange, edges]);
 
     // Delete node from config panel
     const deleteNode = useCallback((nodeId: string) => {
@@ -419,6 +522,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     // --- Step Type Selection (+ button) ---
     const handleOpenStepPopup = useCallback((nodeId: string, buttonPosition: { x: number; y: number }) => {
         setPendingNodeParent(nodeId);
+        setPendingInsertEdgeId(null);
         setPendingConditionSourceHandle(null);
         setStepPopupPosition(buttonPosition);
         setShowStepPopup(true);
@@ -426,7 +530,16 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
     const handleOpenConditionBranchPopup = useCallback((nodeId: string, sourceHandle: 'true' | 'false', buttonPosition: { x: number; y: number }) => {
         setPendingNodeParent(nodeId);
+        setPendingInsertEdgeId(null);
         setPendingConditionSourceHandle(sourceHandle);
+        setStepPopupPosition(buttonPosition);
+        setShowStepPopup(true);
+    }, []);
+
+    const handleOpenInsertEdgePopup = useCallback((edgeId: string, buttonPosition: { x: number; y: number }) => {
+        setPendingInsertEdgeId(edgeId);
+        setPendingNodeParent(null);
+        setPendingConditionSourceHandle(null);
         setStepPopupPosition(buttonPosition);
         setShowStepPopup(true);
     }, []);
@@ -483,10 +596,14 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete, flowDensity]);
 
     const handleStepSelect = (stepType: StepType) => {
-        if (!pendingNodeParent) return;
+        const edgeToInsertInto = pendingInsertEdgeId
+            ? edges.find((edge) => edge.id === pendingInsertEdgeId)
+            : null;
+        const parentId = edgeToInsertInto?.source || pendingNodeParent;
+        if (!parentId) return;
 
         // Find parent node to position new node below it
-        const parentNode = nodes.find(n => n.id === pendingNodeParent);
+        const parentNode = nodes.find(n => n.id === parentId);
         if (!parentNode) return;
 
         const newPosition = {
@@ -496,9 +613,9 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
 
         if (stepType === 'action') {
             // Open action selector for action type
-            setPendingActionParent(pendingNodeParent);
-            setPendingActionSourceHandle(pendingConditionSourceHandle);
-            pendingActionParentRef.current = pendingNodeParent;
+            setPendingActionParent(parentId);
+            setPendingActionSourceHandle(edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle);
+            pendingActionParentRef.current = parentId;
             setShowActionSelector(true);
         } else if (stepType === 'delay') {
             // Add delay node directly
@@ -515,7 +632,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     density: flowDensity,
                 },
             };
-            addNodeAndConnect(newNode, pendingNodeParent, pendingConditionSourceHandle ?? undefined);
+            addNodeAndConnect(newNode, parentId, edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle || undefined, edgeToInsertInto || undefined);
         } else if (stepType === 'condition') {
             // Add condition node
             const newNode: Node = {
@@ -531,7 +648,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     density: flowDensity,
                 },
             };
-            addNodeAndConnect(newNode, pendingNodeParent, pendingConditionSourceHandle ?? undefined);
+            addNodeAndConnect(newNode, parentId, edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle || undefined, edgeToInsertInto || undefined);
         } else if (stepType === 'goal') {
             // Goal node - track when contact reaches a goal
             const newNode: Node = {
@@ -547,7 +664,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     density: flowDensity,
                 },
             };
-            addNodeAndConnect(newNode, pendingNodeParent, pendingConditionSourceHandle ?? undefined);
+            addNodeAndConnect(newNode, parentId, edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle || undefined, edgeToInsertInto || undefined);
         } else if (stepType === 'jump') {
             // Jump to another step
             const newNode: Node = {
@@ -563,7 +680,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     density: flowDensity,
                 },
             };
-            addNodeAndConnect(newNode, pendingNodeParent, pendingConditionSourceHandle ?? undefined);
+            addNodeAndConnect(newNode, parentId, edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle || undefined, edgeToInsertInto || undefined);
         } else if (stepType === 'exit') {
             // Exit automation
             const newNode: Node = {
@@ -578,10 +695,11 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     density: flowDensity,
                 },
             };
-            addNodeAndConnect(newNode, pendingNodeParent, pendingConditionSourceHandle ?? undefined);
+            addNodeAndConnect(newNode, parentId, edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle || undefined, edgeToInsertInto || undefined);
         }
 
         setPendingConditionSourceHandle(null);
+        setPendingInsertEdgeId(null);
     };
 
     // --- Action Selection ---
@@ -608,10 +726,14 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 density: flowDensity,
             },
         };
-        addNodeAndConnect(newNode, parentId, pendingActionSourceHandle ?? undefined);
+        const edgeToInsertInto = pendingInsertEdgeId
+            ? edges.find((edge) => edge.id === pendingInsertEdgeId)
+            : null;
+        addNodeAndConnect(newNode, parentId, pendingActionSourceHandle ?? undefined, edgeToInsertInto || undefined);
         setShowActionSelector(false);
         setPendingActionParent(null);
         setPendingActionSourceHandle(null);
+        setPendingInsertEdgeId(null);
         pendingActionParentRef.current = null;
     };
 
@@ -624,11 +746,12 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
     }, [flowDensity]);
 
     // Helper to add a node and connect it to parent
-    const addNodeAndConnect = useCallback((newNode: Node, parentId: string, sourceHandle?: string) => {
+    const addNodeAndConnect = useCallback((newNode: Node, parentId: string, sourceHandle?: string, replaceEdge?: Edge) => {
         const parentNode = nodes.find((node) => node.id === parentId);
         if (!parentNode) {
             setPendingNodeParent(null);
             setPendingConditionSourceHandle(null);
+            setPendingInsertEdgeId(null);
             return;
         }
 
@@ -637,43 +760,69 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
             if (!selectedHandle) {
                 setPendingNodeParent(null);
                 setPendingConditionSourceHandle(null);
+                setPendingInsertEdgeId(null);
                 return;
             }
             const existingFromSource = edges.some((edge) => edge.source === parentId && edge.sourceHandle === selectedHandle);
-            if (existingFromSource) {
+            if (existingFromSource && !replaceEdge) {
                 setPendingNodeParent(null);
                 setPendingConditionSourceHandle(null);
+                setPendingInsertEdgeId(null);
                 return;
             }
         } else {
             const existingFromParent = edges.some((edge) => edge.source === parentId);
-            if (existingFromParent) {
+            if (existingFromParent && !replaceEdge) {
                 setPendingNodeParent(null);
                 setPendingConditionSourceHandle(null);
+                setPendingInsertEdgeId(null);
                 return;
             }
         }
 
         setNodes((nds) => [...nds, newNode]);
-        setEdges((eds) => [
-            ...eds,
-            {
-                id: `e_${parentId}_${newNode.id}`,
+        setEdges((eds) => {
+            const nextEdges = replaceEdge ? eds.filter((edge) => edge.id !== replaceEdge.id) : eds;
+            const incomingEdge: Edge = {
+                id: `e_${parentId}_${newNode.id}_${Date.now()}`,
                 source: parentId,
                 target: newNode.id,
                 sourceHandle,
                 ...defaultEdgeOptions,
-            },
-        ]);
+            };
+
+            if (sourceHandle === 'true') incomingEdge.label = 'YES';
+            if (sourceHandle === 'false') incomingEdge.label = 'NO';
+
+            if (!replaceEdge) {
+                return [...nextEdges, incomingEdge];
+            }
+
+            const outgoingEdge: Edge = {
+                id: `e_${newNode.id}_${replaceEdge.target}_${Date.now()}`,
+                source: newNode.id,
+                target: replaceEdge.target,
+                ...defaultEdgeOptions,
+            };
+
+            return [...nextEdges, incomingEdge, outgoingEdge];
+        });
         setPendingNodeParent(null);
         setPendingConditionSourceHandle(null);
+        setPendingInsertEdgeId(null);
     }, [nodes, edges, setNodes, setEdges]);
 
     // Check if canvas is empty
     const isEmptyCanvas = nodes.length === 0;
+    const flowIssues = useMemo(() => validateFlow(nodes, edges), [nodes, edges]);
+    const flowIssuesByNode = useMemo(() => groupFlowIssuesByNode(flowIssues), [flowIssues]);
 
     useEffect(() => {
         if (!onFlowChange) return;
+        if (skipNextFlowChangeRef.current) {
+            skipNextFlowChangeRef.current = false;
+            return;
+        }
         onFlowChange({ nodes, edges });
     }, [nodes, edges, onFlowChange]);
 
@@ -702,6 +851,17 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
         }
     }, [flowId, getViewport]);
 
+    const renderEdges = useMemo(() => {
+        return edges.map((edge) => ({
+            ...edge,
+            type: 'flow',
+            data: {
+                ...(edge.data as Record<string, unknown> || {}),
+                onInsertNode: handleOpenInsertEdgePopup,
+            },
+        }));
+    }, [edges, handleOpenInsertEdgePopup]);
+
     const renderNodes = useMemo(() => {
         const invalidSet = new Set(invalidNodeIds);
 
@@ -729,10 +889,11 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     onDelete: onNodeDelete,
                     onViewAnalytics: onViewNodeAnalytics,
                     density: flowDensity,
+                    issues: flowIssuesByNode[node.id] || [],
                 },
             };
         });
-    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, handleOpenConditionBranchPopup, onNodeCopy, onNodeDelete, onViewNodeAnalytics, flowDensity]);
+    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, handleOpenConditionBranchPopup, onNodeCopy, onNodeDelete, onViewNodeAnalytics, flowDensity, flowIssuesByNode]);
 
     return (
             <div className="h-full w-full relative">
@@ -741,7 +902,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
             <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
                 <ReactFlow
                     nodes={renderNodes}
-                    edges={edges}
+                    edges={renderEdges}
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     onConnect={onConnect}
@@ -750,6 +911,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     onMoveEnd={onMoveEnd}
                     onSelectionChange={onSelectionChange}
                     nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
                     fitView
                     defaultEdgeOptions={defaultEdgeOptions}
                     snapToGrid
@@ -759,14 +921,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     <Controls />
                     <MiniMap pannable zoomable className="!bg-white/90 !border !border-gray-200 !rounded-lg" />
                     <Background color="#e2e8f0" gap={16} />
-                    <Panel position="top-right">
-                        <FlowControls
-                            onSave={(n, e) => onSave({ nodes: n, edges: e })}
-                            onCancel={onCancel}
-                            isSaveDisabled={isSaveDisabled}
-                            isSaving={isSaving}
-                        />
-                    </Panel>
                     <Panel position="top-left">
                         <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm p-1 rounded-lg shadow-xs border border-slate-200">
                             <button
@@ -785,6 +939,11 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                             </button>
                         </div>
                     </Panel>
+                    {!isEmptyCanvas && (
+                        <Panel position="top-right">
+                            <FlowHealthPanel issues={flowIssues} onOpenTest={() => setShowPathTest(true)} />
+                        </Panel>
+                    )}
                 </ReactFlow>
 
                 {/* Starting Point Card (empty canvas) */}
@@ -799,10 +958,12 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
             {/* Node Configuration Panel */}
             {selectedNode && (
                 <NodeConfigPanel
+                    key={selectedNode.id}
                     node={selectedNode}
                     onClose={() => setSelectedNode(null)}
                     onUpdate={updateNodeData}
                     onDelete={deleteNode}
+                    issues={flowIssuesByNode[selectedNode.id] || []}
                 />
             )}
 
@@ -820,6 +981,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 onClose={() => {
                     setShowStepPopup(false);
                     setPendingNodeParent(null);
+                    setPendingInsertEdgeId(null);
                     setPendingConditionSourceHandle(null);
                 }}
                 onSelect={handleStepSelect}
@@ -833,6 +995,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                     setPendingNodeParent(null);
                     setPendingActionParent(null);
                     setPendingActionSourceHandle(null);
+                    setPendingInsertEdgeId(null);
                     setPendingConditionSourceHandle(null);
                     pendingActionParentRef.current = null;
                 }}
@@ -845,6 +1008,15 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onSave, onCancel, is
                 onClose={() => setShowRecipeSelector(false)}
                 onSelect={handleRecipeSelect}
             />
+
+            {showPathTest && (
+                <FlowPathTestModal
+                    nodes={nodes}
+                    edges={edges}
+                    issues={flowIssues}
+                    onClose={() => setShowPathTest(false)}
+                />
+            )}
         </div>
     );
 };
