@@ -20,6 +20,13 @@ interface DraftFormState {
     country: string;
 }
 
+interface PackageDraftState {
+    lengthCm: string;
+    widthCm: string;
+    heightCm: string;
+    weightKg: string;
+}
+
 export function ShippingHubPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -29,6 +36,7 @@ export function ShippingHubPage() {
     const [addressValidationDraft, setAddressValidationDraft] = useState<ShippingDispatchOrder['draft'] | null>(null);
     const [rateOrderId, setRateOrderId] = useState<number | null>(null);
     const [manualPrintOrderId, setManualPrintOrderId] = useState<number | null>(null);
+    const [customPackageDrafts, setCustomPackageDrafts] = useState<Record<number, PackageDraftState>>({});
     const [queueSearch, setQueueSearch] = useState('');
     const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
     const [queueSort, setQueueSort] = useState<QueueSort>('oldest');
@@ -112,7 +120,32 @@ export function ShippingHubPage() {
         invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id]],
         mutationFn: ({ wooOrderId, packagePresetId }) => shippingFetch(`/orders/${wooOrderId}/draft`, token!, currentAccount!.id, {
             method: 'PATCH',
-            body: JSON.stringify({ selectedPackagePresetId: packagePresetId || null }),
+            body: JSON.stringify({
+                selectedPackagePresetId: packagePresetId || null,
+                manualOuterLengthMm: null,
+                manualOuterWidthMm: null,
+                manualOuterHeightMm: null,
+                manualWeightGrams: null,
+            }),
+        }),
+    });
+    const setCustomPackage = useApiMutation<{ draft: ShippingDispatchOrder['draft'] }, {
+        wooOrderId: number;
+        lengthCm: number;
+        widthCm: number;
+        heightCm: number;
+        weightKg: number;
+    }>({
+        invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id]],
+        mutationFn: ({ wooOrderId, lengthCm, widthCm, heightCm, weightKg }) => shippingFetch(`/orders/${wooOrderId}/draft`, token!, currentAccount!.id, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                selectedPackagePresetId: null,
+                manualOuterLengthMm: Math.round(lengthCm * 10),
+                manualOuterWidthMm: Math.round(widthCm * 10),
+                manualOuterHeightMm: Math.round(heightCm * 10),
+                manualWeightGrams: Math.round(weightKg * 1000),
+            }),
         }),
     });
     const manualPrint = useApiMutation<unknown, number>({
@@ -189,6 +222,24 @@ export function ShippingHubPage() {
     const submitDraft = (event: FormEvent) => {
         event.preventDefault();
         if (draftForm) saveAddress.mutate(draftForm);
+    };
+
+    const updateCustomPackageDraft = (wooOrderId: number, key: keyof PackageDraftState, value: string) => {
+        setCustomPackageDrafts((current) => {
+            const existing = current[wooOrderId] || { lengthCm: '', widthCm: '', heightCm: '', weightKg: '' };
+            return { ...current, [wooOrderId]: { ...existing, [key]: value } };
+        });
+    };
+
+    const submitCustomPackage = (wooOrderId: number) => {
+        const draft = customPackageDrafts[wooOrderId];
+        if (!draft) return;
+        const lengthCm = Number(draft.lengthCm);
+        const widthCm = Number(draft.widthCm);
+        const heightCm = Number(draft.heightCm);
+        const weightKg = Number(draft.weightKg);
+        if (![lengthCm, widthCm, heightCm, weightKg].every((value) => Number.isFinite(value) && value > 0)) return;
+        setCustomPackage.mutate({ wooOrderId, lengthCm, widthCm, heightCm, weightKg });
     };
 
     const handleRequestRates = async (wooOrderId: number) => {
@@ -368,12 +419,19 @@ export function ShippingHubPage() {
                                     <div>
                                         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Package</p>
                                         <PackageSelector
+                                            wooOrderId={order.wooId}
                                             packages={packagesQuery.data?.packages.filter((pkg) => pkg.isActive) || []}
                                             selectedPackage={selectedPackagePreset}
                                             selectedPackageId={draft.selectedPackagePresetId || ''}
+                                            manualOuterLengthMm={draft.manualOuterLengthMm || null}
+                                            manualOuterWidthMm={draft.manualOuterWidthMm || null}
+                                            manualOuterHeightMm={draft.manualOuterHeightMm || null}
                                             totalWeightGrams={draft.manualWeightGrams || null}
-                                            disabled={selectPackage.isPending}
+                                            customDraft={customPackageDrafts[order.wooId] || null}
+                                            disabled={selectPackage.isPending || setCustomPackage.isPending}
                                             onSelect={(packagePresetId) => selectPackage.mutate({ wooOrderId: order.wooId, packagePresetId })}
+                                            onCustomChange={(key, value) => updateCustomPackageDraft(order.wooId, key, value)}
+                                            onCustomSubmit={() => submitCustomPackage(order.wooId)}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
@@ -403,6 +461,7 @@ export function ShippingHubPage() {
                                         </button>
                                         {manualPrint.error && manualPrintOrderId === order.wooId ? <p className="text-xs text-red-600">{manualPrint.error.message}</p> : null}
                                         {requestRates.error && rateOrderId === order.wooId ? <p className="text-xs text-amber-700 dark:text-amber-300">{requestRates.error.message}</p> : null}
+                                        {setCustomPackage.error ? <p className="text-xs text-red-600">{setCustomPackage.error.message}</p> : null}
                                     </div>
                                 </div>
                                 {blockers?.length ? <p className="mt-3 text-sm text-red-600">Needs attention: {blockers.map((error) => error.message || error.field).join(', ')}</p> : null}
@@ -507,20 +566,40 @@ function AddressModal({
 }
 
 function PackageSelector({
+    wooOrderId,
     packages,
     selectedPackage,
     selectedPackageId,
+    manualOuterLengthMm,
+    manualOuterWidthMm,
+    manualOuterHeightMm,
     totalWeightGrams,
+    customDraft,
     disabled,
     onSelect,
+    onCustomChange,
+    onCustomSubmit,
 }: {
+    wooOrderId: number;
     packages: ShippingPackagePreset[];
     selectedPackage: ShippingPackagePreset | null;
     selectedPackageId: string;
+    manualOuterLengthMm: number | null;
+    manualOuterWidthMm: number | null;
+    manualOuterHeightMm: number | null;
     totalWeightGrams: number | null;
+    customDraft: PackageDraftState | null;
     disabled: boolean;
     onSelect: (packagePresetId: string) => void;
+    onCustomChange: (key: keyof PackageDraftState, value: string) => void;
+    onCustomSubmit: () => void;
 }) {
+    const lengthCm = customDraft?.lengthCm ?? (manualOuterLengthMm ? (manualOuterLengthMm / 10).toFixed(1) : '');
+    const widthCm = customDraft?.widthCm ?? (manualOuterWidthMm ? (manualOuterWidthMm / 10).toFixed(1) : '');
+    const heightCm = customDraft?.heightCm ?? (manualOuterHeightMm ? (manualOuterHeightMm / 10).toFixed(1) : '');
+    const weightKg = customDraft?.weightKg ?? (totalWeightGrams ? (totalWeightGrams / 1000).toFixed(3) : '');
+    const showingCustomPackage = !selectedPackageId && Boolean(manualOuterLengthMm && manualOuterWidthMm && manualOuterHeightMm && totalWeightGrams);
+
     return (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <div className="grid grid-cols-[1fr_auto] items-center gap-2 border-b border-slate-200 p-2 dark:border-slate-700">
@@ -530,13 +609,42 @@ function PackageSelector({
                 </select>
                 <PackageCheck size={15} className="text-slate-500" />
                 <p className="text-xs text-slate-600 dark:text-slate-300">
-                    {selectedPackage ? `${mmToCm(selectedPackage.outerLengthMm)} x ${mmToCm(selectedPackage.outerWidthMm)} x ${mmToCm(selectedPackage.outerHeightMm)} cm` : 'No configured package selected'}
+                    {selectedPackage
+                        ? `${mmToCm(selectedPackage.outerLengthMm)} x ${mmToCm(selectedPackage.outerWidthMm)} x ${mmToCm(selectedPackage.outerHeightMm)} cm`
+                        : showingCustomPackage
+                            ? `${mmToCm(manualOuterLengthMm!)} x ${mmToCm(manualOuterWidthMm!)} x ${mmToCm(manualOuterHeightMm!)} cm (custom)`
+                            : 'No configured package selected'}
                 </p>
                 <p className="text-right text-xs text-slate-600 dark:text-slate-300">{selectedPackage ? `${gramsToKg(selectedPackage.packagingWeightGrams)} kg` : ''}</p>
             </div>
             <div className="flex items-center justify-between bg-slate-50 px-2 py-1.5 text-xs text-slate-500 dark:bg-slate-950 dark:text-slate-400">
                 <span>Total Weight: {totalWeightGrams ? `${gramsToKg(totalWeightGrams)}kg` : 'Unknown'}</span>
                 <span className="text-lg leading-none text-slate-900 dark:text-white">+</span>
+            </div>
+            <div className="space-y-2 border-t border-slate-200 p-2 dark:border-slate-700">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Custom package</p>
+                <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Length (cm)
+                        <input value={lengthCm} onChange={(event) => onCustomChange('lengthCm', event.target.value)} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Width (cm)
+                        <input value={widthCm} onChange={(event) => onCustomChange('widthCm', event.target.value)} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Height (cm)
+                        <input value={heightCm} onChange={(event) => onCustomChange('heightCm', event.target.value)} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Weight (kg)
+                        <input value={weightKg} onChange={(event) => onCustomChange('weightKg', event.target.value)} inputMode="decimal" className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                    </label>
+                </div>
+                <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={onCustomSubmit}
+                    className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                    Save custom package for #{wooOrderId}
+                </button>
             </div>
         </div>
     );

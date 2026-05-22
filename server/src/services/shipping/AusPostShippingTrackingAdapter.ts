@@ -131,7 +131,18 @@ class AusPostShippingTrackingAdapter {
                 };
             }
 
-            const destination = this.toAusPostAddress(credentials.senderAddress, false);
+            const destination = {
+                name: this.stringConfig(credentials.senderAddress.name) || 'Customer',
+                company: this.stringConfig(credentials.senderAddress.company) || '',
+                address1: this.stringConfig(credentials.senderAddress.address1) || '1 Market St',
+                address2: this.stringConfig(credentials.senderAddress.address2) || '',
+                suburb: this.stringConfig(credentials.senderAddress.suburb) || 'Sydney',
+                state: this.stringConfig(credentials.senderAddress.state) || 'NSW',
+                postcode: this.stringConfig(credentials.senderAddress.postcode) || '2000',
+                country: this.stringConfig(credentials.senderAddress.country) || 'AU',
+                phone: this.stringConfig(credentials.senderAddress.phone) || '',
+                email: this.stringConfig(credentials.senderAddress.email) || '',
+            };
             const probeRequestBase: Omit<AusPostRateRequest, 'serviceCode'> = {
                 wooOrderId: 0,
                 address: destination,
