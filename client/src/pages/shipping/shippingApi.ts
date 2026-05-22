@@ -146,6 +146,8 @@ export interface ShippingMethodCandidatesResponse {
 export interface AusPostServiceCatalogResponse {
     services: Array<{ code: string; label: string }>;
     updatedAt: string;
+    source?: 'live_account' | 'live_account_cached' | 'static_fallback';
+    warning?: string;
 }
 
 export interface ShippingTrackingHealthSummary {

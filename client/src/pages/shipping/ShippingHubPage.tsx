@@ -1,24 +1,16 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { AlertTriangle, Calculator, CheckCircle2, Edit3, PackageCheck, Printer, Save, Truck } from 'lucide-react';
+import { AlertTriangle, Calculator, CheckCircle2, PackageCheck, Printer, Save, Truck, X } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
-import { serviceCodeLabelFormatter, serviceCodeOptionsFromCatalog } from './auspostServiceCatalog';
 import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
-import { cmToMm, gramsToKg, kgToGrams, mmToCm, openShippingLabelPdf, shippingFetch, type AusPostServiceCatalogResponse, type ShippingBulkLabelResult, type ShippingDispatchOrder, type ShippingHubSummary, type ShippingPackagePreset, type ShippingPrintStation, type ShippingSettingsResponse } from './shippingApi';
+import { gramsToKg, mmToCm, openShippingLabelPdf, shippingFetch, type ShippingBulkLabelResult, type ShippingDispatchOrder, type ShippingHubSummary, type ShippingPackagePreset, type ShippingSettingsResponse } from './shippingApi';
 
 type QueueFilter = 'all' | 'ready' | 'attention';
 type QueueSort = 'oldest' | 'newest' | 'order' | 'customer';
 
 interface DraftFormState {
     wooOrderId: number;
-    selectedPackagePresetId: string;
-    manualOuterLengthCm: string;
-    manualOuterWidthCm: string;
-    manualOuterHeightCm: string;
-    manualWeightKg: string;
-    selectedServiceCode: string;
-    selectedPrintStationId: string;
     address1: string;
     address2: string;
     suburb: string;
@@ -33,7 +25,9 @@ export function ShippingHubPage() {
     const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
     const [bulkResult, setBulkResult] = useState<ShippingBulkLabelResult | null>(null);
     const [draftForm, setDraftForm] = useState<DraftFormState | null>(null);
+    const [addressValidationDraft, setAddressValidationDraft] = useState<ShippingDispatchOrder['draft'] | null>(null);
     const [rateOrderId, setRateOrderId] = useState<number | null>(null);
+    const [manualPrintOrderId, setManualPrintOrderId] = useState<number | null>(null);
     const [queueSearch, setQueueSearch] = useState('');
     const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
     const [queueSort, setQueueSort] = useState<QueueSort>('oldest');
@@ -54,20 +48,10 @@ export function ShippingHubPage() {
         enabled: canFetch,
         queryFn: () => shippingFetch('/packages', token!, currentAccount!.id),
     });
-    const printStationsQuery = useApiQuery<{ printStations: ShippingPrintStation[] }>({
-        queryKey: ['shipping-print-stations', currentAccount?.id],
-        enabled: canFetch,
-        queryFn: () => shippingFetch('/print-stations', token!, currentAccount!.id),
-    });
     const settingsQuery = useApiQuery<ShippingSettingsResponse>({
         queryKey: ['shipping-settings', currentAccount?.id],
         enabled: canFetch,
         queryFn: () => shippingFetch('/settings', token!, currentAccount!.id),
-    });
-    const serviceCatalogQuery = useApiQuery<AusPostServiceCatalogResponse>({
-        queryKey: ['shipping-auspost-service-catalog', currentAccount?.id],
-        enabled: canFetch,
-        queryFn: () => shippingFetch('/settings/auspost-service-catalog', token!, currentAccount!.id),
     });
     const bulkLabels = useApiMutation<ShippingBulkLabelResult, number[]>({
         invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id], ['shipping-labels', currentAccount?.id]],
@@ -85,33 +69,28 @@ export function ShippingHubPage() {
             }
         },
     });
-    const saveDraft = useApiMutation<{ draft: ShippingDispatchOrder['draft'] }, DraftFormState>({
+    const saveAddress = useApiMutation<{ draft: ShippingDispatchOrder['draft'] }, DraftFormState>({
         invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id]],
-        mutationFn: (values) => shippingFetch(`/orders/${values.wooOrderId}/draft`, token!, currentAccount!.id, {
-            method: 'PATCH',
-            body: JSON.stringify({
-                selectedPackagePresetId: values.selectedPackagePresetId || null,
-                manualOuterLengthMm: cmToMm(values.manualOuterLengthCm),
-                manualOuterWidthMm: cmToMm(values.manualOuterWidthCm),
-                manualOuterHeightMm: cmToMm(values.manualOuterHeightCm),
-                manualWeightGrams: kgToGrams(values.manualWeightKg),
-                selectedServiceCode: values.selectedServiceCode || null,
-                selectedPrintStationId: values.selectedPrintStationId || null,
-                correctedAddress: {
-                    address1: values.address1,
-                    address2: values.address2,
-                    suburb: values.suburb,
-                    state: values.state,
-                    postcode: values.postcode,
-                    country: values.country,
-                },
-            }),
-        }),
-        onSuccess: () => setDraftForm(null),
-    });
-    const validateAddress = useApiMutation<{ draft: ShippingDispatchOrder['draft'] }, number>({
-        invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id]],
-        mutationFn: (wooOrderId) => shippingFetch(`/orders/${wooOrderId}/validate-address`, token!, currentAccount!.id, { method: 'POST' }),
+        mutationFn: async (values) => {
+            await shippingFetch(`/orders/${values.wooOrderId}/draft`, token!, currentAccount!.id, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    correctedAddress: {
+                        address1: values.address1,
+                        address2: values.address2,
+                        suburb: values.suburb,
+                        state: values.state,
+                        postcode: values.postcode,
+                        country: values.country,
+                    },
+                }),
+            });
+            return shippingFetch(`/orders/${values.wooOrderId}/validate-address`, token!, currentAccount!.id, { method: 'POST' });
+        },
+        onSuccess: (data) => {
+            setAddressValidationDraft(data.draft);
+            if (data.draft.addressValidationStatus === 'valid') setDraftForm(null);
+        },
     });
     const requestRates = useApiMutation<unknown, number>({
         mutationFn: (wooOrderId) => shippingFetch(`/orders/${wooOrderId}/rates`, token!, currentAccount!.id, { method: 'POST' }),
@@ -122,6 +101,27 @@ export function ShippingHubPage() {
             method: 'PATCH',
             body: JSON.stringify({ selectedServiceCode: serviceCode }),
         }),
+    });
+    const selectPackage = useApiMutation<{ draft: ShippingDispatchOrder['draft'] }, { wooOrderId: number; packagePresetId: string }>({
+        invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id]],
+        mutationFn: ({ wooOrderId, packagePresetId }) => shippingFetch(`/orders/${wooOrderId}/draft`, token!, currentAccount!.id, {
+            method: 'PATCH',
+            body: JSON.stringify({ selectedPackagePresetId: packagePresetId || null }),
+        }),
+    });
+    const manualPrint = useApiMutation<unknown, number>({
+        invalidateQueries: [['shipping-orders', currentAccount?.id], ['shipping-hub', currentAccount?.id], ['shipping-labels', currentAccount?.id]],
+        mutationFn: (wooOrderId) => shippingFetch(`/orders/${wooOrderId}/labels`, token!, currentAccount!.id, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        }),
+        onSuccess: async (data, wooOrderId) => {
+            const labelId = typeof data === 'object' && data && 'label' in data && typeof (data as { label?: { id?: unknown } }).label?.id === 'string'
+                ? (data as { label: { id: string } }).label.id
+                : null;
+            if (labelId && settingsQuery.data?.carrierAccount?.config?.printDeliveryMethod === 'open_pdf') await openShippingLabelPdf(labelId, token!, currentAccount!.id);
+            setManualPrintOrderId(wooOrderId);
+        },
     });
 
     const counts = hubQuery.data?.counts;
@@ -154,10 +154,6 @@ export function ShippingHubPage() {
         .map(({ order }) => order.wooId);
     const selectedReadyOrders = selectedOrders.filter((wooOrderId) => readyOrderIds.includes(wooOrderId));
     const allReadySelected = readyOrderIds.length > 0 && readyOrderIds.every((wooOrderId) => selectedOrders.includes(wooOrderId));
-    const draftServiceCodeOptions = serviceCodeOptionsFromCatalog(serviceCatalogQuery.data, [
-        draftForm?.selectedServiceCode || '',
-    ]);
-    const formatServiceCodeOption = serviceCodeLabelFormatter(serviceCatalogQuery.data);
 
     const toggleReadySelection = () => {
         setSelectedOrders((current) => allReadySelected ? current.filter((wooOrderId) => !readyOrderIds.includes(wooOrderId)) : Array.from(new Set([...current, ...readyOrderIds])));
@@ -171,15 +167,9 @@ export function ShippingHubPage() {
 
     const openDraftEditor = ({ order, draft }: ShippingDispatchOrder) => {
         const address = draft.correctedAddress && Object.keys(draft.correctedAddress).length > 0 ? draft.correctedAddress : order.shipping;
+        setAddressValidationDraft(null);
         setDraftForm({
             wooOrderId: order.wooId,
-            selectedPackagePresetId: draft.selectedPackagePresetId || '',
-            manualOuterLengthCm: String(mmToCm(draft.manualOuterLengthMm)),
-            manualOuterWidthCm: String(mmToCm(draft.manualOuterWidthMm)),
-            manualOuterHeightCm: String(mmToCm(draft.manualOuterHeightMm)),
-            manualWeightKg: String(gramsToKg(draft.manualWeightGrams)),
-            selectedServiceCode: draft.selectedServiceCode || '',
-            selectedPrintStationId: draft.selectedPrintStationId || '',
             address1: address.address1 || '',
             address2: address.address2 || '',
             suburb: address.suburb || '',
@@ -193,7 +183,7 @@ export function ShippingHubPage() {
 
     const submitDraft = (event: FormEvent) => {
         event.preventDefault();
-        if (draftForm) saveDraft.mutate(draftForm);
+        if (draftForm) saveAddress.mutate(draftForm);
     };
 
     const handleRequestRates = async (wooOrderId: number) => {
@@ -234,9 +224,13 @@ export function ShippingHubPage() {
 
             <ShippingComingSoonCard>
                 <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">Dispatch Orders</h2>
+                    <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+                        Dispatch Orders
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                            {dispatchOrders.length}
+                        </span>
+                    </h2>
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-200">{filteredOrders.length} of {dispatchOrders.length} orders</span>
                         <button
                             type="button"
                             onClick={toggleReadySelection}
@@ -313,6 +307,9 @@ export function ShippingHubPage() {
                     {filteredOrders.map(({ order, draft }) => {
                         const ready = draft.readinessStatus === 'ready';
                         const blockers = draft.readinessErrors?.length ? draft.readinessErrors : draft.addressValidationErrors;
+                        const displayAddress = draft.correctedAddress && Object.keys(draft.correctedAddress).length > 0 ? draft.correctedAddress : order.shipping;
+                        const selectedPackagePreset = packagesQuery.data?.packages.find((pkg) => pkg.id === draft.selectedPackagePresetId) || null;
+                        const addressIsInvalid = draft.addressValidationStatus === 'invalid';
                         return (
                             <div key={order.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
                                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -328,7 +325,13 @@ export function ShippingHubPage() {
                                         <div>
                                             <p className="font-bold text-slate-900 dark:text-white">#{order.number} · {order.customerName}</p>
                                             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{order.itemCount} items · {order.currency} {order.total} · {order.email || 'No email'}</p>
-                                            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{order.shipping.address1}, {order.shipping.suburb} {order.shipping.state} {order.shipping.postcode}</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => openDraftEditor({ order, draft })}
+                                                className={`mt-2 block text-left text-sm underline-offset-2 hover:underline ${addressIsInvalid ? 'text-red-600 dark:text-red-300' : 'text-slate-600 dark:text-slate-300'}`}
+                                            >
+                                                {displayAddress.address1}, {displayAddress.suburb} {displayAddress.state} {displayAddress.postcode}
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -337,31 +340,42 @@ export function ShippingHubPage() {
                                         <StatusBadge label={draft.packageSelectionConfidence || 'manual_required'} tone="slate" />
                                         <button
                                             type="button"
-                                            onClick={() => openDraftEditor({ order, draft })}
-                                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                                        >
-                                            <Edit3 size={13} /> Edit
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => validateAddress.mutate(order.wooId)}
-                                            disabled={validateAddress.isPending}
-                                            className="rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
-                                        >
-                                            Validate address
-                                        </button>
-                                        <button
-                                            type="button"
                                             onClick={() => void handleRequestRates(order.wooId)}
                                             disabled={requestRates.isPending}
                                             className="inline-flex items-center gap-1 rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
                                         >
                                             <Calculator size={13} /> Rates
                                         </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setManualPrintOrderId(order.wooId); manualPrint.mutate(order.wooId); }}
+                                            disabled={!ready || manualPrint.isPending}
+                                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                        >
+                                            <Printer size={13} /> Manual print
+                                        </button>
                                     </div>
                                 </div>
                                 {blockers?.length ? <p className="mt-3 text-sm text-red-600">Needs attention: {blockers.map((error) => error.message || error.field).join(', ')}</p> : null}
+                                {manualPrint.error && manualPrintOrderId === order.wooId ? <p className="mt-3 text-sm text-red-600">{manualPrint.error.message}</p> : null}
                                 {requestRates.error && rateOrderId === order.wooId ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">{requestRates.error.message}</p> : null}
+                                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(260px,420px)_1fr]">
+                                    <PackageSelector
+                                        packages={packagesQuery.data?.packages.filter((pkg) => pkg.isActive) || []}
+                                        selectedPackage={selectedPackagePreset}
+                                        selectedPackageId={draft.selectedPackagePresetId || ''}
+                                        totalWeightGrams={draft.manualWeightGrams || null}
+                                        disabled={selectPackage.isPending}
+                                        onSelect={(packagePresetId) => selectPackage.mutate({ wooOrderId: order.wooId, packagePresetId })}
+                                    />
+                                    <div className="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">
+                                        <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Print station</p>
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200">Account default</span>
+                                            <span className="text-xs text-slate-500 dark:text-slate-400">Use manual print to create this order's label now.</span>
+                                        </div>
+                                    </div>
+                                </div>
                                 {draft.lastRateResponse && Object.keys(draft.lastRateResponse).length > 0 ? (
                                     <RatePreview
                                         response={draft.lastRateResponse}
@@ -370,43 +384,140 @@ export function ShippingHubPage() {
                                         isSaving={selectRateService.isPending}
                                     />
                                 ) : null}
-                                {draftForm?.wooOrderId === order.wooId ? (
-                                    <form onSubmit={submitDraft} className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 dark:border-indigo-500/20 dark:bg-indigo-500/5">
-                                        <div className="grid gap-3 md:grid-cols-3">
-                                            <DraftField label="Address 1" value={draftForm.address1} onChange={(value) => updateDraftForm('address1', value)} />
-                                            <DraftField label="Address 2" value={draftForm.address2} onChange={(value) => updateDraftForm('address2', value)} />
-                                            <DraftField label="Suburb" value={draftForm.suburb} onChange={(value) => updateDraftForm('suburb', value)} />
-                                            <DraftField label="State" value={draftForm.state} onChange={(value) => updateDraftForm('state', value)} />
-                                            <DraftField label="Postcode" value={draftForm.postcode} onChange={(value) => updateDraftForm('postcode', value)} />
-                                            <DraftField label="Country" value={draftForm.country} onChange={(value) => updateDraftForm('country', value)} />
-                                        </div>
-                                        <div className="mt-4 grid gap-3 md:grid-cols-4">
-                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Package preset<select value={draftForm.selectedPackagePresetId} onChange={(event) => updateDraftForm('selectedPackagePresetId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="">Manual dimensions</option>{packagesQuery.data?.packages.filter((pkg) => pkg.isActive).map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name}</option>)}</select></label>
-                                            <DraftField label="Outer L (cm)" type="number" value={draftForm.manualOuterLengthCm} onChange={(value) => updateDraftForm('manualOuterLengthCm', value)} />
-                                            <DraftField label="Outer W (cm)" type="number" value={draftForm.manualOuterWidthCm} onChange={(value) => updateDraftForm('manualOuterWidthCm', value)} />
-                                            <DraftField label="Outer H (cm)" type="number" value={draftForm.manualOuterHeightCm} onChange={(value) => updateDraftForm('manualOuterHeightCm', value)} />
-                                            <DraftField label="Weight (kg)" type="number" value={draftForm.manualWeightKg} onChange={(value) => updateDraftForm('manualWeightKg', value)} />
-                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Service code<select value={draftForm.selectedServiceCode} onChange={(event) => updateDraftForm('selectedServiceCode', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="">Use default service</option>{draftServiceCodeOptions.map((option) => <option key={option} value={option}>{formatServiceCodeOption(option)}</option>)}</select></label>
-                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Print station<select value={draftForm.selectedPrintStationId} onChange={(event) => updateDraftForm('selectedPrintStationId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="">Account default</option>{printStationsQuery.data?.printStations.map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}</select></label>
-                                        </div>
-                                        {saveDraft.error ? <p className="mt-3 text-sm text-red-600">{saveDraft.error.message}</p> : null}
-                                        <div className="mt-4 flex flex-wrap gap-2">
-                                            <button type="submit" disabled={saveDraft.isPending} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"><Save size={16} /> Save draft</button>
-                                            <button type="button" onClick={() => setDraftForm(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button>
-                                        </div>
-                                    </form>
-                                ) : null}
                             </div>
                         );
                     })}
                 </div>
             </ShippingComingSoonCard>
+            {draftForm ? (
+                <AddressModal
+                    form={draftForm}
+                    error={saveAddress.error?.message || null}
+                    validationDraft={addressValidationDraft}
+                    isSaving={saveAddress.isPending}
+                    onChange={updateDraftForm}
+                    onClose={() => setDraftForm(null)}
+                    onSubmit={submitDraft}
+                />
+            ) : null}
         </ShippingPageShell>
     );
 }
 
 function DraftField({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
     return <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{label}<input type={type} step={type === 'number' ? '0.001' : undefined} min={type === 'number' ? '0' : undefined} value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900" /></label>;
+}
+
+function AddressModal({
+    form,
+    error,
+    validationDraft,
+    isSaving,
+    onChange,
+    onClose,
+    onSubmit,
+}: {
+    form: DraftFormState;
+    error: string | null;
+    validationDraft: ShippingDispatchOrder['draft'] | null;
+    isSaving: boolean;
+    onChange: (key: keyof DraftFormState, value: string) => void;
+    onClose: () => void;
+    onSubmit: (event: FormEvent) => void;
+}) {
+    const validationErrors = validationDraft?.addressValidationStatus === 'valid' ? [] : validationDraft?.addressValidationErrors || [];
+    const suggestions = validationErrors.flatMap((validationError) => {
+        const rawSuggestions = (validationError as { suggestions?: unknown }).suggestions;
+        return Array.isArray(rawSuggestions) ? rawSuggestions.map((suggestion) => String(suggestion)) : [];
+    });
+    const applySuggestion = (suggestion: string) => {
+        const match = suggestion.match(/^(.+?),?\s+([A-Z]{2,3})\s+(\d{4})$/i);
+        if (!match) return;
+        onChange('suburb', match[1].trim());
+        onChange('state', match[2].toUpperCase());
+        onChange('postcode', match[3]);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+            <form onSubmit={onSubmit} className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Edit delivery address</h2>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Saving validates the address before closing. Invalid suburbs, states, or postcodes will stay open with suggestions.</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" aria-label="Close address editor"><X size={18} /></button>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <DraftField label="Address 1" value={form.address1} onChange={(value) => onChange('address1', value)} />
+                    <DraftField label="Address 2" value={form.address2} onChange={(value) => onChange('address2', value)} />
+                    <DraftField label="Suburb" value={form.suburb} onChange={(value) => onChange('suburb', value)} />
+                    <DraftField label="State" value={form.state} onChange={(value) => onChange('state', value)} />
+                    <DraftField label="Postcode" value={form.postcode} onChange={(value) => onChange('postcode', value)} />
+                    <DraftField label="Country" value={form.country} onChange={(value) => onChange('country', value)} />
+                </div>
+                {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+                {validationErrors.length > 0 ? (
+                    <div className="mt-4 rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+                        <p className="font-semibold">Address could not be validated.</p>
+                        {validationErrors.map((validationError, index) => <p key={`${validationError.field}-${index}`} className="mt-1">{validationError.message}</p>)}
+                        {suggestions.length > 0 ? (
+                            <div className="mt-3">
+                                <p className="text-xs font-semibold uppercase">Closest matches</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {suggestions.map((suggestion) => (
+                                        <button key={suggestion} type="button" onClick={() => applySuggestion(suggestion)} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 dark:bg-slate-900 dark:text-red-200 dark:hover:bg-red-500/20">
+                                            {suggestion}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+                ) : null}
+                <div className="mt-5 flex flex-wrap gap-2">
+                    <button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"><Save size={16} /> {isSaving ? 'Validating...' : 'Save address'}</button>
+                    <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
+function PackageSelector({
+    packages,
+    selectedPackage,
+    selectedPackageId,
+    totalWeightGrams,
+    disabled,
+    onSelect,
+}: {
+    packages: ShippingPackagePreset[];
+    selectedPackage: ShippingPackagePreset | null;
+    selectedPackageId: string;
+    totalWeightGrams: number | null;
+    disabled: boolean;
+    onSelect: (packagePresetId: string) => void;
+}) {
+    return (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="grid grid-cols-[1fr_auto] items-center gap-2 border-b border-slate-200 p-2 dark:border-slate-700">
+                <select value={selectedPackageId} onChange={(event) => onSelect(event.target.value)} disabled={disabled} className="min-w-0 rounded border-0 bg-transparent p-0 text-sm font-semibold text-slate-900 focus:ring-0 disabled:opacity-60 dark:text-white">
+                    <option value="">Select package</option>
+                    {packages.map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name}</option>)}
+                </select>
+                <PackageCheck size={15} className="text-slate-500" />
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                    {selectedPackage ? `${mmToCm(selectedPackage.outerLengthMm)} x ${mmToCm(selectedPackage.outerWidthMm)} x ${mmToCm(selectedPackage.outerHeightMm)} cm` : 'No configured package selected'}
+                </p>
+                <p className="text-right text-xs text-slate-600 dark:text-slate-300">{selectedPackage ? `${gramsToKg(selectedPackage.packagingWeightGrams)} kg` : ''}</p>
+            </div>
+            <div className="flex items-center justify-between bg-slate-50 px-2 py-1.5 text-xs text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+                <span>Total Weight: {totalWeightGrams ? `${gramsToKg(totalWeightGrams)}kg` : 'Unknown'}</span>
+                <span className="text-lg leading-none text-slate-900 dark:text-white">+</span>
+            </div>
+        </div>
+    );
 }
 
 function RatePreview({
@@ -435,27 +546,41 @@ function RatePreview({
         );
     }
     return (
-        <div className="mt-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-            <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Rate options</p>
+        <div className="mt-3 max-w-sm rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <p className="text-[11px] font-semibold underline text-indigo-700 dark:text-indigo-300">Available Rates</p>
             {warnings.length > 0 ? <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Carrier warning: {warnings.join(' | ')}</p> : null}
             {errors.length > 0 ? <p className="mt-2 text-sm text-red-700 dark:text-red-300">Carrier error: {errors.join(' | ')}</p> : null}
-            <div className="mt-2 grid gap-2 md:grid-cols-3">
-                {rates.map((rate, index) => (
-                    <div key={`${String(rate.productId || rate.serviceCode || rate.serviceName || 'service')}-${index}`} className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-900">
-                        <p className="font-semibold text-slate-900 dark:text-white">{String(rate.productId || rate.serviceName || rate.serviceCode || 'Service')}</p>
-                        <p className="text-slate-600 dark:text-slate-300">AUD {String(rate.totalCost || rate.amount || '-')}</p>
-                        {String(rate.productId || '') ? (
+            <div className="mt-2 space-y-1">
+                {rates.map((rate, index) => {
+                    const serviceCode = String(rate.productId || rate.serviceCode || '');
+                    const serviceName = String(rate.serviceName || rate.productId || rate.serviceCode || 'Service');
+                    const amount = String(rate.totalCost || rate.amount || rate.price || '-');
+                    const formattedAmount = amount === '-' || amount.startsWith('$') ? amount : `$${amount}`;
+                    return (
+                        <div key={`${serviceCode || serviceName}-${index}`} className={`grid grid-cols-[1fr_auto] items-center gap-2 rounded px-1 py-1 text-xs ${selectedServiceCode === serviceCode ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''}`}>
+                            <div className="flex min-w-0 items-center gap-2">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold leading-none text-white">AP</span>
+                                <div className="min-w-0">
+                                    <p className="truncate font-bold text-slate-900 dark:text-white">{serviceName}</p>
+                                    {serviceCode ? <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{serviceCode}</p> : null}
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="font-semibold text-slate-900 dark:text-white">{formattedAmount}</p>
+                                {serviceCode ? (
                             <button
                                 type="button"
                                 disabled={isSaving}
-                                onClick={() => onSelect(String(rate.productId))}
-                                className="mt-2 rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+                                onClick={() => onSelect(serviceCode)}
+                                className="text-[11px] font-semibold text-indigo-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-indigo-300"
                             >
-                                {selectedServiceCode === String(rate.productId) ? 'Selected' : 'Select service'}
+                                        {selectedServiceCode === serviceCode ? 'Selected' : 'Select'}
                             </button>
                         ) : null}
-                    </div>
-                ))}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
             <details className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                 <summary className="cursor-pointer font-semibold">Raw diagnostics</summary>

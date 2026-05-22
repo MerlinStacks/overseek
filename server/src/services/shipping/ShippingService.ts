@@ -6,7 +6,6 @@ import fs from 'fs';
 import path from 'path';
 import { shippingFulfillmentService } from './ShippingFulfillmentService';
 import { ausPostShippingTrackingAdapter } from './AusPostShippingTrackingAdapter';
-import { listAusPostServiceCatalog } from './AusPostServiceCatalog';
 
 export const SHIPPING_FEATURE_KEY = 'SHIPPING_HUB';
 
@@ -227,26 +226,7 @@ export class ShippingService {
         if (!order) throw new Error('Order not found');
         const draft = await this.ensureDraftForOrder(accountId, order, await this.getDispatchStatus(accountId));
         const address = this.resolveAddress(draft, order);
-        let errors: any[] = this.validateAddressShape(address);
-        let carrierValidation: Record<string, unknown> | null = null;
-        let status = errors.length === 0 ? 'valid' : 'invalid';
-        if (errors.length === 0 && String(address.country || '').toUpperCase() === 'AU') {
-            const settings = await prisma.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST' } });
-            if (settings?.credentialsEncrypted) {
-                try {
-                    const validation = await ausPostShippingTrackingAdapter.validateAddress(accountId, address);
-                    carrierValidation = validation;
-                    if (!validation.found) {
-                        status = 'invalid';
-                        errors = [{ field: 'address', message: 'AusPost could not validate the suburb, state, and postcode combination', suggestions: validation.results }];
-                    }
-                } catch (error: any) {
-                    status = 'unverified';
-                    errors = [{ field: 'address', message: `AusPost address validation could not be completed: ${error?.message || 'Unknown carrier error'}` }];
-                    carrierValidation = { error: error?.message || 'Unknown carrier error' };
-                }
-            }
-        }
+        const { errors, status, carrierValidation } = await this.validateResolvedAddress(accountId, address);
         const existingReadinessErrors = Array.isArray(draft.readinessErrors) ? draft.readinessErrors as any[] : [];
         const packageErrors = existingReadinessErrors.filter((error) => error?.field === 'package');
         const serviceError = await this.getServiceReadinessError(accountId, draft);
@@ -1212,8 +1192,8 @@ export class ShippingService {
         };
     }
 
-    listAusPostServiceCatalog() {
-        return listAusPostServiceCatalog();
+    async listAusPostServiceCatalog(accountId: string) {
+        return await ausPostShippingTrackingAdapter.listAvailableServiceCatalog(accountId);
     }
 
     async saveSettings(accountId: string, data: ShippingSettingsInput) {
@@ -1360,11 +1340,36 @@ export class ShippingService {
         return Array.from(new Set([trimmed, trimmed.toLowerCase(), slug, `wc-${slug}`]));
     }
 
+    private async validateResolvedAddress(accountId: string, address: Record<string, unknown>) {
+        let errors: any[] = this.validateAddressShape(address);
+        let carrierValidation: Record<string, unknown> | null = null;
+        let status = errors.length === 0 ? 'valid' : 'invalid';
+        if (errors.length === 0 && String(address.country || '').toUpperCase() === 'AU') {
+            const settings = await prisma.shippingCarrierAccount.findFirst({ where: { accountId, carrier: 'AUSPOST' } });
+            if (settings?.credentialsEncrypted) {
+                try {
+                    const validation = await ausPostShippingTrackingAdapter.validateAddress(accountId, address);
+                    carrierValidation = validation;
+                    if (!validation.found) {
+                        status = 'invalid';
+                        errors = [{ field: 'address', message: 'AusPost could not validate the suburb, state, and postcode combination', suggestions: validation.results }];
+                    }
+                } catch (error: any) {
+                    status = 'unverified';
+                    errors = [{ field: 'address', message: `AusPost address validation could not be completed: ${error?.message || 'Unknown carrier error'}` }];
+                    carrierValidation = { error: error?.message || 'Unknown carrier error' };
+                }
+            }
+        }
+        return { errors, status, carrierValidation };
+    }
+
     private async ensureDraftForOrder(accountId: string, order: any, dispatchStatus: string) {
         const existing = await prisma.shippingShipmentDraft.findUnique({ where: { accountId_wooOrderId: { accountId, wooOrderId: order.wooId } } });
         if (existing) return existing;
         const raw = order.rawData as Record<string, any>;
-        const addressErrors = this.validateAddressShape(this.getShippingAddress(raw));
+        const addressValidation = await this.validateResolvedAddress(accountId, this.getShippingAddress(raw));
+        const addressErrors = addressValidation.errors;
         const packageSelection = await this.selectPackageForOrder(accountId, raw);
         const selectedServiceCode = await this.resolveServiceCodeForOrder(accountId, raw);
         const readinessErrors = [...addressErrors];
@@ -1382,7 +1387,7 @@ export class ShippingService {
                     status: 'draft',
                     readinessStatus: readinessErrors.length === 0 ? 'ready' : 'blocked',
                     readinessErrors,
-                    addressValidationStatus: addressErrors.length === 0 ? 'valid' : 'invalid',
+                    addressValidationStatus: addressValidation.status,
                     addressValidationErrors: addressErrors,
                     selectedPackagePresetId: packageSelection.packageId,
                     packageSelectionConfidence: packageSelection.confidence,

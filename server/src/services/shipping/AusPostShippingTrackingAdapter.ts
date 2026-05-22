@@ -1,6 +1,7 @@
 import { prisma } from '../../utils/prisma';
 import { decrypt } from '../../utils/encryption';
 import { Logger } from '../../utils/logger';
+import { AUSPOST_SERVICE_CATALOG, AUSPOST_SERVICE_CATALOG_UPDATED_AT } from './AusPostServiceCatalog';
 
 interface AusPostCredentials {
     apiKey: string;
@@ -23,6 +24,13 @@ interface AusPostCredentials {
         createShipment?: string;
         createOrder?: string;
     };
+}
+
+interface AusPostServiceDiscoveryResult {
+    services: Array<{ code: string; label: string }>;
+    updatedAt: string;
+    source: 'live_account' | 'live_account_cached' | 'static_fallback';
+    warning?: string;
 }
 
 const DEFAULT_BASE_URL = 'https://digitalapi.auspost.com.au/shipping/v1';
@@ -70,6 +78,10 @@ export interface AusPostCancelShipmentResult {
 }
 
 class AusPostShippingTrackingAdapter {
+    private static readonly serviceDiscoveryTtlMs = 6 * 60 * 60 * 1000;
+
+    private static readonly serviceDiscoveryCache = new Map<string, { expiresAt: number; result: AusPostServiceDiscoveryResult }>();
+
     async testConnection(accountId: string) {
         const credentials = await this.getCredentials(accountId);
         if (credentials.endpoints.test) {
@@ -105,6 +117,63 @@ class AusPostShippingTrackingAdapter {
             rates: this.extractRates(response),
             rawResponse: response,
         };
+    }
+
+    async listAvailableServiceCatalog(accountId: string): Promise<AusPostServiceDiscoveryResult> {
+        try {
+            const credentials = await this.getCredentials(accountId);
+            const cacheKey = `${accountId}:${credentials.environment}:${credentials.accountNumber || 'no-account'}`;
+            const cached = AusPostShippingTrackingAdapter.serviceDiscoveryCache.get(cacheKey);
+            if (cached && cached.expiresAt > Date.now()) {
+                return {
+                    ...cached.result,
+                    source: cached.result.source === 'live_account' ? 'live_account_cached' : cached.result.source,
+                };
+            }
+
+            const destination = this.toAusPostAddress(credentials.senderAddress, false);
+            const probeRequestBase: Omit<AusPostRateRequest, 'serviceCode'> = {
+                wooOrderId: 0,
+                address: destination,
+                dimensions: { weightGrams: 500, lengthMm: 220, widthMm: 160, heightMm: 20 },
+            };
+
+            const available: Array<{ code: string; label: string }> = [];
+            for (const service of AUSPOST_SERVICE_CATALOG) {
+                try {
+                    await this.validateShipmentWithCredentials(credentials, { ...probeRequestBase, serviceCode: service.code });
+                    available.push(service);
+                } catch {
+                    // unsupported product for this account/environment
+                }
+            }
+
+            if (available.length === 0) {
+                throw new Error('No usable AusPost service codes were discovered for this account');
+            }
+
+            const result: AusPostServiceDiscoveryResult = {
+                services: available,
+                updatedAt: new Date().toISOString(),
+                source: 'live_account',
+            };
+            AusPostShippingTrackingAdapter.serviceDiscoveryCache.set(cacheKey, {
+                expiresAt: Date.now() + AusPostShippingTrackingAdapter.serviceDiscoveryTtlMs,
+                result,
+            });
+            return result;
+        } catch (error: any) {
+            Logger.warn('[AusPostAdapter] Falling back to static service catalog', {
+                accountId,
+                error: error?.message || error,
+            });
+            return {
+                services: AUSPOST_SERVICE_CATALOG,
+                updatedAt: AUSPOST_SERVICE_CATALOG_UPDATED_AT,
+                source: 'static_fallback',
+                warning: 'Live account service discovery failed. Showing static catalog values.',
+            };
+        }
     }
 
     // Label creation is handled via createShipment + createLabelRequest instead.

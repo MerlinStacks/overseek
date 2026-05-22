@@ -344,12 +344,7 @@ export function ShippingSettingsPage() {
         saveSettings.mutate(form);
     };
 
-    const serviceCodeOptions = serviceCodeOptionsFromCatalog(serviceCatalogQuery.data, [
-        form.defaultDomesticService,
-        form.defaultExpressService,
-        form.defaultInternationalService,
-        ...form.shippingMethodServiceMappings.map((mapping) => mapping.auspostServiceCode),
-    ]);
+    const serviceCodeOptions = serviceCodeOptionsFromCatalog(serviceCatalogQuery.data);
     const formatServiceCodeOption = serviceCodeLabelFormatter(serviceCatalogQuery.data);
 
     const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; description: string }> = [
@@ -476,7 +471,9 @@ export function ShippingSettingsPage() {
                 {activeTab === 'services' ? <ShippingComingSoonCard>
                     <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">AusPost Service Defaults</h2>
                     <div className="space-y-4">
-                        <p className="text-sm text-slate-600 dark:text-slate-300">These AusPost product IDs are used to auto-select the label service from the WooCommerce order shipping method. Express shipping uses the express default; non-AU addresses use the international default; all other domestic orders use the domestic default.</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">These AusPost product IDs are discovered from your connected account and are used to auto-select the label service from the WooCommerce order shipping method. Express shipping uses the express default; non-AU addresses use the international default; all other domestic orders use the domestic default.</p>
+                        {serviceCatalogQuery.data?.warning ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{serviceCatalogQuery.data.warning}</p> : null}
+                        {serviceCatalogQuery.error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">{serviceCatalogQuery.error.message}</p> : null}
                         <div className="grid gap-3 md:grid-cols-3">
                             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Default domestic AusPost service code
                                 <select value={form.defaultDomesticService} onChange={(event) => update('defaultDomesticService', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
@@ -509,7 +506,7 @@ export function ShippingSettingsPage() {
                             {importResult ? <p className="text-xs text-emerald-700 dark:text-emerald-300">{importResult}</p> : null}
                             {importShippingMethods.error ? <p className="text-xs text-red-600">{importShippingMethods.error.message}</p> : null}
                             {shippingMethodOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No shipping methods available yet. Use "Import from orders" first.</p> : null}
-                            {serviceCodeOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No service code options available yet. Set default service codes first.</p> : null}
+                            {serviceCodeOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No usable service codes were discovered yet. Confirm credentials, account number, sender address, and environment, then test and save settings.</p> : null}
                             {form.shippingMethodServiceMappings.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No mappings added yet.</p> : null}
                             {form.shippingMethodServiceMappings.map((mapping, index) => (
                                 <div key={`${index}-${mapping.wooShippingMethod}-${mapping.auspostServiceCode}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-7 dark:border-slate-700">

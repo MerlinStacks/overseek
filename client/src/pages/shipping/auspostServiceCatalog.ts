@@ -1,9 +1,8 @@
 import type { AusPostServiceCatalogResponse } from './shippingApi';
 
-export function serviceCodeOptionsFromCatalog(catalog: AusPostServiceCatalogResponse | undefined, additionalCodes: string[] = []) {
+export function serviceCodeOptionsFromCatalog(catalog: AusPostServiceCatalogResponse | undefined) {
     return uniqueSortedStrings([
         ...(catalog?.services || []).map((service) => service.code),
-        ...additionalCodes,
     ]);
 }
 

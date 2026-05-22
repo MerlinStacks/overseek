@@ -739,7 +739,7 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const denied = await requireShippingPermission(request, reply, 'view_shipping');
             if (denied) return denied;
-            return shippingService.listAusPostServiceCatalog();
+            return await shippingService.listAusPostServiceCatalog(request.accountId!);
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to fetch AusPost service catalog', { error: error?.message || error });
             return reply.code(500).send({ error: 'Failed to fetch AusPost service catalog' });
