@@ -1781,6 +1781,7 @@ export class ShippingService {
 
     private toShippingOrderSummary(order: any) {
         const raw = order.rawData as Record<string, any>;
+        const lineItems = Array.isArray(raw.line_items) ? raw.line_items : [];
         return {
             id: order.id,
             wooId: order.wooId,
@@ -1792,7 +1793,22 @@ export class ShippingService {
             customerName: [raw.billing?.first_name, raw.billing?.last_name].filter(Boolean).join(' ') || raw.shipping?.first_name || 'Customer',
             email: order.billingEmail || raw.billing?.email || null,
             shipping: this.getShippingAddress(raw),
-            itemCount: Array.isArray(raw.line_items) ? raw.line_items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0) : 0,
+            itemCount: lineItems.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0),
+            items: lineItems.map((item: any) => ({
+                id: Number(item.id || 0) || null,
+                name: String(item.name || 'Item'),
+                sku: item.sku ? String(item.sku) : null,
+                productId: Number(item.product_id || 0) || null,
+                variationId: Number(item.variation_id || 0) || null,
+                quantity: Number(item.quantity || 0),
+                total: item.total != null ? String(item.total) : null,
+                metadata: Array.isArray(item.meta_data)
+                    ? item.meta_data.map((meta: any) => ({
+                        key: String(meta?.key || meta?.display_key || ''),
+                        value: meta?.display_value ?? meta?.value ?? null,
+                    }))
+                    : [],
+            })),
         };
     }
 

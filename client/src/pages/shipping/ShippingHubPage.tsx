@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { AlertTriangle, Calculator, CheckCircle2, PackageCheck, Printer, Save, Truck, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, PackageCheck, Printer, Save, Truck, X } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
@@ -129,7 +129,6 @@ export function ShippingHubPage() {
             setManualPrintOrderId(wooOrderId);
         },
     });
-
     const counts = hubQuery.data?.counts;
     const dispatchOrders = ordersQuery.data?.orders || [];
     const normalizedSearch = queueSearch.trim().toLowerCase();
@@ -318,72 +317,95 @@ export function ShippingHubPage() {
                         const addressIsInvalid = draft.addressValidationStatus === 'invalid';
                         return (
                             <div key={order.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                    <div className="flex gap-3">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedOrders.includes(order.wooId)}
-                                            disabled={!ready}
-                                            onChange={() => toggleOrder(order.wooId)}
-                                            className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
-                                            aria-label={`Select order ${order.number}`}
-                                        />
-                                        <div>
-                                            <p className="font-bold text-slate-900 dark:text-white">#{order.number} · {order.customerName}</p>
-                                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{order.itemCount} items · {order.currency} {order.total} · {order.email || 'No email'}</p>
-                                            <button
-                                                type="button"
-                                                onClick={() => openDraftEditor({ order, draft })}
-                                                className={`mt-2 block text-left text-sm underline-offset-2 hover:underline ${addressIsInvalid ? 'text-red-600 dark:text-red-300' : 'text-slate-600 dark:text-slate-300'}`}
-                                            >
-                                                {displayAddress.address1}, {displayAddress.suburb} {displayAddress.state} {displayAddress.postcode}
-                                            </button>
+                                <div className="grid gap-3 lg:grid-cols-[minmax(360px,1.6fr)_minmax(260px,1fr)_minmax(260px,1fr)_180px]">
+                                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900">
+                                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Order</p>
+                                        <div className="flex items-start gap-3">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedOrders.includes(order.wooId)}
+                                                disabled={!ready}
+                                                onChange={() => toggleOrder(order.wooId)}
+                                                className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+                                                aria-label={`Select order ${order.number}`}
+                                            />
+                                            <div className="min-w-0">
+                                                <p className="font-bold text-slate-900 dark:text-white">#{order.number} · {order.customerName}</p>
+                                                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{order.itemCount} items · {order.currency} {order.total} · {order.email || 'No email'}</p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openDraftEditor({ order, draft })}
+                                                    className={`mt-2 block text-left text-sm underline-offset-2 hover:underline ${addressIsInvalid ? 'text-red-600 dark:text-red-300' : 'text-slate-600 dark:text-slate-300'}`}
+                                                >
+                                                    {displayAddress.address1}, {displayAddress.suburb} {displayAddress.state} {displayAddress.postcode}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p className="mt-3 text-xs font-semibold text-slate-700 dark:text-slate-200">Order items</p>
+                                        <div className="mt-2 space-y-2">
+                                            {(order.items || []).length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No item details found.</p> : null}
+                                            {(order.items || []).map((item, index) => (
+                                                <div key={`${item.id || item.productId || index}`} className="rounded border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950">
+                                                    <p className="font-semibold text-slate-900 dark:text-white">{item.quantity} x {item.name}</p>
+                                                    <p className="text-slate-500 dark:text-slate-400">{item.sku ? `SKU: ${item.sku}` : 'SKU: -'}{item.total ? ` | ${order.currency} ${item.total}` : ''}</p>
+                                                    {item.metadata?.length ? <div className="mt-1 space-y-0.5 text-slate-600 dark:text-slate-300">{item.metadata.map((meta, metaIndex) => <p key={`${meta.key}-${metaIndex}`}><span className="font-semibold">{meta.key || 'meta'}</span>: {formatMetaValue(meta.value)}</p>)}</div> : null}
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        <StatusBadge label={draft.readinessStatus} tone={draft.readinessStatus === 'ready' ? 'green' : 'amber'} />
-                                        <StatusBadge label={draft.addressValidationStatus} tone={draft.addressValidationStatus === 'valid' ? 'green' : 'red'} />
-                                        <StatusBadge label={draft.packageSelectionConfidence || 'manual_required'} tone="slate" />
+                                    <div>
+                                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Shipping rates</p>
+                                        <RatePreview
+                                            response={draft.lastRateResponse && Object.keys(draft.lastRateResponse).length > 0 ? draft.lastRateResponse : null}
+                                            serviceCatalog={serviceCatalogQuery.data}
+                                            selectedServiceCode={draft.selectedServiceCode || null}
+                                            onRequest={() => void handleRequestRates(order.wooId)}
+                                            onSelect={(serviceCode) => selectRateService.mutate({ wooOrderId: order.wooId, serviceCode })}
+                                            isLoading={requestRates.isPending && rateOrderId === order.wooId}
+                                            isSaving={selectRateService.isPending}
+                                        />
+                                    </div>
+                                    <div>
+                                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Package</p>
+                                        <PackageSelector
+                                            packages={packagesQuery.data?.packages.filter((pkg) => pkg.isActive) || []}
+                                            selectedPackage={selectedPackagePreset}
+                                            selectedPackageId={draft.selectedPackagePresetId || ''}
+                                            totalWeightGrams={draft.manualWeightGrams || null}
+                                            disabled={selectPackage.isPending}
+                                            onSelect={(packagePresetId) => selectPackage.mutate({ wooOrderId: order.wooId, packagePresetId })}
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Actions</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => openDraftEditor({ order, draft })}
+                                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                        >
+                                            Edit address
+                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => void handleRequestRates(order.wooId)}
                                             disabled={requestRates.isPending}
-                                            className="inline-flex items-center gap-1 rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+                                            className="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
                                         >
-                                            <Calculator size={13} /> Rates
+                                            {requestRates.isPending && rateOrderId === order.wooId ? 'Loading...' : 'Refresh rates'}
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => { setManualPrintOrderId(order.wooId); manualPrint.mutate(order.wooId); }}
                                             disabled={!ready || manualPrint.isPending}
-                                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                                         >
-                                            <Printer size={13} /> Manual print
+                                            {manualPrint.isPending && manualPrintOrderId === order.wooId ? 'Printing...' : 'Manual print'}
                                         </button>
+                                        {manualPrint.error && manualPrintOrderId === order.wooId ? <p className="text-xs text-red-600">{manualPrint.error.message}</p> : null}
+                                        {requestRates.error && rateOrderId === order.wooId ? <p className="text-xs text-amber-700 dark:text-amber-300">{requestRates.error.message}</p> : null}
                                     </div>
                                 </div>
                                 {blockers?.length ? <p className="mt-3 text-sm text-red-600">Needs attention: {blockers.map((error) => error.message || error.field).join(', ')}</p> : null}
-                                {manualPrint.error && manualPrintOrderId === order.wooId ? <p className="mt-3 text-sm text-red-600">{manualPrint.error.message}</p> : null}
-                                {requestRates.error && rateOrderId === order.wooId ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">{requestRates.error.message}</p> : null}
-                                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(260px,420px)_minmax(260px,360px)]">
-                                    <PackageSelector
-                                        packages={packagesQuery.data?.packages.filter((pkg) => pkg.isActive) || []}
-                                        selectedPackage={selectedPackagePreset}
-                                        selectedPackageId={draft.selectedPackagePresetId || ''}
-                                        totalWeightGrams={draft.manualWeightGrams || null}
-                                        disabled={selectPackage.isPending}
-                                        onSelect={(packagePresetId) => selectPackage.mutate({ wooOrderId: order.wooId, packagePresetId })}
-                                    />
-                                    <RatePreview
-                                        response={draft.lastRateResponse && Object.keys(draft.lastRateResponse).length > 0 ? draft.lastRateResponse : null}
-                                        serviceCatalog={serviceCatalogQuery.data}
-                                        selectedServiceCode={draft.selectedServiceCode || null}
-                                        onRequest={() => void handleRequestRates(order.wooId)}
-                                        onSelect={(serviceCode) => selectRateService.mutate({ wooOrderId: order.wooId, serviceCode })}
-                                        isLoading={requestRates.isPending && rateOrderId === order.wooId}
-                                        isSaving={selectRateService.isPending}
-                                    />
-                                </div>
                             </div>
                         );
                     })}
@@ -642,12 +664,12 @@ function MetricCard({ icon, label, value }: { icon: ReactNode; label: string; va
     );
 }
 
-function StatusBadge({ label, tone }: { label: string; tone: 'green' | 'amber' | 'red' | 'slate' }) {
-    const tones = {
-        green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-        amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-        red: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
-        slate: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
-    };
-    return <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${tones[tone]}`}>{label.replace(/_/g, ' ')}</span>;
+function formatMetaValue(value: unknown): string {
+    if (value === null || value === undefined) return '-';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
 }

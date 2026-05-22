@@ -138,10 +138,37 @@ class AusPostShippingTrackingAdapter {
                 dimensions: { weightGrams: 500, lengthMm: 220, widthMm: 160, heightMm: 20 },
             };
 
+            if (!credentials.endpoints.rates) throw new Error('AusPost rates endpoint mapping is not configured yet');
+            const baselinePayload = this.buildShipmentRatePayload(credentials, probeRequestBase);
+            const baselineResponse = await this.request(credentials, credentials.endpoints.rates, {
+                method: 'POST',
+                body: JSON.stringify(baselinePayload),
+            });
+            const baselineProductIds = Array.from(new Set(
+                this.extractRates(baselineResponse)
+                    .map((rate) => this.stringConfig(rate.productId))
+                    .filter(Boolean) as string[]
+            ));
+            if (baselineProductIds.length > 0) {
+                const knownLabelByCode = new Map(AUSPOST_SERVICE_CATALOG.map((service) => [service.code, service.label]));
+                const services = baselineProductIds
+                    .map((code) => ({ code, label: knownLabelByCode.get(code) || code }))
+                    .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }));
+                const result: AusPostServiceDiscoveryResult = {
+                    services,
+                    updatedAt: new Date().toISOString(),
+                    source: 'live_account',
+                };
+                AusPostShippingTrackingAdapter.serviceDiscoveryCache.set(cacheKey, {
+                    expiresAt: Date.now() + AusPostShippingTrackingAdapter.serviceDiscoveryTtlMs,
+                    result,
+                });
+                return result;
+            }
+
             const available: Array<{ code: string; label: string }> = [];
             for (const service of AUSPOST_SERVICE_CATALOG) {
                 try {
-                    if (!credentials.endpoints.rates) throw new Error('AusPost rates endpoint mapping is not configured yet');
                     const payload = this.buildShipmentRatePayload(credentials, { ...probeRequestBase, serviceCode: service.code });
                     await this.request(credentials, credentials.endpoints.rates, {
                         method: 'POST',

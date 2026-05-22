@@ -172,6 +172,16 @@ export interface ShippingDispatchOrder {
         email: string | null;
         itemCount: number;
         shipping: Record<string, string>;
+        items?: Array<{
+            id: number | null;
+            name: string;
+            sku: string | null;
+            productId: number | null;
+            variationId: number | null;
+            quantity: number;
+            total: string | null;
+            metadata: Array<{ key: string; value: unknown }>;
+        }>;
     };
     draft: {
         id: string;
