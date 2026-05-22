@@ -65,12 +65,6 @@ export function ThemeInjector() {
             // Let's try to update title at least.
         }
 
-        if (appName) {
-            document.title = `${appName} | Dashboard`;
-        } else {
-            document.title = 'OverSeek | Dashboard';
-        }
-
     }, [currentAccount]);
 
     return null;
