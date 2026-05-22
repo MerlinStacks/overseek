@@ -214,6 +214,17 @@ model Account {
 
   // Internal Products (component-only, not synced to WooCommerce)
   internalProducts    InternalProduct[]
+  shippingCarrierAccounts ShippingCarrierAccount[]
+  shippingPackagePresets  ShippingPackagePreset[]
+  shippingItemOverrides   ShippingItemOverride[]
+  shippingLabels          ShippingLabel[]
+  shippingShipmentDrafts  ShippingShipmentDraft[]
+  shippingTrackingEvents  ShippingTrackingEvent[]
+  shippingAutomationDispatches ShippingAutomationDispatch[]
+  shippingPrintStations   ShippingPrintStation[]
+  shippingPrintJobs       ShippingPrintJob[]
+  shippingAuditEvents     ShippingAuditEvent[]
+  shippingCarrierTransactions ShippingCarrierTransaction[]
   
   // BOM Deduction Ledger (crash-recovery audit trail)
   bomDeductionLedger  BOMDeductionLedger[]
@@ -2871,6 +2882,343 @@ model CrawlerRule {
 
   @@unique([accountId, crawlerName])
   @@index([accountId, action])
+}
+
+// ------------------------------------
+// Shipping Hub
+// ------------------------------------
+
+model ShippingCarrierAccount {
+  id        String @id @default(uuid())
+  accountId String
+
+  carrier              String  @default("AUSPOST")
+  displayName          String  @default("Australia Post")
+  isEnabled            Boolean @default(true)
+  credentialsEncrypted String? @db.Text
+  config               Json?   @default("{}")
+  senderAddress        Json?   @default("{}")
+  lastTestedAt         DateTime?
+  lastTestStatus       String?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  labels  ShippingLabel[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, carrier])
+  @@index([accountId])
+}
+
+model ShippingPackagePreset {
+  id        String @id @default(uuid())
+  accountId String
+
+  name                    String
+  type                    String  @default("custom_box")
+  innerLengthMm           Int?
+  innerWidthMm            Int?
+  innerHeightMm           Int?
+  outerLengthMm           Int
+  outerWidthMm            Int
+  outerHeightMm           Int
+  fallbackItemWeightGrams Int?
+  forcedPackageWeightGrams Int?
+  packagingWeightGrams    Int     @default(0)
+  maxWeightGrams          Int?
+  selectionPriority       Int     @default(0)
+  carrierProductCode      String?
+  isDefault               Boolean @default(false)
+  isActive                Boolean @default(true)
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  overrides ShippingItemOverride[]
+  drafts    ShippingShipmentDraft[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+  @@index([accountId])
+  @@index([accountId, isActive])
+}
+
+model ShippingItemOverride {
+  id        String @id @default(uuid())
+  accountId String
+
+  wooProductId       Int
+  wooVariationId     Int?
+  packagePresetId    String?
+  weightGrams        Int?
+  lengthMm           Int?
+  widthMm            Int?
+  heightMm           Int?
+  packingMode        String  @default("combine_quantities")
+  dangerousGoods     Boolean @default(false)
+  fragile            Boolean @default(false)
+  customsDescription String?
+  countryOfOrigin    String?
+  hsCode             String?
+  notes              String? @db.Text
+
+  account       Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  packagePreset ShippingPackagePreset? @relation(fields: [packagePresetId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, wooProductId, wooVariationId])
+  @@index([accountId])
+  @@index([accountId, wooProductId])
+}
+
+model ShippingShipmentDraft {
+  id        String @id @default(uuid())
+  accountId String
+
+  orderId                 String?
+  wooOrderId              Int
+  status                  String @default("draft")
+  readinessStatus         String @default("pending")
+  readinessErrors         Json?  @default("[]")
+  selectedPackagePresetId String?
+  packageSelectionConfidence String?
+  packageSelectionReason  String?
+  manualOuterLengthMm     Int?
+  manualOuterWidthMm      Int?
+  manualOuterHeightMm     Int?
+  manualWeightGrams       Int?
+  addressValidationStatus String @default("pending")
+  addressValidationErrors Json?  @default("[]")
+  correctedAddress        Json?  @default("{}")
+  selectedServiceCode     String?
+  selectedPrintStationId  String?
+  lastRateRequest         Json?  @default("{}")
+  lastRateResponse        Json?  @default("{}")
+  updatedByUserId         String?
+
+  account       Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  packagePreset ShippingPackagePreset? @relation(fields: [selectedPackagePresetId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, wooOrderId])
+  @@index([accountId])
+  @@index([accountId, orderId])
+}
+
+model ShippingLabel {
+  id        String @id @default(uuid())
+  accountId String
+
+  orderId              String?
+  wooOrderId           Int
+  carrier              String @default("AUSPOST")
+  carrierAccountId     String?
+  carrierShipmentId    String?
+  carrierLabelId       String?
+  trackingNumber       String?
+  trackingUrl          String?
+  latestTrackingStatus String?
+  latestTrackingSummary String?
+  trackingSyncedAt     DateTime?
+  serviceCode          String?
+  serviceName          String?
+  status               String @default("created")
+  labelFormat          String @default("PDF")
+  labelFilePath        String?
+  labelStoredUntil     DateTime?
+  costAmount           Decimal? @db.Decimal(10, 2)
+  costCurrency         String?  @default("AUD")
+  requestSnapshot      Json?    @default("{}")
+  responseSnapshot     Json?    @default("{}")
+  errorMessage         String?  @db.Text
+  createdByUserId      String?
+  printedAt            DateTime?
+  cancelledAt          DateTime?
+
+  account        Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  carrierAccount ShippingCarrierAccount? @relation(fields: [carrierAccountId], references: [id], onDelete: SetNull)
+  trackingEvents ShippingTrackingEvent[]
+  automationDispatches ShippingAutomationDispatch[]
+  printJobs      ShippingPrintJob[]
+  auditEvents    ShippingAuditEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([accountId, orderId])
+  @@index([accountId, trackingNumber])
+  @@index([accountId, createdAt])
+  @@index([accountId, status])
+}
+
+model ShippingTrackingEvent {
+  id        String @id @default(uuid())
+  accountId String
+
+  labelId              String
+  carrier              String @default("AUSPOST")
+  trackingNumber       String?
+  eventCode            String?
+  normalizedMilestone  String?
+  normalizedState      String?
+  status               String?
+  description          String? @db.Text
+  location             String?
+  occurredAt           DateTime
+  automationDispatchedAt DateTime?
+  automationTriggerType  String?
+  rawEvent             Json? @default("{}")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label   ShippingLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  automationDispatches ShippingAutomationDispatch[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([labelId, eventCode, occurredAt])
+  @@index([accountId])
+  @@index([accountId, labelId])
+  @@index([accountId, trackingNumber])
+}
+
+model ShippingAutomationDispatch {
+  id        String @id @default(uuid())
+  accountId String
+
+  labelId         String
+  trackingEventId String
+  triggerType     String
+  email           String
+  status          String @default("dispatched")
+  errorMessage    String? @db.Text
+  dispatchedAt    DateTime?
+
+  account       Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label         ShippingLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  trackingEvent ShippingTrackingEvent @relation(fields: [trackingEventId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, trackingEventId, triggerType, email])
+  @@index([accountId])
+  @@index([accountId, labelId])
+}
+
+model ShippingPrintStation {
+  id        String @id @default(uuid())
+  accountId String
+
+  name                    String
+  stationTokenHash        String @db.Text
+  tokenRotatedAt          DateTime?
+  agentVersion            String?
+  minimumSupportedVersion String?
+  status                  String @default("offline")
+  lastSeenAt              DateTime?
+  lastErrorCode           String?
+  lastErrorMessage        String? @db.Text
+  defaultPrinterName      String?
+  capabilities            Json? @default("{}")
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  printJobs ShippingPrintJob[] @relation("PrintStationJobs")
+  reassignedJobs ShippingPrintJob[] @relation("ReassignedPrintStationJobs")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, name])
+  @@index([accountId])
+  @@index([accountId, status])
+}
+
+model ShippingPrintJob {
+  id        String @id @default(uuid())
+  accountId String
+
+  labelId                  String
+  printStationId           String?
+  printerName              String?
+  status                   String @default("queued")
+  attempts                 Int    @default(0)
+  errorMessage             String? @db.Text
+  reassignedFromStationId  String?
+  requestedByUserId        String?
+  requestedAt              DateTime @default(now())
+  pickedUpAt               DateTime?
+  printedAt                DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label   ShippingLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  printStation ShippingPrintStation? @relation("PrintStationJobs", fields: [printStationId], references: [id], onDelete: SetNull)
+  reassignedFromStation ShippingPrintStation? @relation("ReassignedPrintStationJobs", fields: [reassignedFromStationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([accountId, printStationId])
+  @@index([accountId, status])
+}
+
+model ShippingAuditEvent {
+  id        String @id @default(uuid())
+  accountId String
+
+  orderId        String?
+  labelId        String?
+  draftId        String?
+  userId         String?
+  eventType      String
+  beforeSnapshot Json? @default("{}")
+  afterSnapshot  Json? @default("{}")
+  metadata       Json? @default("{}")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label   ShippingLabel? @relation(fields: [labelId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@index([accountId, orderId])
+  @@index([accountId, labelId])
+}
+
+model ShippingCarrierTransaction {
+  id        String @id @default(uuid())
+  accountId String
+
+  carrier           String @default("AUSPOST")
+  carrierAccountId  String?
+  transactionId     String
+  transactionDate   DateTime
+  reference         String?
+  trackingNumber    String?
+  carrierShipmentId String?
+  serviceCode       String?
+  serviceName       String?
+  amount            Decimal? @db.Decimal(10, 2)
+  taxAmount         Decimal? @db.Decimal(10, 2)
+  currency          String? @default("AUD")
+  paymentMethod     String?
+  status            String?
+  rawTransaction    Json? @default("{}")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, carrier, transactionId])
+  @@index([accountId])
+  @@index([accountId, transactionDate])
+  @@index([accountId, trackingNumber])
 }
 
 // ------------------------------------

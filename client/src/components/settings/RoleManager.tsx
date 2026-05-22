@@ -24,6 +24,12 @@ const AVAILABLE_PERMISSIONS = [
     { key: 'edit_order_tags', label: 'Edit Order Tags' },
     { key: 'view_finance', label: 'View Finance & Analytics' },
     { key: 'view_marketing', label: 'View Marketing & AI' },
+    { key: 'view_shipping', label: 'View Shipping Hub' },
+    { key: 'create_shipping_labels', label: 'Create Shipping Labels' },
+    { key: 'print_shipping_labels', label: 'Print Shipping Labels' },
+    { key: 'cancel_shipping_labels', label: 'Cancel Shipping Labels' },
+    { key: 'manage_shipping_packages', label: 'Manage Shipping Packages' },
+    { key: 'manage_shipping_settings', label: 'Manage Shipping Settings' },
     { key: 'manage_roles', label: 'Manage Roles & Team' },
 ];
 

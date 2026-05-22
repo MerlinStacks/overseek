@@ -78,6 +78,7 @@ const TRIGGER_TYPES = [
     { value: 'ABANDONED_CART', label: 'Cart Abandoned', group: 'WooCommerce' },
     { value: 'CART_VIEWED', label: 'Cart Viewed', group: 'WooCommerce' },
     { value: 'REVIEW_LEFT', label: 'Review Left', group: 'WooCommerce' },
+    { value: 'SHIPMENT_RECEIVED_BY_CARRIER', label: 'Shipment Received By AusPost', group: 'Shipping' },
     { value: 'SHIPMENT_IN_TRANSIT', label: 'Shipment In Transit', group: 'Shipping' },
     { value: 'SHIPMENT_OUT_FOR_DELIVERY', label: 'Shipment Out For Delivery', group: 'Shipping' },
     { value: 'SHIPMENT_DELIVERY_ATTEMPTED', label: 'Shipment Delivery Attempted', group: 'Shipping' },

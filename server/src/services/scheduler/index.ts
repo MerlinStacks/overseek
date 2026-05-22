@@ -7,4 +7,5 @@ export { SyncScheduler } from './SyncScheduler';
 export { MessageScheduler } from './MessageScheduler';
 export { MarketingScheduler } from './MarketingScheduler';
 export { MaintenanceScheduler } from './MaintenanceScheduler';
+export { ShippingTrackingScheduler } from './ShippingTrackingScheduler';
 export { SchedulerService } from './SchedulerService';

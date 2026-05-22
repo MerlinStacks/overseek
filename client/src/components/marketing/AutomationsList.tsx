@@ -187,6 +187,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         'ORDER_STATUS_CHANGED': 'Order Status Changed',
         'FIRST_ORDER': 'First Order',
         'REVIEW_LEFT': 'Review Left',
+        'SHIPMENT_RECEIVED_BY_CARRIER': 'Shipment Received By AusPost',
         'SHIPMENT_IN_TRANSIT': 'Shipment In Transit',
         'SHIPMENT_OUT_FOR_DELIVERY': 'Shipment Out For Delivery',
         'SHIPMENT_DELIVERY_ATTEMPTED': 'Shipment Delivery Attempted',

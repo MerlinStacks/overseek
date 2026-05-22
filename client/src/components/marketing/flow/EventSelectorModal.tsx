@@ -72,6 +72,7 @@ const EVENTS_BY_CATEGORY: Record<string, { subcategory?: string; events: EventIt
     shipping: [
         {
             events: [
+                { id: 'SHIPMENT_RECEIVED_BY_CARRIER', label: 'Shipment Received By AusPost', icon: 'Check' },
                 { id: 'SHIPMENT_IN_TRANSIT', label: 'Shipment In Transit', icon: 'Refresh' },
                 { id: 'SHIPMENT_OUT_FOR_DELIVERY', label: 'Shipment Out For Delivery', icon: 'Cart' },
                 { id: 'SHIPMENT_DELIVERY_ATTEMPTED', label: 'Shipment Delivery Attempted', icon: 'Alert' },

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OverSeek Print Agent</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <span id="statusPill" class="pill off">Not connected</span>
+      <h1>OverSeek Print Agent</h1>
+      <p>Connect this Windows computer to an OverSeek account, choose the label printer, and monitor silent label printing from the tray.</p>
+    </section>
+
+    <section class="grid">
+      <form id="loginForm" class="card">
+        <h2>1. Login</h2>
+        <label>OverSeek address <input id="apiBase" placeholder="https://your-overseek-url" required></label>
+        <label>Email <input id="email" type="email" autocomplete="username" required></label>
+        <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+        <label>2FA code, if enabled <input id="twoFactorToken" inputmode="numeric" autocomplete="one-time-code"></label>
+        <button type="submit">Login and Load Accounts</button>
+        <p class="muted">Your password is used once to create a print station token. It is not saved by this app.</p>
+      </form>
+
+      <form id="configureForm" class="card">
+        <h2>2. Assign Computer</h2>
+        <label>Account <select id="accountId" required><option value="">Login first</option></select></label>
+        <label>Station name <input id="stationName" required></label>
+        <label>Printer <select id="printerSelect"><option value="">System default printer</option></select></label>
+        <label>Printer name override <input id="defaultPrinterName" placeholder="Exact printer name"></label>
+        <button id="configureBtn" type="submit" disabled>Assign This Computer</button>
+      </form>
+
+      <section class="card status-card">
+        <h2>Monitor</h2>
+        <dl>
+          <dt>Station</dt><dd id="stationStatus">-</dd>
+          <dt>Printer</dt><dd id="printerStatus">-</dd>
+          <dt>Last poll</dt><dd id="lastPollAt">-</dd>
+          <dt>Last message</dt><dd id="lastJobMessage">-</dd>
+          <dt>Error</dt><dd id="lastPollError">-</dd>
+        </dl>
+        <div class="row">
+          <button id="refreshBtn" type="button" class="secondary">Refresh</button>
+          <button id="testPrintBtn" type="button">Print Test Label</button>
+          <button id="openLogsBtn" type="button" class="secondary">Open Logs</button>
+          <button id="disconnectBtn" type="button" class="danger">Disconnect</button>
+        </div>
+      </section>
+
+      <section class="card diagnostics-card">
+        <h2>Diagnostics</h2>
+        <p class="muted">Use this when checking a dispatch computer. Tokens are never shown here.</p>
+        <pre id="diagnosticsBox">Loading diagnostics...</pre>
+      </section>
+    </section>
+  </main>
+  <script src="renderer.js"></script>
+</body>
+</html>

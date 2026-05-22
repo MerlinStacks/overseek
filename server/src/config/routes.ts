@@ -30,6 +30,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     const aiRoutes = (await import('../routes/ai')).default;
     const aiManagerRoutes = (await import('../routes/aiManager')).default;
     const dashboardRoutes = (await import('../routes/dashboard')).default;
+    const shippingRoutes = (await import('../routes/shipping')).default;
+    const shippingPrintAgentRoutes = (await import('../routes/shippingPrintAgent')).default;
 
     await fastify.register(healthRoutes, { prefix: '/health' });
     await fastify.register(customersRoutes, { prefix: '/api/customers' });
@@ -53,6 +55,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(aiRoutes, { prefix: '/api/ai' });
     await fastify.register(aiManagerRoutes, { prefix: '/api/ai-manager' });
     await fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
+    await fastify.register(shippingRoutes, { prefix: '/api/shipping' });
+    await fastify.register(shippingPrintAgentRoutes, { prefix: '/api/shipping/print-agent' });
 
     // Marketing & Ads
     const adsRoutes = (await import('../routes/ads')).default;
