@@ -49,6 +49,7 @@ export interface ShippingSettingsInput {
     defaultDomesticService?: string;
     defaultExpressService?: string;
     defaultInternationalService?: string;
+    shippingMethodServiceMappings?: Array<{ wooShippingMethod: string; auspostServiceCode: string; matchType?: 'exact' | 'contains' }>;
     defaultPackagePresetId?: string;
     labelFormat?: string;
     defaultPrintStationId?: string;
@@ -1184,6 +1185,27 @@ export class ShippingService {
         };
     }
 
+    async listShippingMethodCandidates(accountId: string, limit = 500) {
+        const orders = await prisma.wooOrder.findMany({
+            where: { accountId },
+            orderBy: { dateCreated: 'desc' },
+            take: Math.min(Math.max(limit, 50), 2000),
+            select: { rawData: true },
+        });
+
+        const unique = new Set<string>();
+        for (const order of orders) {
+            const raw = (order.rawData as Record<string, any> | null) || {};
+            const shippingMethod = this.getWooShippingMethodText(raw).trim();
+            if (shippingMethod) unique.add(shippingMethod);
+        }
+
+        return {
+            shippingMethods: Array.from(unique).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' })),
+            sampledOrders: orders.length,
+        };
+    }
+
     async saveSettings(accountId: string, data: ShippingSettingsInput) {
         const existing = await prisma.shippingCarrierAccount.findFirst({
             where: { accountId, carrier: 'AUSPOST' },
@@ -1207,6 +1229,15 @@ export class ShippingService {
             defaultDomesticService: data.defaultDomesticService,
             defaultExpressService: data.defaultExpressService,
             defaultInternationalService: data.defaultInternationalService,
+            shippingMethodServiceMappings: Array.isArray(data.shippingMethodServiceMappings)
+                ? data.shippingMethodServiceMappings
+                    .map((mapping) => ({
+                        wooShippingMethod: this.stringSetting(mapping.wooShippingMethod) || '',
+                        auspostServiceCode: this.stringSetting(mapping.auspostServiceCode) || '',
+                        matchType: mapping.matchType === 'contains' ? 'contains' : 'exact',
+                    }))
+                    .filter((mapping) => mapping.wooShippingMethod && mapping.auspostServiceCode)
+                : undefined,
             defaultPackagePresetId: data.defaultPackagePresetId,
             labelFormat: data.labelFormat || 'PDF',
             defaultPrintStationId: data.defaultPrintStationId,
@@ -1510,12 +1541,36 @@ export class ShippingService {
         const country = String(raw.shipping?.country || raw.billing?.country || '').toUpperCase();
         if (country && country !== 'AU') return this.stringSetting(config.defaultInternationalService) || null;
 
-        const shippingMethod = this.getWooShippingMethodText(raw).toLowerCase();
-        if (shippingMethod.includes('express')) {
+        const shippingMethod = this.getWooShippingMethodText(raw);
+        const mappedServiceCode = this.resolveMappedServiceCode(shippingMethod, config.shippingMethodServiceMappings);
+        if (mappedServiceCode) return mappedServiceCode;
+
+        const normalizedShippingMethod = shippingMethod.toLowerCase();
+        if (normalizedShippingMethod.includes('express')) {
             return this.stringSetting(config.defaultExpressService) || this.stringSetting(config.defaultDomesticService) || null;
         }
 
         return this.stringSetting(config.defaultDomesticService) || null;
+    }
+
+    private resolveMappedServiceCode(shippingMethod: string, rawMappings: unknown): string | null {
+        const normalizedShippingMethod = shippingMethod.trim().toLowerCase();
+        if (!normalizedShippingMethod || !Array.isArray(rawMappings)) return null;
+        for (const mapping of rawMappings) {
+            if (!mapping || typeof mapping !== 'object') continue;
+            const record = mapping as Record<string, unknown>;
+            const wooShippingMethod = this.stringSetting(record.wooShippingMethod);
+            const auspostServiceCode = this.stringSetting(record.auspostServiceCode);
+            if (!wooShippingMethod || !auspostServiceCode) continue;
+            const normalizedCandidate = wooShippingMethod.toLowerCase();
+            const matchType = record.matchType === 'contains' ? 'contains' : 'exact';
+            if (matchType === 'contains') {
+                if (normalizedShippingMethod.includes(normalizedCandidate)) return auspostServiceCode;
+                continue;
+            }
+            if (normalizedShippingMethod === normalizedCandidate) return auspostServiceCode;
+        }
+        return null;
     }
 
     private getWooShippingMethodText(raw: Record<string, any>) {

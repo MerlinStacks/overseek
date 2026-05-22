@@ -33,31 +33,36 @@ const fastify = Fastify({
 });
 
 async function build() {
+    const envOrigins = process.env.CORS_ORIGINS
+        ? process.env.CORS_ORIGINS.split(',').map(v => v.trim()).filter(Boolean)
+        : [];
+    const allowedOrigins = envOrigins.length > 0
+        ? envOrigins
+        : (process.env.CLIENT_URL ? [process.env.CLIENT_URL, 'http://localhost:5173'] : ['http://localhost:5173']);
+
     // CORS
-    await fastify.register(cors, {
-        origin: (origin, cb) => {
-            const envOrigins = process.env.CORS_ORIGINS
-                ? process.env.CORS_ORIGINS.split(',').map(v => v.trim()).filter(Boolean)
-                : [];
-            const allowed = envOrigins.length > 0
-                ? envOrigins
-                : (process.env.CLIENT_URL ? [process.env.CLIENT_URL, 'http://localhost:5173'] : ['http://localhost:5173']);
+    await fastify.register(cors, (_instance) => (request, cb) => {
+        const path = request.url.split('?')[0];
+        const isPublicPluginIngestion = path.startsWith('/api/t/') || path.startsWith('/api/fp/');
 
-            // Allow non-browser clients / same-origin requests with no Origin header.
-            if (!origin) {
-                cb(null, true);
-                return;
-            }
+        cb(null, {
+            origin: (origin, originCb) => {
+                // Allow non-browser clients / same-origin requests with no Origin header.
+                if (!origin) {
+                    originCb(null, true);
+                    return;
+                }
 
-            if (origin === '*') {
-                cb(null, false);
-                return;
-            }
+                if (origin === '*') {
+                    originCb(null, false);
+                    return;
+                }
 
-            cb(null, allowed.includes(origin));
-        },
-        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'x-account-id', 'x-wc-webhook-signature', 'x-wc-webhook-topic'],
+                originCb(null, isPublicPluginIngestion || allowedOrigins.includes(origin));
+            },
+            methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'Authorization', 'x-account-id', 'x-wc-webhook-signature', 'x-wc-webhook-topic'],
+        });
     });
 
     // Rate limiting

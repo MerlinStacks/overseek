@@ -80,6 +80,11 @@ const settingsSchema = z.object({
     defaultDomesticService: z.string().max(80).optional(),
     defaultExpressService: z.string().max(80).optional(),
     defaultInternationalService: z.string().max(80).optional(),
+    shippingMethodServiceMappings: z.array(z.object({
+        wooShippingMethod: z.string().min(1).max(180),
+        auspostServiceCode: z.string().min(1).max(80),
+        matchType: z.enum(['exact', 'contains']).optional(),
+    })).max(200).optional(),
     defaultPackagePresetId: z.string().optional(),
     labelFormat: z.string().max(20).optional(),
     defaultPrintStationId: z.string().optional(),
@@ -716,6 +721,17 @@ const shippingRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error: any) {
             Logger.error('[ShippingRoutes] Failed to fetch settings', { error: error?.message || error });
             return reply.code(500).send({ error: 'Failed to fetch shipping settings' });
+        }
+    });
+
+    fastify.get('/settings/shipping-method-candidates', async (request, reply) => {
+        try {
+            const denied = await requireShippingPermission(request, reply, 'manage_shipping_settings');
+            if (denied) return denied;
+            return await shippingService.listShippingMethodCandidates(request.accountId!);
+        } catch (error: any) {
+            Logger.error('[ShippingRoutes] Failed to fetch shipping method candidates', { error: error?.message || error });
+            return reply.code(500).send({ error: 'Failed to fetch shipping method candidates' });
         }
     });
 

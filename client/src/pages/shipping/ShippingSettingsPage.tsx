@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Save, ShieldCheck } from 'lucide-react';
+import { Cog, Printer, Save, ShieldCheck } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
 import { ShippingComingSoonCard, ShippingPageShell } from './ShippingPageShell';
-import { shippingFetch, ShippingPrintStation, ShippingSettingsResponse } from './shippingApi';
+import { shippingFetch, ShippingMethodCandidatesResponse, ShippingPrintStation, ShippingSettingsResponse } from './shippingApi';
 
 const AUSPOST_DEFAULT_BASE_URL = 'https://digitalapi.auspost.com.au/shipping/v1';
 const TRACKING_TRIGGER_OPTIONS = [
@@ -23,6 +24,9 @@ const AUSPOST_DEFAULT_ENDPOINTS = {
     trackingEndpointPath: '/track?tracking_ids={tracking_ids}',
     cancellationEndpointPath: '/shipments/{shipment_id}',
 };
+
+type TabId = 'carrier' | 'services' | 'print';
+const VALID_TABS: TabId[] = ['carrier', 'services', 'print'];
 
 interface SettingsFormState {
     displayName: string;
@@ -54,6 +58,7 @@ interface SettingsFormState {
     defaultDomesticService: string;
     defaultExpressService: string;
     defaultInternationalService: string;
+    shippingMethodServiceMappings: ShippingMethodServiceMapping[];
     labelFormat: string;
     labelPrintGroup: 'Parcel Post' | 'Express Post';
     labelLayout: 'A4-1pp' | 'A4-3pp' | 'A4-4pp' | 'A6-1pp';
@@ -97,6 +102,7 @@ const defaultForm: SettingsFormState = {
     defaultDomesticService: '',
     defaultExpressService: '',
     defaultInternationalService: '',
+    shippingMethodServiceMappings: [],
     labelFormat: 'PDF',
     labelPrintGroup: 'Parcel Post',
     labelLayout: 'A6-1pp',
@@ -111,6 +117,7 @@ const defaultForm: SettingsFormState = {
 };
 
 export function ShippingSettingsPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [form, setForm] = useState<SettingsFormState>(defaultForm);
@@ -118,6 +125,17 @@ export function ShippingSettingsPage() {
     const [stationPrinter, setStationPrinter] = useState('');
     const [newStationToken, setNewStationToken] = useState<string | null>(null);
     const [testResult, setTestResult] = useState<string | null>(null);
+    const [importResult, setImportResult] = useState<string | null>(null);
+
+    const tabFromUrl = searchParams.get('tab');
+    const activeTab: TabId = tabFromUrl && VALID_TABS.includes(tabFromUrl as TabId) ? tabFromUrl as TabId : 'carrier';
+    const setActiveTab = (tab: TabId) => {
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', tab);
+            return next;
+        }, { replace: true });
+    };
 
     const canFetch = Boolean(token && currentAccount?.id);
     const settingsQuery = useApiQuery<ShippingSettingsResponse>({
@@ -168,6 +186,7 @@ export function ShippingSettingsPage() {
                 defaultDomesticService: String(config.defaultDomesticService || ''),
                 defaultExpressService: String(config.defaultExpressService || ''),
                 defaultInternationalService: String(config.defaultInternationalService || ''),
+                shippingMethodServiceMappings: normalizeShippingMethodMappings(config.shippingMethodServiceMappings),
                 labelFormat: String(config.labelFormat || 'PDF'),
                 labelPrintGroup: config.labelPrintGroup === 'Express Post' ? 'Express Post' : 'Parcel Post',
                 labelLayout: ['A4-1pp', 'A4-3pp', 'A4-4pp', 'A6-1pp'].includes(String(config.labelLayout)) ? String(config.labelLayout) as SettingsFormState['labelLayout'] : 'A6-1pp',
@@ -219,6 +238,13 @@ export function ShippingSettingsPage() {
                 defaultDomesticService: values.defaultDomesticService,
                 defaultExpressService: values.defaultExpressService,
                 defaultInternationalService: values.defaultInternationalService,
+                shippingMethodServiceMappings: values.shippingMethodServiceMappings
+                    .map((mapping) => ({
+                        wooShippingMethod: mapping.wooShippingMethod.trim(),
+                        auspostServiceCode: mapping.auspostServiceCode.trim(),
+                        matchType: mapping.matchType === 'contains' ? 'contains' : 'exact',
+                    }))
+                    .filter((mapping) => mapping.wooShippingMethod && mapping.auspostServiceCode),
                 labelFormat: values.labelFormat,
                 labelPrintGroup: values.labelPrintGroup,
                 labelPaperType: values.labelPaperType,
@@ -260,19 +286,86 @@ export function ShippingSettingsPage() {
         mutationFn: () => shippingFetch('/settings/test-connection', token!, currentAccount!.id, { method: 'POST' }),
         onSuccess: (data) => setTestResult(data.message),
     });
+    const importShippingMethods = useApiMutation<ShippingMethodCandidatesResponse, void>({
+        mutationFn: () => shippingFetch('/settings/shipping-method-candidates', token!, currentAccount!.id),
+        onSuccess: (data) => {
+            let added = 0;
+            setForm((prev) => {
+                const existing = new Set(prev.shippingMethodServiceMappings.map((mapping) => mapping.wooShippingMethod.trim().toLowerCase()).filter(Boolean));
+                const additions = data.shippingMethods
+                    .map((name) => name.trim())
+                    .filter((name) => name && !existing.has(name.toLowerCase()))
+                    .map((wooShippingMethod) => ({ wooShippingMethod, auspostServiceCode: '', matchType: 'exact' as const }));
+                added = additions.length;
+                return { ...prev, shippingMethodServiceMappings: [...prev.shippingMethodServiceMappings, ...additions] };
+            });
+            setImportResult(added > 0
+                ? `Imported ${added} shipping method${added === 1 ? '' : 's'} from ${data.sampledOrders} recent orders.`
+                : `No new shipping methods found in ${data.sampledOrders} recent orders.`);
+        },
+    });
 
     const update = (key: keyof SettingsFormState, value: string | boolean) => setForm(prev => ({ ...prev, [key]: value }));
+    const updateShippingMethodMapping = (index: number, key: keyof ShippingMethodServiceMapping, value: string) => {
+        setForm((prev) => ({
+            ...prev,
+            shippingMethodServiceMappings: prev.shippingMethodServiceMappings.map((mapping, rowIndex) => rowIndex === index ? {
+                ...mapping,
+                [key]: key === 'matchType' ? (value === 'contains' ? 'contains' : 'exact') : value,
+            } : mapping),
+        }));
+    };
+    const addShippingMethodMapping = () => {
+        setForm((prev) => ({
+            ...prev,
+            shippingMethodServiceMappings: [...prev.shippingMethodServiceMappings, { wooShippingMethod: '', auspostServiceCode: '', matchType: 'exact' }],
+        }));
+    };
+    const removeShippingMethodMapping = (index: number) => {
+        setForm((prev) => ({
+            ...prev,
+            shippingMethodServiceMappings: prev.shippingMethodServiceMappings.filter((_, rowIndex) => rowIndex !== index),
+        }));
+    };
     const handleSubmit = (event: FormEvent) => {
         event.preventDefault();
         saveSettings.mutate(form);
     };
+
+    const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; description: string }> = [
+        { id: 'carrier', label: 'Carrier Setup', icon: ShieldCheck, description: 'Credentials, sender details, and API paths.' },
+        { id: 'services', label: 'Rules & Tracking', icon: Cog, description: 'Service defaults, mappings, fulfillment, and polling.' },
+        { id: 'print', label: 'Print Stations', icon: Printer, description: 'Agent registration and station status.' },
+    ];
 
     return (
         <ShippingPageShell
             title="Settings"
             description="Configure AusPost credentials, sender details, payment method, dispatch status, label format, print stations, and tracking sync behavior."
         >
-            <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-2">
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="overflow-x-auto border-b border-slate-200 dark:border-slate-700">
+                    <div className="flex min-w-max items-end gap-2 pb-2">
+                        {tabs.map((tab) => {
+                            const Icon = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                                >
+                                    <Icon size={16} />
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-300">{tabs.find((tab) => tab.id === activeTab)?.description}</p>
+
+                {activeTab === 'carrier' ? <div className="grid gap-6 xl:grid-cols-2">
                 <ShippingComingSoonCard>
                     <div className="mb-4 flex items-center gap-3">
                         <ShieldCheck className="text-indigo-600" size={22} />
@@ -335,14 +428,44 @@ export function ShippingSettingsPage() {
                         <TextField label="Country" value={form.senderCountry} onChange={(v) => update('senderCountry', v)} />
                     </div>
                 </ShippingComingSoonCard>
+                </div> : null}
 
-                <ShippingComingSoonCard>
+                {activeTab === 'services' ? <ShippingComingSoonCard>
                     <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">AusPost Service Defaults</h2>
                     <div className="space-y-4">
                         <p className="text-sm text-slate-600 dark:text-slate-300">These AusPost product IDs are used to auto-select the label service from the WooCommerce order shipping method. Express shipping uses the express default; non-AU addresses use the international default; all other domestic orders use the domestic default.</p>
                         <TextField label="Default domestic AusPost service code" value={form.defaultDomesticService} onChange={(v) => update('defaultDomesticService', v)} placeholder="AusPost product ID" />
                         <TextField label="Default express AusPost service code" value={form.defaultExpressService} onChange={(v) => update('defaultExpressService', v)} placeholder="AusPost product ID" />
                         <TextField label="Default international AusPost service code" value={form.defaultInternationalService} onChange={(v) => update('defaultInternationalService', v)} placeholder="AusPost product ID" />
+                        <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-slate-900 dark:text-white">Shipping method service mappings</p>
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={() => importShippingMethods.mutate()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Import from orders</button>
+                                    <button type="button" onClick={addShippingMethodMapping} className="rounded-lg border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10">Add Mapping</button>
+                                </div>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Match WooCommerce shipping method text to an AusPost service code before fallback defaults are used.</p>
+                            {importResult ? <p className="text-xs text-emerald-700 dark:text-emerald-300">{importResult}</p> : null}
+                            {importShippingMethods.error ? <p className="text-xs text-red-600">{importShippingMethods.error.message}</p> : null}
+                            {form.shippingMethodServiceMappings.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No mappings added yet.</p> : null}
+                            {form.shippingMethodServiceMappings.map((mapping, index) => (
+                                <div key={`${index}-${mapping.wooShippingMethod}-${mapping.auspostServiceCode}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-7 dark:border-slate-700">
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-3">Woo shipping method
+                                        <input value={mapping.wooShippingMethod} onChange={(event) => updateShippingMethodMapping(index, 'wooShippingMethod', event.target.value)} placeholder="e.g. Auspost Express" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                                    </label>
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-2">AusPost service code
+                                        <input value={mapping.auspostServiceCode} onChange={(event) => updateShippingMethodMapping(index, 'auspostServiceCode', event.target.value)} placeholder="e.g. 3J55" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                                    </label>
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-1">Match
+                                        <select value={mapping.matchType} onChange={(event) => updateShippingMethodMapping(index, 'matchType', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900"><option value="exact">Exact</option><option value="contains">Contains</option></select>
+                                    </label>
+                                    <div className="flex items-end md:col-span-1">
+                                        <button type="button" onClick={() => removeShippingMethodMapping(index)} className="w-full rounded-lg border border-rose-200 px-2 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10">Remove</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                         <TextField label="Label format" value={form.labelFormat} onChange={(v) => update('labelFormat', v)} />
                         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Label print group<select value={form.labelPrintGroup} onChange={(event) => update('labelPrintGroup', event.target.value as SettingsFormState['labelPrintGroup'])} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="Parcel Post">Parcel Post</option><option value="Express Post">Express Post</option></select></label>
                         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Label paper<select value={form.labelPaperType} onChange={(event) => update('labelPaperType', event.target.value as SettingsFormState['labelPaperType'])} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"><option value="single_shipping_label">Single standard shipping label</option><option value="a4_label_sheet">A4 label sheets</option></select></label>
@@ -366,9 +489,9 @@ export function ShippingSettingsPage() {
                         <TextField label="Tracking poll interval minutes" value={form.trackingPollIntervalMinutes} onChange={(v) => update('trackingPollIntervalMinutes', v)} />
                         <TextField label="Tracking failure backoff minutes" value={form.trackingPollFailureBackoffMinutes} onChange={(v) => update('trackingPollFailureBackoffMinutes', v)} />
                     </div>
-                </ShippingComingSoonCard>
+                </ShippingComingSoonCard> : null}
 
-                <ShippingComingSoonCard>
+                {activeTab === 'print' ? <ShippingComingSoonCard>
                     <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Print Agent</h2>
                     <p className="text-sm text-slate-600 dark:text-slate-300">Register the local computer that will run the OverSeek Print Agent. The token is shown once.</p>
                     <div className="mt-4 space-y-3">
@@ -390,9 +513,12 @@ export function ShippingSettingsPage() {
                             </div>
                         ))}
                     </div>
-                    {saveSettings.error ? <p className="mt-4 text-sm text-red-600">{saveSettings.error.message}</p> : null}
-                    <button type="submit" disabled={saveSettings.isPending} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"><Save size={16} /> Save Settings</button>
-                </ShippingComingSoonCard>
+                </ShippingComingSoonCard> : null}
+
+                {saveSettings.error ? <p className="text-sm text-red-600">{saveSettings.error.message}</p> : null}
+                <div className="sticky bottom-4 z-10 flex justify-end">
+                    <button type="submit" disabled={saveSettings.isPending} className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-60"><Save size={16} /> Save Settings</button>
+                </div>
             </form>
         </ShippingPageShell>
     );
@@ -400,4 +526,28 @@ export function ShippingSettingsPage() {
 
 function TextField({ label, value, onChange, type = 'text', autoComplete, placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; autoComplete?: string; placeholder?: string }) {
     return <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{label}<input type={type} value={value} autoComplete={autoComplete} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900" /></label>;
+}
+
+interface ShippingMethodServiceMapping {
+    wooShippingMethod: string;
+    auspostServiceCode: string;
+    matchType: 'exact' | 'contains';
+}
+
+function normalizeShippingMethodMappings(value: unknown): ShippingMethodServiceMapping[] {
+    if (!Array.isArray(value)) return [];
+    return value
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => {
+            const record = item as Record<string, unknown>;
+            const wooShippingMethod = String(record.wooShippingMethod || '').trim();
+            const auspostServiceCode = String(record.auspostServiceCode || '').trim();
+            if (!wooShippingMethod || !auspostServiceCode) return null;
+            return {
+                wooShippingMethod,
+                auspostServiceCode,
+                matchType: record.matchType === 'contains' ? 'contains' : 'exact',
+            };
+        })
+        .filter((item): item is ShippingMethodServiceMapping => Boolean(item));
 }

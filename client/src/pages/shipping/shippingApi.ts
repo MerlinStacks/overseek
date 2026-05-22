@@ -138,6 +138,11 @@ export interface ShippingHubSummary {
     };
 }
 
+export interface ShippingMethodCandidatesResponse {
+    shippingMethods: string[];
+    sampledOrders: number;
+}
+
 export interface ShippingTrackingHealthSummary {
     status: 'healthy' | 'degraded' | 'attention';
     windowHours: number;
