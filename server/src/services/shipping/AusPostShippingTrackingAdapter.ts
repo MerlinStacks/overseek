@@ -94,13 +94,16 @@ class AusPostShippingTrackingAdapter {
     async testConnection(accountId: string) {
         const credentials = await this.getCredentials(accountId);
         if (credentials.endpoints.test) {
-            await this.request(credentials, this.applyTemplate(credentials.endpoints.test, {
+            const accountResponse = await this.request(credentials, this.applyTemplate(credentials.endpoints.test, {
                 account_number: credentials.accountNumber || '',
             }), { method: 'GET' });
+            const postageProducts = this.extractPostageProducts(accountResponse);
             return {
                 ok: true,
                 status: 'live_test_passed',
-                message: `AusPost Shipping and Tracking API test endpoint responded successfully for ${credentials.environment}.`,
+                message: postageProducts.length > 0
+                    ? `AusPost Shipping and Tracking API test endpoint responded successfully for ${credentials.environment}. ${postageProducts.length} account postage product(s) available.`
+                    : `AusPost Shipping and Tracking API test endpoint responded successfully for ${credentials.environment}.`,
             };
         }
 
@@ -121,7 +124,8 @@ class AusPostShippingTrackingAdapter {
         });
         const rates = this.extractRates(response);
         const targetedResponses: unknown[] = [];
-        const targetedCodes = this.rateProbeServiceCodes(request, credentials);
+        const targetedProbeErrors: Array<{ serviceCode: string; message: string }> = [];
+        const targetedCodes = this.rateProbeServiceCodes(request, credentials, rates);
 
         for (const serviceCode of targetedCodes) {
             try {
@@ -138,6 +142,7 @@ class AusPostShippingTrackingAdapter {
                     serviceCode,
                     error: this.sanitizedErrorReason(error),
                 });
+                targetedProbeErrors.push({ serviceCode, message: this.sanitizedErrorReason(error) });
             }
         }
 
@@ -145,6 +150,7 @@ class AusPostShippingTrackingAdapter {
             status: 'ok',
             carrier: 'AUSPOST',
             rates,
+            probeDiagnostics: targetedProbeErrors,
             rawResponse: targetedResponses.length > 0 ? { baseline: response, targeted: targetedResponses } : response,
         };
     }
@@ -180,13 +186,22 @@ class AusPostShippingTrackingAdapter {
             };
 
             if (!credentials.endpoints.rates) throw new Error('AusPost rates endpoint mapping is not configured yet');
+            const knownLabelByCode = new Map(AUSPOST_SERVICE_CATALOG.map((service) => [service.code, service.label]));
+            const discoveredLabelByCode = new Map<string, string>();
+            if (credentials.endpoints.test) {
+                const accountResponse = await this.request(credentials, this.applyTemplate(credentials.endpoints.test, {
+                    account_number: credentials.accountNumber || '',
+                }), { method: 'GET' });
+                for (const service of this.extractPostageProducts(accountResponse)) {
+                    discoveredLabelByCode.set(service.code, service.label || knownLabelByCode.get(service.code) || service.code);
+                }
+            }
+
             const baselinePayload = this.buildShipmentRatePayload(credentials, probeRequestBase);
             const baselineResponse = await this.request(credentials, credentials.endpoints.rates, {
                 method: 'POST',
                 body: JSON.stringify(baselinePayload),
             });
-            const knownLabelByCode = new Map(AUSPOST_SERVICE_CATALOG.map((service) => [service.code, service.label]));
-            const discoveredLabelByCode = new Map<string, string>();
             for (const rate of this.extractRates(baselineResponse)) {
                 const code = this.stringConfig(rate.productId);
                 if (!code) continue;
@@ -493,14 +508,26 @@ class AusPostShippingTrackingAdapter {
         return this.buildShipmentPayload(credentials, request, { includeProduct: true, allowDefaultProduct: false, requireProduct: false, errorContext: 'requesting AusPost rates' });
     }
 
-    private rateProbeServiceCodes(request: AusPostRateRequest, credentials: AusPostCredentials) {
+    private rateProbeServiceCodes(request: AusPostRateRequest, credentials: AusPostCredentials, baselineRates: Array<Record<string, unknown>>) {
         const baselineCode = this.stringConfig(request.serviceCode);
         return Array.from(new Set([
             this.stringConfig(request.selectedServiceCode),
             credentials.defaultDomesticService,
             credentials.defaultExpressService,
+            ...this.expressCounterpartCodes(baselineRates),
             ...GENERIC_RATE_PROBE_SERVICE_CODES,
         ].filter((serviceCode): serviceCode is string => Boolean(serviceCode && serviceCode !== baselineCode))));
+    }
+
+    private expressCounterpartCodes(rates: Array<Record<string, unknown>>) {
+        return rates
+            .map((rate) => this.stringConfig(rate.productId) || this.stringConfig(rate.product_id))
+            .flatMap((code) => {
+                if (!code) return [];
+                if (/^3J/.test(code)) return [code.replace(/^3J/, '7J')];
+                if (/^3D/.test(code)) return [code.replace(/^3D/, '7E')];
+                return [];
+            });
     }
 
     private mergeRates(target: Array<Record<string, unknown>>, incoming: Array<Record<string, unknown>>) {
@@ -635,6 +662,49 @@ class AusPostShippingTrackingAdapter {
         }
 
         return rates;
+    }
+
+    private extractPostageProducts(response: unknown): Array<{ code: string; label: string }> {
+        const products: Array<{ code: string; label: string }> = [];
+        const visit = (value: unknown) => {
+            if (!value || typeof value !== 'object') return;
+            if (Array.isArray(value)) {
+                value.forEach(visit);
+                return;
+            }
+
+            const object = value as Record<string, any>;
+            const productArrays = [object.postage_products, object.postageProducts, object.products]
+                .filter((candidate) => Array.isArray(candidate)) as unknown[][];
+            for (const productArray of productArrays) {
+                for (const product of productArray) {
+                    if (!product || typeof product !== 'object') continue;
+                    const productObject = product as Record<string, unknown>;
+                    const code = this.stringConfig(productObject.product_id)
+                        || this.stringConfig(productObject.productId)
+                        || this.stringConfig(productObject.code)
+                        || this.stringConfig(productObject.id);
+                    if (!code) continue;
+                    const label = this.stringConfig(productObject.product_type)
+                        || this.stringConfig(productObject.productType)
+                        || this.stringConfig(productObject.product_name)
+                        || this.stringConfig(productObject.productName)
+                        || this.stringConfig(productObject.name)
+                        || code;
+                    products.push({ code, label });
+                }
+            }
+
+            Object.values(object).forEach(visit);
+        };
+
+        visit(response);
+        const seen = new Set<string>();
+        return products.filter((product) => {
+            if (seen.has(product.code)) return false;
+            seen.add(product.code);
+            return true;
+        });
     }
 
     private extractShipment(response: unknown) {
