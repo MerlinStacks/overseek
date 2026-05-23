@@ -668,6 +668,7 @@ function RatePreview({
     isSaving: boolean;
 }) {
     const rates = Array.isArray(response?.rates) ? response.rates as Array<Record<string, unknown>> : [];
+    const sortedRates = [...rates].sort((left, right) => parseRateAmount(left) - parseRateAmount(right));
     const warnings = Array.isArray(response?.warnings) ? response.warnings.map((warning) => String(warning)) : [];
     const errors = Array.isArray(response?.errors) ? response.errors.map((error) => String(error)) : [];
     if (!response) {
@@ -711,19 +712,20 @@ function RatePreview({
             {warnings.length > 0 ? <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Carrier warning: {warnings.join(' | ')}</p> : null}
             {errors.length > 0 ? <p className="mt-2 text-sm text-red-700 dark:text-red-300">Carrier error: {errors.join(' | ')}</p> : null}
             <div className="mt-2 space-y-1">
-                {rates.map((rate, index) => {
+                {sortedRates.map((rate, index) => {
                     const serviceCode = String(rate.productId || rate.product_id || rate.serviceCode || rate.service_code || '');
                     const serviceFallback = String(rate.serviceName || rate.service_name || rate.productType || rate.product_type || '');
                     const serviceName = serviceCodeNaturalLabel(serviceCatalog, serviceCode, serviceFallback);
                     const amount = String(rate.totalCost || rate.amount || rate.price || '-');
                     const formattedAmount = amount === '-' || amount.startsWith('$') ? amount : `$${amount}`;
+                    const fallbackLooksRaw = !serviceFallback || serviceFallback === serviceCode || serviceFallback === serviceName || /^[A-Z0-9_-]{4,}$/.test(serviceFallback.trim());
                     return (
                         <div key={`${serviceCode || serviceName}-${index}`} className={`grid grid-cols-[1fr_auto] items-center gap-2 rounded px-1 py-1 text-xs ${selectedServiceCode === serviceCode ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''}`}>
                             <div className="flex min-w-0 items-center gap-2">
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold leading-none text-white">AP</span>
                                 <div className="min-w-0">
                                     <p className="truncate font-bold text-slate-900 dark:text-white">{serviceName}</p>
-                                    {serviceFallback && serviceFallback !== serviceName ? <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{serviceFallback}</p> : null}
+                                    {!fallbackLooksRaw ? <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{serviceFallback}</p> : null}
                                 </div>
                             </div>
                             <div className="text-right">
@@ -756,6 +758,12 @@ function friendlyRateMessage(response: Record<string, unknown>) {
     if (message.toLowerCase().includes('service code')) return 'Select an AusPost service before creating a label, or configure a default service in Shipping Settings.';
     if (message.toLowerCase().includes('credentials')) return 'AusPost credentials are missing or incomplete. Update Shipping Settings and test the connection.';
     return message || 'No rates were returned by AusPost for this draft. Check package dimensions, weight, and destination address.';
+}
+
+function parseRateAmount(rate: Record<string, unknown>) {
+    const rawAmount = rate.totalCost ?? rate.total_cost ?? rate.amount ?? rate.price;
+    const parsed = Number(String(rawAmount ?? '').replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
 function packageWeightToKg(totalWeightGrams: number | null, selectedPackage: ShippingPackagePreset | null) {
