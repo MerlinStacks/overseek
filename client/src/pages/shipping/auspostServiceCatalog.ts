@@ -26,10 +26,10 @@ export function serviceCodeNaturalLabel(catalog: AusPostServiceCatalogResponse |
 }
 
 const AUSPOST_NATURAL_LABELS: Record<string, string> = {
-    AUS_PARCEL_REGULAR: 'Regular Parcel Post',
+    AUS_PARCEL_REGULAR: 'Parcel Post',
     AUS_PARCEL_EXPRESS: 'Express Post',
-    AUS_PARCEL_REGULAR_SIGNATURE: 'Regular Parcel Post with Signature on Delivery',
-    AUS_PARCEL_EXPRESS_SIGNATURE: 'Express Post with Signature on Delivery',
+    AUS_PARCEL_REGULAR_SIGNATURE: 'Parcel Post with Signature',
+    AUS_PARCEL_EXPRESS_SIGNATURE: 'Express Post with Signature',
     S87384: 'Express Post',
     '3D55': 'Parcel Post satchel 500g',
     '3D61': 'Parcel Post satchel 1kg',

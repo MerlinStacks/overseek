@@ -6,10 +6,10 @@ export interface AusPostServiceCatalogItem {
 export const AUSPOST_SERVICE_CATALOG_UPDATED_AT = '2026-05-22';
 
 export const AUSPOST_SERVICE_CATALOG: AusPostServiceCatalogItem[] = [
-    { code: 'AUS_PARCEL_REGULAR', label: 'Regular Parcel Post' },
+    { code: 'AUS_PARCEL_REGULAR', label: 'Parcel Post' },
     { code: 'AUS_PARCEL_EXPRESS', label: 'Express Post' },
-    { code: 'AUS_PARCEL_REGULAR_SIGNATURE', label: 'Regular Parcel Post with Signature on Delivery' },
-    { code: 'AUS_PARCEL_EXPRESS_SIGNATURE', label: 'Express Post with Signature on Delivery' },
+    { code: 'AUS_PARCEL_REGULAR_SIGNATURE', label: 'Parcel Post with Signature' },
+    { code: 'AUS_PARCEL_EXPRESS_SIGNATURE', label: 'Express Post with Signature' },
     { code: '3D55', label: 'Parcel Post satchel 500g' },
     { code: '3D61', label: 'Parcel Post satchel 1kg' },
     { code: '3D67', label: 'Parcel Post satchel 3kg' },

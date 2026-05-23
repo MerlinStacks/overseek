@@ -264,7 +264,7 @@ export class ShippingService {
             address,
             packagePresetId: draft.selectedPackagePresetId,
             dimensions: this.resolveDimensions(draft, selectedPackage),
-            serviceCode: draft.selectedServiceCode,
+            selectedServiceCode: draft.selectedServiceCode,
         };
 
         let rateResponse: Record<string, unknown>;
