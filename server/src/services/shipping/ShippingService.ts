@@ -1949,11 +1949,18 @@ export class ShippingService {
     }
 
     private resolveDimensions(draft: any, selectedPackage: any) {
+        const packageWeightGrams = selectedPackage
+            ? selectedPackage.forcedPackageWeightGrams
+                || (draft.manualWeightGrams ? draft.manualWeightGrams + selectedPackage.packagingWeightGrams : null)
+                || (selectedPackage.fallbackItemWeightGrams ? selectedPackage.fallbackItemWeightGrams + selectedPackage.packagingWeightGrams : null)
+                || selectedPackage.packagingWeightGrams
+                || null
+            : draft.manualWeightGrams;
         return {
             lengthMm: draft.manualOuterLengthMm || selectedPackage?.outerLengthMm || null,
             widthMm: draft.manualOuterWidthMm || selectedPackage?.outerWidthMm || null,
             heightMm: draft.manualOuterHeightMm || selectedPackage?.outerHeightMm || null,
-            weightGrams: draft.manualWeightGrams,
+            weightGrams: packageWeightGrams,
         };
     }
 
