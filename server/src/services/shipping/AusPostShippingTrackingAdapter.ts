@@ -11,6 +11,7 @@ interface AusPostCredentials {
     environment: 'sandbox' | 'production';
     senderAddress: Record<string, unknown>;
     defaultDomesticService?: string;
+    defaultExpressService?: string;
     paymentMethod?: 'CHARGE_ACCOUNT' | 'CREDIT_CARD' | 'PAYPAL';
     endpoints: {
         test?: string;
@@ -53,7 +54,15 @@ export interface AusPostRateRequest {
     address: Record<string, unknown>;
     dimensions: Record<string, unknown>;
     serviceCode?: string | null;
+    selectedServiceCode?: string | null;
 }
+
+const GENERIC_RATE_PROBE_SERVICE_CODES = [
+    'AUS_PARCEL_REGULAR',
+    'AUS_PARCEL_EXPRESS',
+    'AUS_PARCEL_REGULAR_SIGNATURE',
+    'AUS_PARCEL_EXPRESS_SIGNATURE',
+];
 
 export interface AusPostLabelRequest extends AusPostRateRequest {
     order: Record<string, unknown>;
@@ -110,12 +119,33 @@ class AusPostShippingTrackingAdapter {
             method: 'POST',
             body: JSON.stringify(payload),
         });
+        const rates = this.extractRates(response);
+        const targetedResponses: unknown[] = [];
+        const targetedCodes = this.rateProbeServiceCodes(request, credentials);
+
+        for (const serviceCode of targetedCodes) {
+            try {
+                const targetedPayload = this.buildShipmentRatePayload(credentials, { ...request, serviceCode });
+                const targetedResponse = await this.request(credentials, credentials.endpoints.rates, {
+                    method: 'POST',
+                    body: JSON.stringify(targetedPayload),
+                });
+                targetedResponses.push(targetedResponse);
+                this.mergeRates(rates, this.extractRates(targetedResponse));
+            } catch (error: any) {
+                Logger.info('[AusPostAdapter] Rate probe service unavailable', {
+                    accountId,
+                    serviceCode,
+                    error: this.sanitizedErrorReason(error),
+                });
+            }
+        }
 
         return {
             status: 'ok',
             carrier: 'AUSPOST',
-            rates: this.extractRates(response),
-            rawResponse: response,
+            rates,
+            rawResponse: targetedResponses.length > 0 ? { baseline: response, targeted: targetedResponses } : response,
         };
     }
 
@@ -354,6 +384,7 @@ class AusPostShippingTrackingAdapter {
             environment: config.apiEnvironment === 'sandbox' ? 'sandbox' : 'production',
             senderAddress: (settings.senderAddress as Record<string, unknown> | null) || {},
             defaultDomesticService: this.stringConfig(config.defaultDomesticService),
+            defaultExpressService: this.stringConfig(config.defaultExpressService),
             paymentMethod: this.paymentMethodConfig(config.paymentMethod),
             endpoints: {
                 test: this.stringConfig(config.testEndpointPath) || DEFAULT_ENDPOINTS.test,
@@ -460,6 +491,33 @@ class AusPostShippingTrackingAdapter {
 
     private buildShipmentRatePayload(credentials: AusPostCredentials, request: AusPostRateRequest) {
         return this.buildShipmentPayload(credentials, request, { includeProduct: true, allowDefaultProduct: false, requireProduct: false, errorContext: 'requesting AusPost rates' });
+    }
+
+    private rateProbeServiceCodes(request: AusPostRateRequest, credentials: AusPostCredentials) {
+        const baselineCode = this.stringConfig(request.serviceCode);
+        return Array.from(new Set([
+            this.stringConfig(request.selectedServiceCode),
+            credentials.defaultDomesticService,
+            credentials.defaultExpressService,
+            ...GENERIC_RATE_PROBE_SERVICE_CODES,
+        ].filter((serviceCode): serviceCode is string => Boolean(serviceCode && serviceCode !== baselineCode))));
+    }
+
+    private mergeRates(target: Array<Record<string, unknown>>, incoming: Array<Record<string, unknown>>) {
+        const existingKeys = new Set(target.map((rate) => this.rateKey(rate)));
+        for (const rate of incoming) {
+            const key = this.rateKey(rate);
+            if (existingKeys.has(key)) continue;
+            existingKeys.add(key);
+            target.push(rate);
+        }
+    }
+
+    private rateKey(rate: Record<string, unknown>) {
+        return [
+            this.stringConfig(rate.productId) || this.stringConfig(rate.product_id),
+            this.stringConfig(rate.totalCost) || this.stringConfig(rate.total_cost) || this.stringConfig(rate.amount) || this.stringConfig(rate.price),
+        ].join(':');
     }
 
     private buildShipmentValidationPayload(credentials: AusPostCredentials, request: AusPostRateRequest) {

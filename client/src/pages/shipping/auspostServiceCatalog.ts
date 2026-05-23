@@ -40,14 +40,14 @@ const AUSPOST_NATURAL_LABELS: Record<string, string> = {
     AUS_PARCEL_REGULAR_SIGNATURE: 'Parcel Post with Signature',
     AUS_PARCEL_EXPRESS_SIGNATURE: 'Express Post with Signature',
     S87384: 'Express Post',
-    '3D55': 'Parcel Post satchel 500g',
-    '3D61': 'Parcel Post satchel 1kg',
-    '3D67': 'Parcel Post satchel 3kg',
-    '3D73': 'Parcel Post satchel 5kg',
-    '7E55': 'Express Post satchel 500g',
-    '7E61': 'Express Post satchel 1kg',
-    '7E67': 'Express Post satchel 3kg',
-    '7E73': 'Express Post satchel 5kg',
+    '3D55': 'Parcel Post satchel',
+    '3D61': 'Parcel Post satchel',
+    '3D67': 'Parcel Post satchel',
+    '3D73': 'Parcel Post satchel',
+    '7E55': 'Express Post satchel',
+    '7E61': 'Express Post satchel',
+    '7E67': 'Express Post satchel',
+    '7E73': 'Express Post satchel',
 };
 
 const GENERIC_AUSPOST_SERVICES = [
@@ -66,15 +66,8 @@ function inferAusPostServiceLabel(code: string) {
     if (!match) return null;
 
     const service = match[1] === '7' ? 'Express Post' : 'Parcel Post';
-    const packageType = match[2] === 'D' ? ' satchel' : '';
-    const weightBySuffix: Record<string, string> = {
-        '55': '500g',
-        '61': '1kg',
-        '67': '3kg',
-        '73': '5kg',
-    };
-
-    return `${service}${packageType} ${weightBySuffix[match[3]]}`;
+    const packageType = match[2] === 'D' || match[2] === 'E' ? ' satchel' : '';
+    return `${service}${packageType}`;
 }
 
 function uniqueStrings(values: string[]): string[] {
