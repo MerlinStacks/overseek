@@ -30,28 +30,40 @@ interface FeedFeatureConfig {
     maxBulkOptimizeRows?: number;
 }
 
+interface FeedAccountContext {
+    name?: string | null;
+    currency?: string | null;
+}
+
 const DEFAULT_REFRESH_MODE: FeedRefreshMode = 'manual';
 const ALLOWED_REFRESH_MODES: FeedRefreshMode[] = ['manual', 'auto_on_sync', '1h', '3h', '12h', '24h'];
 const DEFAULT_MAX_BULK_OPTIMIZE_ROWS = 5000;
+const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
 
 const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
     google: [
         { targetField: 'id', sourceField: 'wooId', required: true },
         { targetField: 'title', sourceField: 'name', required: true },
         { targetField: 'description', sourceField: 'description', fallbackSourceField: 'short_description', required: true },
+        { targetField: 'item_group_id', sourceField: 'itemGroupId' },
         { targetField: 'link', sourceField: 'permalink', required: true },
         { targetField: 'image_link', sourceField: 'mainImage', required: true },
         { targetField: 'additional_image_link', sourceField: 'additionalImages' },
+        { targetField: 'video_link', sourceField: 'videoLink' },
         { targetField: 'condition', sourceField: 'condition', required: true },
         { targetField: 'google_product_category', sourceField: 'googleProductCategory' },
         { targetField: 'product_type', sourceField: 'productType' },
         { targetField: 'gtin', sourceField: 'gtin' },
         { targetField: 'mpn', sourceField: 'mpn' },
         { targetField: 'price', sourceField: 'price', required: true },
-        { targetField: 'sale_price', sourceField: 'salePrice' },
+        { targetField: 'sale_price', sourceField: 'salePrice', fallbackSourceField: 'price' },
         { targetField: 'sale_price_effective_date', sourceField: 'salePriceEffectiveDate' },
         { targetField: 'availability', sourceField: 'stockStatus', required: true },
         { targetField: 'brand', sourceField: 'brand' },
+        { targetField: 'canonical_link', sourceField: 'canonicalLink' },
+        { targetField: 'custom_label_0', sourceField: 'name' },
+        { targetField: 'store_code', sourceField: 'storeCode' },
+        { targetField: 'identifier_exists', sourceField: 'identifierExists' },
     ],
     meta: [
         { targetField: 'id', sourceField: 'wooId', required: true },
@@ -60,6 +72,7 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'link', sourceField: 'permalink', required: true },
         { targetField: 'image_link', sourceField: 'mainImage', required: true },
         { targetField: 'additional_image_link', sourceField: 'additionalImages' },
+        { targetField: 'video_link', sourceField: 'videoLink' },
         { targetField: 'price', sourceField: 'price', required: true },
         { targetField: 'sale_price', sourceField: 'salePrice' },
         { targetField: 'availability', sourceField: 'stockStatus' },
@@ -96,6 +109,101 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
     ],
 };
 
+function stripHtml(value: string | null | undefined): string | null {
+    if (!value) return null;
+    return value
+        .replace(/<br\s*\/?>/gi, ' ')
+        .replace(/<\/p\s*>/gi, ' ')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#039;|&apos;/gi, "'")
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/\s+/g, ' ')
+        .trim() || null;
+}
+
+function normalizeCurrency(currency?: string | null): string {
+    return /^[A-Z]{3}$/i.test(currency || '') ? String(currency).toUpperCase() : 'USD';
+}
+
+function formatFeedPrice(value: unknown, currency?: string | null): string | null {
+    if (value == null || value === '') return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    if (/\s[A-Z]{3}$/i.test(raw)) {
+        return raw.replace(/\s([a-z]{3})$/i, (_, code) => ` ${String(code).toUpperCase()}`);
+    }
+
+    const amount = Number(raw.replace(/[^0-9.-]/g, ''));
+    const formattedAmount = Number.isFinite(amount) ? amount.toFixed(2) : raw;
+    return `${formattedAmount} ${normalizeCurrency(currency)}`;
+}
+
+function normalizeStockStatus(status: unknown): string | null {
+    if (!status) return null;
+    const normalized = String(status).trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (normalized === 'instock' || normalized === 'in_stock') return 'in_stock';
+    if (normalized === 'outofstock' || normalized === 'out_of_stock') return 'out_of_stock';
+    if (normalized === 'onbackorder' || normalized === 'backorder' || normalized === 'backorders') return 'backorder';
+    return normalized;
+}
+
+function getProductType(rawData: any): string | null {
+    return rawData?.product_type
+        || rawData?.productType
+        || (Array.isArray(rawData?.categories) ? rawData.categories.map((category: any) => category?.name).filter(Boolean).join(' > ') : null)
+        || null;
+}
+
+function getBrand(rawData: any, account?: FeedAccountContext): string | null {
+    return rawData?.brands?.[0]?.name || rawData?.brand || account?.name || null;
+}
+
+function getRawMetaValue(rawData: any, keys: string[]): string | null {
+    if (!Array.isArray(rawData?.meta_data)) return null;
+    const normalizedKeys = new Set(keys.map((key) => key.toLowerCase()));
+    const match = rawData.meta_data.find((item: any) => normalizedKeys.has(String(item?.key || '').toLowerCase()));
+    return match?.value ? String(match.value) : null;
+}
+
+function getVideoLink(rawData: any): string | null {
+    const direct = rawData?.video_link
+        || rawData?.videoLink
+        || rawData?.video_url
+        || rawData?.videoUrl
+        || rawData?.product_video_url
+        || rawData?.productVideoUrl
+        || getRawMetaValue(rawData, ['video_link', '_video_link', 'video_url', '_video_url', 'product_video_url', '_product_video_url']);
+
+    if (direct) return String(direct);
+
+    if (Array.isArray(rawData?.videos)) {
+        const video = rawData.videos.find((item: any) => item?.src || item?.url || item?.video_url || item?.video_link);
+        return video ? String(video.src || video.url || video.video_url || video.video_link) : null;
+    }
+
+    return null;
+}
+
+function mergeMappingsWithDefaults(channel: FeedChannel, mappings?: FeedFieldMapping[]): FeedFieldMapping[] {
+    if (!mappings || mappings.length === 0) return DEFAULT_MAPPINGS[channel];
+
+    const savedByTarget = new Map(mappings.map((mapping) => [mapping.targetField, mapping]));
+    const merged = DEFAULT_MAPPINGS[channel].map((defaultMapping) => savedByTarget.get(defaultMapping.targetField) || defaultMapping);
+    const defaultTargets = new Set(DEFAULT_MAPPINGS[channel].map((mapping) => mapping.targetField));
+    const customMappings = mappings.filter((mapping) => !defaultTargets.has(mapping.targetField));
+
+    return [...merged, ...customMappings];
+}
+
+function getBaseTargetField(field: string): string {
+    const parts = field.split(':');
+    return parts[parts.length - 1] || field;
+}
+
 function normalizeChannel(channel: string): FeedChannel {
     const value = channel.toLowerCase();
     if (value === 'google' || value === 'meta' || value === 'pinterest' || value === 'similar') {
@@ -104,23 +212,23 @@ function normalizeChannel(channel: string): FeedChannel {
     throw new Error('Unsupported feed channel');
 }
 
-function getSourceValue(sourceField: string, product: any): string | null {
+function getSourceValue(sourceField: string, product: any, account?: FeedAccountContext): string | null {
     switch (sourceField) {
         case 'wooId': return String(product.wooId);
+        case 'itemGroupId': return String(product.wooId);
         case 'name': return product.name || null;
-        case 'description': return product.rawData?.description || null;
-        case 'short_description': return product.rawData?.short_description || null;
+        case 'description': return stripHtml(product.rawData?.description);
+        case 'short_description': return stripHtml(product.rawData?.short_description);
         case 'permalink': return product.permalink || product.rawData?.permalink || null;
+        case 'canonicalLink': return product.permalink || product.rawData?.permalink || null;
         case 'mainImage': return product.mainImage || product.rawData?.images?.[0]?.src || null;
-        case 'price': return product.price != null ? `${product.price}` : (product.rawData?.price || null);
+        case 'videoLink': return getVideoLink(product.rawData);
+        case 'price': return formatFeedPrice(product.price ?? product.rawData?.price, account?.currency);
         case 'stockStatus': {
             const status = product.stockStatus || product.rawData?.stock_status;
-            if (!status) return null;
-            if (status === 'instock') return 'in stock';
-            if (status === 'outofstock') return 'out of stock';
-            return String(status);
+            return normalizeStockStatus(status);
         }
-        case 'brand': return product.rawData?.brands?.[0]?.name || product.rawData?.brand || null;
+        case 'brand': return getBrand(product.rawData, account);
         case 'additionalImages': {
             const images = Array.isArray(product.rawData?.images) ? product.rawData.images.slice(1) : [];
             const urls = images.map((img: any) => img?.src).filter(Boolean);
@@ -128,18 +236,21 @@ function getSourceValue(sourceField: string, product: any): string | null {
         }
         case 'condition': return product.rawData?.condition || 'new';
         case 'googleProductCategory': return product.rawData?.google_product_category || product.rawData?.googleProductCategory || null;
-        case 'productType': return product.rawData?.product_type || product.rawData?.productType || null;
+        case 'productType': return getProductType(product.rawData);
         case 'gtin': return product.rawData?.gtin || product.rawData?._gtin || null;
-        case 'mpn': return product.rawData?.mpn || product.rawData?._mpn || null;
-        case 'salePrice': return product.rawData?.sale_price || null;
+        case 'mpn': return product.rawData?.mpn || product.rawData?._mpn || product.sku || null;
+        case 'salePrice': return formatFeedPrice(product.rawData?.sale_price, account?.currency);
         case 'salePriceEffectiveDate': return product.rawData?.sale_price_effective_date || null;
+        case 'storeCode': return '1';
+        case 'identifierExists': return 'yes';
         default: return null;
     }
 }
 
-function getVariationSourceValue(sourceField: string, variation: any, parent: any): string | null {
+function getVariationSourceValue(sourceField: string, variation: any, parent: any, account?: FeedAccountContext): string | null {
     switch (sourceField) {
         case 'wooId': return `${parent.wooId}-${variation.wooId}`;
+        case 'itemGroupId': return String(parent.wooId);
         case 'name': {
             const attrs = Array.isArray(variation.rawData?.attributes)
                 ? variation.rawData.attributes
@@ -149,19 +260,18 @@ function getVariationSourceValue(sourceField: string, variation: any, parent: an
                 : '';
             return attrs ? `${parent.name} - ${attrs}` : parent.name;
         }
-        case 'description': return variation.rawData?.description || parent.rawData?.description || null;
-        case 'short_description': return variation.rawData?.short_description || parent.rawData?.short_description || null;
+        case 'description': return stripHtml(variation.rawData?.description || parent.rawData?.description);
+        case 'short_description': return stripHtml(variation.rawData?.short_description || parent.rawData?.short_description);
         case 'permalink': return variation.rawData?.permalink || parent.permalink || parent.rawData?.permalink || null;
+        case 'canonicalLink': return parent.permalink || parent.rawData?.permalink || null;
         case 'mainImage': return variation.rawData?.image?.src || parent.mainImage || parent.rawData?.images?.[0]?.src || null;
-        case 'price': return variation.price != null ? `${variation.price}` : (variation.rawData?.price || (parent.price != null ? `${parent.price}` : null));
+        case 'videoLink': return getVideoLink(variation.rawData) || getVideoLink(parent.rawData);
+        case 'price': return formatFeedPrice(variation.price ?? variation.rawData?.price ?? parent.price ?? parent.rawData?.price, account?.currency);
         case 'stockStatus': {
             const status = variation.stockStatus || variation.rawData?.stock_status || parent.stockStatus || parent.rawData?.stock_status;
-            if (!status) return null;
-            if (status === 'instock') return 'in stock';
-            if (status === 'outofstock') return 'out of stock';
-            return String(status);
+            return normalizeStockStatus(status);
         }
-        case 'brand': return parent.rawData?.brands?.[0]?.name || parent.rawData?.brand || null;
+        case 'brand': return getBrand(parent.rawData, account);
         case 'additionalImages': {
             const variationImage = variation.rawData?.image?.src;
             const parentImages = Array.isArray(parent.rawData?.images) ? parent.rawData.images.slice(1) : [];
@@ -171,11 +281,13 @@ function getVariationSourceValue(sourceField: string, variation: any, parent: an
         }
         case 'condition': return variation.rawData?.condition || parent.rawData?.condition || 'new';
         case 'googleProductCategory': return variation.rawData?.google_product_category || parent.rawData?.google_product_category || null;
-        case 'productType': return variation.rawData?.product_type || parent.rawData?.product_type || null;
+        case 'productType': return getProductType(variation.rawData) || getProductType(parent.rawData);
         case 'gtin': return variation.rawData?.gtin || variation.rawData?._gtin || parent.rawData?.gtin || parent.rawData?._gtin || null;
-        case 'mpn': return variation.rawData?.mpn || variation.rawData?._mpn || parent.rawData?.mpn || parent.rawData?._mpn || null;
-        case 'salePrice': return variation.rawData?.sale_price || parent.rawData?.sale_price || null;
+        case 'mpn': return variation.rawData?.mpn || variation.rawData?._mpn || variation.sku || parent.rawData?.mpn || parent.rawData?._mpn || parent.sku || null;
+        case 'salePrice': return formatFeedPrice(variation.rawData?.sale_price || parent.rawData?.sale_price, account?.currency);
         case 'salePriceEffectiveDate': return variation.rawData?.sale_price_effective_date || parent.rawData?.sale_price_effective_date || null;
+        case 'storeCode': return '1';
+        case 'identifierExists': return 'yes';
         default: return null;
     }
 }
@@ -275,11 +387,22 @@ export class FeedMappingService {
             }
 
             const productTitle = values.get('title') || row.name || `Product ${row.wooId}`;
-            const description = values.get('description') || '';
+            const description = stripHtml(values.get('description')) || '';
             const link = values.get('link') || '';
 
             const gFields = Array.from(values.entries())
-                .map(([key, value]) => `    <g:${key}>${xmlEscape(value)}</g:${key}>`)
+                .flatMap(([key, value]) => {
+                    const fieldValue = key === 'description' ? (stripHtml(value) || '') : value;
+                    if (key === 'additional_image_link') {
+                        return fieldValue
+                            .split(/[,\n]/)
+                            .map((item) => item.trim())
+                            .filter(Boolean)
+                            .map((item) => `    <g:${key}>${xmlEscape(item)}</g:${key}>`);
+                    }
+
+                    return [`    <g:${key}>${xmlEscape(fieldValue)}</g:${key}>`];
+                })
                 .join('\n');
 
             return [
@@ -355,7 +478,7 @@ export class FeedMappingService {
         });
 
         const config = (feature?.config || {}) as FeedFeatureConfig;
-        return config.mappings?.[channel] || DEFAULT_MAPPINGS[channel];
+        return mergeMappingsWithDefaults(channel, config.mappings?.[channel]);
     }
 
     static async saveMappings(accountId: string, channelInput: string, mappings: FeedFieldMapping[]): Promise<FeedFieldMapping[]> {
@@ -366,11 +489,19 @@ export class FeedMappingService {
         });
 
         const existingConfig = (feature?.config || {}) as FeedFeatureConfig;
+        const currentMappings = mergeMappingsWithDefaults(channel, existingConfig.mappings?.[channel]);
+        const currentLockedMappings = new Map(
+            currentMappings
+                .filter((mapping) => LOCKED_FEED_FIELDS.has(mapping.targetField))
+                .map((mapping) => [mapping.targetField, mapping]),
+        );
+        const sanitizedMappings = mappings.map((mapping) => currentLockedMappings.get(mapping.targetField) || mapping);
+
         const nextConfig: FeedFeatureConfig = {
             ...existingConfig,
             mappings: {
                 ...(existingConfig.mappings || {}),
-                [channel]: mappings,
+                [channel]: sanitizedMappings,
             },
         };
 
@@ -385,7 +516,7 @@ export class FeedMappingService {
             },
         });
 
-        return mappings;
+        return sanitizedMappings;
     }
 
     static async getRefreshMode(accountId: string, channelInput: string): Promise<FeedRefreshMode> {
@@ -453,6 +584,11 @@ export class FeedMappingService {
         const includeParents = variationMode === 'variable_parent' || variationMode === 'variable_and_variations';
         const includeVariations = variationMode !== 'variable_parent';
 
+        const account = await prisma.account.findUnique({
+            where: { id: accountId },
+            select: { name: true, currency: true },
+        });
+
         const products = await prisma.wooProduct.findMany({
                 where,
                 select: {
@@ -517,7 +653,7 @@ export class FeedMappingService {
                     sku: product.sku,
                     name: product.name,
                     channel,
-                    columns: mapColumns((sourceField) => getSourceValue(sourceField, product)),
+                    columns: mapColumns((sourceField) => getSourceValue(sourceField, product, account || undefined)),
                 });
             }
 
@@ -556,7 +692,7 @@ export class FeedMappingService {
                         sku: variation.sku || product.sku,
                         name: getVariationSourceValue('name', variation, product),
                         channel,
-                        columns: mapColumns((sourceField) => getVariationSourceValue(sourceField, variation, product), variationId),
+                        columns: mapColumns((sourceField) => getVariationSourceValue(sourceField, variation, product, account || undefined), variationId),
                     });
                 });
             }
@@ -679,6 +815,8 @@ export class FeedMappingService {
         const currentChannelOverrides = (feedOverrides[channel] || {}) as Record<string, string>;
 
         Object.entries(fields).forEach(([key, value]) => {
+            if (LOCKED_FEED_FIELDS.has(getBaseTargetField(key))) return;
+
             if (value == null || value.trim() === '') {
                 delete currentChannelOverrides[key];
             } else {

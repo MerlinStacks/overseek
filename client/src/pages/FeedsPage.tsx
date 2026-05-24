@@ -35,6 +35,13 @@ interface FeedRowsResponse {
     mappings: Array<{ targetField: string; required?: boolean }>;
 }
 
+interface FeedMapping {
+    targetField: string;
+    sourceField: string;
+    fallbackSourceField?: string;
+    required?: boolean;
+}
+
 interface FeedExportUrlsResponse {
     urls: Record<FeedChannel, string>;
 }
@@ -44,6 +51,31 @@ const BULK_WARN_THRESHOLD = 1000;
 const BULK_HIGH_WARN_THRESHOLD = 10000;
 const FEEDS_UI_STATE_KEY = 'overseek:feeds:ui-state:v1';
 const FEEDS_EDIT_DRAFT_KEY = 'overseek:feeds:edit-draft:v1';
+const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
+const SOURCE_FIELD_OPTIONS = [
+    { value: 'wooId', label: 'Product ID' },
+    { value: 'name', label: 'Product name' },
+    { value: 'description', label: 'Description' },
+    { value: 'short_description', label: 'Short description' },
+    { value: 'permalink', label: 'Product URL' },
+    { value: 'canonicalLink', label: 'Canonical URL' },
+    { value: 'mainImage', label: 'Main image' },
+    { value: 'additionalImages', label: 'Additional images' },
+    { value: 'videoLink', label: 'Video URL' },
+    { value: 'price', label: 'Price' },
+    { value: 'salePrice', label: 'Sale price' },
+    { value: 'stockStatus', label: 'Stock status' },
+    { value: 'brand', label: 'Brand' },
+    { value: 'condition', label: 'Condition' },
+    { value: 'googleProductCategory', label: 'Google category' },
+    { value: 'productType', label: 'Product type' },
+    { value: 'gtin', label: 'GTIN' },
+    { value: 'mpn', label: 'MPN / SKU' },
+    { value: 'itemGroupId', label: 'Parent group ID' },
+    { value: 'storeCode', label: 'Store code' },
+    { value: 'identifierExists', label: 'Identifier exists' },
+    { value: 'salePriceEffectiveDate', label: 'Sale price dates' },
+];
 const VARIATION_MODES: { value: VariationMode; label: string }[] = [
     { value: 'all_variations', label: 'All Variations' },
     { value: 'variable_parent', label: 'Variable Products (Parent)' },
@@ -71,6 +103,7 @@ export function FeedsPage() {
     const [pageInput, setPageInput] = useState('1');
     const [isSelectingAllMatching, setIsSelectingAllMatching] = useState(false);
     const [allMatchingSelected, setAllMatchingSelected] = useState(false);
+    const [mappingDraft, setMappingDraft] = useState<FeedMapping[]>([]);
 
     const headers = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
@@ -95,6 +128,32 @@ export function FeedsPage() {
             const res = await fetch(`/api/feeds/refresh-mode/${activeChannel}`, { headers });
             if (!res.ok) throw new Error('Failed to fetch refresh mode');
             return res.json();
+        },
+    });
+
+    const { data: mappingsData, isLoading: mappingsLoading, refetch: refetchMappings } = useApiQuery<{ channel: FeedChannel; mappings: FeedMapping[] }>({
+        queryKey: ['feed-mappings', activeChannel, currentAccount?.id],
+        enabled: !!token && !!currentAccount?.id,
+        queryFn: async () => {
+            const res = await fetch(`/api/feeds/mappings/${activeChannel}`, { headers });
+            if (!res.ok) throw new Error('Failed to fetch feed mappings');
+            return res.json();
+        },
+    });
+
+    const { mutateAsync: saveMappings, isPending: isSavingMappings } = useApiMutation<
+        { channel: FeedChannel; mappings: FeedMapping[] },
+        { mappings: FeedMapping[] }
+    >({
+        mutationFn: async (payload) => {
+            const res = await fetch(`/api/feeds/mappings/${activeChannel}`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Failed to save feed mappings');
+            return data;
         },
     });
 
@@ -187,7 +246,10 @@ export function FeedsPage() {
         },
     });
 
-    const { mutateAsync: optimizeRow, isPending: isOptimizingRow } = useApiMutation<{ success: boolean }, { row: FeedRow; fields: string[] }>({
+    const { mutateAsync: optimizeRow, isPending: isOptimizingRow } = useApiMutation<
+        { success: boolean; suggestions?: Record<string, string> },
+        { row: FeedRow; fields: string[] }
+    >({
         mutationFn: async ({ row, fields }) => {
             const res = await fetch(`/api/feeds/${activeChannel}/rows/${row.wooId}/optimize`, {
                 method: 'POST',
@@ -325,10 +387,22 @@ export function FeedsPage() {
         setPageInput(String(page));
     }, [page]);
 
+    useEffect(() => {
+        setMappingDraft(mappingsData?.mappings || []);
+    }, [mappingsData?.mappings]);
+
     const getColumn = (row: FeedRow, field: string) => row.columns.find((c) => c.targetField === field);
     const canAiOptimizeField = (field: string) => field === 'title' || field === 'description';
+    const isLockedFeedField = (field: string) => LOCKED_FEED_FIELDS.has(field);
+
+    const updateMappingDraft = (targetField: string, patch: Partial<FeedMapping>) => {
+        setMappingDraft((current) => current.map((mapping) => (
+            mapping.targetField === targetField ? { ...mapping, ...patch } : mapping
+        )));
+    };
 
     const startEditing = (row: FeedRow, field: string, value: string | null) => {
+        if (isLockedFeedField(field)) return;
         setEditingCell({ channel: activeChannel, rowId: row.rowId, field });
         setEditingValue(value || '');
     };
@@ -340,6 +414,7 @@ export function FeedsPage() {
     };
 
     const saveEditing = async (row: FeedRow, field: string) => {
+        if (isLockedFeedField(field)) return;
         await saveCellValue({ row, field, value: editingValue });
         cancelEditing();
         await refetchRows();
@@ -582,6 +657,107 @@ export function FeedsPage() {
                             </button>
                             <span className="text-xs text-slate-500 dark:text-slate-400">Current: {maxBulkOptimizeRows.toLocaleString()}</span>
                         </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                            <div>
+                                <h2 className="text-base font-semibold text-slate-900 dark:text-white">Column mapping ({activeChannel})</h2>
+                                <p className="text-xs text-slate-600 dark:text-slate-400">
+                                    Choose which product data feeds each catalog field. Product ID and MPN/SKU are locked to protect identifiers.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                disabled={isSavingMappings || mappingsLoading || mappingDraft.length === 0}
+                                className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
+                                onClick={async () => {
+                                    try {
+                                        const saved = await saveMappings({ mappings: mappingDraft });
+                                        setMappingDraft(saved.mappings);
+                                        await refetchMappings();
+                                        await refetchRows();
+                                        toast.success('Feed mappings saved.');
+                                    } catch (error: any) {
+                                        toast.error(error?.message || 'Failed to save feed mappings');
+                                    }
+                                }}
+                            >
+                                Save mappings
+                            </button>
+                        </div>
+
+                        {mappingsLoading ? (
+                            <p className="text-sm text-slate-600 dark:text-slate-400">Loading mappings...</p>
+                        ) : (
+                            <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                                <table className="min-w-full text-sm">
+                                    <thead className="bg-slate-50 dark:bg-slate-700/60">
+                                        <tr>
+                                            <th className="text-left py-2 px-3">Catalog field</th>
+                                            <th className="text-left py-2 px-3">Source value</th>
+                                            <th className="text-left py-2 px-3">Fallback</th>
+                                            <th className="text-left py-2 px-3">Required</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {mappingDraft.map((mapping) => {
+                                            const locked = isLockedFeedField(mapping.targetField);
+                                            return (
+                                                <tr key={mapping.targetField} className="border-t border-slate-100 dark:border-slate-700/60">
+                                                    <td className="py-2 px-3 font-mono text-xs text-slate-700 dark:text-slate-200">
+                                                        {mapping.targetField}
+                                                        {mapping.targetField === 'custom_label_0' ? (
+                                                            <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-sans text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
+                                                                editable label
+                                                            </span>
+                                                        ) : null}
+                                                        {locked ? (
+                                                            <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-sans text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                                                locked
+                                                            </span>
+                                                        ) : null}
+                                                    </td>
+                                                    <td className="py-2 px-3">
+                                                        <select
+                                                            className="w-52 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 disabled:opacity-60"
+                                                            value={mapping.sourceField}
+                                                            disabled={locked}
+                                                            onChange={(e) => updateMappingDraft(mapping.targetField, { sourceField: e.target.value })}
+                                                        >
+                                                            {SOURCE_FIELD_OPTIONS.map((option) => (
+                                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="py-2 px-3">
+                                                        <select
+                                                            className="w-52 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 disabled:opacity-60"
+                                                            value={mapping.fallbackSourceField || ''}
+                                                            disabled={locked}
+                                                            onChange={(e) => updateMappingDraft(mapping.targetField, { fallbackSourceField: e.target.value || undefined })}
+                                                        >
+                                                            <option value="">None</option>
+                                                            {SOURCE_FIELD_OPTIONS.map((option) => (
+                                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="py-2 px-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!mapping.required}
+                                                            disabled={locked}
+                                                            onChange={(e) => updateMappingDraft(mapping.targetField, { required: e.target.checked })}
+                                                        />
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -834,6 +1010,7 @@ export function FeedsPage() {
                                                     editingCell?.channel === activeChannel
                                                     && editingCell?.rowId === row.rowId
                                                     && editingCell?.field === field;
+                                                const locked = isLockedFeedField(field);
                                                 const isLongText = field === 'description' || value.length > 120;
                                                 const displayValue = value || '-';
 
@@ -867,7 +1044,11 @@ export function FeedsPage() {
                                                                         className="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
                                                                         onClick={async () => {
                                                                             try {
-                                                                                await optimizeRow({ row, fields: [field] });
+                                                                                const data = await optimizeRow({ row, fields: [field] });
+                                                                                const suggestion = data?.suggestions?.[field];
+                                                                                if (typeof suggestion === 'string' && suggestion.trim()) {
+                                                                                    setEditingValue(suggestion.trim());
+                                                                                }
                                                                                 await refetchRows();
                                                                                 toast.success(`AI suggestion updated for ${field}.`);
                                                                             } catch (error: any) {
@@ -882,7 +1063,8 @@ export function FeedsPage() {
                                                         ) : (
                                                             <button
                                                                 type="button"
-                                                                className={`text-left w-full ${isLongText ? 'truncate' : 'truncate'} ${column?.isMissingRequired ? 'text-rose-600 dark:text-rose-400' : 'hover:underline'}`}
+                                                                disabled={locked}
+                                                                className={`text-left w-full ${isLongText ? 'truncate' : 'truncate'} ${locked ? 'cursor-not-allowed text-slate-500 dark:text-slate-400' : column?.isMissingRequired ? 'text-rose-600 dark:text-rose-400' : 'hover:underline'}`}
                                                                 onClick={() => startEditing(row, field, value)}
                                                                 onDoubleClick={() => {
                                                                     if (field === 'description') {

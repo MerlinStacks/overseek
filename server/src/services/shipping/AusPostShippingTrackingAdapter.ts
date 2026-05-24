@@ -57,13 +57,6 @@ export interface AusPostRateRequest {
     selectedServiceCode?: string | null;
 }
 
-const GENERIC_RATE_PROBE_SERVICE_CODES = [
-    'AUS_PARCEL_REGULAR',
-    'AUS_PARCEL_EXPRESS',
-    'AUS_PARCEL_REGULAR_SIGNATURE',
-    'AUS_PARCEL_EXPRESS_SIGNATURE',
-];
-
 export interface AusPostLabelRequest extends AusPostRateRequest {
     order: Record<string, unknown>;
     senderAddress: Record<string, unknown>;
@@ -515,7 +508,6 @@ class AusPostShippingTrackingAdapter {
             credentials.defaultDomesticService,
             credentials.defaultExpressService,
             ...this.expressCounterpartCodes(baselineRates),
-            ...GENERIC_RATE_PROBE_SERVICE_CODES,
         ].filter((serviceCode): serviceCode is string => Boolean(serviceCode && serviceCode !== baselineCode))));
     }
 
@@ -524,8 +516,7 @@ class AusPostShippingTrackingAdapter {
             .map((rate) => this.stringConfig(rate.productId) || this.stringConfig(rate.product_id))
             .flatMap((code) => {
                 if (!code) return [];
-                if (/^3J/.test(code)) return [code.replace(/^3J/, '7J')];
-                if (/^3D/.test(code)) return [code.replace(/^3D/, '7E')];
+                if (/^3D/.test(code)) return [code.replace(/^3D/, '3J')];
                 return [];
             });
     }

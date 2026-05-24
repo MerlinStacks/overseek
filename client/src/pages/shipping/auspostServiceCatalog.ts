@@ -40,10 +40,14 @@ const AUSPOST_NATURAL_LABELS: Record<string, string> = {
     AUS_PARCEL_REGULAR_SIGNATURE: 'Parcel Post with Signature',
     AUS_PARCEL_EXPRESS_SIGNATURE: 'Express Post with Signature',
     S87384: 'Express Post',
-    '3D55': 'Parcel Post satchel',
-    '3D61': 'Parcel Post satchel',
-    '3D67': 'Parcel Post satchel',
-    '3D73': 'Parcel Post satchel',
+    '3D55': 'Parcel Post + Signature',
+    '3D61': 'Parcel Post + Signature',
+    '3D67': 'Parcel Post + Signature',
+    '3D73': 'Parcel Post + Signature',
+    '3J55': 'Express Post + Signature',
+    '3J61': 'Express Post + Signature',
+    '3J67': 'Express Post + Signature',
+    '3J73': 'Express Post + Signature',
     '7E55': 'Express Post satchel',
     '7E61': 'Express Post satchel',
     '7E67': 'Express Post satchel',
@@ -64,6 +68,9 @@ function looksLikeCode(value: string) {
 function inferAusPostServiceLabel(code: string) {
     const match = code.match(/^([37])([A-Z])(55|61|67|73)$/);
     if (!match) return null;
+
+    if (match[1] === '3' && match[2] === 'D') return 'Parcel Post + Signature';
+    if (match[1] === '3' && match[2] === 'J') return 'Express Post + Signature';
 
     const service = match[1] === '7' ? 'Express Post' : 'Parcel Post';
     const packageType = match[2] === 'D' || match[2] === 'E' ? ' satchel' : '';
