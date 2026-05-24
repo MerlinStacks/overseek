@@ -35,19 +35,30 @@ interface TrackingEventPayload {
     };
 }
 
-function normalizeShipmentStatus(raw?: string): ShipmentStatus | null {
-    if (!raw) return null;
-    const value = raw.trim().toLowerCase();
-    switch (value) {
-        case 'in_transit':
-        case 'out_for_delivery':
-        case 'delivery_attempted':
-        case 'delivered':
-        case 'exception':
-            return value;
-        default:
-            return null;
+export function normalizeShipmentStatus(...values: Array<string | undefined>): ShipmentStatus | null {
+    const nonEmptyValues = values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    if (nonEmptyValues.length === 0) return null;
+
+    for (const rawValue of nonEmptyValues) {
+        const value = rawValue.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        switch (value) {
+            case 'in_transit':
+            case 'out_for_delivery':
+            case 'delivery_attempted':
+            case 'delivered':
+            case 'exception':
+                return value;
+        }
     }
+
+    const text = nonEmptyValues.join(' ').trim().toLowerCase();
+    if (/(out for delivery|onboard for delivery|on board for delivery)/.test(text)) return 'out_for_delivery';
+    if (/(delivery attempted|attempted delivery|card left|awaiting collection|collection point)/.test(text)) return 'delivery_attempted';
+    if (/(delivered|successfully delivered)/.test(text)) return 'delivered';
+    if (/(exception|delay|delayed|held|return to sender|returned|damaged|lost|address issue|failed)/.test(text)) return 'exception';
+    if (/(in transit|transit|processed|sorted|transferred|facility|depot|lodged|accepted|picked up|pickup|received by carrier)/.test(text)) return 'in_transit';
+
+    return null;
 }
 
 function mapStatusToTrigger(status: ShipmentStatus): { eventName: string; triggerType: string } {
@@ -94,8 +105,15 @@ const trackingEmailEventsRoutes: FastifyPluginAsync = async (fastify) => {
             }
         }
 
-        const normalizedStatus = normalizeShipmentStatus(event.event_status);
+        const normalizedStatus = normalizeShipmentStatus(event.event_status, event.event_name, event.description);
         if (!normalizedStatus) {
+            Logger.warn('[TrackingEmailEvents] Shipment event skipped: unsupported status', {
+                accountId,
+                eventStatus: event.event_status || null,
+                eventName: event.event_name || null,
+                description: event.description || null,
+                trackingNumber: event.tracking_number || null,
+            });
             return reply.code(202).send({ success: false, skipped: true, reason: 'unsupported_event_status' });
         }
 
@@ -132,6 +150,7 @@ const trackingEmailEventsRoutes: FastifyPluginAsync = async (fastify) => {
             orderId: event.order_id ?? null,
             trackingNumber: event.tracking_number || null,
             eventStatus: normalizedStatus,
+            hasCustomerEmail: Boolean(event.customer_email),
         });
 
         return reply.code(202).send({ success: true, accepted: true, triggerType: mapped.triggerType });
