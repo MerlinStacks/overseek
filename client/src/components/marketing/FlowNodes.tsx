@@ -79,7 +79,7 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
                 onAddStep={onAddStep}
                 onCopy={onCopy}
                 onDelete={onDelete}
-                statOrder={['queued', 'completed', 'skipped', 'failed']}
+                statOrder={['completed']}
                 onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
                 issues={issues}
@@ -129,7 +129,7 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                 showAddButton={!isExitNode}
                 onCopy={onCopy}
                 onDelete={onDelete}
-                statOrder={['queued', 'completed', 'skipped', 'failed']}
+                statOrder={isExitNode ? ['completed', 'skipped'] : ['queued', 'completed', 'skipped', 'failed']}
                 onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
                 issues={issues}
@@ -192,7 +192,7 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
                 onAddStep={onAddStep}
                 onCopy={onCopy}
                 onDelete={onDelete}
-                statOrder={['queued', 'completed', 'skipped', 'failed']}
+                statOrder={['queued', 'completed', 'skipped']}
                 onStatsClick={() => onViewAnalytics?.(id)}
                 density={density}
                 issues={issues}

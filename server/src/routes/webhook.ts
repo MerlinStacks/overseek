@@ -202,7 +202,36 @@ export async function processWebhookPayload(
     }
 
     // Handle Product Events
+    if (topic === 'product.deleted') {
+        try {
+            const wooId = body.id as number;
+            await prisma.wooProduct.deleteMany({ where: { accountId, wooId } });
+            await IndexingService.deleteProduct(accountId, wooId);
+            Logger.info('Processed product.deleted webhook', { productId: wooId, accountId });
+        } catch (err: any) {
+            Logger.warn('[Webhook] Failed to delete product on product.deleted', {
+                accountId,
+                productId: body.id,
+                error: err.message
+            });
+        }
+    }
+
     if (topic === 'product.created' || topic === 'product.updated') {
+        const isTrashed = (body as { status?: string }).status === 'trash';
+
+        if (isTrashed) {
+            try {
+                const wooId = body.id as number;
+                await prisma.wooProduct.deleteMany({ where: { accountId, wooId } });
+                await IndexingService.deleteProduct(accountId, wooId);
+                Logger.info('Processed trashed product webhook as delete', { productId: wooId, accountId });
+            } catch (err: any) {
+                Logger.warn('[Webhook] Failed to delete trashed product', { accountId, productId: body.id, error: err.message });
+            }
+            return;
+        }
+
         // Why upsert first: indexing in ES without persisting to Postgres causes
         // data drift — ES shows data that the DB doesn't know about until next sync.
         try {

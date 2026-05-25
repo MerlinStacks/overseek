@@ -16,6 +16,7 @@
         "mock:reset": "npx ts-node src/scripts/resetMockData.ts"
     },
     "dependencies": {
+        "@fontsource/noto-emoji": "^5.2.11",
         "@overseek/core": "1.0.0",
         "@bull-board/api": "^6.16.2",
         "@bull-board/fastify": "^6.16.2",

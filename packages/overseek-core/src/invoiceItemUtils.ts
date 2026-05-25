@@ -3,6 +3,81 @@
  * WooCommerce metadata often contains raw HTML entities that should display as symbols.
  */
 export const decodeInvoiceEntities = (text: string): string => {
+  const namedEntities: Record<string, string> = {
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    nbsp: ' ',
+    ensp: ' ',
+    emsp: ' ',
+    copy: '(c)',
+    reg: '(r)',
+    trade: 'TM',
+    euro: 'EUR',
+    pound: 'GBP',
+    yen: 'JPY',
+    cent: 'cent',
+    deg: 'deg',
+    hellip: '...',
+    ndash: '-',
+    mdash: '-',
+    lsquo: "'",
+    rsquo: "'",
+    ldquo: '"',
+    rdquo: '"',
+    bull: '*',
+    middot: '*',
+    eacute: 'e',
+    egrave: 'e',
+    ecirc: 'e',
+    euml: 'e',
+    aacute: 'a',
+    agrave: 'a',
+    acirc: 'a',
+    atilde: 'a',
+    auml: 'a',
+    iacute: 'i',
+    igrave: 'i',
+    icirc: 'i',
+    iuml: 'i',
+    oacute: 'o',
+    ograve: 'o',
+    ocirc: 'o',
+    otilde: 'o',
+    ouml: 'o',
+    uacute: 'u',
+    ugrave: 'u',
+    ucirc: 'u',
+    uuml: 'u',
+    ntilde: 'n',
+    ccedil: 'c',
+    Eacute: 'E',
+    Egrave: 'E',
+    Ecirc: 'E',
+    Euml: 'E',
+    Aacute: 'A',
+    Agrave: 'A',
+    Acirc: 'A',
+    Atilde: 'A',
+    Auml: 'A',
+    Iacute: 'I',
+    Igrave: 'I',
+    Icirc: 'I',
+    Iuml: 'I',
+    Oacute: 'O',
+    Ograve: 'O',
+    Ocirc: 'O',
+    Otilde: 'O',
+    Ouml: 'O',
+    Uacute: 'U',
+    Ugrave: 'U',
+    Ucirc: 'U',
+    Uuml: 'U',
+    Ntilde: 'N',
+    Ccedil: 'C',
+  };
   const decodeNumericEntity = (rawCode: string, radix: number, fallback: string) => {
     const codePoint = Number.parseInt(rawCode, radix);
     if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
@@ -19,11 +94,7 @@ export const decodeInvoiceEntities = (text: string): string => {
   return text
     .replace(/&#(\d+);/g, (match, code) => decodeNumericEntity(code, 10, match))
     .replace(/&#x([0-9a-fA-F]+);/g, (match, code) => decodeNumericEntity(code, 16, match))
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+    .replace(/&([a-zA-Z][a-zA-Z0-9]+);?/g, (match, name) => namedEntities[name] ?? match);
 };
 
 const sanitizeInvoiceDisplayText = (text: string): string => {

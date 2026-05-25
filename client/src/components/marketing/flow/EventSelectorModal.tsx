@@ -68,6 +68,16 @@ const EVENTS_BY_CATEGORY: Record<string, { subcategory?: string; events: EventIt
                 { id: 'REVIEW_LEFT', label: 'Review Left', icon: 'Star' },
             ]
         },
+        {
+            subcategory: 'Artwork',
+            events: [
+                { id: 'ARTWORK_UPLOADED', label: 'Artwork Uploaded', icon: 'Sparkles' },
+                { id: 'ARTWORK_APPROVAL_REQUESTED', label: 'Artwork Approval Requested', icon: 'MailOpen' },
+                { id: 'ARTWORK_APPROVED', label: 'Artwork Approved', icon: 'Check' },
+                { id: 'ARTWORK_CHANGES_REQUESTED', label: 'Artwork Changes Requested', icon: 'Alert' },
+                { id: 'ARTWORK_OVERRIDE_USED', label: 'Artwork Override Used', icon: 'Ban' },
+            ]
+        },
     ],
     shipping: [
         {

@@ -53,6 +53,85 @@ const ADDRESS_COMPARE_FIELDS = [
 ] as const;
 
 const normalizeAddressValue = (value: unknown) => String(value || '').trim().toLowerCase();
+const EMOJI_FONT_FAMILY = 'NotoEmojiFallback';
+
+let emojiFontRegistered = false;
+
+const ensureEmojiFont = (doc: PDFKit.PDFDocument) => {
+    if (emojiFontRegistered) return;
+    try {
+        const emojiFontPath = require.resolve('@fontsource/noto-emoji/files/noto-emoji-emoji-400-normal.woff');
+        doc.registerFont(EMOJI_FONT_FAMILY, emojiFontPath);
+        emojiFontRegistered = true;
+    } catch (error) {
+        Logger.warn('[InvoiceService] Emoji fallback font unavailable', { error });
+    }
+};
+
+const splitTextByEmoji = (text: string): Array<{ text: string; emoji: boolean }> => {
+    const chunks: Array<{ text: string; emoji: boolean }> = [];
+    const segmenter = typeof Intl !== 'undefined' && (Intl as any).Segmenter
+        ? new (Intl as any).Segmenter(undefined, { granularity: 'grapheme' })
+        : null;
+    const graphemes: string[] = segmenter
+        ? Array.from(segmenter.segment(text), (entry: any) => String(entry.segment))
+        : Array.from(text);
+
+    for (const grapheme of graphemes) {
+        const isEmoji = /\p{Extended_Pictographic}/u.test(grapheme);
+        const last = chunks[chunks.length - 1];
+        if (last && last.emoji === isEmoji) {
+            last.text += grapheme;
+            continue;
+        }
+        chunks.push({ text: grapheme, emoji: isEmoji });
+    }
+    return chunks;
+};
+
+const drawTextWithEmojiSupport = (
+    doc: PDFKit.PDFDocument,
+    value: string,
+    x: number,
+    y: number,
+    options: PDFKit.Mixins.TextOptions,
+    baseFont: string
+) => {
+    const text = normalizePdfText(value);
+    if (!text) return;
+    ensureEmojiFont(doc);
+    const chunks = splitTextByEmoji(text);
+    const hasEmojiChunk = emojiFontRegistered && chunks.some((chunk) => chunk.emoji);
+    if (!hasEmojiChunk) {
+        doc.font(baseFont).text(text, x, y, options);
+        return;
+    }
+
+    chunks.forEach((chunk, index) => {
+        const isLast = index === chunks.length - 1;
+        const fontName = chunk.emoji ? EMOJI_FONT_FAMILY : baseFont;
+        doc.font(fontName);
+        if (index === 0) {
+            doc.text(chunk.text, x, y, { ...options, continued: !isLast });
+        } else {
+            doc.text(chunk.text, { continued: !isLast });
+        }
+    });
+};
+
+const normalizePdfText = (value: unknown): string => {
+    const decoded = decodeInvoiceEntities(String(value ?? ''));
+    return decoded
+        .replace(/\u00A0/g, ' ')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/\u2026/g, '...')
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+        .replace(/[ \t\f\v]+/g, ' ')
+        .replace(/\r\n/g, '\n')
+        .trimEnd();
+};
 
 const hasAddressFields = (address: Record<string, unknown>) => {
     return ADDRESS_COMPARE_FIELDS.some((field) => normalizeAddressValue(address[field]).length > 0);
@@ -746,8 +825,9 @@ export class InvoiceService {
                                 } else {
                                     doc.font('Helvetica').fillColor('black');
                                 }
-                                doc.text(text, columnX, y, { width: textWidth });
-                                const usedHeight = Math.max(lineStep, doc.heightOfString(text, { width: textWidth }));
+                                const safeText = normalizePdfText(text);
+                                drawTextWithEmojiSupport(doc, safeText, columnX, y, { width: textWidth }, bold ? 'Helvetica-Bold' : 'Helvetica');
+                                const usedHeight = Math.max(lineStep, doc.heightOfString(safeText, { width: textWidth }));
                                 y += usedHeight + 1;
                             };
 
@@ -814,10 +894,10 @@ export class InvoiceService {
                             : formatDate(order.createdAt);
 
                         const detailsData: Array<{ label: string; value: string; highlight: boolean }> = [
-                            { label: 'Order Number:', value: decodeInvoiceEntities(String(order.number)), highlight: false },
-                            { label: 'Order Date:', value: decodeInvoiceEntities(String(orderDate)), highlight: false },
-                            { label: 'Payment Method:', value: decodeInvoiceEntities(String(paymentMethod)), highlight: false },
-                            { label: 'Shipping Method:', value: decodeInvoiceEntities(String(shippingMethod)), highlight: false },
+                            { label: 'Order Number:', value: normalizePdfText(order.number), highlight: false },
+                            { label: 'Order Date:', value: normalizePdfText(orderDate), highlight: false },
+                            { label: 'Payment Method:', value: normalizePdfText(paymentMethod), highlight: false },
+                            { label: 'Shipping Method:', value: normalizePdfText(shippingMethod), highlight: false },
                         ];
                         if (giftWrapMeta) {
                             detailsData.push({
@@ -832,7 +912,7 @@ export class InvoiceService {
                         const detailValueWidth = Math.max(140, width - detailLabelWidth - 6);
                         const detailLineGap = 3;
                         detailsData.forEach((detail) => {
-                            const safeValue = String(detail.value ?? 'N/A');
+                            const safeValue = normalizePdfText(detail.value ?? 'N/A');
 
                             doc.font('Helvetica').fontSize(9);
                             const labelHeight = doc.heightOfString(detail.label, { width: detailLabelWidth });
@@ -848,9 +928,8 @@ export class InvoiceService {
                             }
 
                             doc.font('Helvetica').fillColor('black').fontSize(9).text(detail.label, x, detY, { width: detailLabelWidth });
-                            doc.font('Helvetica-Bold').fillColor('black').fontSize(9).text(safeValue, x + detailLabelWidth + 6, detY, {
-                                width: detailValueWidth
-                            });
+                            doc.fillColor('black').fontSize(9);
+                            drawTextWithEmojiSupport(doc, safeValue, x + detailLabelWidth + 6, detY, { width: detailValueWidth }, 'Helvetica-Bold');
 
                             detY += rowHeight + detailLineGap;
                         });
@@ -916,7 +995,7 @@ export class InvoiceService {
                         };
 
                         lineItems.forEach((item: any) => {
-                            const itemName = decodeInvoiceEntities(String(item.name || 'Product'));
+                            const itemName = normalizePdfText(item.name || 'Product');
                             const qty = item.quantity || 1;
                             const unitPrice = qty > 0 ? (parseFloat(item.total || 0) / qty) : 0;
                             const itemMeta = getInvoiceItemMeta(item)
@@ -933,7 +1012,7 @@ export class InvoiceService {
 
                             const titleHeight = Math.max(12, doc.heightOfString(itemName, { width: descWidth - 10 }));
                             const metaLineHeights = itemMeta.map((meta) => {
-                                const metaText = decodeInvoiceEntities(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
+                                const metaText = normalizePdfText(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
                                 return Math.max(
                                     10,
                                     doc.heightOfString(metaText, {
@@ -948,7 +1027,7 @@ export class InvoiceService {
                             const requiredRowHeight = titleHeight + metaSpacingHeight + metaHeight + rowBottomSpacing;
                             ensureSpaceForHeight(requiredRowHeight);
 
-                            doc.text(itemName, tableX, tableY, { width: descWidth - 10 });
+                            drawTextWithEmojiSupport(doc, itemName, tableX, tableY, { width: descWidth - 10 }, 'Helvetica');
                             doc.text(String(qty), tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
                             doc.text(formatCurrency(unitPrice), tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text(formatCurrency(item.total), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
@@ -960,15 +1039,10 @@ export class InvoiceService {
                                 tableY += 2;
                                 doc.fontSize(8).fillColor('black');
                                 itemMeta.forEach((meta, metaIdx) => {
-                                    const metaText = decodeInvoiceEntities(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
+                                    const metaText = normalizePdfText(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
                                     const metaLineHeight = metaLineHeights[metaIdx] || 10;
                                     ensureSpaceForHeight(metaLineHeight + rowBottomSpacing);
-                                    doc.text(
-                                        metaText,
-                                        tableX + 10,
-                                        tableY,
-                                        { width: descWidth - 20 }
-                                    );
+                                    drawTextWithEmojiSupport(doc, metaText, tableX + 10, tableY, { width: descWidth - 20 }, 'Helvetica');
                                     tableY += metaLineHeight;
                                 });
                                 doc.fillColor('black').fontSize(9);
@@ -1111,14 +1185,14 @@ export class InvoiceService {
                             order: { ...order, ...rawData },
                             invoice: invoiceContext || {}
                         };
-                        textContent = resolveInvoiceTemplateString(textContent, mergedContext);
+                        textContent = normalizePdfText(resolveInvoiceTemplateString(textContent, mergedContext));
 
                         const style = itemConfig.style || {};
                         doc.fontSize(parseInt(style.fontSize) || 10);
                         if (style.fontWeight === 'bold') doc.font('Helvetica-Bold');
                         else doc.font('Helvetica');
 
-                        doc.text(textContent, x, startY, { width, align: style.textAlign || 'left' });
+                        drawTextWithEmojiSupport(doc, textContent, x, startY, { width, align: style.textAlign || 'left' }, style.fontWeight === 'bold' ? 'Helvetica-Bold' : 'Helvetica');
                         blockHeight = doc.heightOfString(textContent, { width }) + 10;
                         break;
                     }
@@ -1154,8 +1228,8 @@ export class InvoiceService {
                         if (complianceSettings?.legalFooter) {
                             footerParts.push(String(complianceSettings.legalFooter));
                         }
-                        const footerText = footerParts.join('\n');
-                        doc.text(footerText, x, startY, { width, align: 'center' });
+                        const footerText = normalizePdfText(footerParts.join('\n'));
+                        drawTextWithEmojiSupport(doc, footerText, x, startY, { width, align: 'center' }, 'Helvetica');
                         blockHeight = doc.heightOfString(footerText, { width }) + 10;
                         break;
                     }

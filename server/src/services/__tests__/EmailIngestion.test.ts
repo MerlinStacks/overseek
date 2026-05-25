@@ -81,6 +81,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 import { EmailIngestion } from '../EmailIngestion';
+import { BlockedContactService } from '../BlockedContactService';
 
 describe('EmailIngestion', () => {
     beforeEach(() => {
@@ -231,6 +232,33 @@ describe('EmailIngestion', () => {
                         email: 'new.user@example.com'
                     }
                 }
+            })
+        );
+    });
+
+    it('closes conversation when blocked contact emails in', async () => {
+        vi.mocked(BlockedContactService.isBlocked).mockResolvedValue(true);
+
+        const io = {
+            to: vi.fn().mockReturnThis(),
+            emit: vi.fn()
+        } as any;
+
+        const addMessageFn = vi.fn().mockResolvedValue(undefined);
+        const ingestion = new EmailIngestion(io, addMessageFn);
+
+        await ingestion.handleIncomingEmail({
+            emailAccountId: 'email-account-1',
+            fromEmail: 'blocked@example.com',
+            subject: 'Still emailing',
+            body: 'Please reply',
+            messageId: '<message-blocked@domain.com>'
+        });
+
+        expect(mockConversationUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: { id: 'conv-1' },
+                data: expect.objectContaining({ status: 'CLOSED' })
             })
         );
     });

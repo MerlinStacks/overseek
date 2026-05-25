@@ -1,6 +1,8 @@
 import { prisma } from '../utils/prisma';
 
 export class AutomationAnalyticsService {
+    private static readonly SUPPORTED_NODE_STATUSES = ['queued', 'completed', 'skipped', 'failed'] as const;
+
     private getNodeOutcomeWhere(status: string) {
         if (status === 'failed') {
             return {
@@ -22,6 +24,13 @@ export class AutomationAnalyticsService {
                 { outcome: 'EMAIL_NOT_CONFIGURED' }
             ]
         };
+    }
+
+    private toOutcomeBucket(outcomeRaw: string | null | undefined): 'completed' | 'skipped' | 'failed' {
+        const outcome = String(outcomeRaw || '').toUpperCase();
+        if (outcome.includes('FAILED') || outcome === 'EMAIL_NOT_CONFIGURED') return 'failed';
+        if (outcome.includes('SKIPPED')) return 'skipped';
+        return 'completed';
     }
 
     async getAutomationAnalytics(accountId: string, automationId: string) {
@@ -220,10 +229,144 @@ export class AutomationAnalyticsService {
         });
     }
 
+    async getNodeStats(accountId: string, automationId: string, nodeIds?: string[]) {
+        const baseEnrollmentWhere = nodeIds && nodeIds.length > 0
+            ? { accountId, automationId, status: 'ACTIVE' as const, currentNodeId: { in: nodeIds } }
+            : { accountId, automationId, status: 'ACTIVE' as const };
+
+        const baseEventWhere = {
+            accountId,
+            automationId,
+            eventType: 'NODE_EXECUTED' as const,
+            nodeId: nodeIds && nodeIds.length > 0 ? { in: nodeIds } : { not: null }
+        };
+
+        const [queuedGroups, nodeEvents] = await Promise.all([
+            prisma.automationEnrollment.groupBy({
+                by: ['currentNodeId'],
+                where: baseEnrollmentWhere,
+                _count: true
+            }),
+            prisma.automationRunEvent.findMany({
+                where: baseEventWhere,
+                select: {
+                    nodeId: true,
+                    outcome: true
+                },
+                take: 10000
+            })
+        ]);
+
+        const result: Record<string, { queued: number; completed: number; skipped: number; failed: number }> = {};
+
+        for (const group of queuedGroups) {
+            const currentNodeId = group.currentNodeId;
+            if (!currentNodeId) continue;
+            result[currentNodeId] = result[currentNodeId] || { queued: 0, completed: 0, skipped: 0, failed: 0 };
+            result[currentNodeId].queued += group._count;
+        }
+
+        for (const event of nodeEvents) {
+            const eventNodeId = event.nodeId;
+            if (!eventNodeId) continue;
+            const bucket = this.toOutcomeBucket(event.outcome);
+            result[eventNodeId] = result[eventNodeId] || { queued: 0, completed: 0, skipped: 0, failed: 0 };
+            result[eventNodeId][bucket] += 1;
+        }
+
+        return result;
+    }
+
     async getNodeAnalytics(accountId: string, automationId: string, nodeId: string, status = 'completed', page = 1, perPage = 10) {
         const safePage = Math.max(1, page);
         const safePerPage = Math.min(100, Math.max(1, perPage));
-        const normalizedStatus = ['completed', 'skipped', 'failed'].includes(status) ? status : 'completed';
+        const normalizedStatus = (AutomationAnalyticsService.SUPPORTED_NODE_STATUSES as readonly string[]).includes(status) ? status : 'completed';
+
+        if (normalizedStatus === 'queued') {
+            const [queued, completed, skipped, failed, total, enrollments] = await Promise.all([
+                prisma.automationEnrollment.count({ where: { accountId, automationId, currentNodeId: nodeId, status: 'ACTIVE' } }),
+                prisma.automationRunEvent.count({ where: { accountId, automationId, nodeId, eventType: 'NODE_EXECUTED', ...this.getNodeOutcomeWhere('completed') } }),
+                prisma.automationRunEvent.count({ where: { accountId, automationId, nodeId, eventType: 'NODE_EXECUTED', ...this.getNodeOutcomeWhere('skipped') } }),
+                prisma.automationRunEvent.count({ where: { accountId, automationId, nodeId, eventType: 'NODE_EXECUTED', ...this.getNodeOutcomeWhere('failed') } }),
+                prisma.automationEnrollment.count({ where: { accountId, automationId, currentNodeId: nodeId, status: 'ACTIVE' } }),
+                prisma.automationEnrollment.findMany({
+                    where: { accountId, automationId, currentNodeId: nodeId, status: 'ACTIVE' },
+                    orderBy: { updatedAt: 'desc' },
+                    skip: (safePage - 1) * safePerPage,
+                    take: safePerPage,
+                    select: {
+                        id: true,
+                        email: true,
+                        nextRunAt: true,
+                        updatedAt: true,
+                        contextData: true,
+                        triggerEntityId: true
+                    }
+                })
+            ]);
+
+            const enrollmentIds = enrollments.map((enrollment) => enrollment.id);
+            const journeyEvents = enrollmentIds.length > 0
+                ? await prisma.automationRunEvent.findMany({
+                    where: {
+                        accountId,
+                        automationId,
+                        enrollmentId: { in: enrollmentIds }
+                    },
+                    orderBy: { createdAt: 'asc' },
+                    select: {
+                        enrollmentId: true,
+                        nodeId: true,
+                        eventType: true,
+                        outcome: true,
+                        createdAt: true
+                    }
+                })
+                : [];
+
+            const journeysByEnrollment = journeyEvents.reduce<Record<string, typeof journeyEvents>>((accumulator, event) => {
+                accumulator[event.enrollmentId] = accumulator[event.enrollmentId] || [];
+                accumulator[event.enrollmentId].push(event);
+                return accumulator;
+            }, {});
+
+            const contacts = enrollments.map((enrollment) => {
+                const context = (enrollment.contextData as Record<string, any> | null) || {};
+                const billing = context.billing || {};
+                const firstName = context.first_name || context.firstName || billing.first_name || billing.firstName || '';
+                const lastName = context.last_name || context.lastName || billing.last_name || billing.lastName || '';
+                const name = [firstName, lastName].filter(Boolean).join(' ').trim()
+                    || context.name
+                    || billing.name
+                    || enrollment.email;
+
+                return {
+                    id: enrollment.id,
+                    enrollmentId: enrollment.id,
+                    name,
+                    email: enrollment.email,
+                    outcome: 'QUEUED',
+                    occurredAt: enrollment.nextRunAt || enrollment.updatedAt,
+                    triggerEntityId: enrollment.triggerEntityId,
+                    metadata: null,
+                    journey: journeysByEnrollment[enrollment.id] || []
+                };
+            });
+
+            return {
+                nodeId,
+                status: normalizedStatus,
+                counts: { queued, completed, skipped, failed },
+                pagination: {
+                    page: safePage,
+                    perPage: safePerPage,
+                    total,
+                    totalPages: Math.max(1, Math.ceil(total / safePerPage))
+                },
+                contacts
+            };
+        }
+
         const baseWhere = {
             accountId,
             automationId,
@@ -232,7 +375,8 @@ export class AutomationAnalyticsService {
         };
         const statusWhere = this.getNodeOutcomeWhere(normalizedStatus);
 
-        const [completed, skipped, failed, total, events] = await Promise.all([
+        const [queued, completed, skipped, failed, total, events] = await Promise.all([
+            prisma.automationEnrollment.count({ where: { accountId, automationId, currentNodeId: nodeId, status: 'ACTIVE' } }),
             prisma.automationRunEvent.count({ where: { ...baseWhere, ...this.getNodeOutcomeWhere('completed') } }),
             prisma.automationRunEvent.count({ where: { ...baseWhere, ...this.getNodeOutcomeWhere('skipped') } }),
             prisma.automationRunEvent.count({ where: { ...baseWhere, ...this.getNodeOutcomeWhere('failed') } }),
@@ -310,7 +454,7 @@ export class AutomationAnalyticsService {
         return {
             nodeId,
             status: normalizedStatus,
-            counts: { completed, skipped, failed },
+            counts: { queued, completed, skipped, failed },
             pagination: {
                 page: safePage,
                 perPage: safePerPage,

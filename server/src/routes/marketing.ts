@@ -275,6 +275,24 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get<{ Params: { id: string }; Querystring: { nodeIds?: string } }>(
+        '/automations/:id/node-stats',
+        async (request, reply) => {
+            try {
+                const nodeIds = request.query.nodeIds
+                    ? request.query.nodeIds.split(',').map((value) => value.trim()).filter(Boolean)
+                    : undefined;
+                return await service.getAutomationNodeStats(request.params.id, getAccountId(request), nodeIds);
+            } catch (e) {
+                const message = (e as Error).message;
+                if (message === 'Automation not found') {
+                    return reply.code(404).send({ error: message });
+                }
+                return sendInternalError(reply, e, 'Marketing route failed');
+            }
+        }
+    );
+
     fastify.get<{ Params: { id: string; nodeId: string }; Querystring: { status?: string; page?: string; perPage?: string } }>(
         '/automations/:id/nodes/:nodeId/analytics',
         async (request, reply) => {

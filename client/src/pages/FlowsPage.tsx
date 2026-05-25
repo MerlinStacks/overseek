@@ -205,7 +205,7 @@ interface RunEventRow {
     createdAt: string;
 }
 
-type NodeAnalyticsStatus = 'completed' | 'skipped' | 'failed';
+type NodeAnalyticsStatus = 'queued' | 'completed' | 'skipped' | 'failed';
 
 interface NodeAnalyticsResponse {
     nodeId: string;
@@ -336,6 +336,35 @@ export function FlowsPage() {
         const node = editingFlowData?.flowDefinition?.nodes?.find((candidate) => candidate.id === nodeId);
         const data = node?.data as { label?: string; config?: { subject?: string; actionType?: string } } | undefined;
         return data?.label || data?.config?.subject || data?.config?.actionType || `Node ${nodeId}`;
+    }, [editingFlowData?.flowDefinition?.nodes]);
+
+    const getNodeSupportedStatuses = useCallback((nodeId: string | null): NodeAnalyticsStatus[] => {
+        const allStatuses: NodeAnalyticsStatus[] = ['queued', 'completed', 'skipped', 'failed'];
+        if (!nodeId) return allStatuses;
+        const node = editingFlowData?.flowDefinition?.nodes?.find((candidate) => candidate.id === nodeId);
+        if (!node) return allStatuses;
+
+        if (node.type === 'trigger') {
+            return ['completed'];
+        }
+
+        if (node.type === 'action') {
+            const config = (node.data as { config?: { actionType?: string } } | undefined)?.config;
+            if (config?.actionType === 'EXIT') {
+                return ['completed', 'skipped'];
+            }
+            return allStatuses;
+        }
+
+        if (node.type === 'delay') {
+            return allStatuses;
+        }
+
+        if (node.type === 'condition') {
+            return ['queued', 'completed', 'skipped'];
+        }
+
+        return allStatuses;
     }, [editingFlowData?.flowDefinition?.nodes]);
 
     const openNodeAnalytics = useCallback((nodeId: string) => {
@@ -688,6 +717,13 @@ export function FlowsPage() {
         const loadNodeAnalytics = async () => {
             if (!editingItem || !currentAccount || !token || !nodeAnalyticsNodeId) return;
 
+            const supportedStatuses = getNodeSupportedStatuses(nodeAnalyticsNodeId);
+            if (!supportedStatuses.includes(nodeAnalyticsStatus)) {
+                setNodeAnalyticsStatus(supportedStatuses[0] || 'completed');
+                setNodeAnalyticsPage(1);
+                return;
+            }
+
             setIsNodeAnalyticsLoading(true);
             try {
                 const params = new URLSearchParams({
@@ -706,7 +742,36 @@ export function FlowsPage() {
                     throw new Error('Failed to load node analytics');
                 }
 
-                setNodeAnalytics(await res.json());
+                const analyticsPayload = await res.json() as NodeAnalyticsResponse;
+                setNodeAnalytics(analyticsPayload);
+                setEditingFlowData((previous) => {
+                    if (!previous?.flowDefinition?.nodes) return previous;
+                    const updatedNodes = previous.flowDefinition.nodes.map((node) => {
+                        if (node.id !== nodeAnalyticsNodeId) return node;
+                        const currentData = (node.data as Record<string, unknown> | undefined) || {};
+                        const currentStats = (currentData.stats as Record<string, number> | undefined) || {};
+                        return {
+                            ...node,
+                            data: {
+                                ...currentData,
+                                stats: {
+                                    ...currentStats,
+                                    queued: analyticsPayload.counts.queued || 0,
+                                    completed: analyticsPayload.counts.completed || 0,
+                                    skipped: analyticsPayload.counts.skipped || 0,
+                                    failed: analyticsPayload.counts.failed || 0,
+                                }
+                            }
+                        };
+                    });
+                    return {
+                        ...previous,
+                        flowDefinition: {
+                            ...previous.flowDefinition,
+                            nodes: updatedNodes,
+                        }
+                    };
+                });
             } catch (error) {
                 Logger.error('Failed to load node analytics', { error });
                 showToast('Failed to load node analytics.');
@@ -716,7 +781,62 @@ export function FlowsPage() {
         };
 
         loadNodeAnalytics();
-    }, [currentAccount, editingItem, nodeAnalyticsNodeId, nodeAnalyticsPage, nodeAnalyticsStatus, token]);
+    }, [currentAccount, editingItem, getNodeSupportedStatuses, nodeAnalyticsNodeId, nodeAnalyticsPage, nodeAnalyticsStatus, token]);
+
+    useEffect(() => {
+        const loadNodeStats = async () => {
+            if (!editingItem || !currentAccount || !token || !editingFlowData?.flowDefinition?.nodes?.length) return;
+
+            const nodeIds = editingFlowData.flowDefinition.nodes.map((node) => node.id).filter(Boolean);
+            if (nodeIds.length === 0) return;
+
+            try {
+                const params = new URLSearchParams({ nodeIds: nodeIds.join(',') });
+                const res = await fetch(`/api/marketing/automations/${editingItem.id}/node-stats?${params.toString()}`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'x-account-id': currentAccount.id
+                    }
+                });
+                if (!res.ok) return;
+
+                const statsByNode = await res.json() as Record<string, { queued: number; completed: number; skipped: number; failed: number }>;
+                setEditingFlowData((previous) => {
+                    if (!previous?.flowDefinition?.nodes) return previous;
+                    const updatedNodes = previous.flowDefinition.nodes.map((node) => {
+                        const nodeStats = statsByNode[node.id];
+                        if (!nodeStats) return node;
+                        const currentData = (node.data as Record<string, unknown> | undefined) || {};
+                        const currentStats = (currentData.stats as Record<string, number> | undefined) || {};
+                        return {
+                            ...node,
+                            data: {
+                                ...currentData,
+                                stats: {
+                                    ...currentStats,
+                                    queued: nodeStats.queued || 0,
+                                    completed: nodeStats.completed || 0,
+                                    skipped: nodeStats.skipped || 0,
+                                    failed: nodeStats.failed || 0,
+                                }
+                            }
+                        };
+                    });
+                    return {
+                        ...previous,
+                        flowDefinition: {
+                            ...previous.flowDefinition,
+                            nodes: updatedNodes,
+                        }
+                    };
+                });
+            } catch (error) {
+                Logger.warn('Failed to load node stats summary', { error, flowId: editingItem.id });
+            }
+        };
+
+        loadNodeStats();
+    }, [currentAccount, editingFlowData?.flowDefinition?.nodes, editingItem, token]);
 
     const handleRestoreDraft = () => {
         if (!recoveryPrompt || !editingFlowData) return;
@@ -1062,8 +1182,8 @@ export function FlowsPage() {
                     maxWidth="max-w-4xl"
                 >
                     <div className="space-y-5">
-                        <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
-                            {(['completed', 'skipped', 'failed'] as NodeAnalyticsStatus[]).map((status) => {
+                        <div className={`grid overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 ${getNodeSupportedStatuses(nodeAnalyticsNodeId).length === 4 ? 'grid-cols-4' : getNodeSupportedStatuses(nodeAnalyticsNodeId).length === 3 ? 'grid-cols-3' : getNodeSupportedStatuses(nodeAnalyticsNodeId).length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                            {getNodeSupportedStatuses(nodeAnalyticsNodeId).map((status) => {
                                 const count = nodeAnalytics?.counts?.[status] ?? 0;
                                 const isActive = nodeAnalyticsStatus === status;
                                 return (
@@ -1094,7 +1214,7 @@ export function FlowsPage() {
                                     <tr>
                                         <th className="px-4 py-3 font-semibold">Name</th>
                                         <th className="px-4 py-3 font-semibold">Email</th>
-                                        <th className="px-4 py-3 font-semibold">{nodeAnalyticsStatus === 'completed' ? 'Completed On' : nodeAnalyticsStatus === 'skipped' ? 'Skipped On' : 'Failed On'}</th>
+                                        <th className="px-4 py-3 font-semibold">{nodeAnalyticsStatus === 'queued' ? 'Queued On' : nodeAnalyticsStatus === 'completed' ? 'Completed On' : nodeAnalyticsStatus === 'skipped' ? 'Skipped On' : 'Failed On'}</th>
                                         <th className="px-4 py-3 font-semibold">Outcome</th>
                                         <th className="px-4 py-3 font-semibold text-right">Journey</th>
                                     </tr>

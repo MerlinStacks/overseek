@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotificationEngine } from '../NotificationEngine';
 import { prisma } from '../../utils/prisma';
 import { PushNotificationService } from '../PushNotificationService';
+import { canonicalInvoiceAttachmentService } from '../CanonicalInvoiceAttachmentService';
 
 // Mock prisma - note: actual implementation uses prisma.notification, not inAppNotification
 vi.mock('../../utils/prisma', () => ({
@@ -18,7 +19,26 @@ vi.mock('../../utils/prisma', () => ({
         notificationDelivery: {
             create: vi.fn(),
         },
+        account: {
+            findUnique: vi.fn(),
+        },
     }
+}));
+
+vi.mock('../../utils/getDefaultEmailAccount', () => ({
+    getDefaultEmailAccount: vi.fn().mockResolvedValue({ id: 'email_account_1' }),
+}));
+
+vi.mock('../EmailService', () => ({
+    EmailService: class {
+        sendEmail = vi.fn().mockResolvedValue({ id: 'email_1' });
+    },
+}));
+
+vi.mock('../CanonicalInvoiceAttachmentService', () => ({
+    canonicalInvoiceAttachmentService: {
+        resolveAbsolutePath: vi.fn(),
+    },
 }));
 
 // Mock logger
@@ -117,6 +137,54 @@ describe('NotificationEngine', () => {
                     order: { number: '1234' }
                 })
             ).resolves.not.toThrow();
+        });
+
+        it('should not send invoice email for pending payment orders', async () => {
+            (prisma.notification.create as any).mockResolvedValue({ id: 'notif_1' });
+            (prisma.notificationDelivery.create as any).mockResolvedValue({});
+            (PushNotificationService.sendToAccountWithDiagnostics as any).mockResolvedValue({
+                sent: 0,
+                failed: 0,
+                diagnostics: {}
+            });
+
+            await (NotificationEngine as any).handleOrderCreated({
+                accountId: 'acc_123',
+                order: {
+                    id: 'order_1',
+                    number: '1234',
+                    status: 'pending',
+                    total: '150.00',
+                    line_items: []
+                }
+            });
+
+            expect(prisma.account.findUnique).not.toHaveBeenCalled();
+            expect(canonicalInvoiceAttachmentService.resolveAbsolutePath).not.toHaveBeenCalled();
+        });
+
+        it('should not send invoice email for failed orders', async () => {
+            (prisma.notification.create as any).mockResolvedValue({ id: 'notif_1' });
+            (prisma.notificationDelivery.create as any).mockResolvedValue({});
+            (PushNotificationService.sendToAccountWithDiagnostics as any).mockResolvedValue({
+                sent: 0,
+                failed: 0,
+                diagnostics: {}
+            });
+
+            await (NotificationEngine as any).handleOrderCreated({
+                accountId: 'acc_123',
+                order: {
+                    id: 'order_1',
+                    number: '1234',
+                    status: 'failed',
+                    total: '150.00',
+                    line_items: []
+                }
+            });
+
+            expect(prisma.account.findUnique).not.toHaveBeenCalled();
+            expect(canonicalInvoiceAttachmentService.resolveAbsolutePath).not.toHaveBeenCalled();
         });
     });
 

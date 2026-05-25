@@ -36,6 +36,9 @@ export async function getManagedStockProducts(accountId: string): Promise<Manage
     const result: ManagedProduct[] = [];
 
     for (const p of products) {
+        const parentStatus = (p.rawData as { status?: string } | null)?.status;
+        if (parentStatus === 'trash') continue;
+
         const hasParentBOM = p.boms.some(bom => bom.variationId === 0 && bom.items.length > 0);
         const anyVariationHasBOM = p.variations.some(v =>
             p.boms.some(bom => bom.variationId === v.wooId && bom.items.length > 0)
@@ -65,6 +68,9 @@ export async function getManagedStockProducts(accountId: string): Promise<Manage
         if (hasParentBOM) continue;
 
         for (const v of p.variations) {
+            const variationStatus = (v.rawData as { status?: string } | null)?.status;
+            if (variationStatus === 'trash') continue;
+
             const variationHasBOM = p.boms.some(bom => bom.variationId === v.wooId && bom.items.length > 0);
             if (variationHasBOM) continue;
 

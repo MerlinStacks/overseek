@@ -14,6 +14,7 @@ import { getIO } from '../socket';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { EmailService } from './EmailService';
 import { canonicalInvoiceAttachmentService } from './CanonicalInvoiceAttachmentService';
+import { normalizeOrderStatus } from '../constants/orderStatus';
 
 interface NotificationConfig {
     accountId: string;
@@ -41,6 +42,7 @@ interface NotificationConfig {
 export class NotificationEngine {
     private static initialized = false;
     private static readonly emailService = new EmailService();
+    private static readonly INVOICE_EMAIL_ORDER_STATUSES = new Set(['processing', 'completed']);
 
     /**
      * Initialize the notification engine by subscribing to all notification-worthy events.
@@ -184,6 +186,16 @@ export class NotificationEngine {
         const { accountId, order, orderNumber, total } = args;
 
         try {
+            const orderStatus = normalizeOrderStatus(order?.status).replace(/^wc-/, '');
+            if (!this.INVOICE_EMAIL_ORDER_STATUSES.has(orderStatus)) {
+                Logger.info('[NotificationEngine] Invoice email skipped: order status is not invoice-eligible', {
+                    accountId,
+                    orderId: order?.id,
+                    status: order?.status,
+                });
+                return;
+            }
+
             const account = await prisma.account.findUnique({
                 where: { id: accountId },
                 select: {

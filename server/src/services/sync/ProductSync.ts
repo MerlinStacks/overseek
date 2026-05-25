@@ -354,6 +354,56 @@ export class ProductSync extends BaseSync {
             }
         }
 
+        // Incremental sync does not reconcile untouched products, so explicitly
+        // remove products currently in WooCommerce trash.
+        try {
+            let trashPage = 1;
+            let hasMoreTrash = true;
+            let trashedWooIds: number[] = [];
+
+            while (hasMoreTrash) {
+                const { data: trashedProducts, totalPages } = await woo.getProducts({
+                    page: trashPage,
+                    per_page: 100,
+                    status: 'trash'
+                });
+
+                if (!trashedProducts.length) break;
+
+                trashedWooIds.push(...trashedProducts.map((p: any) => Number(p.id)).filter((id: number) => Number.isFinite(id)));
+                hasMoreTrash = trashPage < totalPages;
+                trashPage++;
+            }
+
+            trashedWooIds = Array.from(new Set(trashedWooIds));
+
+            if (trashedWooIds.length > 0) {
+                const staleProducts = await prisma.wooProduct.findMany({
+                    where: { accountId, wooId: { in: trashedWooIds } },
+                    select: { wooId: true }
+                });
+
+                if (staleProducts.length > 0) {
+                    await Promise.allSettled(staleProducts.map(p => IndexingService.deleteProduct(accountId, p.wooId)));
+                    const { count } = await prisma.wooProduct.deleteMany({
+                        where: { accountId, wooId: { in: staleProducts.map(p => p.wooId) } }
+                    });
+                    totalDeleted += count;
+                    Logger.info('Deleted trashed WooCommerce products during sync', {
+                        accountId,
+                        syncId,
+                        deletedCount: count
+                    });
+                }
+            }
+        } catch (error: any) {
+            Logger.warn('Failed to reconcile trashed WooCommerce products', {
+                accountId,
+                syncId,
+                error: error.message
+            });
+        }
+
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }
 }
