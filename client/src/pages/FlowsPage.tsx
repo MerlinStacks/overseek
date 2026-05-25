@@ -41,6 +41,11 @@ interface FlowDraftPayload {
 }
 
 type SaveIndicatorState = 'saved' | 'saving' | 'unsaved' | 'error';
+type NodeStats = { queued: number; completed: number; skipped: number; failed: number };
+
+const AUTOSAVE_DEFAULT_RETRY_MS = 500;
+const AUTOSAVE_ERROR_RETRY_MS = 2000;
+const AUTOSAVE_RATE_LIMIT_RETRY_MS = 5000;
 
 const RENDER_ONLY_FLOW_KEYS = new Set([
     'onAddStep',
@@ -59,6 +64,13 @@ function areStringArraysEqual(left: string[], right: string[]): boolean {
         if (left[index] !== right[index]) return false;
     }
     return true;
+}
+
+function areNodeStatsEqual(current: Record<string, number> | undefined, next: NodeStats): boolean {
+    return (current?.queued || 0) === (next.queued || 0)
+        && (current?.completed || 0) === (next.completed || 0)
+        && (current?.skipped || 0) === (next.skipped || 0)
+        && (current?.failed || 0) === (next.failed || 0);
 }
 
 function sanitizeFlowDefinition(flow: FlowDefinition): FlowDefinition {
@@ -361,8 +373,11 @@ export function FlowsPage() {
     const latestSerializedFlowRef = useRef<string>('');
     const autosaveInFlightRef = useRef(false);
     const autosaveAgainRef = useRef(false);
+    const autosaveRetryDelayRef = useRef(AUTOSAVE_DEFAULT_RETRY_MS);
+    const autosaveCooldownUntilRef = useRef(0);
     const renameInputRef = useRef<HTMLInputElement | null>(null);
     const shouldCommitRenameOnBlurRef = useRef(true);
+    const nodeStatsNodeIds = (editingFlowData?.flowDefinition?.nodes || []).map((node) => node.id).filter(Boolean).join(',');
 
     const showToast = (message: string, type: ToastType = 'error') => {
         setToastMessage(message);
@@ -552,6 +567,17 @@ export function FlowsPage() {
             return;
         }
 
+        const cooldownRemainingMs = autosaveCooldownUntilRef.current - Date.now();
+        if (cooldownRemainingMs > 0) {
+            setSaveState('unsaved');
+            if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = window.setTimeout(() => {
+                autosaveTimerRef.current = null;
+                void persistLatestFlow();
+            }, cooldownRemainingMs);
+            return;
+        }
+
         autosaveInFlightRef.current = true;
         setSaveState('saving');
         setSaveErrorMessage(null);
@@ -592,6 +618,8 @@ export function FlowsPage() {
             }
 
             const updated: FlowRecord = await res.json();
+            autosaveRetryDelayRef.current = AUTOSAVE_DEFAULT_RETRY_MS;
+            autosaveCooldownUntilRef.current = 0;
             setEditingFlowData((previous) => previous ? {
                 ...previous,
                 ...updated,
@@ -615,6 +643,12 @@ export function FlowsPage() {
             Logger.error('Failed to autosave flow', { error });
             setSaveErrorMessage(error instanceof Error ? error.message : 'Unknown error');
             setSaveState('error');
+            const isRateLimited = error instanceof Error && (error.message.includes('429') || error.message.toLowerCase().includes('too many requests'));
+            autosaveRetryDelayRef.current = isRateLimited ? AUTOSAVE_RATE_LIMIT_RETRY_MS : AUTOSAVE_ERROR_RETRY_MS;
+            if (isRateLimited) {
+                autosaveCooldownUntilRef.current = Date.now() + AUTOSAVE_RATE_LIMIT_RETRY_MS;
+                autosaveAgainRef.current = true;
+            }
         } finally {
             autosaveInFlightRef.current = false;
             if (autosaveAgainRef.current) {
@@ -623,7 +657,7 @@ export function FlowsPage() {
                 autosaveTimerRef.current = window.setTimeout(() => {
                     autosaveTimerRef.current = null;
                     void persistLatestFlow();
-                }, 500);
+                }, autosaveRetryDelayRef.current);
             }
         }
     }, [currentAccount, editingFlowData, editingItem, getDraftKey, token]);
@@ -940,15 +974,18 @@ export function FlowsPage() {
     }, [currentAccount, editingItem, getNodeSupportedStatuses, nodeAnalyticsNodeId, nodeAnalyticsPage, nodeAnalyticsStatus, token]);
 
     useEffect(() => {
-        const loadNodeStats = async () => {
-            if (!editingItem || !currentAccount || !token || !editingFlowData?.flowDefinition?.nodes?.length) return;
+        const controller = new AbortController();
 
-            const nodeIds = editingFlowData.flowDefinition.nodes.map((node) => node.id).filter(Boolean);
+        const loadNodeStats = async () => {
+            if (!editingItem || !currentAccount || !token || !nodeStatsNodeIds) return;
+
+            const nodeIds = nodeStatsNodeIds.split(',').filter(Boolean);
             if (nodeIds.length === 0) return;
 
             try {
                 const params = new URLSearchParams({ nodeIds: nodeIds.join(',') });
                 const res = await fetch(`/api/marketing/automations/${editingItem.id}/node-stats?${params.toString()}`, {
+                    signal: controller.signal,
                     headers: {
                         Authorization: `Bearer ${token}`,
                         'x-account-id': currentAccount.id
@@ -956,14 +993,17 @@ export function FlowsPage() {
                 });
                 if (!res.ok) return;
 
-                const statsByNode = await res.json() as Record<string, { queued: number; completed: number; skipped: number; failed: number }>;
+                const statsByNode = await res.json() as Record<string, NodeStats>;
                 setEditingFlowData((previous) => {
                     if (!previous?.flowDefinition?.nodes) return previous;
+                    let changed = false;
                     const updatedNodes = previous.flowDefinition.nodes.map((node) => {
                         const nodeStats = statsByNode[node.id];
                         if (!nodeStats) return node;
                         const currentData = (node.data as Record<string, unknown> | undefined) || {};
                         const currentStats = (currentData.stats as Record<string, number> | undefined) || {};
+                        if (areNodeStatsEqual(currentStats, nodeStats)) return node;
+                        changed = true;
                         return {
                             ...node,
                             data: {
@@ -978,6 +1018,7 @@ export function FlowsPage() {
                             }
                         };
                     });
+                    if (!changed) return previous;
                     return {
                         ...previous,
                         flowDefinition: {
@@ -987,12 +1028,15 @@ export function FlowsPage() {
                     };
                 });
             } catch (error) {
+                if (error instanceof Error && error.name === 'AbortError') return;
                 Logger.warn('Failed to load node stats summary', { error, flowId: editingItem.id });
             }
         };
 
         loadNodeStats();
-    }, [currentAccount, editingFlowData?.flowDefinition?.nodes, editingItem, token]);
+
+        return () => controller.abort();
+    }, [currentAccount, editingItem, nodeStatsNodeIds, token]);
 
     const handleRestoreDraft = () => {
         if (!recoveryPrompt || !editingFlowData) return;
