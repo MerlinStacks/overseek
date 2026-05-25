@@ -14,6 +14,24 @@ interface SyncJob {
     data: unknown;
 }
 
+function normalizeJobProgress(progress: unknown): number {
+    if (typeof progress === 'number' && Number.isFinite(progress)) {
+        return Math.max(0, Math.min(100, Math.round(progress)));
+    }
+
+    if (progress && typeof progress === 'object') {
+        const { current, total } = progress as { current?: unknown; total?: unknown };
+        const currentValue = Number(current || 0);
+        const totalValue = Number(total || 0);
+
+        if (Number.isFinite(currentValue) && Number.isFinite(totalValue) && totalValue > 0) {
+            return Math.max(0, Math.min(100, Math.round((currentValue / totalValue) * 100)));
+        }
+    }
+
+    return 0;
+}
+
 export interface SyncLog {
     id: string;
     entityType: string;
@@ -108,8 +126,11 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
             const res = await fetch(url.toString(), { headers: h });
             if (res.ok) {
                 const data = await res.json();
-                setActiveJobs(data);
-                setIsSyncing(data.length > 0);
+                const jobs = Array.isArray(data)
+                    ? data.map((job) => ({ ...job, progress: normalizeJobProgress(job?.progress) }))
+                    : [];
+                setActiveJobs(jobs);
+                setIsSyncing(jobs.length > 0);
             }
 
             // Fetch health (includes enriched logs with retry info)

@@ -14,6 +14,24 @@ import { SyncScheduler } from '../services/scheduler/SyncScheduler';
 
 const syncService = new SyncService();
 
+function normalizeJobProgress(progress: unknown): number {
+    if (typeof progress === 'number' && Number.isFinite(progress)) {
+        return Math.max(0, Math.min(100, Math.round(progress)));
+    }
+
+    if (progress && typeof progress === 'object') {
+        const { current, total } = progress as { current?: unknown; total?: unknown };
+        const currentValue = Number(current || 0);
+        const totalValue = Number(total || 0);
+
+        if (Number.isFinite(currentValue) && Number.isFinite(totalValue) && totalValue > 0) {
+            return Math.max(0, Math.min(100, Math.round((currentValue / totalValue) * 100)));
+        }
+    }
+
+    return 0;
+}
+
 const syncRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
@@ -81,7 +99,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                         activeJobs.push({
                             id: job.id,
                             queue: name,
-                            progress: job.progress,
+                            progress: normalizeJobProgress(job.progress),
                             data: job.data
                         });
                     }

@@ -76,8 +76,9 @@ export function OrderStatusTabs({ selectedStatus, onStatusChange }: OrderStatusT
     }, [currentAccount, token]);
 
     const tabs = useMemo(() => {
-        const dynamicStatuses = Object.keys(statusCounts?.counts || {})
-            .map((status) => status.toLowerCase().trim())
+        const dynamicStatuses = Object.entries(statusCounts?.counts || {})
+            .filter(([, count]) => count > 0)
+            .map(([status]) => status.toLowerCase().trim())
             .filter((status) => status && !BASE_STATUS_SET.has(status));
 
         const selectedNormalized = selectedStatus.toLowerCase().trim();
@@ -87,8 +88,11 @@ export function OrderStatusTabs({ selectedStatus, onStatusChange }: OrderStatusT
 
         const uniqueDynamicStatuses = Array.from(new Set(dynamicStatuses)).sort((a, b) => a.localeCompare(b));
         const allStatuses = [...TAB_STATUSES, ...uniqueDynamicStatuses];
+        const visibleStatuses = statusCounts
+            ? allStatuses.filter((status) => status === 'all' || (statusCounts.counts[status] ?? 0) > 0)
+            : allStatuses;
 
-        return allStatuses.map(status => {
+        return visibleStatuses.map(status => {
             if (status === 'all') {
                 return {
                     value: 'all',

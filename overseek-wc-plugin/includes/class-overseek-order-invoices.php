@@ -44,6 +44,7 @@ class OverSeek_Order_Invoices
         $this->relay_api_key = (string) get_option('overseek_relay_api_key', '');
 
         add_action('woocommerce_order_status_processing', [$this, 'handle_processing_order'], 20, 1);
+        add_action('woocommerce_order_status_changed', [$this, 'handle_order_status_changed'], 20, 3);
         add_action('woocommerce_new_order', [$this, 'handle_new_order'], 20, 1);
         add_action(self::PROCESSING_HOOK, [$this, 'process_processing_order'], 10, 1);
         add_action(self::CLEANUP_HOOK, [$this, 'cleanup_private_invoices']);
@@ -112,6 +113,15 @@ class OverSeek_Order_Invoices
             $order->save();
             wp_schedule_single_event(time() + 2, self::PROCESSING_HOOK, [$order_id]);
         }
+    }
+
+    public function handle_order_status_changed(int $order_id, string $from_status, string $to_status): void
+    {
+        if ($this->normalize_order_status($to_status) !== 'processing') {
+            return;
+        }
+
+        $this->handle_processing_order($order_id);
     }
 
     public function process_processing_order(int $order_id): void

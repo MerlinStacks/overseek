@@ -2,7 +2,7 @@
  * FlowsPage - Dedicated page for automation flows (formerly "Automations" tab).
  * Part of the Growth menu in the sidebar.
  */
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowLeft, Redo2, Undo2 } from 'lucide-react';
 import type { Edge, Node } from '@xyflow/react';
 import { useSearchParams } from 'react-router-dom';
@@ -350,6 +350,9 @@ export function FlowsPage() {
     const [expandedJourneyEnrollmentId, setExpandedJourneyEnrollmentId] = useState<string | null>(null);
     const [activeEditorTab, setActiveEditorTab] = useState<'flow' | 'insights'>('flow');
     const [flowBuilderRevision, setFlowBuilderRevision] = useState(0);
+    const [isRenamingFlow, setIsRenamingFlow] = useState(false);
+    const [renameValue, setRenameValue] = useState('');
+    const [isSavingRename, setIsSavingRename] = useState(false);
 
     const baselineFlowRef = useRef<string>('');
     const autosaveTimerRef = useRef<number | null>(null);
@@ -358,6 +361,8 @@ export function FlowsPage() {
     const latestSerializedFlowRef = useRef<string>('');
     const autosaveInFlightRef = useRef(false);
     const autosaveAgainRef = useRef(false);
+    const renameInputRef = useRef<HTMLInputElement | null>(null);
+    const shouldCommitRenameOnBlurRef = useRef(true);
 
     const showToast = (message: string, type: ToastType = 'error') => {
         setToastMessage(message);
@@ -412,6 +417,12 @@ export function FlowsPage() {
         if (!currentAccount?.id) return null;
         return `overseek-flow-draft:${currentAccount.id}:${flowId}`;
     }, [currentAccount?.id]);
+
+    useEffect(() => {
+        if (!isRenamingFlow) return;
+        renameInputRef.current?.focus();
+        renameInputRef.current?.select();
+    }, [isRenamingFlow]);
 
     const serializeFlow = (flow: FlowDefinition | null | undefined) => {
         if (!flow) return JSON.stringify({ nodes: [], edges: [] });
@@ -662,6 +673,114 @@ export function FlowsPage() {
             void persistLatestFlow();
         }, 1000);
     }, [editingItem, editingFlowData, getDraftKey, persistLatestFlow]);
+
+    const handleStartRenameFlow = () => {
+        if (!editingItem || isSavingRename) return;
+        shouldCommitRenameOnBlurRef.current = true;
+        setRenameValue(editingItem.name);
+        setIsRenamingFlow(true);
+    };
+
+    const handleCancelRenameFlow = () => {
+        shouldCommitRenameOnBlurRef.current = false;
+        setIsRenamingFlow(false);
+        setRenameValue(editingItem?.name || '');
+    };
+
+    const handleCommitRenameFlow = async () => {
+        if (!editingItem || !editingFlowData || !currentAccount || !token || isSavingRename) return;
+
+        const nextName = renameValue.trim();
+        if (!nextName) {
+            showToast('Flow name is required');
+            renameInputRef.current?.focus();
+            return;
+        }
+
+        if (nextName === editingItem.name) {
+            setIsRenamingFlow(false);
+            return;
+        }
+
+        if (autosaveTimerRef.current) {
+            window.clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+
+        const flow = latestFlowRef.current || editingFlowData.flowDefinition || { nodes: [], edges: [] };
+        const normalizedFlow = sanitizeFlowDefinition(flow);
+        const serializedAtStart = serializeFlow(normalizedFlow);
+        const triggerNode = normalizedFlow.nodes.find((node) => String(node.type).toLowerCase() === 'trigger');
+        const triggerConfig =
+            (triggerNode?.data as Record<string, unknown> | undefined)?.config as Record<string, unknown> | undefined;
+        const triggerType =
+            typeof triggerConfig?.triggerType === 'string'
+                ? triggerConfig.triggerType
+                : (editingFlowData?.triggerType || 'NONE');
+
+        setIsSavingRename(true);
+
+        try {
+            const res = await fetch('/api/marketing/automations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                },
+                body: JSON.stringify({
+                    ...(editingFlowData || {}),
+                    id: editingItem.id,
+                    name: nextName,
+                    flowDefinition: normalizedFlow,
+                    triggerType,
+                    triggerConfig: triggerConfig || editingFlowData?.triggerConfig || {},
+                    isActive: editingFlowData?.isActive ?? true
+                })
+            });
+
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => null);
+                throw new Error(errorData?.error ? `${res.status}: ${errorData.error}` : `${res.status}: Failed to rename flow`);
+            }
+
+            const updated: FlowRecord = await res.json();
+            setEditingItem({ id: editingItem.id, name: updated.name || nextName });
+            setEditingFlowData((previous) => previous ? {
+                ...previous,
+                ...updated,
+                flowDefinition: previous.flowDefinition,
+            } : updated);
+            shouldCommitRenameOnBlurRef.current = false;
+            setIsRenamingFlow(false);
+
+            if (latestSerializedFlowRef.current === serializedAtStart) {
+                baselineFlowRef.current = serializedAtStart;
+                const draftKey = getDraftKey(editingItem.id);
+                if (draftKey) window.localStorage.removeItem(draftKey);
+                setIsDirty(false);
+                setSaveState('saved');
+                setSaveErrorMessage(null);
+            }
+        } catch (error) {
+            Logger.error('Failed to rename flow', { error });
+            showToast(error instanceof Error ? error.message : 'Failed to rename flow');
+            renameInputRef.current?.focus();
+        } finally {
+            setIsSavingRename(false);
+        }
+    };
+
+    const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            void handleCommitRenameFlow();
+        }
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            handleCancelRenameFlow();
+        }
+    };
 
     const handleRequestCloseEditor = useCallback(() => {
         if (isDirty) {
@@ -979,7 +1098,28 @@ export function FlowsPage() {
                                 <ArrowLeft size={20} />
                             </button>
                             <div>
-                                <h2 className="text-lg font-bold">{editingItem?.name}</h2>
+                                {isRenamingFlow ? (
+                                    <input
+                                        ref={renameInputRef}
+                                        value={renameValue}
+                                        onChange={(event) => setRenameValue(event.target.value)}
+                                        onBlur={() => {
+                                            if (shouldCommitRenameOnBlurRef.current) void handleCommitRenameFlow();
+                                        }}
+                                        onKeyDown={handleRenameKeyDown}
+                                        disabled={isSavingRename}
+                                        className="-ml-1 max-w-sm rounded-md border border-blue-300 bg-white px-1 text-lg font-bold text-gray-900 outline-none ring-2 ring-blue-100 disabled:cursor-wait disabled:opacity-70"
+                                        aria-label="Flow name"
+                                    />
+                                ) : (
+                                    <h2
+                                        className="cursor-text rounded px-1 text-lg font-bold hover:bg-gray-100"
+                                        onDoubleClick={handleStartRenameFlow}
+                                        title="Double-click to rename"
+                                    >
+                                        {editingItem?.name}
+                                    </h2>
+                                )}
                                 {analytics && (
                                     <p className="text-sm text-gray-500">
                                         {analytics.enrollments.active} active, {analytics.goals.conversions} conversions, $
