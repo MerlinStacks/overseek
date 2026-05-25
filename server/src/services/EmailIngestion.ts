@@ -102,10 +102,10 @@ export class EmailIngestion {
         });
 
         if (isBlocked) {
-            // Keep an audit trail, but ensure blocked senders do not surface in inbox.
+            // Keep blocked conversations visible while suppressing automation below.
             await prisma.conversation.update({
                 where: { id: conversation.id },
-                data: { status: 'CLOSED', updatedAt: new Date() }
+                data: { updatedAt: new Date() }
             });
             Logger.info('[EmailIngestion] Blocked sender, imported without automation', { fromEmail, conversationId: conversation.id });
 
