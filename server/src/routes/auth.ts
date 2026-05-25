@@ -11,6 +11,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { PermissionService } from '../services/PermissionService';
 import { z } from 'zod';
+import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { redisClient } from '../utils/redis';

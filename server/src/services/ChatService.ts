@@ -69,10 +69,12 @@ export class ChatService {
                         ...(options?.guestEmail ? { guestEmail: options.guestEmail } : {}),
                         ...(blockedEmails.length > 0
                             ? {
-                                NOT: [
-                                    { guestEmail: { in: blockedEmails } },
-                                    { wooCustomer: { email: { in: blockedEmails } } }
-                                ]
+                                NOT: {
+                                    OR: [
+                                        { guestEmail: { in: blockedEmails } },
+                                        { wooCustomer: { is: { email: { in: blockedEmails } } } }
+                                    ]
+                                }
                             }
                             : {}),
                         mergedIntoId: null

@@ -208,10 +208,12 @@ describe('ChatService', () => {
                 expect.objectContaining({
                     where: expect.objectContaining({
                         accountId,
-                        NOT: [
-                            { guestEmail: { in: ['blocked@example.com'] } },
-                            { wooCustomer: { email: { in: ['blocked@example.com'] } } }
-                        ]
+                        NOT: {
+                            OR: [
+                                { guestEmail: { in: ['blocked@example.com'] } },
+                                { wooCustomer: { is: { email: { in: ['blocked@example.com'] } } } }
+                            ]
+                        }
                     })
                 })
             );
