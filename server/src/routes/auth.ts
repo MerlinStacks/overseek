@@ -11,10 +11,10 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { PermissionService } from '../services/PermissionService';
 import { z } from 'zod';
-import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { redisClient } from '../utils/redis';
+import { getUploadsDir } from '../utils/uploadPaths';
 
 // Schemas
 const registerSchema = z.object({
@@ -253,7 +253,7 @@ function detectImageType(buffer: Buffer): { ext: string; mime: string } | null {
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // Ensure upload directory exists
-    const uploadDir = path.join(__dirname, '../../uploads');
+    const uploadDir = getUploadsDir();
     if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
     }

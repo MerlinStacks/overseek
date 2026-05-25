@@ -132,6 +132,7 @@ const COUNTRY_OPTIONS = [
 const NUMERIC_FIELDS = new Set([
     'order.total',
     'order.itemCount',
+    'proofVersion',
     'customer.totalSpent',
     'customer.ordersCount',
     'customer.daysSinceLastOrder',
@@ -202,6 +203,15 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
             { field: 'customer.state', label: 'State/Province', operators: ['eq', 'neq'] },
             { field: 'customer.city', label: 'City', operators: ['eq', 'neq', 'contains'] },
             { field: 'customer.postcode', label: 'Postcode', operators: ['eq', 'neq', 'starts_with'] },
+        ]
+    },
+    {
+        id: 'artwork',
+        label: 'Artwork',
+        icon: 'Image',
+        conditions: [
+            { field: 'proofVersion', label: 'Proof Version', operators: ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] },
+            { field: 'eventStatus', label: 'Artwork Event Status', operators: ['eq', 'neq'] },
         ]
     },
     {
@@ -702,6 +712,12 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
                     </button>
                 ))}
             </div>
+
+            {activeGroup === 'artwork' && (
+                <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800 border border-blue-200">
+                    Tip: use <strong>Proof Version = 2</strong> to send only the second proof email, or <strong>Proof Version &gt; 1</strong> for V2 and later.
+                </div>
+            )}
 
             <div className="border rounded-lg p-3 bg-gray-50 max-h-[200px] overflow-y-auto">
                 <div className="text-xs text-gray-500 mb-2">Select a condition to add:</div>

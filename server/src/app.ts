@@ -7,7 +7,6 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import fastifyCompress from '@fastify/compress';
 import fastifyMultipart from '@fastify/multipart';
-import path from 'path';
 import http from 'http';
 import { prisma } from './utils/prisma';
 import { esClient } from './utils/elastic';
@@ -21,6 +20,7 @@ import { initializeSocketIO } from './config/socket';
 import { subscribeEventBus } from './config/events';
 import { setupSocketHandlers } from './config/socketHandlers';
 import { requireSuperAdminFastify } from './middleware/auth';
+import { getUploadsDir } from './utils/uploadPaths';
 
 QueueFactory.init();
 
@@ -95,11 +95,12 @@ async function build() {
     });
 
     // Static uploads
-    const uploadDir = path.join(__dirname, '../uploads');
+    const uploadDir = getUploadsDir();
     if (!require('fs').existsSync(uploadDir)) {
         require('fs').mkdirSync(uploadDir, { recursive: true });
     }
-    await fastify.register(fastifyStatic, { root: path.join(__dirname, '../uploads'), prefix: '/uploads/', maxAge: '1h' });
+    Logger.info('Uploads directory configured', { uploadDir });
+    await fastify.register(fastifyStatic, { root: uploadDir, prefix: '/uploads/', maxAge: '1h' });
     await fastify.register(fastifyCompress, { encodings: ['br', 'gzip', 'deflate'], threshold: 1024 });
     await fastify.register(fastifyMultipart, { limits: { fileSize: UPLOAD_LIMITS.MAX_FILE_SIZE } });
 
@@ -160,11 +161,18 @@ async function build() {
 
     // Error handler
     fastify.setErrorHandler((error: FastifyError, request, reply) => {
-        const isMissingUpload = request.url.startsWith('/uploads/') &&
-            (((error as NodeJS.ErrnoException).code === 'ENOENT') || /no such file/i.test(error.message));
+        const errnoCode = (error as NodeJS.ErrnoException).code;
+        const isUploadsPath = request.url.startsWith('/uploads/');
+        const isMissingUpload = isUploadsPath &&
+            ((errnoCode === 'ENOENT') || (errnoCode === 'ENOTDIR') || /no such file/i.test(error.message));
+        const isForbiddenUpload = isUploadsPath && ((errnoCode === 'EACCES') || (errnoCode === 'EPERM'));
         if (isMissingUpload) {
             Logger.warn('Missing upload asset', { path: request.url, method: request.method, requestId: (request as any).requestId });
             return reply.status(404).send({ error: 'File not found', statusCode: 404, requestId: (request as any).requestId });
+        }
+        if (isForbiddenUpload) {
+            Logger.warn('Upload asset access denied', { path: request.url, method: request.method, requestId: (request as any).requestId });
+            return reply.status(403).send({ error: 'Access denied', statusCode: 403, requestId: (request as any).requestId });
         }
         const statusCode = error.statusCode || 500;
         const isClientError = statusCode >= 400 && statusCode < 500;

@@ -17,9 +17,10 @@ import {
 } from '@overseek/core';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { getUploadsDir } from '../utils/uploadPaths';
 
 // Ensure uploads directory exists
-const INVOICE_DIR = path.join(__dirname, '../../uploads/invoices');
+const INVOICE_DIR = path.join(getUploadsDir(), 'invoices');
 if (!fs.existsSync(INVOICE_DIR)) {
     fs.mkdirSync(INVOICE_DIR, { recursive: true });
 }
@@ -54,17 +55,22 @@ const ADDRESS_COMPARE_FIELDS = [
 
 const normalizeAddressValue = (value: unknown) => String(value || '').trim().toLowerCase();
 const EMOJI_FONT_FAMILY = 'NotoEmojiFallback';
-
-let emojiFontRegistered = false;
+const MAX_PDF_TEXT_LENGTH = 10_000;
+const emojiFontRegisteredDocs = new WeakSet<PDFKit.PDFDocument>();
+let emojiFontSourcePath: string | null = null;
 
 const ensureEmojiFont = (doc: PDFKit.PDFDocument) => {
-    if (emojiFontRegistered) return;
+    if (emojiFontRegisteredDocs.has(doc)) return true;
     try {
-        const emojiFontPath = require.resolve('@fontsource/noto-emoji/files/noto-emoji-emoji-400-normal.woff');
-        doc.registerFont(EMOJI_FONT_FAMILY, emojiFontPath);
-        emojiFontRegistered = true;
+        if (!emojiFontSourcePath) {
+            emojiFontSourcePath = require.resolve('@fontsource/noto-emoji/files/noto-emoji-emoji-400-normal.woff');
+        }
+        doc.registerFont(EMOJI_FONT_FAMILY, emojiFontSourcePath);
+        emojiFontRegisteredDocs.add(doc);
+        return true;
     } catch (error) {
         Logger.warn('[InvoiceService] Emoji fallback font unavailable', { error });
+        return false;
     }
 };
 
@@ -99,9 +105,9 @@ const drawTextWithEmojiSupport = (
 ) => {
     const text = normalizePdfText(value);
     if (!text) return;
-    ensureEmojiFont(doc);
+    const canUseEmojiFont = ensureEmojiFont(doc);
     const chunks = splitTextByEmoji(text);
-    const hasEmojiChunk = emojiFontRegistered && chunks.some((chunk) => chunk.emoji);
+    const hasEmojiChunk = canUseEmojiFont && chunks.some((chunk) => chunk.emoji);
     if (!hasEmojiChunk) {
         doc.font(baseFont).text(text, x, y, options);
         return;
@@ -130,7 +136,8 @@ const normalizePdfText = (value: unknown): string => {
         .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
         .replace(/[ \t\f\v]+/g, ' ')
         .replace(/\r\n/g, '\n')
-        .trimEnd();
+        .trimEnd()
+        .slice(0, MAX_PDF_TEXT_LENGTH);
 };
 
 const hasAddressFields = (address: Record<string, unknown>) => {
