@@ -62,11 +62,31 @@ function areStringArraysEqual(left: string[], right: string[]): boolean {
 }
 
 function sanitizeFlowDefinition(flow: FlowDefinition): FlowDefinition {
-    return JSON.parse(JSON.stringify(flow, (key, value) => {
+    const sanitized = JSON.parse(JSON.stringify(flow, (key, value) => {
         if (typeof value === 'function') return undefined;
         if (RENDER_ONLY_FLOW_KEYS.has(key)) return undefined;
         return value;
     })) as FlowDefinition;
+
+    return {
+        nodes: (sanitized.nodes || []).map((node) => ({
+            id: node.id,
+            type: node.type,
+            position: node.position,
+            data: {
+                label: (node.data as { label?: unknown } | undefined)?.label,
+                config: (node.data as { config?: unknown } | undefined)?.config || {},
+            },
+        })),
+        edges: (sanitized.edges || []).map((edge) => ({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: edge.sourceHandle,
+            targetHandle: edge.targetHandle,
+            label: edge.label,
+        })),
+    } as FlowDefinition;
 }
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);
@@ -316,6 +336,7 @@ export function FlowsPage() {
     const [toastType, setToastType] = useState<ToastType>('error');
     const [recoveryPrompt, setRecoveryPrompt] = useState<{ flowId: string; flowName: string; draftSavedAt?: string } | null>(null);
     const [saveState, setSaveState] = useState<SaveIndicatorState>('saved');
+    const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [pendingClose, setPendingClose] = useState(false);
     const [isClosingEditor, setIsClosingEditor] = useState(false);
@@ -394,7 +415,7 @@ export function FlowsPage() {
 
     const serializeFlow = (flow: FlowDefinition | null | undefined) => {
         if (!flow) return JSON.stringify({ nodes: [], edges: [] });
-        return JSON.stringify({ nodes: flow.nodes || [], edges: flow.edges || [] });
+        return JSON.stringify(sanitizeFlowDefinition(flow));
     };
 
     const handleEditFlow = useCallback(async (id: string, requestedName?: string) => {
@@ -522,6 +543,7 @@ export function FlowsPage() {
 
         autosaveInFlightRef.current = true;
         setSaveState('saving');
+        setSaveErrorMessage(null);
 
         try {
             const normalizedFlow = sanitizeFlowDefinition(flow);
@@ -555,7 +577,7 @@ export function FlowsPage() {
 
             if (!res.ok) {
                 const errorData = await res.json().catch(() => null);
-                throw new Error(errorData?.error || 'Failed to autosave flow');
+                throw new Error(errorData?.error ? `${res.status}: ${errorData.error}` : `${res.status}: Failed to autosave flow`);
             }
 
             const updated: FlowRecord = await res.json();
@@ -572,6 +594,7 @@ export function FlowsPage() {
                 if (draftKey) window.localStorage.removeItem(draftKey);
                 setIsDirty(false);
                 setSaveState('saved');
+                setSaveErrorMessage(null);
             } else {
                 setIsDirty(true);
                 setSaveState('unsaved');
@@ -579,6 +602,7 @@ export function FlowsPage() {
             }
         } catch (error) {
             Logger.error('Failed to autosave flow', { error });
+            setSaveErrorMessage(error instanceof Error ? error.message : 'Unknown error');
             setSaveState('error');
         } finally {
             autosaveInFlightRef.current = false;
@@ -970,7 +994,13 @@ export function FlowsPage() {
                                             : isDirty
                                                 ? 'bg-blue-100 text-blue-800'
                                                 : 'bg-green-100 text-green-800'}`}>
-                                        {saveState === 'saving' ? 'Autosaving...' : saveState === 'error' ? 'Autosave failed, draft kept' : isDirty ? 'Autosave pending' : 'All changes saved'}
+                                        {saveState === 'saving'
+                                            ? 'Autosaving...'
+                                            : saveState === 'error'
+                                                ? `Autosave failed${saveErrorMessage ? `: ${saveErrorMessage}` : ', draft kept'}`
+                                                : isDirty
+                                                    ? 'Autosave pending'
+                                                    : 'All changes saved'}
                                     </span>
                                 </div>
                             </div>
