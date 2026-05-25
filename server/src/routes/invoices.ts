@@ -5,7 +5,7 @@
 
 import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { InvoiceService } from '../services/InvoiceService';
-import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
+import { MissingInvoiceTemplateError, canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import path from 'path';
@@ -238,6 +238,15 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
                 error: 'Invoice generation is pending',
             });
         } catch (error) {
+            if (error instanceof MissingInvoiceTemplateError) {
+                Logger.warn('Canonical invoice generation skipped: missing invoice template', { accountId, orderId });
+                return reply.code(409).send({
+                    success: false,
+                    status: 'missing_template',
+                    error: 'No invoice template configured for this account',
+                });
+            }
+
             Logger.error('Failed to generate canonical invoice from authenticated route', {
                 accountId,
                 orderId,

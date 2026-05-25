@@ -11,6 +11,7 @@ import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { cartRecoveryService } from '../services/CartRecoveryService';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 import { resolveMergeTags } from '../services/MergeTagResolver';
+import { HTTP_LIMITS } from '../config/limits';
 
 const service = new MarketingService();
 
@@ -198,7 +199,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.post('/automations', async (request, reply) => {
+    fastify.post('/automations', { bodyLimit: HTTP_LIMITS.AUTOMATION_FLOW_BODY_LIMIT_BYTES }, async (request, reply) => {
         try {
             const automation = await service.upsertAutomation(getAccountId(request), request.body as any);
             return automation;

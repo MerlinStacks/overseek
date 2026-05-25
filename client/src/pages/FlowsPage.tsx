@@ -42,6 +42,17 @@ interface FlowDraftPayload {
 
 type SaveIndicatorState = 'saved' | 'saving' | 'unsaved' | 'error';
 
+const RENDER_ONLY_FLOW_KEYS = new Set([
+    'onAddStep',
+    'onAddConditionBranch',
+    'onCopy',
+    'onDelete',
+    'onViewAnalytics',
+    'onInsertNode',
+    'density',
+    'issues'
+]);
+
 function areStringArraysEqual(left: string[], right: string[]): boolean {
     if (left.length !== right.length) return false;
     for (let index = 0; index < left.length; index += 1) {
@@ -51,9 +62,11 @@ function areStringArraysEqual(left: string[], right: string[]): boolean {
 }
 
 function sanitizeFlowDefinition(flow: FlowDefinition): FlowDefinition {
-    return JSON.parse(JSON.stringify(flow, (_key, value) => (
-        typeof value === 'function' ? undefined : value
-    ))) as FlowDefinition;
+    return JSON.parse(JSON.stringify(flow, (key, value) => {
+        if (typeof value === 'function') return undefined;
+        if (RENDER_ONLY_FLOW_KEYS.has(key)) return undefined;
+        return value;
+    })) as FlowDefinition;
 }
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);

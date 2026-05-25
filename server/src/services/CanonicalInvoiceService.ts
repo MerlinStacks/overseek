@@ -9,6 +9,13 @@ import { InvoiceService } from './InvoiceService';
 const invoiceService = new InvoiceService();
 const OPERATIONAL_A4_RENDERER_VERSION = 'operational-a4-v3';
 
+export class MissingInvoiceTemplateError extends Error {
+    constructor() {
+        super('No invoice template found for account');
+        this.name = 'MissingInvoiceTemplateError';
+    }
+}
+
 function isCanonicalRenderer(renderer: string | null | undefined): boolean {
     return renderer === 'pdfkit-primary'
         || renderer === 'pdfkit-fallback';
@@ -61,7 +68,7 @@ export class CanonicalInvoiceService {
         });
 
         if (!template) {
-            throw new Error('No invoice template found for account');
+            throw new MissingInvoiceTemplateError();
         }
 
         const templateVersion = normalizeTemplateVersion(template.layout);

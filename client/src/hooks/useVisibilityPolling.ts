@@ -10,6 +10,16 @@ interface PollingDataMessage {
     timestamp: number;
 }
 
+function postMessageSafely(channel: BroadcastChannel, message: PollingDataMessage): void {
+    try {
+        channel.postMessage(message);
+    } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'InvalidStateError') {
+            throw error;
+        }
+    }
+}
+
 /**
  * Custom hook for visibility-aware polling with optional cross-tab coordination.
  * Pauses polling when the tab is hidden to save resources.
@@ -67,6 +77,9 @@ export function useVisibilityPolling(
         };
 
         return () => {
+            if (dataChannelRef.current === channel) {
+                dataChannelRef.current = null;
+            }
             channel.close();
         };
     }, [channelName, shouldCoordinate, isLeader]);
@@ -89,13 +102,14 @@ export function useVisibilityPolling(
             await savedCallback.current();
 
             // Notify other tabs that data is fresh (they can refetch from cache)
-            if (shouldCoordinate && dataChannelRef.current) {
+            const channel = dataChannelRef.current;
+            if (shouldCoordinate && channel) {
                 const message: PollingDataMessage = {
                     type: 'polling-complete',
                     channelName: channelName!,
                     timestamp: Date.now(),
                 };
-                dataChannelRef.current.postMessage(message);
+                postMessageSafely(channel, message);
             }
         };
 
@@ -129,4 +143,3 @@ export function useVisibilityPolling(
         };
     }, [intervalMs, shouldCoordinate, isLeader, channelName, deps]);
 }
-

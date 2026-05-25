@@ -12,6 +12,7 @@ const mockFindUnique = vi.fn();
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 const mockCount = vi.fn();
+const mockBlockedContactFindMany = vi.fn();
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
@@ -22,6 +23,9 @@ vi.mock('../../utils/prisma', () => ({
             create: (...args: any[]) => mockCreate(...args),
             update: (...args: any[]) => mockUpdate(...args),
             count: (...args: any[]) => mockCount(...args),
+        },
+        blockedContact: {
+            findMany: (...args: any[]) => mockBlockedContactFindMany(...args),
         },
         message: {
             findMany: vi.fn().mockResolvedValue([]),
@@ -111,6 +115,8 @@ describe('ChatService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockBlockedContactFindMany.mockResolvedValue([]);
+
         // Create mock Socket.IO server
         mockIo = {
             to: vi.fn().mockReturnThis(),
@@ -192,6 +198,26 @@ describe('ChatService', () => {
             );
         });
 
+        it('should exclude blocked contact emails from inbox results', async () => {
+            mockBlockedContactFindMany.mockResolvedValueOnce([{ email: 'blocked@example.com' }]);
+            mockFindMany.mockResolvedValueOnce([]);
+
+            await chatService.listConversations(accountId);
+
+            expect(mockFindMany).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: expect.objectContaining({
+                        accountId,
+                        NOT: {
+                            OR: [
+                                { guestEmail: { in: ['blocked@example.com'] } },
+                                { wooCustomer: { is: { email: { in: ['blocked@example.com'] } } } }
+                            ]
+                        }
+                    })
+                })
+            );
+        });
     });
 
     describe('createConversation', () => {

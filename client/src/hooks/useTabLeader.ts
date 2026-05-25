@@ -19,6 +19,16 @@ interface TabMessage {
     timestamp: number;
 }
 
+function postMessageSafely(channel: BroadcastChannel, message: TabMessage): void {
+    try {
+        channel.postMessage(message);
+    } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'InvalidStateError') {
+            throw error;
+        }
+    }
+}
+
 /**
  * Hook for cross-tab leader election using BroadcastChannel.
  * Only ONE tab becomes the leader; others become followers.
@@ -73,13 +83,14 @@ export function useTabLeader(channelName: string): { isLeader: boolean; tabId: s
      * Broadcasts a heartbeat message to all tabs.
      */
     const sendHeartbeat = useCallback(() => {
-        if (channelRef.current) {
+        const channel = channelRef.current;
+        if (channel) {
             const message: TabMessage = {
                 type: 'heartbeat',
                 tabId: TAB_ID,
                 timestamp: Date.now(),
             };
-            channelRef.current.postMessage(message);
+            postMessageSafely(channel, message);
         }
         // Update own timestamp
         knownTabsRef.current.set(TAB_ID, Date.now());
@@ -116,7 +127,7 @@ export function useTabLeader(channelName: string): { isLeader: boolean; tabId: s
             tabId: TAB_ID,
             timestamp: Date.now(),
         };
-        channel.postMessage(claimMessage);
+        postMessageSafely(channel, claimMessage);
 
         // Start heartbeat
         heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
@@ -129,22 +140,25 @@ export function useTabLeader(channelName: string): { isLeader: boolean; tabId: s
 
         // Cleanup on unmount
         return () => {
+            if (heartbeatIntervalRef.current) {
+                clearInterval(heartbeatIntervalRef.current);
+                heartbeatIntervalRef.current = null;
+            }
+            if (leaderCheckIntervalRef.current) {
+                clearInterval(leaderCheckIntervalRef.current);
+                leaderCheckIntervalRef.current = null;
+            }
+
             // Notify other tabs this tab is leaving
-            if (channelRef.current) {
+            if (channelRef.current === channel) {
                 const resignMessage: TabMessage = {
                     type: 'resign',
                     tabId: TAB_ID,
                     timestamp: Date.now(),
                 };
-                channelRef.current.postMessage(resignMessage);
-                channelRef.current.close();
-            }
-
-            if (heartbeatIntervalRef.current) {
-                clearInterval(heartbeatIntervalRef.current);
-            }
-            if (leaderCheckIntervalRef.current) {
-                clearInterval(leaderCheckIntervalRef.current);
+                postMessageSafely(channel, resignMessage);
+                channelRef.current = null;
+                channel.close();
             }
         };
     }, [channelName, determineLeadership, sendHeartbeat]);

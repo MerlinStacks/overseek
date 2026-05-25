@@ -38,55 +38,45 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
     
     // Get SMS Settings
     fastify.get('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
-        try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
+        const accountId = request.accountId;
+        if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
 
-            const settings = await TwilioService.getSettings(accountId);
-            return settings || {};
-        } catch (error) {
-            Logger.error('Failed to load SMS settings', { error, accountId: request.accountId });
-            return reply.status(500).send({ error: 'Failed to load SMS settings' });
-        }
+        const settings = await TwilioService.getSettings(accountId);
+        return settings || {};
     });
 
     // Update SMS Settings
     fastify.post('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
-        try {
-            const accountId = request.accountId;
-            if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
+        const accountId = request.accountId;
+        if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
 
-            const data = request.body as any;
-
-            // Basic validation
-            if (!data || typeof data !== 'object' || !data.accountSid || !data.authToken || !data.fromNumber) {
-                return reply.status(400).send({ error: 'Missing required fields' });
-            }
-            if (typeof data.accountSid !== 'string' || !TWILIO_SID_PATTERN.test(data.accountSid)) {
-                return reply.status(400).send({ error: 'Invalid Twilio Account SID' });
-            }
-            if (typeof data.authToken !== 'string' || data.authToken.trim().length < 16) {
-                return reply.status(400).send({ error: 'Invalid Twilio auth token' });
-            }
-            if (typeof data.fromNumber !== 'string' || !/^\+?\d{10,15}$/.test(data.fromNumber.replace(/[\s()-]/g, ''))) {
-                return reply.status(400).send({ error: 'Invalid sender phone number' });
-            }
-
-            const settings = await TwilioService.saveSettings(accountId, {
-                accountSid: data.accountSid,
-                authToken: data.authToken,
-                fromNumber: data.fromNumber,
-                enabled: data.enabled !== false,
-                smsCostPerSegment: typeof data.smsCostPerSegment === 'number'
-                    ? data.smsCostPerSegment
-                    : Number.parseFloat(String(data.smsCostPerSegment || 0))
-            });
-
-            return settings;
-        } catch (error) {
-            Logger.error('Failed to save SMS settings', { error, accountId: request.accountId });
-            return reply.status(500).send({ error: 'Failed to save SMS settings' });
+        const data = request.body as any;
+        
+        // Basic validation
+        if (!data || typeof data !== 'object' || !data.accountSid || !data.authToken || !data.fromNumber) {
+            return reply.status(400).send({ error: 'Missing required fields' });
         }
+        if (typeof data.accountSid !== 'string' || !TWILIO_SID_PATTERN.test(data.accountSid)) {
+            return reply.status(400).send({ error: 'Invalid Twilio Account SID' });
+        }
+        if (typeof data.authToken !== 'string' || data.authToken.trim().length < 16) {
+            return reply.status(400).send({ error: 'Invalid Twilio auth token' });
+        }
+        if (typeof data.fromNumber !== 'string' || !/^\+?\d{10,15}$/.test(data.fromNumber.replace(/[\s()-]/g, ''))) {
+            return reply.status(400).send({ error: 'Invalid sender phone number' });
+        }
+
+        const settings = await TwilioService.saveSettings(accountId, {
+            accountSid: data.accountSid,
+            authToken: data.authToken,
+            fromNumber: data.fromNumber,
+            enabled: data.enabled !== false,
+            smsCostPerSegment: typeof data.smsCostPerSegment === 'number'
+                ? data.smsCostPerSegment
+                : Number.parseFloat(String(data.smsCostPerSegment || 0))
+        });
+
+        return settings;
     });
 
     // Twilio Webhook

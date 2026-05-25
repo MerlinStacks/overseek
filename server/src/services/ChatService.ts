@@ -47,6 +47,12 @@ export class ChatService {
         return cacheAside(
             cacheKey,
             async () => {
+                const blockedContacts = await prisma.blockedContact.findMany({
+                    where: { accountId: String(accountId) },
+                    select: { email: true }
+                });
+                const blockedEmails = blockedContacts.map((contact) => contact.email.toLowerCase());
+
                 const conversations = await prisma.conversation.findMany({
                     take: limit,
                     skip: cursor ? 1 : 0,
@@ -61,6 +67,16 @@ export class ChatService {
                                 : {}),
                         ...(options?.wooCustomerId ? { wooCustomerId: options.wooCustomerId } : {}),
                         ...(options?.guestEmail ? { guestEmail: options.guestEmail } : {}),
+                        ...(blockedEmails.length > 0
+                            ? {
+                                NOT: {
+                                    OR: [
+                                        { guestEmail: { in: blockedEmails } },
+                                        { wooCustomer: { is: { email: { in: blockedEmails } } } }
+                                    ]
+                                }
+                            }
+                            : {}),
                         mergedIntoId: null
                     } satisfies Prisma.ConversationWhereInput,
                     include: {

@@ -113,6 +113,8 @@ export const HTTP_LIMITS = {
     REQUEST_TIMEOUT_MS: 30_000,
     /** Long-running API request timeout in milliseconds */
     LONG_REQUEST_TIMEOUT_MS: 120_000,
+    /** Maximum JSON body size for automation flows with embedded email designs (10MB) */
+    AUTOMATION_FLOW_BODY_LIMIT_BYTES: 10 * 1024 * 1024,
 } as const;
 
 

@@ -236,7 +236,7 @@ describe('EmailIngestion', () => {
         );
     });
 
-    it('keeps blocked inbound email visible without automation', async () => {
+    it('closes conversation when blocked contact emails in', async () => {
         vi.mocked(BlockedContactService.isBlocked).mockResolvedValue(true);
 
         const io = {
@@ -258,7 +258,7 @@ describe('EmailIngestion', () => {
         expect(mockConversationUpdate).toHaveBeenCalledWith(
             expect.objectContaining({
                 where: { id: 'conv-1' },
-                data: expect.not.objectContaining({ status: 'CLOSED' })
+                data: expect.objectContaining({ status: 'CLOSED' })
             })
         );
     });

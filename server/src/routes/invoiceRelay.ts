@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import { Logger } from '../utils/logger';
 import { authenticateRelayEmailAccount } from './email/helpers';
-import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
+import { MissingInvoiceTemplateError, canonicalInvoiceService } from '../services/CanonicalInvoiceService';
 
 function isCanonicalRenderer(renderer: string | null | undefined): boolean {
     return renderer === 'pdfkit-primary'
@@ -218,6 +218,16 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
                 generated_at: settled?.generatedAt ?? null,
             });
         } catch (error) {
+            if (error instanceof MissingInvoiceTemplateError) {
+                Logger.warn('Relay invoice generation skipped: missing invoice template', { accountId, orderId });
+                return reply.code(409).send({
+                    success: false,
+                    status: 'missing_template',
+                    error: 'No invoice template configured for this account',
+                    diagnostic_reason: 'missing_template',
+                });
+            }
+
             Logger.error('Failed to generate relay invoice PDF', { error, accountId, orderId });
             return reply.code(500).send({ success: false, error: 'Failed to generate invoice' });
         }
