@@ -174,6 +174,16 @@ async function build() {
             Logger.warn('Upload asset access denied', { path: request.url, method: request.method, requestId: (request as any).requestId });
             return reply.status(403).send({ error: 'Access denied', statusCode: 403, requestId: (request as any).requestId });
         }
+        if (isUploadsPath) {
+            Logger.warn('Upload asset resolution failed', {
+                path: request.url,
+                method: request.method,
+                requestId: (request as any).requestId,
+                code: errnoCode,
+                error: error.message,
+            });
+            return reply.status(404).send({ error: 'File not found', statusCode: 404, requestId: (request as any).requestId });
+        }
         const statusCode = error.statusCode || 500;
         const isClientError = statusCode >= 400 && statusCode < 500;
         if (isClientError) {

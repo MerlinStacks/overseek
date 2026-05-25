@@ -196,13 +196,17 @@ const VisitSection: React.FC<{ visit: AnalyticsVisit; isFirst: boolean; displayN
         { addSuffix: false }
     );
 
-    // Deduplicate events: hide pageview when product_view exists for same URL
+    // Deduplicate events by preferring more specific actions over passive views.
     const productViewUrls = new Set<string>();
+    const hasCheckoutStart = visit.events.some(ev => ev.type === 'checkout_start');
+
     visit.events.forEach(ev => {
         if (ev.type === 'product_view' && ev.url) productViewUrls.add(ev.url);
     });
+
     const dedupedEvents = visit.events.filter(ev => {
         if (ev.type === 'pageview' && ev.url && productViewUrls.has(ev.url)) return false;
+        if (ev.type === 'checkout_view' && hasCheckoutStart) return false;
         return true;
     });
 

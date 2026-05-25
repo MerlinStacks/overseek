@@ -232,18 +232,21 @@ function getEventLabel(type: string, payload?: EventPayload): string {
 }
 
 /**
- * De-duplicate events: when both pageview and product_view exist for the SAME URL,
- * keep only product_view (more specific).
+ * De-duplicate events by preferring more specific actions over passive views.
  */
 function deduplicateEvents(events: VisitorEvent[]): VisitorEvent[] {
     const productViewUrls = new Set<string>();
+    const hasCheckoutStart = events.some(event => event.type === 'checkout_start');
+
     for (const event of events) {
         if (event.type === 'product_view' && event.url) {
             productViewUrls.add(event.url);
         }
     }
+
     return events.filter(event => {
         if (event.type === 'pageview' && event.url && productViewUrls.has(event.url)) return false;
+        if (event.type === 'checkout_view' && hasCheckoutStart) return false;
         return true;
     });
 }
