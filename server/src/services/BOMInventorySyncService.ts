@@ -89,6 +89,22 @@ function getStockStatusForQuantity(quantity: number, allowBackorders: boolean): 
     return 'outofstock';
 }
 
+function getWooErrorStatus(error: any): number | undefined {
+    return error?.response?.status ?? error?.status;
+}
+
+function getWooErrorCode(error: any): string | undefined {
+    return error?.response?.data?.code ?? error?.code;
+}
+
+function getWooErrorMessage(error: any): string {
+    return error?.response?.data?.message ?? error?.message ?? 'Unknown WooCommerce error';
+}
+
+function isMissingWooProduct(error: any): boolean {
+    return getWooErrorStatus(error) === 404 && getWooErrorCode(error) === 'woocommerce_rest_product_invalid_id';
+}
+
 export class BOMInventorySyncService {
     /**
      * Calculate the effective stock (max buildable units) for a product based on its BOM.
@@ -216,12 +232,39 @@ export class BOMInventorySyncService {
                 const wooProduct = await wooService.getProduct(product.wooId);
                 currentWooStock = wooProduct.stock_quantity ?? null;
             }
-        } catch (err) {
+        } catch (err: any) {
+            if (variationId === 0 && isMissingWooProduct(err)) {
+                Logger.warn(`[BOMInventorySync] Product no longer exists in WooCommerce - deactivating BOM items`, {
+                    accountId,
+                    productId,
+                    wooId: product.wooId,
+                    variationId,
+                    status: getWooErrorStatus(err),
+                    code: getWooErrorCode(err),
+                    message: getWooErrorMessage(err)
+                });
+
+                await prisma.bOMItem.updateMany({
+                    where: {
+                        bom: { productId, variationId },
+                        isActive: true
+                    },
+                    data: {
+                        isActive: false,
+                        deactivatedReason: 'PARENT_PRODUCT_404'
+                    }
+                });
+
+                return null;
+            }
+
             Logger.warn(`[BOMInventorySync] Could not fetch product/variation stock`, {
                 productId,
                 wooId: product.wooId,
                 variationId,
-                error: err
+                status: getWooErrorStatus(err),
+                code: getWooErrorCode(err),
+                message: getWooErrorMessage(err)
             });
         }
 
@@ -760,7 +803,7 @@ export class BOMInventorySyncService {
 
         } catch (err: any) {
             // Distinguish 404 (deleted product) from transient failures
-            const status = err?.response?.status ?? err?.status;
+            const status = getWooErrorStatus(err);
             const is404 = status === 404 || err.message?.includes('404');
 
             if (is404) {

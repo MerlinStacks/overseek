@@ -146,20 +146,24 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
                                 e.stopPropagation();
                                 onStatsClick();
                             }}
-                            className={`w-full flex flex-nowrap items-center gap-3 overflow-x-auto text-left ${isCompact ? 'px-3 py-2' : 'px-4 py-2.5'} bg-slate-50 border-t border-slate-200 text-[11px] cursor-pointer hover:bg-slate-100 transition-colors`}
+                            className={`w-full grid items-center text-left ${isCompact ? 'px-2.5 py-2 text-[10px]' : 'px-3 py-2.5 text-[11px]'} bg-slate-50 border-t border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors`}
+                            style={{ gridTemplateColumns: `repeat(${visibleStats.length}, minmax(0, 1fr))` }}
                         >
                             {visibleStats.map((entry) => (
-                                <div key={entry.key} className="flex shrink-0 items-center gap-1 whitespace-nowrap">
-                                    <span className="text-slate-700">{entry.label}</span>
+                                <div key={entry.key} className="flex min-w-0 items-center justify-center gap-1">
+                                    <span className="truncate text-slate-700">{entry.label}</span>
                                     <span className={`px-2 py-0.5 rounded-full border font-semibold ${entry.badgeClass}`}>{entry.value.toLocaleString()}</span>
                                 </div>
                             ))}
                         </button>
                     ) : (
-                        <div className={`w-full flex flex-nowrap items-center gap-3 overflow-x-auto ${isCompact ? 'px-3 py-2' : 'px-4 py-2.5'} bg-slate-50 border-t border-slate-200 text-[11px]`}>
+                        <div
+                            className={`w-full grid items-center ${isCompact ? 'px-2.5 py-2 text-[10px]' : 'px-3 py-2.5 text-[11px]'} bg-slate-50 border-t border-slate-200`}
+                            style={{ gridTemplateColumns: `repeat(${visibleStats.length}, minmax(0, 1fr))` }}
+                        >
                             {visibleStats.map((entry) => (
-                                <div key={entry.key} className="flex shrink-0 items-center gap-1 whitespace-nowrap">
-                                    <span className="text-slate-700">{entry.label}</span>
+                                <div key={entry.key} className="flex min-w-0 items-center justify-center gap-1">
+                                    <span className="truncate text-slate-700">{entry.label}</span>
                                     <span className={`px-2 py-0.5 rounded-full border font-semibold ${entry.badgeClass}`}>{entry.value.toLocaleString()}</span>
                                 </div>
                             ))}
