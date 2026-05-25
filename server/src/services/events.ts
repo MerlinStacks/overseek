@@ -12,6 +12,7 @@ export const EVENTS = {
         STATUS_CHANGED: 'order:status_changed',
     },
     SHIPMENT: {
+        RECEIVED_BY_CARRIER: 'shipment:received_by_carrier',
         IN_TRANSIT: 'shipment:in_transit',
         OUT_FOR_DELIVERY: 'shipment:out_for_delivery',
         DELIVERY_ATTEMPTED: 'shipment:delivery_attempted',

@@ -34,6 +34,7 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
         previousStatus: data.previousStatus,
         newStatus: data.newStatus
     }), automationEngine);
+    subscribeAutomationTrigger(EVENTS.SHIPMENT.RECEIVED_BY_CARRIER, 'SHIPMENT_RECEIVED_BY_CARRIER', data => data.shipment, automationEngine);
     subscribeAutomationTrigger(EVENTS.SHIPMENT.IN_TRANSIT, 'SHIPMENT_IN_TRANSIT', data => data.shipment, automationEngine);
     subscribeAutomationTrigger(EVENTS.SHIPMENT.OUT_FOR_DELIVERY, 'SHIPMENT_OUT_FOR_DELIVERY', data => data.shipment, automationEngine);
     subscribeAutomationTrigger(EVENTS.SHIPMENT.DELIVERY_ATTEMPTED, 'SHIPMENT_DELIVERY_ATTEMPTED', data => data.shipment, automationEngine);

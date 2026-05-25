@@ -6,6 +6,7 @@ import { Logger } from '../utils/logger';
 const FEATURE_KEY = 'TRACKING_EMAIL_EVENTS';
 
 type ShipmentStatus =
+    | 'received_by_carrier'
     | 'in_transit'
     | 'out_for_delivery'
     | 'delivery_attempted'
@@ -43,6 +44,7 @@ export function normalizeShipmentStatus(...values: Array<string | undefined>): S
         const value = rawValue.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
         switch (value) {
             case 'in_transit':
+            case 'received_by_carrier':
             case 'out_for_delivery':
             case 'delivery_attempted':
             case 'delivered':
@@ -56,6 +58,7 @@ export function normalizeShipmentStatus(...values: Array<string | undefined>): S
     if (/(delivery attempted|attempted delivery|card left|awaiting collection|collection point)/.test(text)) return 'delivery_attempted';
     if (/(delivered|successfully delivered)/.test(text)) return 'delivered';
     if (/(exception|delay|delayed|held|return to sender|returned|damaged|lost|address issue|failed)/.test(text)) return 'exception';
+    if (/(lodged|accepted|picked up|pickup|we've got it|we have got it|received by carrier)/.test(text)) return 'received_by_carrier';
     if (/(in transit|transit|processed|sorted|transferred|facility|depot|lodged|accepted|picked up|pickup|received by carrier)/.test(text)) return 'in_transit';
 
     return null;
@@ -63,6 +66,8 @@ export function normalizeShipmentStatus(...values: Array<string | undefined>): S
 
 function mapStatusToTrigger(status: ShipmentStatus): { eventName: string; triggerType: string } {
     switch (status) {
+        case 'received_by_carrier':
+            return { eventName: EVENTS.SHIPMENT.RECEIVED_BY_CARRIER, triggerType: 'SHIPMENT_RECEIVED_BY_CARRIER' };
         case 'in_transit':
             return { eventName: EVENTS.SHIPMENT.IN_TRANSIT, triggerType: 'SHIPMENT_IN_TRANSIT' };
         case 'out_for_delivery':
@@ -86,16 +91,22 @@ const trackingEmailEventsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: 'Invalid payload: missing event object' });
         }
 
-        const feature = await prisma.accountFeature.findUnique({
-            where: { accountId_featureKey: { accountId, featureKey: FEATURE_KEY } },
-            select: { isEnabled: true, config: true },
-        });
+        const [account, feature] = await Promise.all([
+            prisma.account.findUnique({
+                where: { id: accountId },
+                select: { id: true, wooUrl: true },
+            }),
+            prisma.accountFeature.findUnique({
+                where: { accountId_featureKey: { accountId, featureKey: FEATURE_KEY } },
+                select: { config: true },
+            }),
+        ]);
 
-        if (!feature?.isEnabled) {
-            return reply.code(403).send({ error: 'Tracking email events feature is disabled for this account' });
+        if (!account?.wooUrl) {
+            return reply.code(403).send({ error: 'WooCommerce connection is not configured for this account' });
         }
 
-        const config = (feature.config || {}) as Record<string, unknown>;
+        const config = (feature?.config || {}) as Record<string, unknown>;
         const configuredToken = typeof config.webhookAuthToken === 'string' ? config.webhookAuthToken.trim() : '';
         if (configuredToken) {
             const authHeader = String(request.headers.authorization || '');
