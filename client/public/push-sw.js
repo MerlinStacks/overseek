@@ -25,11 +25,6 @@ const STALE_PUSH_MAX_AGE_MS = 15 * 60 * 1000;
 
 // Assets to cache for offline app shell
 const PRECACHE_ASSETS = [
-    '/',
-    '/m/dashboard',
-    '/m/orders',
-    '/m/inbox',
-    '/m/customers',
     '/manifest.json',
     '/icons/icon-192.png',
     '/icons/icon-512.png',
@@ -226,25 +221,14 @@ self.addEventListener('fetch', (event) => {
     // Skip remaining API requests - always go to network
     if (request.url.includes('/api/')) return;
 
-    // Navigation requests - network first, cache fallback
+    // Navigation requests - network first, offline fallback.
+    // Do not cache route HTML: it contains hashed asset references that become
+    // invalid on deploy and can white-screen the app if reused.
     if (request.mode === 'navigate') {
         event.respondWith(
-            fetch(request)
-                .then((response) => {
-                    // Cache successful navigation responses
-                    if (response.ok) {
-                        const cloned = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => {
-                            cache.put(request, cloned);
-                        });
-                    }
-                    return response;
-                })
+            fetch(request, { cache: 'no-store' })
                 .catch(() => {
-                    // Return cached version or offline page
-                    return caches.match(request).then((cached) => {
-                        return cached || caches.match(OFFLINE_URL);
-                    });
+                    return caches.match(OFFLINE_URL);
                 })
         );
         return;
