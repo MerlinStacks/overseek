@@ -559,31 +559,9 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                 density: flowDensity,
             },
         };
-        const hasExistingTrigger = nodes.some((node) => node.type === 'trigger');
-
-        if (nodes.length === 0 || hasExistingTrigger) {
-            setNodes([newNode]);
-            setEdges([]);
-            return;
-        }
-
-        const rootNode = nodes
-            .filter((node) => !edges.some((edge) => edge.target === node.id))
-            .sort((left, right) => left.position.y - right.position.y || left.position.x - right.position.x)[0];
-
-        setNodes((nds) => [newNode, ...nds]);
-        if (rootNode) {
-            setEdges((eds) => ([
-                ...eds,
-                {
-                    id: `e_${newNode.id}_${rootNode.id}_${Date.now()}`,
-                    source: newNode.id,
-                    target: rootNode.id,
-                    ...defaultEdgeOptions,
-                },
-            ]));
-        }
-    }, [nodes, edges, setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete, flowDensity]);
+        setNodes([newNode]);
+        setEdges([]);
+    }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete, flowDensity]);
 
     // --- Recipe Selection ---
     const handleRecipeSelect = useCallback((recipe: AutomationRecipe) => {
@@ -834,9 +812,8 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
         setPendingInsertEdgeId(null);
     }, [nodes, edges, setNodes, setEdges]);
 
-    // Check if the canvas needs a starting trigger.
-    const hasTrigger = nodes.some((node) => node.type === 'trigger');
-    const shouldShowStartingPoint = !hasTrigger;
+    // Check if canvas is empty
+    const isEmptyCanvas = nodes.length === 0;
     const flowIssues = useMemo(() => validateFlow(nodes, edges), [nodes, edges]);
     const flowIssuesByNode = useMemo(() => groupFlowIssuesByNode(flowIssues), [flowIssues]);
 
@@ -962,15 +939,15 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                             </button>
                         </div>
                     </Panel>
-                    {hasTrigger && (
+                    {!isEmptyCanvas && (
                         <Panel position="top-right">
                             <FlowHealthPanel issues={flowIssues} onOpenTest={() => setShowPathTest(true)} />
                         </Panel>
                     )}
                 </ReactFlow>
 
-                {/* Starting Point Card (empty canvas or missing trigger) */}
-                {shouldShowStartingPoint && (
+                {/* Starting Point Card (empty canvas) */}
+                {isEmptyCanvas && (
                     <StartingPointCard
                         onClick={() => setShowEventSelector(true)}
                         onRecipeClick={() => setShowRecipeSelector(true)}

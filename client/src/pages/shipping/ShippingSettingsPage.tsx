@@ -112,7 +112,7 @@ const defaultForm: SettingsFormState = {
     labelBranded: true,
     wooFulfillmentBehavior: 'keep_in_dispatch',
     trackingSyncEnabled: true,
-    trackingAutomationAllowlist: TRACKING_TRIGGER_OPTIONS.join(', '),
+    trackingAutomationAllowlist: 'SHIPMENT_DELIVERED',
     trackingPollIntervalMinutes: '30',
     trackingPollFailureBackoffMinutes: '60',
 };
@@ -206,7 +206,7 @@ export function ShippingSettingsPage() {
                 labelBranded: config.labelBranded !== false,
                 wooFulfillmentBehavior: String(config.wooFulfillmentBehavior || 'keep_in_dispatch'),
                 trackingSyncEnabled: config.trackingSyncEnabled !== false,
-                trackingAutomationAllowlist: Array.isArray(config.trackingAutomationAllowlist) ? config.trackingAutomationAllowlist.join(', ') : TRACKING_TRIGGER_OPTIONS.join(', '),
+                trackingAutomationAllowlist: Array.isArray(config.trackingAutomationAllowlist) ? config.trackingAutomationAllowlist.join(', ') : 'SHIPMENT_DELIVERED',
                 trackingPollIntervalMinutes: String(config.trackingPollIntervalMinutes || 30),
                 trackingPollFailureBackoffMinutes: String(config.trackingPollFailureBackoffMinutes || 60),
             }));

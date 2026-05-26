@@ -30,14 +30,7 @@ interface NormalizedTrackingEvent {
 }
 
 const TERMINAL_STATES = new Set(['delivered', 'returned', 'cancelled', 'expired']);
-const DEFAULT_TRIGGER_ALLOWLIST: ShipmentTriggerType[] = [
-    'SHIPMENT_RECEIVED_BY_CARRIER',
-    'SHIPMENT_IN_TRANSIT',
-    'SHIPMENT_OUT_FOR_DELIVERY',
-    'SHIPMENT_DELIVERY_ATTEMPTED',
-    'SHIPMENT_DELIVERED',
-    'SHIPMENT_EXCEPTION',
-];
+const DEFAULT_TRIGGER_ALLOWLIST: ShipmentTriggerType[] = [];
 const ACTIVE_TRACKING_STATUSES = ['cancelled', 'delivered', 'returned', 'expired', 'exception'];
 
 export class ShippingTrackingService {

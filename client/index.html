@@ -6,57 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
   <title>OverSeek</title>
 
-  <script>
-    (function () {
-      var KEY = 'overseek-asset-recovery-attempted-at';
-      var COOLDOWN_MS = 30000;
-
-      function showRecoveryMessage() {
-        if (document.getElementById('asset-recovery-message')) return;
-        var message = document.createElement('div');
-        message.id = 'asset-recovery-message';
-        message.textContent = 'Updating OverSeek, refreshing...';
-        message.style.cssText = 'position:fixed;inset:auto 16px 16px 16px;z-index:999999;padding:14px 16px;border-radius:12px;background:#111827;color:#fff;font:500 14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;box-shadow:0 16px 40px rgba(0,0,0,.22)';
-        (document.body || document.documentElement).appendChild(message);
-      }
-
-      async function clearCaches() {
-        if ('caches' in window) {
-          try {
-            var names = await caches.keys();
-            await Promise.all(names.map(function (name) { return caches.delete(name); }));
-          } catch (error) {
-            console.warn('[AssetRecovery] Cache clear failed', error);
-          }
-        }
-
-        if ('serviceWorker' in navigator) {
-          try {
-            var registration = await navigator.serviceWorker.ready;
-            await registration.update();
-          } catch (error) {
-            console.warn('[AssetRecovery] Service worker update failed', error);
-          }
-        }
-      }
-
-      window.addEventListener('error', function (event) {
-        var element = event.target;
-        var url = element && (element.src || element.href);
-        if (!url || url.indexOf('/assets/') === -1) return;
-
-        var lastAttempt = Number(sessionStorage.getItem(KEY) || 0);
-        if (Date.now() - lastAttempt < COOLDOWN_MS) return;
-
-        sessionStorage.setItem(KEY, String(Date.now()));
-        showRecoveryMessage();
-        clearCaches().finally(function () {
-          setTimeout(function () { window.location.reload(); }, 500);
-        });
-      }, true);
-    })();
-  </script>
-
   <!-- Performance: DNS prefetch and preconnect for external resources -->
   <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
   <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
