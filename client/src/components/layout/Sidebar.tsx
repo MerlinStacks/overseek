@@ -35,7 +35,8 @@ import {
     Rss,
     Truck,
     ClipboardList,
-    Ban
+    Ban,
+    Calculator
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { AccountSwitcher } from './AccountSwitcher';
@@ -66,7 +67,9 @@ const navItems = [
         icon: Store,
         children: [
             { icon: ShoppingCart, label: 'Orders', path: '/orders' },
+            { icon: TrendingDown, label: 'Abandoned Carts', path: '/abandoned-carts' },
             { icon: Package, label: 'Inventory', path: '/inventory' },
+            { icon: Calculator, label: 'Supply Chain', path: '/inventory/supply-chain' },
             { icon: RefreshCw, label: 'BOM Sync', path: '/inventory/bom-sync' },
             { icon: TrendingDown, label: 'Forecasts', path: '/inventory/forecasts' },
             { icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
@@ -197,8 +200,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
         return navItems.filter(item => {
             if (item.label === 'Commerce') {
                 const hasChild = item.children?.some(child => {
-                    if (child.path === '/orders') return hasPermission('view_orders');
-                    if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
+                    if (child.path === '/orders' || child.path === '/abandoned-carts') return hasPermission('view_orders');
+                    if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                     return true;
                 });
                 return hasChild;
@@ -226,8 +229,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                         if (child.path === '/ai-manager') return isAiManagerEnabled && hasPermission('view_marketing');
                         if (child.path === '/feeds') return isFeedsEnabled && hasPermission('view_marketing');
                         if (child.path?.startsWith('/shipping')) return isShippingEnabled && hasPermission('view_shipping');
-                        if (child.path === '/orders') return hasPermission('view_orders');
-                        if (child.path === '/inventory' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
+                        if (child.path === '/orders' || child.path === '/abandoned-carts') return hasPermission('view_orders');
+                        if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
                         if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/lists' || child.path === '/emails/settings' || child.path === '/emails/logs' || child.path === '/emails/blocked-contacts') {
                             return isEmailEnabled && hasPermission('view_marketing');

@@ -1011,15 +1011,11 @@ export class InvoiceService {
                                     return value.length > 0;
                                 })
                                 .slice(0, 12);
-                            const truncateMetaValue = (value: string) => {
-                                const compact = value.replace(/\s+/g, ' ').trim();
-                                if (compact.length <= 120) return compact;
-                                return `${compact.slice(0, 117)}...`;
-                            };
+                            const formatMetaValue = (value: string) => value.replace(/\s+/g, ' ').trim();
 
                             const titleHeight = Math.max(12, doc.heightOfString(itemName, { width: descWidth - 10 }));
                             const metaLineHeights = itemMeta.map((meta) => {
-                                const metaText = normalizePdfText(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
+                                const metaText = normalizePdfText(`${meta.label}: ${formatMetaValue(String(meta.value || ''))}`);
                                 return Math.max(
                                     10,
                                     doc.heightOfString(metaText, {
@@ -1046,7 +1042,7 @@ export class InvoiceService {
                                 tableY += 2;
                                 doc.fontSize(8).fillColor('black');
                                 itemMeta.forEach((meta, metaIdx) => {
-                                    const metaText = normalizePdfText(`${meta.label}: ${truncateMetaValue(String(meta.value || ''))}`);
+                                    const metaText = normalizePdfText(`${meta.label}: ${formatMetaValue(String(meta.value || ''))}`);
                                     const metaLineHeight = metaLineHeights[metaIdx] || 10;
                                     ensureSpaceForHeight(metaLineHeight + rowBottomSpacing);
                                     drawTextWithEmojiSupport(doc, metaText, tableX + 10, tableY, { width: descWidth - 20 }, 'Helvetica');

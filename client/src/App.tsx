@@ -35,10 +35,12 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ defa
 // Lazy-loaded pages (code splitting for bundle optimization)
 const OrdersPage = lazy(() => import('./pages/OrdersPage').then(m => ({ default: m.OrdersPage })));
 const OrderDetailPage = lazy(() => import('./pages/OrderDetailPage').then(m => ({ default: m.OrderDetailPage })));
+const AbandonedCartsPage = lazy(() => import('./pages/AbandonedCartsPage').then(m => ({ default: m.AbandonedCartsPage })));
 const MarketingPage = lazy(() => import('./pages/MarketingPage').then(m => ({ default: m.MarketingPage })));
 const FlowsPage = lazy(() => import('./pages/FlowsPage').then(m => ({ default: m.FlowsPage })));
 const TeamPage = lazy(() => import('./pages/TeamPage').then(m => ({ default: m.TeamPage })));
 const InventoryPage = lazy(() => import('./pages/InventoryPage').then(m => ({ default: m.InventoryPage })));
+const SupplyChainPage = lazy(() => import('./pages/SupplyChainPage').then(m => ({ default: m.SupplyChainPage })));
 const BOMSyncPage = lazy(() => import('./pages/BOMSyncPage').then(m => ({ default: m.BOMSyncPage })));
 const InventoryForecastPage = lazy(() => import('./pages/InventoryForecastPage').then(m => ({ default: m.InventoryForecastPage })));
 const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ default: m.CustomersPage })));
@@ -266,7 +268,9 @@ function App() {
                                                 <Route path={ROUTE_PATHS.dashboard} element={<AccountGuard><DashboardPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.orders} element={<AccountGuard><OrdersPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.orderDetails} element={<AccountGuard><OrderDetailPage /></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.abandonedCarts} element={<AccountGuard><AbandonedCartsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventory} element={<AccountGuard><InventoryPage /></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.supplyChain} element={<AccountGuard><SupplyChainPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventoryBomSync} element={<AccountGuard><BOMSyncPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventoryForecasts} element={<AccountGuard><InventoryForecastPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.productDetails} element={<AccountGuard><ProductEditPage /></AccountGuard>} />

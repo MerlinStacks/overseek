@@ -4,12 +4,10 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useToast } from '../context/ToastContext';
-import { Search, Package, Loader2, Layers, Truck, Calculator, Plus, Box, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { SuppliersList } from '../components/inventory/SuppliersList';
+import { Search, Package, Loader2, Layers, Plus, Box, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
 // import { BOMEditor } from '../components/inventory/BOMEditor';
 import { ProductSeoModal } from '../components/inventory/ProductSeoModal';
-import { PurchaseOrderList } from '../components/inventory/PurchaseOrderList';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 
 import { Pagination } from '../components/ui/Pagination';
@@ -87,8 +85,9 @@ export function InventoryPage() {
     const toast = useToast();
 
     // Read initial tab from URL query param, default to 'catalog'
-    const tabFromUrl = searchParams.get('tab') as 'catalog' | 'suppliers' | 'purchasing' | 'components' | null;
-    const validTabs = ['catalog', 'suppliers', 'purchasing', 'components'];
+    const tabFromUrl = searchParams.get('tab') as 'catalog' | 'components' | null;
+    const legacySupplyChainTab = searchParams.get('tab');
+    const validTabs = ['catalog', 'components'];
     const initialTab = (tabFromUrl && validTabs.includes(tabFromUrl)) ? tabFromUrl : 'catalog';
     const sortFieldFromUrl = searchParams.get('sortField');
     const queryFromUrl = searchParams.get('q') || '';
@@ -99,7 +98,13 @@ export function InventoryPage() {
     const initialSortDirection: 'asc' | 'desc' = sortDirectionFromUrl === 'desc' ? 'desc' : 'asc';
     const pageFromUrl = Number(searchParams.get('page') || '1');
     const initialPage = Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? Math.trunc(pageFromUrl) : 1;
-    const [activeTab, setActiveTab] = useState<'catalog' | 'suppliers' | 'purchasing' | 'components'>(initialTab);
+    const [activeTab, setActiveTab] = useState<'catalog' | 'components'>(initialTab);
+
+    useEffect(() => {
+        if (legacySupplyChainTab === 'suppliers' || legacySupplyChainTab === 'purchasing') {
+            navigate(`/inventory/supply-chain?tab=${legacySupplyChainTab}`, { replace: true });
+        }
+    }, [legacySupplyChainTab, navigate]);
 
     // Sync URL when tab changes
     useEffect(() => {
@@ -373,7 +378,7 @@ export function InventoryPage() {
             <div className="flex justify-between items-end border-b pb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
-                    <p className="text-sm text-gray-500">Manage products, materials, and suppliers</p>
+                    <p className="text-sm text-gray-500">Manage products and inventory components</p>
                 </div>
 
                 <div className="flex gap-4">
@@ -391,18 +396,6 @@ export function InventoryPage() {
                         <Layers size={18} /> Product Catalog
                     </button>
                     <button
-                        onClick={() => setActiveTab('suppliers')}
-                        className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'suppliers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                    >
-                        <Truck size={18} /> Suppliers & Materials
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('purchasing')}
-                        className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'purchasing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                    >
-                        <Calculator size={18} /> Purchasing
-                    </button>
-                    <button
                         onClick={() => setActiveTab('components')}
                         className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'components' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
@@ -413,11 +406,7 @@ export function InventoryPage() {
             </div>
 
             {
-                activeTab === 'suppliers' ? (
-                    <SuppliersList />
-                ) : activeTab === 'purchasing' ? (
-                    <PurchaseOrderList />
-                ) : activeTab === 'components' ? (
+                activeTab === 'components' ? (
                     <InternalProductsList />
                 ) : (
                     <>
