@@ -22,6 +22,9 @@ vi.mock('../../utils/prisma', () => ({
         account: {
             findUnique: vi.fn(),
         },
+        emailLog: {
+            findFirst: vi.fn(),
+        },
     }
 }));
 
@@ -82,6 +85,7 @@ vi.mock('../events', async () => {
 describe('NotificationEngine', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        (prisma.emailLog.findFirst as any).mockResolvedValue(null);
     });
 
     describe('handleOrderCreated', () => {
@@ -185,6 +189,41 @@ describe('NotificationEngine', () => {
 
             expect(prisma.account.findUnique).not.toHaveBeenCalled();
             expect(canonicalInvoiceAttachmentService.resolveAbsolutePath).not.toHaveBeenCalled();
+        });
+
+        it('should send invoice email when an existing PayPal order becomes processing', async () => {
+            (prisma.account.findUnique as any).mockResolvedValue({
+                autoSendInvoiceOnNewOrder: true,
+                invoiceRecipientEmail: 'orders@example.com',
+                name: 'Test Store'
+            });
+            (canonicalInvoiceAttachmentService.resolveAbsolutePath as any).mockResolvedValue({
+                absolutePath: '/tmp/invoice-1234.pdf'
+            });
+
+            await (NotificationEngine as any).handleOrderStatusChanged({
+                accountId: 'acc_123',
+                previousStatus: 'pending',
+                newStatus: 'processing',
+                order: {
+                    id: 'order_1',
+                    number: '1234',
+                    status: 'processing',
+                    total: '150.00',
+                    billing: { first_name: 'John', last_name: 'Doe' },
+                    line_items: []
+                }
+            });
+
+            expect(prisma.account.findUnique).toHaveBeenCalledWith({
+                where: { id: 'acc_123' },
+                select: {
+                    autoSendInvoiceOnNewOrder: true,
+                    invoiceRecipientEmail: true,
+                    name: true
+                }
+            });
+            expect(canonicalInvoiceAttachmentService.resolveAbsolutePath).toHaveBeenCalledWith('acc_123', 'order_1');
         });
     });
 

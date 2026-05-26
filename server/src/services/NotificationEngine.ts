@@ -58,6 +58,7 @@ export class NotificationEngine {
 
         // Order Events
         EventBus.on(EVENTS.ORDER.CREATED, this.handleOrderCreated.bind(this));
+        EventBus.on(EVENTS.ORDER.STATUS_CHANGED, this.handleOrderStatusChanged.bind(this));
 
         // Review Events
         EventBus.on(EVENTS.REVIEW.LEFT, this.handleReviewLeft.bind(this));
@@ -90,7 +91,7 @@ export class NotificationEngine {
         EventBus.on(EVENTS.SEO.RANK_CHANGE, this.handleRankChange.bind(this));
 
         this.initialized = true;
-        Logger.info('[NotificationEngine] Initialized - listening for 11 event types');
+        Logger.info('[NotificationEngine] Initialized - listening for 12 event types');
     }
 
     /**
@@ -177,6 +178,24 @@ export class NotificationEngine {
         });
     }
 
+    private static async handleOrderStatusChanged(data: { accountId: string; order: any; newStatus?: string }): Promise<void> {
+        const { accountId, order, newStatus } = data;
+        const orderStatus = normalizeOrderStatus(newStatus || order?.status).replace(/^wc-/, '');
+        if (!this.INVOICE_EMAIL_ORDER_STATUSES.has(orderStatus)) {
+            return;
+        }
+
+        const orderNumber = order?.number || order?.id;
+        const total = parseFloat(String(order?.total)) || 0;
+
+        await this.sendInvoiceEmailIfEnabled({
+            accountId,
+            order,
+            orderNumber,
+            total
+        });
+    }
+
     private static async sendInvoiceEmailIfEnabled(args: {
         accountId: string;
         order: any;
@@ -206,6 +225,23 @@ export class NotificationEngine {
             });
 
             if (!account?.autoSendInvoiceOnNewOrder || !account.invoiceRecipientEmail) {
+                return;
+            }
+
+            const existingInvoiceEmail = await prisma.emailLog.findFirst({
+                where: {
+                    accountId,
+                    source: 'ORDER_INVOICE',
+                    sourceId: String(order.id),
+                    status: { in: ['SUCCESS', 'PENDING_RETRY'] }
+                },
+                select: { id: true }
+            });
+            if (existingInvoiceEmail) {
+                Logger.info('[NotificationEngine] Invoice email skipped: already sent for order', {
+                    accountId,
+                    orderId: order.id,
+                });
                 return;
             }
 
