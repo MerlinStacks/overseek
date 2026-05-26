@@ -64,6 +64,7 @@ vi.mock('../../utils/redis', () => ({
 vi.mock('../BlockedContactService', () => ({
     BlockedContactService: {
         isBlocked: vi.fn().mockResolvedValue(false),
+        listBlockedEmails: vi.fn().mockResolvedValue([]),
     }
 }));
 
@@ -101,6 +102,7 @@ vi.mock('./EmailIngestion', () => ({
 
 // Import ChatService after mocks
 import { ChatService } from '../ChatService';
+import { BlockedContactService } from '../BlockedContactService';
 import { Server } from 'socket.io';
 
 describe('ChatService', () => {
@@ -188,6 +190,30 @@ describe('ChatService', () => {
                     where: expect.objectContaining({
                         accountId,
                         assignedTo: userId
+                    })
+                })
+            );
+        });
+
+        it('should exclude blocked guest and customer emails', async () => {
+            vi.mocked(BlockedContactService.listBlockedEmails).mockResolvedValueOnce(['blocked@example.com']);
+            mockFindMany.mockResolvedValueOnce([]);
+
+            await chatService.listConversations(accountId);
+
+            expect(mockFindMany).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: expect.objectContaining({
+                        AND: [
+                            {
+                                NOT: {
+                                    OR: [
+                                        { guestEmail: { equals: 'blocked@example.com', mode: 'insensitive' } },
+                                        { wooCustomer: { email: { equals: 'blocked@example.com', mode: 'insensitive' } } }
+                                    ]
+                                }
+                            }
+                        ]
                     })
                 })
             );
@@ -335,6 +361,34 @@ describe('ChatService', () => {
                     })
                 })
             );
+        });
+    });
+
+    describe('addMessage', () => {
+        it('should not emit inbox updates for blocked customer messages', async () => {
+            vi.mocked(BlockedContactService.isBlocked).mockResolvedValueOnce(true);
+            mockFindFirst.mockResolvedValueOnce({
+                id: conversationId,
+                accountId,
+                status: 'OPEN',
+                wooCustomer: { email: 'blocked@example.com' },
+                guestEmail: null,
+                priority: 'MEDIUM',
+                assignedTo: null,
+                channel: 'CHAT'
+            });
+            mockUpdate.mockResolvedValueOnce({ id: conversationId, accountId, status: 'CLOSED' });
+
+            await chatService.addMessage(conversationId, 'Blocked message', 'CUSTOMER', undefined, false, accountId);
+
+            expect(mockUpdate).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: { id: conversationId },
+                    data: expect.objectContaining({ status: 'CLOSED' })
+                })
+            );
+            expect(mockIo.to).not.toHaveBeenCalled();
+            expect(mockIo.emit).not.toHaveBeenCalled();
         });
     });
 

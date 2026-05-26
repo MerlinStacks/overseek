@@ -102,22 +102,12 @@ export class EmailIngestion {
         });
 
         if (isBlocked) {
-            // Keep blocked conversations visible while suppressing automation below.
+            // Store for audit, but keep blocked contact activity out of the inbox UI.
             await prisma.conversation.update({
                 where: { id: conversation.id },
                 data: { updatedAt: new Date() }
             });
-            Logger.info('[EmailIngestion] Blocked sender, imported without automation', { fromEmail, conversationId: conversation.id });
-
-            // Still emit socket events so UI updates
-            this.io.to(`conversation:${conversation.id}`).emit('message:new', message);
-            this.io.to(`account:${accountId}`).emit('conversation:updated', {
-                id: conversation.id,
-                lastMessage: message,
-                updatedAt: new Date()
-            });
-
-            // Invalidate cache even for blocked emails so conversation list updates
+            Logger.info('[EmailIngestion] Blocked sender, imported without inbox update', { fromEmail, conversationId: conversation.id });
             await invalidateCache('inbox', `conversations:${accountId}`);
             return;
         }

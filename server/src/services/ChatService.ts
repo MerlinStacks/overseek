@@ -26,7 +26,22 @@ export class ChatService {
         this.automationEngine = new AutomationEngine();
     }
 
-        /**
+    private static buildBlockedContactFilter(blockedEmails: string[]): Prisma.ConversationWhereInput {
+        if (blockedEmails.length === 0) return {};
+
+        return {
+            AND: blockedEmails.map((email) => ({
+                NOT: {
+                    OR: [
+                        { guestEmail: { equals: email, mode: 'insensitive' } },
+                        { wooCustomer: { email: { equals: email, mode: 'insensitive' } } }
+                    ]
+                }
+            }))
+        };
+    }
+
+    /**
      * List conversations with caching and pagination for performance.
      * Cached for 30 seconds to reduce database load.
      */
@@ -47,6 +62,9 @@ export class ChatService {
         return cacheAside(
             cacheKey,
             async () => {
+                const blockedContactFilter = ChatService.buildBlockedContactFilter(
+                    await BlockedContactService.listBlockedEmails(accountId)
+                );
                 const conversations = await prisma.conversation.findMany({
                     take: limit,
                     skip: cursor ? 1 : 0,
@@ -61,7 +79,8 @@ export class ChatService {
                                 : {}),
                         ...(options?.wooCustomerId ? { wooCustomerId: options.wooCustomerId } : {}),
                         ...(options?.guestEmail ? { guestEmail: options.guestEmail } : {}),
-                        mergedIntoId: null
+                        mergedIntoId: null,
+                        ...blockedContactFilter
                     } satisfies Prisma.ConversationWhereInput,
                     include: {
                         // Only fetch fields needed for display
@@ -223,8 +242,11 @@ export class ChatService {
     }
 
     async getConversation(accountId: string, id: string) {
+        const blockedContactFilter = ChatService.buildBlockedContactFilter(
+            await BlockedContactService.listBlockedEmails(accountId)
+        );
         const conversation = await prisma.conversation.findFirst({
-            where: { id, accountId },
+            where: { id, accountId, ...blockedContactFilter },
             include: {
                 messages: { orderBy: { createdAt: 'asc' } },
                 wooCustomer: true,
@@ -319,12 +341,14 @@ export class ChatService {
         }
 
         if (isBlocked) {
-            // Auto-close without autoreplies or push notifications
+            // Hide blocked contact activity from the inbox while retaining the audit trail.
             await prisma.conversation.update({
                 where: { id: conversationId },
                 data: { status: 'CLOSED', updatedAt: new Date() }
             });
-            Logger.info('[ChatService] Blocked contact, auto-resolved', { contactEmail, conversationId });
+            await this.invalidateConversationCache(conversation.accountId);
+            Logger.info('[ChatService] Blocked contact, suppressed inbox update', { contactEmail, conversationId });
+            return message;
         } else {
             // Normal flow: update status to OPEN and mark as unread for customer messages
             await prisma.conversation.update({
@@ -341,7 +365,7 @@ export class ChatService {
             await this.invalidateConversationCache(conversation.accountId);
         }
 
-        // Emit socket events (always, so UI stays in sync)
+        // Emit socket events for visible conversations.
         // Include accountId for client-side account isolation filtering
         this.io.to(`conversation:${conversationId}`).emit('message:new', {
             ...message,
@@ -459,12 +483,16 @@ export class ChatService {
      * Get count of unread conversations for an account
      */
     async getUnreadCount(accountId: string): Promise<number> {
+        const blockedContactFilter = ChatService.buildBlockedContactFilter(
+            await BlockedContactService.listBlockedEmails(accountId)
+        );
         return prisma.conversation.count({
             where: {
                 accountId,
                 isRead: false,
                 status: 'OPEN',
-                mergedIntoId: null
+                mergedIntoId: null,
+                ...blockedContactFilter
             }
         });
     }

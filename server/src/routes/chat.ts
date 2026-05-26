@@ -16,6 +16,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { ChatService } from '../services/ChatService';
+import { BlockedContactService } from '../services/BlockedContactService';
 import { EmailService } from '../services/EmailService';
 import { TwilioService } from '../services/TwilioService';
 import { InboxAIService } from '../services/InboxAIService';
@@ -43,6 +44,21 @@ if (!fs.existsSync(attachmentsDir)) {
 
 const MAX_RELAY_ATTACHMENTS = 10;
 const MAX_RELAY_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+function buildBlockedContactFilter(blockedEmails: string[]): Prisma.ConversationWhereInput {
+    if (blockedEmails.length === 0) return {};
+
+    return {
+        AND: blockedEmails.map((email) => ({
+            NOT: {
+                OR: [
+                    { guestEmail: { equals: email, mode: 'insensitive' } },
+                    { wooCustomer: { email: { equals: email, mode: 'insensitive' } } }
+                ]
+            }
+        }))
+    };
+}
 
 function toSmsPlainText(content: string): string {
     return content
@@ -213,6 +229,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const baseWhere: Prisma.ConversationWhereInput = {
                     accountId,
                     ...(statusFilter ? { status: statusFilter } : {}),
+                    ...buildBlockedContactFilter(await BlockedContactService.listBlockedEmails(accountId))
                 };
 
                 const directFieldFilters: Prisma.ConversationWhereInput[] = [

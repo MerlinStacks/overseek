@@ -42,7 +42,7 @@ interface NotificationConfig {
 export class NotificationEngine {
     private static initialized = false;
     private static readonly emailService = new EmailService();
-    private static readonly INVOICE_EMAIL_ORDER_STATUSES = new Set(['processing', 'completed']);
+    private static readonly INVOICE_EMAIL_ORDER_STATUSES = new Set(['processing']);
 
     /**
      * Initialize the notification engine by subscribing to all notification-worthy events.

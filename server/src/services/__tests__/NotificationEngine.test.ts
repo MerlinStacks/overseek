@@ -225,6 +225,24 @@ describe('NotificationEngine', () => {
             });
             expect(canonicalInvoiceAttachmentService.resolveAbsolutePath).toHaveBeenCalledWith('acc_123', 'order_1');
         });
+
+        it('should not send invoice email when a PayPal order becomes completed', async () => {
+            await (NotificationEngine as any).handleOrderStatusChanged({
+                accountId: 'acc_123',
+                previousStatus: 'processing',
+                newStatus: 'completed',
+                order: {
+                    id: 'order_1',
+                    number: '1234',
+                    status: 'completed',
+                    total: '150.00',
+                    line_items: []
+                }
+            });
+
+            expect(prisma.account.findUnique).not.toHaveBeenCalled();
+            expect(canonicalInvoiceAttachmentService.resolveAbsolutePath).not.toHaveBeenCalled();
+        });
     });
 
     describe('handleReviewLeft', () => {

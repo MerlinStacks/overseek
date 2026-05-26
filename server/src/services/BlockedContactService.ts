@@ -11,6 +11,7 @@
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { redisClient as redis } from '../utils/redis';
+import { invalidateCache } from '../utils/cache';
 
 // Cache TTL: 5 minutes - allows quick updates while avoiding constant DB queries
 const BLOCKED_CACHE_TTL = 300;
@@ -105,6 +106,7 @@ export class BlockedContactService {
             try {
                 await redis.del(getBlockedSetKey(accountId));
             } catch { /* Redis unavailable is fine */ }
+            await invalidateCache('inbox', `conversations:${accountId}`);
 
             Logger.info('[BlockedContact] Contact blocked', { accountId, email });
             return { success: true };
@@ -135,6 +137,7 @@ export class BlockedContactService {
             try {
                 await redis.del(getBlockedSetKey(accountId));
             } catch { /* Redis unavailable is fine */ }
+            await invalidateCache('inbox', `conversations:${accountId}`);
 
             Logger.info('[BlockedContact] Contact unblocked', { accountId, email });
             return { success: true };
@@ -155,6 +158,15 @@ export class BlockedContactService {
             },
             orderBy: { blockedAt: 'desc' }
         });
+    }
+
+    static async listBlockedEmails(accountId: string): Promise<string[]> {
+        const blocked = await prisma.blockedContact.findMany({
+            where: { accountId },
+            select: { email: true }
+        });
+
+        return blocked.map((contact) => contact.email.toLowerCase());
     }
 
     /**
