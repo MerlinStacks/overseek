@@ -204,16 +204,12 @@ describe('ChatService', () => {
             expect(mockFindMany).toHaveBeenCalledWith(
                 expect.objectContaining({
                     where: expect.objectContaining({
-                        AND: [
-                            {
-                                NOT: {
-                                    OR: [
-                                        { guestEmail: { equals: 'blocked@example.com', mode: 'insensitive' } },
-                                        { wooCustomer: { email: { equals: 'blocked@example.com', mode: 'insensitive' } } }
-                                    ]
-                                }
-                            }
-                        ]
+                        NOT: {
+                            OR: [
+                                { guestEmail: { in: ['blocked@example.com'], mode: 'insensitive' } },
+                                { wooCustomer: { email: { in: ['blocked@example.com'], mode: 'insensitive' } } }
+                            ]
+                        }
                     })
                 })
             );

@@ -49,14 +49,12 @@ function buildBlockedContactFilter(blockedEmails: string[]): Prisma.Conversation
     if (blockedEmails.length === 0) return {};
 
     return {
-        AND: blockedEmails.map((email) => ({
-            NOT: {
-                OR: [
-                    { guestEmail: { equals: email, mode: 'insensitive' } },
-                    { wooCustomer: { email: { equals: email, mode: 'insensitive' } } }
-                ]
-            }
-        }))
+        NOT: {
+            OR: [
+                { guestEmail: { in: blockedEmails, mode: 'insensitive' } },
+                { wooCustomer: { email: { in: blockedEmails, mode: 'insensitive' } } }
+            ]
+        }
     };
 }
 
