@@ -30,12 +30,20 @@ export class ChatService {
         if (blockedEmails.length === 0) return {};
 
         return {
-            NOT: {
-                OR: [
-                    { guestEmail: { in: blockedEmails, mode: 'insensitive' } },
-                    { wooCustomer: { email: { in: blockedEmails, mode: 'insensitive' } } }
-                ]
-            }
+            AND: [
+                {
+                    OR: [
+                        { guestEmail: null },
+                        { guestEmail: { notIn: blockedEmails, mode: 'insensitive' } }
+                    ]
+                },
+                {
+                    OR: [
+                        { wooCustomerId: null },
+                        { wooCustomer: { email: { notIn: blockedEmails, mode: 'insensitive' } } }
+                    ]
+                }
+            ]
         };
     }
 
