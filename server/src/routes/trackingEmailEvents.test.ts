@@ -13,6 +13,8 @@ describe('normalizeShipmentStatus', () => {
         expect(normalizeShipmentStatus('Out for delivery')).toBe('out_for_delivery');
         expect(normalizeShipmentStatus('out-for-delivery')).toBe('out_for_delivery');
         expect(normalizeShipmentStatus('On board for delivery')).toBe('out_for_delivery');
+        expect(normalizeShipmentStatus('ON_BOARD_FOR_DELIVERY')).toBe('out_for_delivery');
+        expect(normalizeShipmentStatus('ONBOARD_FOR_DELIVERY')).toBe('out_for_delivery');
     });
 
     it('falls back to event name and description when status is missing', () => {

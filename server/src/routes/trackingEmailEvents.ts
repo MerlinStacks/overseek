@@ -54,7 +54,7 @@ export function normalizeShipmentStatus(...values: Array<string | undefined>): S
     }
 
     const text = nonEmptyValues.join(' ').trim().toLowerCase();
-    if (/(out for delivery|onboard for delivery|on board for delivery)/.test(text)) return 'out_for_delivery';
+    if (/(out[\s_-]*for[\s_-]*delivery|on[\s_-]*board[\s_-]*for[\s_-]*delivery|onboard[\s_-]*for[\s_-]*delivery)/.test(text)) return 'out_for_delivery';
     if (/(delivery attempted|attempted delivery|card left|awaiting collection|collection point)/.test(text)) return 'delivery_attempted';
     if (/(delivered|successfully delivered)/.test(text)) return 'delivered';
     if (/(exception|delay|delayed|held|return to sender|returned|damaged|lost|address issue|failed)/.test(text)) return 'exception';

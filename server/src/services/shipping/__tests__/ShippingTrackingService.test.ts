@@ -80,6 +80,10 @@ describe('ShippingTrackingService', () => {
         });
 
         expect(prisma.shippingTrackingEvent.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            update: expect.objectContaining({
+                normalizedState: 'received_by_carrier',
+                normalizedMilestone: 'received_by_carrier',
+            }),
             create: expect.objectContaining({
                 normalizedState: 'received_by_carrier',
                 normalizedMilestone: 'received_by_carrier',
@@ -169,5 +173,16 @@ describe('ShippingTrackingService', () => {
         expect(shippingTrackingService.normalizeTrackingEvent({ description: 'Return to sender' })).toMatchObject({ normalizedState: 'returned', terminal: true });
         expect(shippingTrackingService.normalizeTrackingEvent({ description: 'Cancelled by carrier' })).toMatchObject({ normalizedState: 'cancelled', terminal: true });
         expect(shippingTrackingService.normalizeTrackingEvent({ description: 'Delayed due to address issue' })).toMatchObject({ normalizedState: 'exception' });
+    });
+
+    it('normalizes machine-form out-for-delivery carrier statuses', () => {
+        expect(shippingTrackingService.normalizeTrackingEvent({ status: 'ON_BOARD_FOR_DELIVERY' })).toMatchObject({
+            normalizedState: 'out_for_delivery',
+            triggerType: 'SHIPMENT_OUT_FOR_DELIVERY',
+        });
+        expect(shippingTrackingService.normalizeTrackingEvent({ eventCode: 'ONBOARD_FOR_DELIVERY' })).toMatchObject({
+            normalizedState: 'out_for_delivery',
+            triggerType: 'SHIPMENT_OUT_FOR_DELIVERY',
+        });
     });
 });
