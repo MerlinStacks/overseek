@@ -54,10 +54,39 @@ const ADDRESS_COMPARE_FIELDS = [
 ] as const;
 
 const normalizeAddressValue = (value: unknown) => String(value || '').trim().toLowerCase();
+const INVOICE_FONT_REGULAR = 'OverseekInvoiceSans';
+const INVOICE_FONT_BOLD = 'OverseekInvoiceSansBold';
+const FALLBACK_FONT_REGULAR = 'Helvetica';
+const FALLBACK_FONT_BOLD = 'Helvetica-Bold';
 const EMOJI_FONT_FAMILY = 'NotoEmojiFallback';
 const MAX_PDF_TEXT_LENGTH = 10_000;
+const invoiceFontRegisteredDocs = new WeakSet<PDFKit.PDFDocument>();
 const emojiFontRegisteredDocs = new WeakSet<PDFKit.PDFDocument>();
+let invoiceFontRegularPath: string | null = null;
+let invoiceFontBoldPath: string | null = null;
 let emojiFontSourcePath: string | null = null;
+
+const ensureInvoiceFonts = (doc: PDFKit.PDFDocument) => {
+    if (invoiceFontRegisteredDocs.has(doc)) {
+        return { regular: INVOICE_FONT_REGULAR, bold: INVOICE_FONT_BOLD };
+    }
+
+    try {
+        if (!invoiceFontRegularPath) {
+            invoiceFontRegularPath = require.resolve('@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff');
+        }
+        if (!invoiceFontBoldPath) {
+            invoiceFontBoldPath = require.resolve('@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff');
+        }
+        doc.registerFont(INVOICE_FONT_REGULAR, invoiceFontRegularPath);
+        doc.registerFont(INVOICE_FONT_BOLD, invoiceFontBoldPath);
+        invoiceFontRegisteredDocs.add(doc);
+        return { regular: INVOICE_FONT_REGULAR, bold: INVOICE_FONT_BOLD };
+    } catch (error) {
+        Logger.warn('[InvoiceService] Invoice Unicode font unavailable', { error });
+        return { regular: FALLBACK_FONT_REGULAR, bold: FALLBACK_FONT_BOLD };
+    }
+};
 
 const ensureEmojiFont = (doc: PDFKit.PDFDocument) => {
     if (emojiFontRegisteredDocs.has(doc)) return true;
@@ -535,6 +564,7 @@ export class InvoiceService {
 
             doc.on('error', reject);
             doc.pipe(stream);
+            const { regular: regularFont, bold: boldFont } = ensureInvoiceFonts(doc);
 
             // Parse template layout
             let layoutData: any = normalizedLayout || template.layout;
@@ -745,13 +775,13 @@ export class InvoiceService {
                             let requiredHeight = 0;
 
                             if (businessText) {
-                                doc.font('Helvetica').fontSize(font);
+                                doc.font(regularFont).fontSize(font);
                                 requiredHeight += doc.heightOfString(businessText, { width: detailsWidth, align: 'right' });
                             }
 
                             if (hasTaxId) {
                                 if (requiredHeight > 0) requiredHeight += 4;
-                                doc.font('Helvetica-Bold').fontSize(nextTaxFont);
+                                doc.font(boldFont).fontSize(nextTaxFont);
                                 requiredHeight += doc.heightOfString(taxText, { width: detailsWidth, align: 'right' });
                             }
 
@@ -764,14 +794,14 @@ export class InvoiceService {
 
                         let detailsY = startY;
                         if (businessText) {
-                            doc.font('Helvetica').fontSize(businessFontSize);
+                            doc.font(regularFont).fontSize(businessFontSize);
                             doc.text(businessText, detailsX, detailsY, { width: detailsWidth, align: 'right' });
                             detailsY += doc.heightOfString(businessText, { width: detailsWidth, align: 'right' });
                         }
 
                         if (hasTaxId) {
                             if (detailsY > startY) detailsY += 4;
-                            doc.font('Helvetica-Bold').fontSize(taxFontSize);
+                            doc.font(boldFont).fontSize(taxFontSize);
                             doc.text(taxText, detailsX, detailsY, { width: detailsWidth, align: 'right' });
                             detailsY += doc.heightOfString(taxText, { width: detailsWidth, align: 'right' });
                         }
@@ -796,7 +826,7 @@ export class InvoiceService {
                             }
                         }
                         blockHeight = Math.max(blockHeight, Math.min(60, availableHeight));
-                        doc.font('Helvetica').fontSize(10);
+                        doc.font(regularFont).fontSize(10);
                         break;
                     }
 
@@ -817,23 +847,23 @@ export class InvoiceService {
                             columnX: number,
                             includeContact: boolean
                         ) => {
-                            doc.font('Helvetica-Bold').fontSize(headingFontSize).fillColor('black');
+                            doc.font(boldFont).fontSize(headingFontSize).fillColor('black');
                             doc.text(heading, columnX, safeStartY);
 
                             let y = safeStartY + 12;
-                            doc.font('Helvetica').fontSize(bodyFontSize).fillColor('black');
+                            doc.font(regularFont).fontSize(bodyFontSize).fillColor('black');
                             const textWidth = showShippingAddress
                                 ? Math.max(92, (safeWidth - 14) / 2)
                                 : Math.max(120, safeWidth);
 
                             const writeLine = (text: string, bold = false) => {
                                 if (bold) {
-                                    doc.font('Helvetica-Bold').fillColor('black');
+                                    doc.font(boldFont).fillColor('black');
                                 } else {
-                                    doc.font('Helvetica').fillColor('black');
+                                    doc.font(regularFont).fillColor('black');
                                 }
                                 const safeText = normalizePdfText(text);
-                                drawTextWithEmojiSupport(doc, safeText, columnX, y, { width: textWidth }, bold ? 'Helvetica-Bold' : 'Helvetica');
+                                drawTextWithEmojiSupport(doc, safeText, columnX, y, { width: textWidth }, bold ? boldFont : regularFont);
                                 const usedHeight = Math.max(lineStep, doc.heightOfString(safeText, { width: textWidth }));
                                 y += usedHeight + 1;
                             };
@@ -879,7 +909,7 @@ export class InvoiceService {
                             blockHeight = billEndY - safeStartY + 8;
                         }
 
-                        doc.fillColor('black').font('Helvetica').fontSize(10);
+                        doc.fillColor('black').font(regularFont).fontSize(10);
                         break;
                     }
 
@@ -921,10 +951,10 @@ export class InvoiceService {
                         detailsData.forEach((detail) => {
                             const safeValue = normalizePdfText(detail.value ?? 'N/A');
 
-                            doc.font('Helvetica').fontSize(9);
+                            doc.font(regularFont).fontSize(9);
                             const labelHeight = doc.heightOfString(detail.label, { width: detailLabelWidth });
 
-                            doc.font('Helvetica-Bold').fontSize(9);
+                            doc.font(boldFont).fontSize(9);
                             const valueHeight = doc.heightOfString(safeValue, { width: detailValueWidth });
                             const rowHeight = Math.max(labelHeight, valueHeight);
 
@@ -934,20 +964,20 @@ export class InvoiceService {
                                 doc.restore();
                             }
 
-                            doc.font('Helvetica').fillColor('black').fontSize(9).text(detail.label, x, detY, { width: detailLabelWidth });
+                            doc.font(regularFont).fillColor('black').fontSize(9).text(detail.label, x, detY, { width: detailLabelWidth });
                             doc.fillColor('black').fontSize(9);
-                            drawTextWithEmojiSupport(doc, safeValue, x + detailLabelWidth + 6, detY, { width: detailValueWidth }, 'Helvetica-Bold');
+                            drawTextWithEmojiSupport(doc, safeValue, x + detailLabelWidth + 6, detY, { width: detailValueWidth }, boldFont);
 
                             detY += rowHeight + detailLineGap;
                         });
-                        doc.fillColor('black').font('Helvetica').fontSize(10);
+                        doc.fillColor('black').font(regularFont).fontSize(10);
                         blockHeight = detY - startY + 10;
                         break;
                     }
 
                     case 'order_table': {
                         // Respect saved grid width/position so generated output follows designer layout.
-                        doc.fontSize(9).font('Helvetica-Bold');
+                        doc.fontSize(9).font(boldFont);
                         const tableFooterSafetyBuffer = 18;
                         const tableX = x;
                         const fullTableWidth = width;
@@ -967,10 +997,10 @@ export class InvoiceService {
                         doc.strokeColor('black').lineWidth(1);
 
                         let tableY = startY + 18;
-                        doc.font('Helvetica').fontSize(9);
+                        doc.font(regularFont).fontSize(9);
 
                         const renderTableHeader = () => {
-                            doc.fontSize(9).font('Helvetica-Bold');
+                            doc.fontSize(9).font(boldFont);
                             doc.fillColor('black').text('Description', tableX, tableY);
                             doc.text('Qty', tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
                             doc.text('Unit Price', tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
@@ -978,7 +1008,7 @@ export class InvoiceService {
                             doc.moveTo(tableX, tableY + 12).lineTo(tableX + safeTableWidth, tableY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
                             doc.strokeColor('black').lineWidth(1);
                             tableY += 18;
-                            doc.font('Helvetica').fontSize(9).fillColor('black');
+                            doc.font(regularFont).fontSize(9).fillColor('black');
                         };
 
                         const moveTableToNextPage = () => {
@@ -1030,7 +1060,7 @@ export class InvoiceService {
                             const requiredRowHeight = titleHeight + metaSpacingHeight + metaHeight + rowBottomSpacing;
                             ensureSpaceForHeight(requiredRowHeight);
 
-                            drawTextWithEmojiSupport(doc, itemName, tableX, tableY, { width: descWidth - 10 }, 'Helvetica');
+                            drawTextWithEmojiSupport(doc, itemName, tableX, tableY, { width: descWidth - 10 }, regularFont);
                             doc.text(String(qty), tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
                             doc.text(formatCurrency(unitPrice), tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
                             doc.text(formatCurrency(item.total), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
@@ -1045,7 +1075,7 @@ export class InvoiceService {
                                     const metaText = normalizePdfText(`${meta.label}: ${formatMetaValue(String(meta.value || ''))}`);
                                     const metaLineHeight = metaLineHeights[metaIdx] || 10;
                                     ensureSpaceForHeight(metaLineHeight + rowBottomSpacing);
-                                    drawTextWithEmojiSupport(doc, metaText, tableX + 10, tableY, { width: descWidth - 20 }, 'Helvetica');
+                                    drawTextWithEmojiSupport(doc, metaText, tableX + 10, tableY, { width: descWidth - 20 }, regularFont);
                                     tableY += metaLineHeight;
                                 });
                                 doc.fillColor('black').fontSize(9);
@@ -1070,7 +1100,7 @@ export class InvoiceService {
                         const subtotal = totalVal - taxVal - shipVal;
                         const totalsX = tableX + safeTableWidth - 170;
 
-                        doc.font('Helvetica').fontSize(9).fillColor('black');
+                        doc.font(regularFont).fontSize(9).fillColor('black');
                         doc.text('Subtotal', totalsX, tableY);
                         doc.fillColor('black').text(formatCurrency(subtotal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         tableY += 14;
@@ -1097,7 +1127,7 @@ export class InvoiceService {
                         doc.moveTo(totalsX, tableY - 3).lineTo(totalsX + 150, tableY - 3).strokeColor('#cbd5e1').lineWidth(1).stroke();
                         doc.strokeColor('black').lineWidth(1);
 
-                        doc.font('Helvetica-Bold').fontSize(11).fillColor('black');
+                        doc.font(boldFont).fontSize(11).fillColor('black');
                         doc.text('Total', totalsX, tableY);
                         doc.text(formatCurrency(totalVal), totalsX + 80, tableY, { width: 70, align: 'right' });
                         doc.fillColor('black');
@@ -1115,7 +1145,7 @@ export class InvoiceService {
                         const totTotal = parseFloat(rawTotals.total ?? order.total ?? 0);
                         const subtotalVal = totTotal - totTax - totShip;
 
-                        doc.fontSize(9).font('Helvetica');
+                        doc.fontSize(9).font(regularFont);
 
                         let totY = startY;
                         doc.text('Subtotal:', x, totY);
@@ -1141,7 +1171,7 @@ export class InvoiceService {
                         doc.text(formatCurrency(totTax), x + 80, totY, { width: 70, align: 'right' });
                         totY += 16;
 
-                        doc.font('Helvetica-Bold').fontSize(11);
+                        doc.font(boldFont).fontSize(11);
                         doc.text('Total:', x, totY);
                         doc.text(formatCurrency(totTotal), x + 80, totY, { width: 70, align: 'right' });
 
@@ -1150,7 +1180,7 @@ export class InvoiceService {
                     }
 
                     case 'payment_block': {
-                        doc.fontSize(10).font('Helvetica-Bold');
+                        doc.fontSize(10).font(boldFont);
                         doc.text('Payment', x, startY, { width });
                         let payY = startY + 16;
 
@@ -1162,7 +1192,7 @@ export class InvoiceService {
                             })
                             : (invoiceContext?.paymentUrl || '');
                         if (paymentUrl) {
-                            doc.fontSize(9).font('Helvetica').fillColor(brandingSettings.primaryColor || '#4f46e5');
+                            doc.fontSize(9).font(regularFont).fillColor(brandingSettings.primaryColor || '#4f46e5');
                             doc.text('Scan to pay', x, payY, { width });
                             doc.fillColor('black');
                             payY += 16;
@@ -1192,10 +1222,10 @@ export class InvoiceService {
 
                         const style = itemConfig.style || {};
                         doc.fontSize(parseInt(style.fontSize) || 10);
-                        if (style.fontWeight === 'bold') doc.font('Helvetica-Bold');
-                        else doc.font('Helvetica');
+                        if (style.fontWeight === 'bold') doc.font(boldFont);
+                        else doc.font(regularFont);
 
-                        drawTextWithEmojiSupport(doc, textContent, x, startY, { width, align: style.textAlign || 'left' }, style.fontWeight === 'bold' ? 'Helvetica-Bold' : 'Helvetica');
+                        drawTextWithEmojiSupport(doc, textContent, x, startY, { width, align: style.textAlign || 'left' }, style.fontWeight === 'bold' ? boldFont : regularFont);
                         blockHeight = doc.heightOfString(textContent, { width }) + 10;
                         break;
                     }
@@ -1226,13 +1256,13 @@ export class InvoiceService {
                     }
 
                     case 'footer': {
-                        doc.fontSize(9).font('Helvetica');
+                        doc.fontSize(9).font(regularFont);
                         const footerParts = [itemConfig.content || 'Thank you for your business!'];
                         if (complianceSettings?.legalFooter) {
                             footerParts.push(String(complianceSettings.legalFooter));
                         }
                         const footerText = normalizePdfText(footerParts.join('\n'));
-                        drawTextWithEmojiSupport(doc, footerText, x, startY, { width, align: 'center' }, 'Helvetica');
+                        drawTextWithEmojiSupport(doc, footerText, x, startY, { width, align: 'center' }, regularFont);
                         blockHeight = doc.heightOfString(footerText, { width }) + 10;
                         break;
                     }

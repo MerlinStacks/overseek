@@ -16,8 +16,6 @@
         "mock:reset": "npx ts-node src/scripts/resetMockData.ts"
     },
     "dependencies": {
-        "@fontsource/noto-emoji": "^5.2.11",
-        "@overseek/core": "1.0.0",
         "@bull-board/api": "^6.16.2",
         "@bull-board/fastify": "^6.16.2",
         "@elastic/elasticsearch": "^9.2.0",
@@ -27,6 +25,9 @@
         "@fastify/multipart": "^9.4.0",
         "@fastify/rate-limit": "^10.3.0",
         "@fastify/static": "^9.0.0",
+        "@fontsource/noto-emoji": "^5.2.11",
+        "@fontsource/noto-sans": "^5.2.10",
+        "@overseek/core": "1.0.0",
         "@prisma/adapter-pg": "^7.2.0",
         "@prisma/client": "^7.2.0",
         "@socket.io/redis-adapter": "^8.3.0",
