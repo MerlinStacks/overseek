@@ -72,7 +72,7 @@ async function build() {
         allowList: (req) => [
             '/api/auth/login', '/api/auth/refresh', '/api/auth/me',
             '/api/sync', '/api/webhooks', '/api/webhook/',
-            '/health', '/api/t/', '/api/tracking', '/api/tracking-email-events', '/api/artwork-events', '/api/analytics',
+            '/health', '/api/t/', '/api/tracking', '/api/tracking-email-events', '/wp-json/overseek/v1/tracking-email-events', '/api/artwork-events', '/api/analytics',
             '/api/notifications', '/api/chat', '/api/fp/', '/api/dashboard',
             '/api/status-center'
         ].some(p => req.url.startsWith(p)),
