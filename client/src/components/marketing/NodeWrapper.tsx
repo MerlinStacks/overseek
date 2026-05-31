@@ -128,7 +128,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
                 const order = statOrder && statOrder.length > 0 ? statOrder : defaultOrder;
                 const meta: Record<'active' | 'queued' | 'completed' | 'skipped' | 'failed', { label: string; value: number; badgeClass: string }> = {
                     active: { label: 'Active', value: stats.active ?? 0, badgeClass: 'bg-teal-100 text-teal-700 border-teal-200' },
-                    queued: { label: 'Queued', value: stats.queued ?? 0, badgeClass: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+                    queued: { label: 'In node', value: stats.queued ?? 0, badgeClass: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
                     completed: { label: 'Completed', value: stats.completed ?? 0, badgeClass: 'bg-sky-100 text-sky-700 border-sky-200' },
                     skipped: { label: 'Skipped', value: stats.skipped ?? 0, badgeClass: 'bg-amber-100 text-amber-700 border-amber-200' },
                     failed: { label: 'Failed', value: stats.failed ?? 0, badgeClass: 'bg-red-100 text-red-700 border-red-200' },

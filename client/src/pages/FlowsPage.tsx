@@ -55,7 +55,8 @@ const RENDER_ONLY_FLOW_KEYS = new Set([
     'onViewAnalytics',
     'onInsertNode',
     'density',
-    'issues'
+    'issues',
+    'stats'
 ]);
 
 function areStringArraysEqual(left: string[], right: string[]): boolean {

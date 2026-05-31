@@ -35,6 +35,15 @@ const defaultEdgeOptions = {
         height: 20,
     },
 };
+
+function getNodeStatsSignature(nodes: Node[] | undefined): string {
+    return (nodes || [])
+        .map((node) => {
+            const stats = (node.data as { stats?: Record<string, number> } | undefined)?.stats;
+            return `${node.id}:${stats?.queued || 0}:${stats?.completed || 0}:${stats?.skipped || 0}:${stats?.failed || 0}`;
+        })
+        .join('|');
+}
 import { TriggerNode, ActionNode, DelayNode, ConditionNode } from './FlowNodes';
 import { FlowEdge } from './FlowEdge';
 import { NodeConfigPanel } from './NodeConfigPanel';
@@ -220,6 +229,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
         return saved === 'compact' ? 'compact' : 'comfortable';
     });
     const { setViewport, getViewport } = useReactFlow();
+    const initialStatsSignature = getNodeStatsSignature(initialFlow?.nodes);
 
 
     // Stable callback refs for node operations (to avoid circular deps in node data)
@@ -311,6 +321,39 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
         historyIndexRef.current = 0;
         onUndoRedoStateChange?.({ canUndo: false, canRedo: false });
     }, [flowId, initialFlow, onUndoRedoStateChange, setNodes, setEdges]);
+
+    useEffect(() => {
+        if (!initialFlow?.nodes?.length) return;
+        const statsByNodeId = new Map(initialFlow.nodes.map((node) => [node.id, (node.data as { stats?: unknown } | undefined)?.stats]));
+
+        setNodes((currentNodes) => {
+            let changed = false;
+            const nextNodes = currentNodes.map((node) => {
+                const nextStats = statsByNodeId.get(node.id);
+                if (!nextStats) return node;
+
+                const currentData = (node.data as Record<string, unknown> | undefined) || {};
+                if (JSON.stringify(currentData.stats || {}) === JSON.stringify(nextStats)) return node;
+
+                changed = true;
+                return {
+                    ...node,
+                    data: {
+                        ...currentData,
+                        stats: nextStats,
+                    },
+                };
+            });
+
+            if (!changed) return currentNodes;
+            suppressHistoryRef.current = true;
+            skipNextFlowChangeRef.current = true;
+            setTimeout(() => {
+                suppressHistoryRef.current = false;
+            }, 0);
+            return nextNodes;
+        });
+    }, [initialStatsSignature, initialFlow?.nodes, setNodes]);
 
     useEffect(() => {
         pushHistorySnapshot(nodes, edges);
