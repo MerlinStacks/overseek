@@ -132,6 +132,22 @@ async function resolveAccountContext(accountId: string, bearerToken: string): Pr
         return { account: null, feature: null };
     }
 
+    const accounts = await prisma.account.findMany({
+        where: { webhookSecret: { not: null } },
+        select: { id: true, wooUrl: true, webhookSecret: true },
+    });
+
+    for (const account of accounts) {
+        if (account.webhookSecret && hashSafeEquals(account.webhookSecret, bearerToken)) {
+            const feature = await prisma.accountFeature.findUnique({
+                where: { accountId_featureKey: { accountId: account.id, featureKey: FEATURE_KEY } },
+                select: { config: true },
+            });
+
+            return { account: { id: account.id, wooUrl: account.wooUrl }, feature };
+        }
+    }
+
     const features = await prisma.accountFeature.findMany({
         where: { featureKey: FEATURE_KEY },
         select: {
