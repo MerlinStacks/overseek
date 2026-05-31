@@ -1,4 +1,5 @@
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
 import { EventBus, EVENTS } from '../services/events';
 import { Logger } from '../utils/logger';
@@ -37,6 +38,11 @@ interface TrackingEventPayload {
         source_version?: string;
     };
 }
+
+type AccountContext = {
+    account: { id: string; wooUrl: string } | null;
+    feature: { config: unknown } | null;
+};
 
 export function normalizeShipmentStatus(...values: Array<string | undefined>): ShipmentStatus | null {
     const nonEmptyValues = values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
@@ -100,11 +106,60 @@ function resolveAccountId(request: { params?: { accountId?: string }; headers: R
     return eventAccountId;
 }
 
+function extractBearerToken(headers: Record<string, unknown>): string {
+    const authHeader = typeof headers.authorization === 'string' ? headers.authorization.trim() : '';
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() : '';
+}
+
+async function resolveAccountContext(accountId: string, bearerToken: string): Promise<AccountContext> {
+    if (accountId) {
+        const [account, feature] = await Promise.all([
+            prisma.account.findUnique({
+                where: { id: accountId },
+                select: { id: true, wooUrl: true },
+            }),
+            prisma.accountFeature.findUnique({
+                where: { accountId_featureKey: { accountId, featureKey: FEATURE_KEY } },
+                select: { config: true },
+            }),
+        ]);
+
+        return { account, feature };
+    }
+
+    if (!bearerToken) {
+        return { account: null, feature: null };
+    }
+
+    const features = await prisma.accountFeature.findMany({
+        where: { featureKey: FEATURE_KEY },
+        select: {
+            config: true,
+            account: { select: { id: true, wooUrl: true } },
+        },
+    });
+
+    for (const feature of features) {
+        const config = (feature.config || {}) as Record<string, unknown>;
+        const configuredToken = typeof config.webhookAuthToken === 'string' ? config.webhookAuthToken.trim() : '';
+        if (configuredToken && hashSafeEquals(configuredToken, bearerToken)) {
+            return { account: feature.account, feature: { config: feature.config } };
+        }
+    }
+
+    return { account: null, feature: null };
+}
+
+function hashSafeEquals(a: string, b: string): boolean {
+    return a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 async function handleTrackingEmailEvent(
     request: FastifyRequest<{ Params?: { accountId?: string }; Querystring?: { account_id?: string }; Body: TrackingEventPayload }>,
     reply: FastifyReply,
 ) {
-    const accountId = resolveAccountId({
+    const requestedAccountId = resolveAccountId({
         params: request.params,
         headers: request.headers,
         query: request.query,
@@ -113,24 +168,17 @@ async function handleTrackingEmailEvent(
     const payload = request.body || {};
     const event = payload.event;
 
-    if (!accountId) {
-        return reply.code(400).send({ error: 'Invalid payload: missing account ID' });
-    }
-
     if (!event) {
         return reply.code(400).send({ error: 'Invalid payload: missing event object' });
     }
 
-    const [account, feature] = await Promise.all([
-        prisma.account.findUnique({
-            where: { id: accountId },
-            select: { id: true, wooUrl: true },
-        }),
-        prisma.accountFeature.findUnique({
-            where: { accountId_featureKey: { accountId, featureKey: FEATURE_KEY } },
-            select: { config: true },
-        }),
-    ]);
+    const bearerToken = extractBearerToken(request.headers);
+    const { account, feature } = await resolveAccountContext(requestedAccountId, bearerToken);
+    const accountId = account?.id || '';
+
+    if (!accountId) {
+        return reply.code(401).send({ error: 'Unable to resolve account for tracking email event' });
+    }
 
     if (!account?.wooUrl) {
         return reply.code(403).send({ error: 'WooCommerce connection is not configured for this account' });
