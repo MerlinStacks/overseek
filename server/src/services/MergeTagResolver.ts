@@ -161,25 +161,25 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     }
 
     // Review merge tags
+    const reviewFallback = getReviewFallback(context, storeUrl);
     if (context.review) {
         const review = context.review;
         replaceMergeTag('{{review.reviewer}}', review.reviewer || review.reviewerName || '');
         replaceMergeTag('{{review.rating}}', review.rating ? String(review.rating) : '');
         replaceMergeTag('{{review.content}}', review.content || review.review || '');
-        replaceMergeTag('{{review.productName}}', review.productName || review.product_name || '');
-        replaceMergeTag('{{review.productUrl}}', review.productUrl || review.product_url || '');
+        replaceMergeTag('{{review.productName}}', review.productName || review.product_name || reviewFallback.productName);
+        replaceMergeTag('{{review.productUrl}}', review.productUrl || review.product_url || reviewFallback.productUrl);
     } else {
         const reviewer = [
             context.customer?.firstName || context.customer?.first_name,
             context.customer?.lastName || context.customer?.last_name,
         ].filter(Boolean).join(' ').trim();
-        const fallbackProductUrl = context.product?.permalink || context.product?.url || storeUrl;
 
         replaceMergeTag('{{review.reviewer}}', reviewer || 'Customer');
         replaceMergeTag('{{review.rating}}', '5');
         replaceMergeTag('{{review.content}}', 'Thanks for your order. We would love to hear your feedback.');
-        replaceMergeTag('{{review.productName}}', context.product?.name || 'your recent purchase');
-        replaceMergeTag('{{review.productUrl}}', fallbackProductUrl || storeUrl);
+        replaceMergeTag('{{review.productName}}', reviewFallback.productName || 'your recent purchase');
+        replaceMergeTag('{{review.productUrl}}', reviewFallback.productUrl || storeUrl);
     }
 
     // Shipment merge tags
@@ -210,6 +210,33 @@ function buildAusPostTrackingUrl(trackingNumber: string): string {
     const trimmed = String(trackingNumber || '').trim();
     if (!trimmed) return '';
     return `https://auspost.com.au/mypost/track/#/details/${encodeURIComponent(trimmed)}`;
+}
+
+function withReviewAnchor(url: string): string {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return '';
+    if (/#/.test(trimmed)) return trimmed;
+    return `${trimmed.replace(/\/$/, '')}#review_form`;
+}
+
+function getReviewFallback(context: MergeTagContext, storeUrl: string): { productName: string; productUrl: string } {
+    const product = context.product || {};
+    const order = context.order || {};
+    const orderItems = order.lineItems || order.items || order.line_items || [];
+    const firstItem = Array.isArray(orderItems) ? orderItems[0] : null;
+    const productName = product.name || firstItem?.name || '';
+    const directProductUrl = product.permalink || product.url || product.productUrl || firstItem?.permalink || firstItem?.productUrl || firstItem?.product_url;
+
+    if (directProductUrl) {
+        return { productName, productUrl: withReviewAnchor(directProductUrl) };
+    }
+
+    const productId = product.id || product.productId || product.product_id || firstItem?.product_id || firstItem?.productId;
+    if (storeUrl && productId) {
+        return { productName, productUrl: `${storeUrl.replace(/\/$/, '')}/?p=${encodeURIComponent(String(productId))}#review_form` };
+    }
+
+    return { productName, productUrl: storeUrl };
 }
 
 function getOrderTrackingItems(order: any): TrackingItem[] {

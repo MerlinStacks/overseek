@@ -152,4 +152,19 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).toContain('Everyday Tee');
         expect(html).toContain('https://store.example.com/products/everyday-tee');
     });
+
+    it('builds a WooCommerce product review link from order line items', () => {
+        const html = resolveMergeTags(
+            '<a href="{{review.productUrl}}">Review {{review.productName}}</a>',
+            {
+                order: {
+                    line_items: [{ product_id: 123, name: 'Custom Mug' }]
+                },
+                storeUrl: 'https://store.example.com',
+            }
+        );
+
+        expect(html).toContain('Review Custom Mug');
+        expect(html).toContain('href="https://store.example.com/?p=123#review_form"');
+    });
 });

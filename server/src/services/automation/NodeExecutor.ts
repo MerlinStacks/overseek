@@ -229,23 +229,31 @@ export class NodeExecutor {
             checkoutUrl: enrollment.contextData?.cart?.checkoutUrl || enrollment.contextData?.checkoutUrl || null
         });
 
+        const contextData = enrollment.contextData || {};
+        const orderContext = contextData.order || contextData.rawOrder || contextData.rawData || (
+            contextData.line_items || contextData.lineItems || contextData.items || contextData.wooId || contextData.orderId
+                ? contextData
+                : undefined
+        );
+
         const context = {
             customer: {
                 email: enrollment.email,
                 id: enrollment.wooCustomerId
             },
-            coupon: enrollment.contextData?.coupon,
-            cart: enrollment.contextData?.cart
+            order: orderContext,
+            coupon: contextData.coupon,
+            cart: contextData.cart
                 ? {
-                    ...enrollment.contextData.cart,
+                    ...contextData.cart,
                     recoveryUrl,
-                    checkoutUrl: enrollment.contextData?.cart?.checkoutUrl || enrollment.contextData?.checkoutUrl || ''
+                    checkoutUrl: contextData.cart?.checkoutUrl || contextData.checkoutUrl || ''
                 }
                 : undefined,
             store: { url: storeUrl },
             storeUrl,
             store_url: storeUrl,
-            ...enrollment.contextData
+            ...contextData
         };
 
         const recipientTemplate = config.to || enrollment.email;

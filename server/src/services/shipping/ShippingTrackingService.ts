@@ -300,6 +300,12 @@ export class ShippingTrackingService {
                 orderNumber: order?.number || String(label.wooOrderId),
                 email,
                 billing: raw.billing,
+                order: {
+                    ...raw,
+                    id: order?.id || String(label.wooOrderId),
+                    orderNumber: order?.number || String(label.wooOrderId),
+                    lineItems: raw.line_items || raw.lineItems || raw.items || [],
+                },
                 customerName: [raw.billing?.first_name, raw.billing?.last_name].filter(Boolean).join(' '),
                 trackingNumber: label.trackingNumber,
                 trackingUrl: label.trackingUrl,
