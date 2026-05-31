@@ -717,12 +717,26 @@ export class MarketingService {
     async getAutomationNodeAnalytics(id: string, accountId: string, nodeId: string, status = 'completed', page = 1, perPage = 10) {
         const automation = await prisma.marketingAutomation.findFirst({
             where: { id, accountId },
-            select: { id: true }
+            select: { id: true, flowDefinition: true }
         });
         if (!automation) {
             throw new Error('Automation not found');
         }
+        if (!this.automationHasNode(automation.flowDefinition, nodeId)) {
+            throw new Error('Node not found');
+        }
         return automationAnalyticsService.getNodeAnalytics(accountId, id, nodeId, status, page, perPage);
+    }
+
+    async getAutomationEnrollmentJourney(id: string, accountId: string, enrollmentId: string) {
+        const enrollment = await prisma.automationEnrollment.findFirst({
+            where: { id: enrollmentId, automationId: id, accountId },
+            select: { id: true }
+        });
+        if (!enrollment) {
+            throw new Error('Enrollment not found');
+        }
+        return automationAnalyticsService.getEnrollmentJourney(accountId, id, enrollmentId);
     }
 
     async getAutomationNodeStats(id: string, accountId: string, nodeIds?: string[]) {
@@ -734,6 +748,11 @@ export class MarketingService {
             throw new Error('Automation not found');
         }
         return automationAnalyticsService.getNodeStats(accountId, id, nodeIds);
+    }
+
+    private automationHasNode(flowDefinition: unknown, nodeId: string): boolean {
+        const nodes = (flowDefinition as { nodes?: Array<{ id?: unknown }> } | null)?.nodes;
+        return Array.isArray(nodes) && nodes.some((node) => node.id === nodeId);
     }
 
     // -------------------

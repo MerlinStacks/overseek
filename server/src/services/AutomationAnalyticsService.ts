@@ -33,6 +33,10 @@ export class AutomationAnalyticsService {
         return 'completed';
     }
 
+    private emptyNodeCounts() {
+        return { queued: 0, completed: 0, skipped: 0, failed: 0 };
+    }
+
     async getAutomationAnalytics(accountId: string, automationId: string) {
         const [enrollmentGroups, eventGroups, goalAggregate, recentRuns, runEventGroups, nodeEvents] = await Promise.all([
             prisma.automationEnrollment.groupBy({
@@ -241,19 +245,16 @@ export class AutomationAnalyticsService {
             nodeId: nodeIds && nodeIds.length > 0 ? { in: nodeIds } : { not: null }
         };
 
-        const [queuedGroups, nodeEvents] = await Promise.all([
+        const [queuedGroups, eventGroups] = await Promise.all([
             prisma.automationEnrollment.groupBy({
                 by: ['currentNodeId'],
                 where: baseEnrollmentWhere,
                 _count: true
             }),
-            prisma.automationRunEvent.findMany({
+            prisma.automationRunEvent.groupBy({
+                by: ['nodeId', 'outcome'],
                 where: baseEventWhere,
-                select: {
-                    nodeId: true,
-                    outcome: true
-                },
-                take: 10000
+                _count: true
             })
         ]);
 
@@ -266,15 +267,30 @@ export class AutomationAnalyticsService {
             result[currentNodeId].queued += group._count;
         }
 
-        for (const event of nodeEvents) {
-            const eventNodeId = event.nodeId;
+        for (const group of eventGroups) {
+            const eventNodeId = group.nodeId;
             if (!eventNodeId) continue;
-            const bucket = this.toOutcomeBucket(event.outcome);
-            result[eventNodeId] = result[eventNodeId] || { queued: 0, completed: 0, skipped: 0, failed: 0 };
-            result[eventNodeId][bucket] += 1;
+            const bucket = this.toOutcomeBucket(group.outcome);
+            result[eventNodeId] = result[eventNodeId] || this.emptyNodeCounts();
+            result[eventNodeId][bucket] += group._count;
         }
 
         return result;
+    }
+
+    async getEnrollmentJourney(accountId: string, automationId: string, enrollmentId: string) {
+        return prisma.automationRunEvent.findMany({
+            where: { accountId, automationId, enrollmentId },
+            orderBy: { createdAt: 'asc' },
+            take: 500,
+            select: {
+                enrollmentId: true,
+                nodeId: true,
+                eventType: true,
+                outcome: true,
+                createdAt: true
+            }
+        });
     }
 
     async getNodeAnalytics(accountId: string, automationId: string, nodeId: string, status = 'completed', page = 1, perPage = 10) {
@@ -304,32 +320,6 @@ export class AutomationAnalyticsService {
                 })
             ]);
 
-            const enrollmentIds = enrollments.map((enrollment) => enrollment.id);
-            const journeyEvents = enrollmentIds.length > 0
-                ? await prisma.automationRunEvent.findMany({
-                    where: {
-                        accountId,
-                        automationId,
-                        enrollmentId: { in: enrollmentIds }
-                    },
-                    orderBy: { createdAt: 'asc' },
-                    take: 500,
-                    select: {
-                        enrollmentId: true,
-                        nodeId: true,
-                        eventType: true,
-                        outcome: true,
-                        createdAt: true
-                    }
-                })
-                : [];
-
-            const journeysByEnrollment = journeyEvents.reduce<Record<string, typeof journeyEvents>>((accumulator, event) => {
-                accumulator[event.enrollmentId] = accumulator[event.enrollmentId] || [];
-                accumulator[event.enrollmentId].push(event);
-                return accumulator;
-            }, {});
-
             const contacts = enrollments.map((enrollment) => {
                 return {
                     id: enrollment.id,
@@ -338,8 +328,7 @@ export class AutomationAnalyticsService {
                     email: enrollment.email,
                     outcome: 'QUEUED',
                     occurredAt: enrollment.nextRunAt || enrollment.updatedAt,
-                    triggerEntityId: enrollment.triggerEntityId,
-                    journey: journeysByEnrollment[enrollment.id] || []
+                    triggerEntityId: enrollment.triggerEntityId
                 };
             });
 
@@ -386,42 +375,18 @@ export class AutomationAnalyticsService {
         ]);
 
         const enrollmentIds = Array.from(new Set(events.map((event) => event.enrollmentId)));
-        const [eventEnrollments, journeyEvents] = enrollmentIds.length > 0
-            ? await Promise.all([
-                prisma.automationEnrollment.findMany({
-                    where: { accountId, automationId, id: { in: enrollmentIds } },
-                    select: {
-                        id: true,
-                        email: true,
-                        triggerEntityId: true
-                    }
-                }),
-                prisma.automationRunEvent.findMany({
-                    where: {
-                        accountId,
-                        automationId,
-                        enrollmentId: { in: enrollmentIds }
-                    },
-                    orderBy: { createdAt: 'asc' },
-                    take: 500,
-                    select: {
-                        enrollmentId: true,
-                        nodeId: true,
-                        eventType: true,
-                        outcome: true,
-                        createdAt: true
-                    }
-                })
-            ])
-            : [[], []];
+        const eventEnrollments = enrollmentIds.length > 0
+            ? await prisma.automationEnrollment.findMany({
+                where: { accountId, automationId, id: { in: enrollmentIds } },
+                select: {
+                    id: true,
+                    email: true,
+                    triggerEntityId: true
+                }
+            })
+            : [];
 
         const enrollmentsById = new Map(eventEnrollments.map((enrollment) => [enrollment.id, enrollment]));
-
-        const journeysByEnrollment = journeyEvents.reduce<Record<string, typeof journeyEvents>>((accumulator, event) => {
-            accumulator[event.enrollmentId] = accumulator[event.enrollmentId] || [];
-            accumulator[event.enrollmentId].push(event);
-            return accumulator;
-        }, {});
 
         const contacts = events.map((event) => {
             const enrollment = enrollmentsById.get(event.enrollmentId);
@@ -434,8 +399,7 @@ export class AutomationAnalyticsService {
                 email,
                 outcome: event.outcome,
                 occurredAt: event.createdAt,
-                triggerEntityId: enrollment?.triggerEntityId || null,
-                journey: journeysByEnrollment[event.enrollmentId] || []
+                triggerEntityId: enrollment?.triggerEntityId || null
             };
         });
 

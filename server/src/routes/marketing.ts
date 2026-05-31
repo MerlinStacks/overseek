@@ -319,6 +319,28 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 if (message === 'Automation not found') {
                     return reply.code(404).send({ error: message });
                 }
+                if (message === 'Node not found') {
+                    return reply.code(404).send({ error: message });
+                }
+                return sendInternalError(reply, e, 'Marketing route failed');
+            }
+        }
+    );
+
+    fastify.get<{ Params: { id: string; enrollmentId: string } }>(
+        '/automations/:id/enrollments/:enrollmentId/journey',
+        async (request, reply) => {
+            try {
+                return await service.getAutomationEnrollmentJourney(
+                    request.params.id,
+                    getAccountId(request),
+                    request.params.enrollmentId
+                );
+            } catch (e) {
+                const message = (e as Error).message;
+                if (message === 'Enrollment not found') {
+                    return reply.code(404).send({ error: message });
+                }
                 return sendInternalError(reply, e, 'Marketing route failed');
             }
         }

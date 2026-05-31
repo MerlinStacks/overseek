@@ -252,6 +252,14 @@ interface RunEventRow {
 
 type NodeAnalyticsStatus = 'queued' | 'completed' | 'skipped' | 'failed';
 
+interface JourneyEventRow {
+    enrollmentId: string;
+    nodeId?: string | null;
+    eventType: string;
+    outcome?: string | null;
+    createdAt: string;
+}
+
 interface NodeAnalyticsResponse {
     nodeId: string;
     status: NodeAnalyticsStatus;
@@ -270,13 +278,25 @@ interface NodeAnalyticsResponse {
         outcome?: string | null;
         occurredAt: string;
         triggerEntityId?: string | null;
-        journey: Array<{
-            nodeId?: string | null;
-            eventType: string;
-            outcome?: string | null;
-            createdAt: string;
-        }>;
     }>;
+}
+
+function getNodeAnalyticsStatusLabel(status: NodeAnalyticsStatus): string {
+    if (status === 'queued') return 'In node';
+    if (status === 'completed') return 'Completed';
+    if (status === 'skipped') return 'Skipped';
+    return 'Failed';
+}
+
+function getNodeAnalyticsDateLabel(status: NodeAnalyticsStatus): string {
+    if (status === 'queued') return 'Waiting Since';
+    if (status === 'completed') return 'Completed On';
+    if (status === 'skipped') return 'Skipped On';
+    return 'Failed On';
+}
+
+function getNodeAnalyticsOutcomeLabel(outcome?: string | null): string {
+    return outcome === 'QUEUED' ? 'In node' : outcome || 'Completed';
 }
 
 function formatRunMetadataValue(value: unknown): string | null {
@@ -359,7 +379,12 @@ export function FlowsPage() {
     const [nodeAnalyticsPage, setNodeAnalyticsPage] = useState(1);
     const [nodeAnalytics, setNodeAnalytics] = useState<NodeAnalyticsResponse | null>(null);
     const [isNodeAnalyticsLoading, setIsNodeAnalyticsLoading] = useState(false);
+    const [nodeAnalyticsError, setNodeAnalyticsError] = useState<string | null>(null);
+    const [nodeAnalyticsRetryKey, setNodeAnalyticsRetryKey] = useState(0);
     const [expandedJourneyEnrollmentId, setExpandedJourneyEnrollmentId] = useState<string | null>(null);
+    const [journeysByEnrollment, setJourneysByEnrollment] = useState<Record<string, JourneyEventRow[]>>({});
+    const [journeyLoadingId, setJourneyLoadingId] = useState<string | null>(null);
+    const [journeyErrorByEnrollment, setJourneyErrorByEnrollment] = useState<Record<string, string>>({});
     const [activeEditorTab, setActiveEditorTab] = useState<'flow' | 'insights'>('flow');
     const [flowBuilderRevision, setFlowBuilderRevision] = useState(0);
     const [isRenamingFlow, setIsRenamingFlow] = useState(false);
@@ -375,6 +400,7 @@ export function FlowsPage() {
     const autosaveAgainRef = useRef(false);
     const autosaveRetryDelayRef = useRef(AUTOSAVE_DEFAULT_RETRY_MS);
     const autosaveCooldownUntilRef = useRef(0);
+    const latestNodeAnalyticsRequestRef = useRef('');
     const renameInputRef = useRef<HTMLInputElement | null>(null);
     const shouldCommitRenameOnBlurRef = useRef(true);
     const nodeStatsNodeIds = (editingFlowData?.flowDefinition?.nodes || []).map((node) => node.id).filter(Boolean).join(',');
@@ -422,11 +448,15 @@ export function FlowsPage() {
     }, [editingFlowData?.flowDefinition?.nodes]);
 
     const openNodeAnalytics = useCallback((nodeId: string) => {
+        const supportedStatuses = getNodeSupportedStatuses(nodeId);
         setNodeAnalyticsNodeId(nodeId);
-        setNodeAnalyticsStatus('completed');
+        setNodeAnalyticsStatus(supportedStatuses.includes('queued') ? 'queued' : supportedStatuses[0] || 'completed');
         setNodeAnalyticsPage(1);
+        setNodeAnalyticsError(null);
         setExpandedJourneyEnrollmentId(null);
-    }, []);
+        setJourneysByEnrollment({});
+        setJourneyErrorByEnrollment({});
+    }, [getNodeSupportedStatuses]);
 
     const getDraftKey = useCallback((flowId: string) => {
         if (!currentAccount?.id) return null;
@@ -904,6 +934,8 @@ export function FlowsPage() {
     }, [currentAccount, editingItem, isEditing, token]);
 
     useEffect(() => {
+        const controller = new AbortController();
+
         const loadNodeAnalytics = async () => {
             if (!editingItem || !currentAccount || !token || !nodeAnalyticsNodeId) return;
 
@@ -914,7 +946,11 @@ export function FlowsPage() {
                 return;
             }
 
+            const requestKey = `${editingItem.id}:${nodeAnalyticsNodeId}:${nodeAnalyticsStatus}:${nodeAnalyticsPage}:${nodeAnalyticsRetryKey}`;
+            latestNodeAnalyticsRequestRef.current = requestKey;
             setIsNodeAnalyticsLoading(true);
+            setNodeAnalyticsError(null);
+            setNodeAnalytics(null);
             try {
                 const params = new URLSearchParams({
                     status: nodeAnalyticsStatus,
@@ -923,6 +959,7 @@ export function FlowsPage() {
                 });
                 const encodedNodeId = encodeURIComponent(nodeAnalyticsNodeId);
                 const res = await fetch(`/api/marketing/automations/${editingItem.id}/nodes/${encodedNodeId}/analytics?${params.toString()}`, {
+                    signal: controller.signal,
                     headers: {
                         Authorization: `Bearer ${token}`,
                         'x-account-id': currentAccount.id
@@ -934,27 +971,36 @@ export function FlowsPage() {
                 }
 
                 const analyticsPayload = await res.json() as NodeAnalyticsResponse;
+                if (controller.signal.aborted || latestNodeAnalyticsRequestRef.current !== requestKey) return;
                 setNodeAnalytics(analyticsPayload);
                 setEditingFlowData((previous) => {
                     if (!previous?.flowDefinition?.nodes) return previous;
+                    let changed = false;
                     const updatedNodes = previous.flowDefinition.nodes.map((node) => {
                         if (node.id !== nodeAnalyticsNodeId) return node;
                         const currentData = (node.data as Record<string, unknown> | undefined) || {};
                         const currentStats = (currentData.stats as Record<string, number> | undefined) || {};
+                        const nextStats = {
+                            queued: analyticsPayload.counts.queued || 0,
+                            completed: analyticsPayload.counts.completed || 0,
+                            skipped: analyticsPayload.counts.skipped || 0,
+                            failed: analyticsPayload.counts.failed || 0,
+                        };
+
+                        if (areNodeStatsEqual(currentStats, nextStats)) return node;
+                        changed = true;
                         return {
                             ...node,
                             data: {
                                 ...currentData,
                                 stats: {
                                     ...currentStats,
-                                    queued: analyticsPayload.counts.queued || 0,
-                                    completed: analyticsPayload.counts.completed || 0,
-                                    skipped: analyticsPayload.counts.skipped || 0,
-                                    failed: analyticsPayload.counts.failed || 0,
+                                    ...nextStats,
                                 }
                             }
                         };
                     });
+                    if (!changed) return previous;
                     return {
                         ...previous,
                         flowDefinition: {
@@ -964,15 +1010,54 @@ export function FlowsPage() {
                     };
                 });
             } catch (error) {
+                if (error instanceof Error && error.name === 'AbortError') return;
                 Logger.error('Failed to load node analytics', { error });
-                showToast('Failed to load node analytics.');
+                setNodeAnalyticsError('Failed to load node analytics.');
             } finally {
-                setIsNodeAnalyticsLoading(false);
+                if (latestNodeAnalyticsRequestRef.current === requestKey) {
+                    setIsNodeAnalyticsLoading(false);
+                }
             }
         };
 
         loadNodeAnalytics();
-    }, [currentAccount, editingItem, getNodeSupportedStatuses, nodeAnalyticsNodeId, nodeAnalyticsPage, nodeAnalyticsStatus, token]);
+
+        return () => controller.abort();
+    }, [currentAccount, editingItem, getNodeSupportedStatuses, nodeAnalyticsNodeId, nodeAnalyticsPage, nodeAnalyticsRetryKey, nodeAnalyticsStatus, token]);
+
+    const handleToggleJourney = useCallback(async (enrollmentId: string) => {
+        if (expandedJourneyEnrollmentId === enrollmentId) {
+            setExpandedJourneyEnrollmentId(null);
+            return;
+        }
+
+        setExpandedJourneyEnrollmentId(enrollmentId);
+        if (!editingItem || !currentAccount || !token || journeysByEnrollment[enrollmentId]) return;
+
+        setJourneyLoadingId(enrollmentId);
+        setJourneyErrorByEnrollment((current) => ({ ...current, [enrollmentId]: '' }));
+        try {
+            const encodedEnrollmentId = encodeURIComponent(enrollmentId);
+            const res = await fetch(`/api/marketing/automations/${editingItem.id}/enrollments/${encodedEnrollmentId}/journey`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error('Failed to load journey');
+            }
+
+            const journey = await res.json() as JourneyEventRow[];
+            setJourneysByEnrollment((current) => ({ ...current, [enrollmentId]: journey }));
+        } catch (error) {
+            Logger.error('Failed to load enrollment journey', { error, enrollmentId });
+            setJourneyErrorByEnrollment((current) => ({ ...current, [enrollmentId]: 'Failed to load journey.' }));
+        } finally {
+            setJourneyLoadingId((current) => current === enrollmentId ? null : current);
+        }
+    }, [currentAccount, editingItem, expandedJourneyEnrollmentId, journeysByEnrollment, token]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -1405,6 +1490,10 @@ export function FlowsPage() {
                     onClose={() => {
                         setNodeAnalyticsNodeId(null);
                         setNodeAnalytics(null);
+                        setNodeAnalyticsError(null);
+                        setExpandedJourneyEnrollmentId(null);
+                        setJourneysByEnrollment({});
+                        setJourneyErrorByEnrollment({});
                     }}
                     title={`${getNodeLabel(nodeAnalyticsNodeId)} Analytics`}
                     maxWidth="max-w-4xl"
@@ -1422,12 +1511,14 @@ export function FlowsPage() {
                                             setNodeAnalyticsStatus(status);
                                             setNodeAnalyticsPage(1);
                                             setExpandedJourneyEnrollmentId(null);
+                                            setJourneysByEnrollment({});
+                                            setJourneyErrorByEnrollment({});
                                         }}
                                         className={`flex items-center justify-between gap-2 px-4 py-3 text-sm font-medium capitalize transition-colors ${isActive
                                             ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-300'
                                             : 'text-slate-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-slate-800/70'}`}
                                     >
-                                        <span>{status}</span>
+                                        <span>{getNodeAnalyticsStatusLabel(status)}</span>
                                         <span className={`rounded-full px-2 py-0.5 text-xs ${isActive ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'}`}>
                                             {count.toLocaleString()}
                                         </span>
@@ -1436,13 +1527,26 @@ export function FlowsPage() {
                             })}
                         </div>
 
+                        {nodeAnalyticsError && (
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                                <span>{nodeAnalyticsError}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setNodeAnalyticsRetryKey((key) => key + 1)}
+                                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+                                >
+                                    Retry
+                                </button>
+                            </div>
+                        )}
+
                         <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
                             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
                                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
                                     <tr>
                                         <th className="px-4 py-3 font-semibold">Name</th>
                                         <th className="px-4 py-3 font-semibold">Email</th>
-                                        <th className="px-4 py-3 font-semibold">{nodeAnalyticsStatus === 'queued' ? 'Queued On' : nodeAnalyticsStatus === 'completed' ? 'Completed On' : nodeAnalyticsStatus === 'skipped' ? 'Skipped On' : 'Failed On'}</th>
+                                        <th className="px-4 py-3 font-semibold">{getNodeAnalyticsDateLabel(nodeAnalyticsStatus)}</th>
                                         <th className="px-4 py-3 font-semibold">Outcome</th>
                                         <th className="px-4 py-3 font-semibold text-right">Journey</th>
                                     </tr>
@@ -1464,14 +1568,14 @@ export function FlowsPage() {
                                                 <td className="px-4 py-3 font-medium text-blue-700 dark:text-blue-300">{contact.name}</td>
                                                 <td className="px-4 py-3 break-all">{contact.email}</td>
                                                 <td className="px-4 py-3">{new Date(contact.occurredAt).toLocaleDateString()}</td>
-                                                <td className="px-4 py-3 text-xs text-slate-500">{contact.outcome || 'Completed'}</td>
+                                                <td className="px-4 py-3 text-xs text-slate-500">{getNodeAnalyticsOutcomeLabel(contact.outcome)}</td>
                                                 <td className="px-4 py-3 text-right">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setExpandedJourneyEnrollmentId((current) => current === contact.enrollmentId ? null : contact.enrollmentId)}
+                                                        onClick={() => void handleToggleJourney(contact.enrollmentId)}
                                                         className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
                                                     >
-                                                        View Journey
+                                                        {expandedJourneyEnrollmentId === contact.enrollmentId ? 'Hide Journey' : 'View Journey'}
                                                     </button>
                                                 </td>
                                             </tr>
@@ -1479,7 +1583,16 @@ export function FlowsPage() {
                                                 <tr key={`${contact.id}-journey`}>
                                                     <td colSpan={5} className="bg-slate-50 px-4 py-3 dark:bg-slate-900/50">
                                                         <div className="space-y-2">
-                                                            {contact.journey.map((event, index) => (
+                                                            {journeyLoadingId === contact.enrollmentId && (
+                                                                <div className="text-xs text-slate-500">Loading journey...</div>
+                                                            )}
+                                                            {journeyErrorByEnrollment[contact.enrollmentId] && (
+                                                                <div className="text-xs text-red-600">{journeyErrorByEnrollment[contact.enrollmentId]}</div>
+                                                            )}
+                                                            {journeyLoadingId !== contact.enrollmentId && !journeyErrorByEnrollment[contact.enrollmentId] && (journeysByEnrollment[contact.enrollmentId] || []).length === 0 && (
+                                                                <div className="text-xs text-slate-500">No journey events found.</div>
+                                                            )}
+                                                            {(journeysByEnrollment[contact.enrollmentId] || []).map((event, index) => (
                                                                 <div key={`${contact.id}-journey-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                                                     <span className="font-medium text-slate-900 dark:text-slate-100">
                                                                         {event.eventType}{event.outcome ? ` · ${event.outcome}` : ''}
