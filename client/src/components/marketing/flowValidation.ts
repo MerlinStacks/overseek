@@ -33,6 +33,14 @@ function hasText(value: unknown) {
     return String(value || '').trim().length > 0;
 }
 
+function isEmailLike(value: string) {
+    return /^\S+@\S+\.\S+$/.test(value);
+}
+
+function isMergeTag(value: string) {
+    return /\{\{[^}]+\}\}/.test(value);
+}
+
 function hasConditionValue(condition: Record<string, unknown>) {
     const operator = String(condition.operator || '');
     if (OPERATORS_WITHOUT_VALUE.has(operator)) return true;
@@ -93,8 +101,16 @@ export function validateFlow(nodes: Node[], edges: Edge[]): FlowIssue[] {
                 const to = String(config.to || '{{customer.email}}');
 
                 if (!hasText(to)) issues.push({ id: `email-to-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Email recipient is required.' });
+                const invalidRecipients = to.split(',').map((entry) => entry.trim()).filter(Boolean).filter((recipient) => !isMergeTag(recipient) && !isEmailLike(recipient));
+                if (invalidRecipients.length > 0) issues.push({ id: `email-to-invalid-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Email recipient must be an email address or merge tag.' });
                 if (!hasText(subject)) issues.push({ id: `email-subject-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Email subject is required.' });
                 if (!hasText(htmlContent)) issues.push({ id: `email-content-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Email content is empty.' });
+                if (config.overrideFrom) {
+                    const fromEmail = String(config.fromEmail || '').trim();
+                    const replyToEmail = String(config.replyToEmail || '').trim();
+                    if (fromEmail && !isEmailLike(fromEmail)) issues.push({ id: `email-from-invalid-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Override From Email is invalid.' });
+                    if (replyToEmail && !isEmailLike(replyToEmail)) issues.push({ id: `email-reply-to-invalid-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Reply To Email is invalid.' });
+                }
                 if (subject.length > 80) issues.push({ id: `email-subject-long-${node.id}`, nodeId: node.id, severity: 'warning', message: 'Subject is long and may be truncated in inboxes.' });
                 if (emailCategory === 'MARKETING' && !htmlContent.toLowerCase().includes('unsubscribe')) {
                     issues.push({ id: `email-unsubscribe-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Marketing email should include unsubscribe wording or link.' });

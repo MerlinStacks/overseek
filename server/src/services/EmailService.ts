@@ -226,6 +226,9 @@ export class EmailService {
             inReplyTo?: string;
             references?: string;
             category?: 'MARKETING' | 'TRANSACTIONAL';
+            fromName?: string;
+            fromEmail?: string;
+            replyToEmail?: string;
         }
     ) {
         const emailAccount = await prisma.emailAccount.findFirst({
@@ -349,6 +352,19 @@ export class EmailService {
             htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{preferences_url\}\}/g, preferencesUrl);
         }
 
+        const overrideFromEmail = options?.fromEmail?.trim();
+        const overrideFromName = options?.fromName?.trim();
+        const replyToEmail = options?.replyToEmail?.trim();
+        const emailLike = /^\S+@\S+\.\S+$/;
+        if (overrideFromEmail && !emailLike.test(overrideFromEmail)) {
+            throw new Error('Override From Email is invalid');
+        }
+        if (replyToEmail && !emailLike.test(replyToEmail)) {
+            throw new Error('Reply To Email is invalid');
+        }
+        const senderEmail = overrideFromEmail || emailAccount.email;
+        const senderName = overrideFromName || emailAccount.name;
+
         // Try HTTP relay first if configured
         if (emailAccount.relayEndpoint && emailAccount.relayApiKey) {
             try {
@@ -411,7 +427,7 @@ export class EmailService {
             transporter = await this.createTransporter(emailAccount);
 
             const mailOptions: any = {
-                from: `"${emailAccount.name}" <${emailAccount.email}>`,
+                from: `"${senderName}" <${senderEmail}>`,
                 to,
                 subject,
                 html: htmlWithMergeTagUrls,
@@ -429,6 +445,9 @@ export class EmailService {
             }
             if (options?.references) {
                 mailOptions.references = options.references;
+            }
+            if (replyToEmail) {
+                mailOptions.replyTo = replyToEmail;
             }
 
             const info = await transporter.sendMail(mailOptions);
@@ -593,6 +612,9 @@ export class EmailService {
             references?: string;
             category?: 'MARKETING' | 'TRANSACTIONAL';
             unsubscribeUrl?: string;
+            fromName?: string;
+            fromEmail?: string;
+            replyToEmail?: string;
         }
     ): Promise<{ success: boolean; message_id: string }> {
         if (!emailAccount.relayEndpoint || !emailAccount.relayApiKey) {
@@ -648,8 +670,9 @@ export class EmailService {
             to,
             subject,
             html,
-            from_name: emailAccount.name,
-            from_email: emailAccount.email,
+            from_name: options?.fromName?.trim() || emailAccount.name,
+            from_email: options?.fromEmail?.trim() || emailAccount.email,
+            reply_to: options?.replyToEmail?.trim() || undefined,
             relay_profile_id: emailAccount.relayProfileId || undefined,
             in_reply_to: options?.inReplyTo,
             references: options?.references,

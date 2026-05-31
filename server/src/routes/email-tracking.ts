@@ -33,6 +33,23 @@ function getWooPreferenceCenterUrl(wooUrl: string | null | undefined, token: str
     }
 }
 
+function parseUrlEncodedBody(body: string): Record<string, string> {
+    const params = new URLSearchParams(body);
+    return Object.fromEntries(params.entries());
+}
+
+function getSafeRedirectUrl(rawUrl: string): string | null {
+    try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            return null;
+        }
+        return parsed.toString();
+    } catch {
+        return null;
+    }
+}
+
 async function getPreferenceContext(token: string) {
     const emailLog = await prisma.emailLog.findUnique({
         where: { trackingId: token },
@@ -148,6 +165,16 @@ function renderHostedPreferenceHtml(context: NonNullable<Awaited<ReturnType<type
 }
 
 const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
+    try {
+        fastify.addContentTypeParser(
+            'application/x-www-form-urlencoded',
+            { parseAs: 'string' },
+            (_request, body, done) => done(null, parseUrlEncodedBody(String(body || '')))
+        );
+    } catch (error) {
+        Logger.debug('URL-encoded parser already registered for email tracking', { error });
+    }
+
     /**
      * Track email opens via invisible pixel.
      * GET /api/email/track/:id.png
@@ -237,42 +264,50 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             const { trackingId } = request.params;
             const { url } = request.query;
+            const redirectUrl = getSafeRedirectUrl(url);
+
+            if (!redirectUrl) {
+                return reply.code(400).send({ error: 'Invalid redirect URL' });
+            }
 
             try {
                 const emailLog = await prisma.emailLog.findUnique({
                     where: { trackingId }
                 });
 
-                if (emailLog) {
-                    // Log click event
-                    await prisma.messageTrackingEvent.create({
-                        data: {
-                            emailLogId: emailLog.id,
-                            eventType: 'CLICK',
-                            linkUrl: url,
-                            userAgent: request.headers['user-agent'] || null,
-                            ipCountry: null
-                        }
-                    });
-
-                    // Track for campaign analytics
-                    if (emailLog.sourceId) {
-                        await campaignTrackingService.trackClick(
-                            emailLog.accountId,
-                            emailLog.sourceId,
-                            emailLog.to,
-                            url
-                        );
-                    }
-
-                    Logger.debug('Email link clicked', { trackingId, url });
+                if (!emailLog) {
+                    return reply.code(404).send({ error: 'Tracking link not found' });
                 }
+
+                // Log click event
+                await prisma.messageTrackingEvent.create({
+                    data: {
+                        emailLogId: emailLog.id,
+                        eventType: 'CLICK',
+                        linkUrl: redirectUrl,
+                        userAgent: request.headers['user-agent'] || null,
+                        ipCountry: null
+                    }
+                });
+
+                // Track for campaign analytics
+                if (emailLog.sourceId) {
+                    await campaignTrackingService.trackClick(
+                        emailLog.accountId,
+                        emailLog.sourceId,
+                        emailLog.to,
+                        redirectUrl
+                    );
+                }
+
+                Logger.debug('Email link clicked', { trackingId, url: redirectUrl });
             } catch (error) {
                 Logger.error('Click tracking error', { trackingId, error });
+                return reply.code(500).send({ error: 'Failed to track click' });
             }
 
             // Redirect to original URL
-            return reply.code(302).redirect(url);
+            return reply.code(302).redirect(redirectUrl);
         }
     );
 
@@ -397,4 +432,3 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 export default emailTrackingRoutes;
-

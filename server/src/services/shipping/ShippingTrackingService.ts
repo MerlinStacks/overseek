@@ -240,8 +240,8 @@ export class ShippingTrackingService {
     normalizeTrackingEvent(input: TrackingInput): NormalizedTrackingEvent {
         const text = `${input.eventCode || ''} ${input.status || ''} ${input.description || ''}`.toLowerCase();
 
-        if (/(delivered|successfully delivered)/.test(text)) return this.result('delivered', 'delivered', 'SHIPMENT_DELIVERED');
         if (/(out[\s_-]*for[\s_-]*delivery|on[\s_-]*board[\s_-]*for[\s_-]*delivery|onboard[\s_-]*for[\s_-]*delivery)/.test(text)) return this.result('out_for_delivery', 'out_for_delivery', 'SHIPMENT_OUT_FOR_DELIVERY');
+        if (/(delivered|successfully delivered)/.test(text)) return this.result('delivered', 'delivered', 'SHIPMENT_DELIVERED');
         if (/(attempted|card left|awaiting collection|collection point)/.test(text)) return this.result(text.includes('awaiting collection') ? 'awaiting_collection' : 'delivery_attempted', 'delivery_attempted', 'SHIPMENT_DELIVERY_ATTEMPTED');
         if (/(lodged|accepted|received|picked up|pickup|we've got it|we have got it)/.test(text)) return this.result('received_by_carrier', 'received_by_carrier', 'SHIPMENT_RECEIVED_BY_CARRIER');
         if (/(delay|delayed|held|exception|return to sender|returned|damaged|lost|address issue|failed)/.test(text)) {

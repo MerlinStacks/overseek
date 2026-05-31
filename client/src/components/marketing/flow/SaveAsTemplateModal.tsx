@@ -51,7 +51,7 @@ export function SaveAsTemplateModal({ content, designJson, onSaved, onClose }: P
                 onSaved(template.id);
             } else {
                 const data = await res.json();
-                setError(data.message || 'Failed to save template');
+                setError(data.error || data.message || 'Failed to save template');
             }
         } catch (err) {
             setError('Failed to save template');

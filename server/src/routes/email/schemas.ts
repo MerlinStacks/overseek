@@ -15,7 +15,7 @@ export const EmailAccountBodySchema = z.object({
     imapUsername: z.string().optional(),
     imapPassword: z.string().optional(),
     imapSecure: z.boolean().optional(),
-    relayEndpoint: z.string().url().optional(),
+    relayEndpoint: z.preprocess((value) => value === '' ? undefined : value, z.string().url().optional()),
     relayApiKey: z.string().optional(),
     relayProfileId: z.string().optional(),
 });

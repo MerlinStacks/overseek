@@ -9,10 +9,11 @@ import { useAccount } from '../../../context/AccountContext';
 interface Props {
     htmlContent: string;
     subject?: string;
+    category?: 'MARKETING' | 'TRANSACTIONAL';
     onClose: () => void;
 }
 
-export function EmailPreviewModal({ htmlContent, subject, onClose }: Props) {
+export function EmailPreviewModal({ htmlContent, subject, category = 'MARKETING', onClose }: Props) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [testEmail, setTestEmail] = useState('');
@@ -41,7 +42,8 @@ export function EmailPreviewModal({ htmlContent, subject, onClose }: Props) {
                 body: JSON.stringify({
                     to: testEmail.trim(),
                     subject: subject || 'Test Email',
-                    content: htmlContent
+                    content: htmlContent,
+                    category
                 })
             });
 
@@ -49,8 +51,9 @@ export function EmailPreviewModal({ htmlContent, subject, onClose }: Props) {
                 setSent(true);
                 setTimeout(() => setSent(false), 3000);
             } else {
-                const data = await res.json();
-                setError(data.message || 'Failed to send test email');
+                const data = await res.json().catch(() => ({}));
+                const reason = data.reason ? ` (${data.reason})` : '';
+                setError(data.error || data.message || `Failed to send test email${reason}`);
             }
         } catch (err) {
             setError('Failed to send test email');

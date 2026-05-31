@@ -129,6 +129,10 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
         html: config.htmlContent || '',
         subject: config.subject || '',
         emailCategory,
+        to: config.to || '{{customer.email}}',
+        overrideFrom: config.overrideFrom,
+        fromEmail: config.fromEmail,
+        replyToEmail: config.replyToEmail,
     });
 
     const handlePreviewAndTest = () => {
@@ -588,6 +592,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                 <EmailPreviewModal
                     htmlContent={config.htmlContent || ''}
                     subject={config.subject}
+                    category={emailCategory}
                     onClose={() => setShowPreview(false)}
                 />
             )}

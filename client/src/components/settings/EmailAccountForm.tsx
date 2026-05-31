@@ -67,6 +67,12 @@ export function EmailAccountForm({
     const [smtpExpanded, setSmtpExpanded] = useState(formData.smtpEnabled);
     const [imapExpanded, setImapExpanded] = useState(formData.imapEnabled);
     const [testingProtocol, setTestingProtocol] = useState<'SMTP' | 'IMAP' | null>(null);
+    const hasSendConfig = Boolean(formData.smtpEnabled || formData.relayEndpoint);
+    const hasAnyConfig = Boolean(hasSendConfig || formData.imapEnabled);
+    const invalidSmtpPort = Boolean(formData.smtpEnabled && (!formData.smtpPort || Number.isNaN(formData.smtpPort)));
+    const invalidImapPort = Boolean(formData.imapEnabled && (!formData.imapPort || Number.isNaN(formData.imapPort)));
+    const invalidRelay = Boolean(formData.relayEndpoint && !/^https:\/\//i.test(formData.relayEndpoint));
+    const canSave = hasAnyConfig && !invalidSmtpPort && !invalidImapPort && !invalidRelay;
 
     const handleChange = (field: keyof EmailAccount, value: EmailAccount[keyof EmailAccount]) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -217,7 +223,7 @@ export function EmailAccountForm({
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                                 placeholder="587"
                                                 value={formData.smtpPort || ''}
-                                                onChange={(e) => handleChange('smtpPort', parseInt(e.target.value))}
+                                                onChange={(e) => handleChange('smtpPort', e.target.value ? parseInt(e.target.value, 10) : undefined)}
                                             />
                                         </div>
                                     </div>
@@ -272,6 +278,11 @@ export function EmailAccountForm({
                                         <strong>How it works:</strong> Emails are sent via your WooCommerce store's WordPress plugin instead of direct SMTP.
                                         Use this if your server blocks outbound SMTP ports (e.g., DigitalOcean).
                                     </div>
+                                    {invalidRelay && (
+                                        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                            Relay endpoint must start with https://
+                                        </div>
+                                    )}
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Relay Endpoint URL</label>
                                         <input
@@ -397,7 +408,7 @@ export function EmailAccountForm({
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden"
                                         placeholder="993"
                                         value={formData.imapPort || ''}
-                                        onChange={(e) => handleChange('imapPort', parseInt(e.target.value))}
+                                        onChange={(e) => handleChange('imapPort', e.target.value ? parseInt(e.target.value, 10) : undefined)}
                                     />
                                 </div>
                             </div>
@@ -457,7 +468,10 @@ export function EmailAccountForm({
                 {/* Footer */}
                 <div className="bg-gray-50 -mx-6 -mb-6 px-6 py-4 flex justify-between items-center rounded-b-xl border-t border-gray-100 mt-6">
                     <div className="text-sm text-gray-500">
-                        {!formData.smtpEnabled && !formData.imapEnabled && !formData.relayEndpoint && 'Configure outgoing email or receiving'}
+                        {!hasAnyConfig && 'Configure outgoing email or receiving'}
+                        {invalidSmtpPort && 'Enter a valid SMTP port'}
+                        {invalidImapPort && 'Enter a valid IMAP port'}
+                        {invalidRelay && 'Use an HTTPS relay endpoint'}
                     </div>
                     <div className="flex gap-3">
                         <button
@@ -468,7 +482,7 @@ export function EmailAccountForm({
                         </button>
                         <button
                             onClick={() => onSave(formData)}
-                            disabled={isSaving || (!formData.smtpEnabled && !formData.imapEnabled && !formData.relayEndpoint)}
+                            disabled={isSaving || !canSave}
                             className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
                         >
                             {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
@@ -480,4 +494,3 @@ export function EmailAccountForm({
         </div>
     );
 }
-

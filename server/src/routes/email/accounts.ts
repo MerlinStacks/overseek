@@ -173,6 +173,9 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
         const { id } = request.params as { id: string };
         const target = await prisma.emailAccount.findFirst({ where: { id, accountId } });
         if (!target) return reply.code(404).send({ error: 'Email account not found' });
+        if (!target.smtpEnabled && !target.relayEndpoint) {
+            return reply.code(400).send({ error: 'Default email account must be configured for sending' });
+        }
         try {
             await prisma.$transaction([
                 prisma.emailAccount.updateMany({ where: { accountId, isDefault: true }, data: { isDefault: false } }),

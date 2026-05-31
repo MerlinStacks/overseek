@@ -121,9 +121,21 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { id: string }; Body: { email: string } }>('/campaigns/:id/test', async (request, reply) => {
         try {
             const { email } = request.body;
-            await service.sendTestEmail(request.params.id, email);
-            return { success: true };
+            const result = await service.sendTestEmail(request.params.id, getAccountId(request), email);
+            if (!result.success && result.skipped) {
+                return reply.code(409).send(result);
+            }
+            return result;
         } catch (e) {
+            const message = (e as Error).message;
+            if (
+                message === 'Campaign not found'
+                || message === 'Campaign must have subject and content before testing'
+                || message === 'Valid test email is required'
+                || message === 'No sending-capable email account is configured'
+            ) {
+                return reply.code(message === 'Campaign not found' ? 404 : 400).send({ error: message });
+            }
             return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
@@ -384,9 +396,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Test Email (standalone, for flow builder)
-    fastify.post<{ Body: { to: string; subject: string; content: string } }>('/test-email', async (request, reply) => {
+    fastify.post<{ Body: { to: string; subject: string; content: string; category?: 'MARKETING' | 'TRANSACTIONAL' } }>('/test-email', async (request, reply) => {
         try {
-            const { to, subject, content } = request.body;
+            const { to, subject, content, category } = request.body;
 
             if (!to || !subject || !content) {
                 return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
@@ -451,15 +463,19 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const resolvedSubject = resolveMergeTags(subject, testContext);
             const resolvedContent = resolveMergeTags(content, testContext);
 
-            await emailService.sendEmail(
+            const result = await emailService.sendEmail(
                 accountId,
                 emailAccount.id,
                 to,
                 resolvedSubject,
                 resolvedContent,
                 undefined,
-                { source: 'TEST' }
+                { source: 'TEST', category: category === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING' }
             );
+
+            if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
+                return reply.code(409).send({ success: false, skipped: true, reason: 'reason' in result ? result.reason : 'email_skipped' });
+            }
 
             Logger.info('Test email sent', { to, subject: subject.substring(0, 50), accountId });
             return { success: true };

@@ -15,9 +15,19 @@ interface PreflightInput {
     html: string;
     subject?: string;
     emailCategory?: EmailCategory;
+    to?: string;
+    overrideFrom?: boolean;
+    fromEmail?: string;
+    replyToEmail?: string;
 }
 
-export function evaluateEmailPreflight({ html, subject = '', emailCategory = 'MARKETING' }: PreflightInput): PreflightIssue[] {
+const SIMPLE_EMAIL_RE = /^\S+@\S+\.\S+$/;
+
+function isMergeTag(value: string) {
+    return /\{\{[^}]+\}\}/.test(value);
+}
+
+export function evaluateEmailPreflight({ html, subject = '', emailCategory = 'MARKETING', to = '{{customer.email}}', overrideFrom, fromEmail = '', replyToEmail = '' }: PreflightInput): PreflightIssue[] {
     const issues: PreflightIssue[] = [];
     const trimmedHtml = html.trim();
     const trimmedSubject = subject.trim();
@@ -25,6 +35,25 @@ export function evaluateEmailPreflight({ html, subject = '', emailCategory = 'MA
 
     if (!trimmedSubject) {
         issues.push({ id: 'subject', severity: 'blocking', message: 'Subject is required before preview/testing.' });
+    }
+
+    const recipients = to.split(',').map((entry) => entry.trim()).filter(Boolean);
+    if (recipients.length === 0) {
+        issues.push({ id: 'recipient', severity: 'blocking', message: 'At least one recipient is required.' });
+    }
+
+    const invalidRecipients = recipients.filter((recipient) => !isMergeTag(recipient) && !SIMPLE_EMAIL_RE.test(recipient));
+    if (invalidRecipients.length > 0) {
+        issues.push({ id: 'recipient-format', severity: 'blocking', message: 'One or more recipients are not valid email addresses or merge tags.' });
+    }
+
+    if (overrideFrom) {
+        if (fromEmail.trim() && !SIMPLE_EMAIL_RE.test(fromEmail.trim())) {
+            issues.push({ id: 'from-email', severity: 'blocking', message: 'Override From Email is not a valid email address.' });
+        }
+        if (replyToEmail.trim() && !SIMPLE_EMAIL_RE.test(replyToEmail.trim())) {
+            issues.push({ id: 'reply-to-email', severity: 'blocking', message: 'Reply To Email is not a valid email address.' });
+        }
     }
 
     if (!trimmedHtml) {

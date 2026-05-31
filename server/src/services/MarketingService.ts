@@ -183,8 +183,59 @@ export class MarketingService {
         return prisma.marketingCampaign.deleteMany({ where: { id, accountId } });
     }
 
-    async sendTestEmail(campaignId: string, email: string) {
-        Logger.info(`Sending test email`, { campaignId, email });
+    async sendTestEmail(campaignId: string, accountId: string, email: string) {
+        const recipientEmail = email?.trim();
+        if (!recipientEmail || !/^\S+@\S+\.\S+$/.test(recipientEmail)) {
+            throw new Error('Valid test email is required');
+        }
+
+        const campaign = await this.getCampaign(campaignId, accountId);
+        if (!campaign) throw new Error('Campaign not found');
+        if (!campaign.subject?.trim() || !campaign.content?.trim()) {
+            throw new Error('Campaign must have subject and content before testing');
+        }
+
+        const defaultEmailAccount = await getDefaultEmailAccount(accountId);
+        if (!defaultEmailAccount) {
+            throw new Error('No sending-capable email account is configured');
+        }
+
+        const account = await prisma.account?.findFirst({
+            where: { id: accountId },
+            select: { wooUrl: true, domain: true }
+        });
+        const storeUrl = account?.wooUrl || account?.domain || '';
+        const normalizedStoreUrl = storeUrl.startsWith('http://') || storeUrl.startsWith('https://')
+            ? storeUrl
+            : (storeUrl ? `https://${storeUrl}` : '');
+        const context = {
+            customer: {
+                firstName: 'Test',
+                lastName: 'Customer',
+                email: recipientEmail
+            },
+            store: { url: normalizedStoreUrl },
+            storeUrl: normalizedStoreUrl,
+            store_url: normalizedStoreUrl,
+            preferencesUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/my-account/edit-account/` : '',
+            unsubscribeUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/?unsubscribe=1` : ''
+        };
+
+        const result = await this.emailService.sendEmail(
+            accountId,
+            defaultEmailAccount.id,
+            recipientEmail,
+            resolveMergeTags(campaign.subject, context),
+            resolveMergeTags(campaign.content, context),
+            undefined,
+            { source: 'TEST', sourceId: campaignId, category: 'MARKETING' }
+        );
+
+        if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
+            return { success: false, skipped: true, reason: 'reason' in result ? result.reason : 'email_skipped' };
+        }
+
+        Logger.info(`Sent campaign test email`, { campaignId, accountId, email: recipientEmail });
         return { success: true };
     }
 
@@ -200,7 +251,7 @@ export class MarketingService {
             throw new Error('No sending-capable email account is configured');
         }
 
-        const account = await prisma.account.findFirst({
+        const account = await prisma.account?.findFirst({
             where: { id: accountId },
             select: { wooUrl: true, domain: true }
         });
@@ -342,7 +393,7 @@ export class MarketingService {
             Logger.error('Error sending campaign', err);
         }
 
-        const finalStatus = sentCount > 0 ? 'SENT' : (failedCount > 0 ? 'FAILED' : 'SENT');
+        const finalStatus = sentCount > 0 ? 'SENT' : 'FAILED';
         await prisma.marketingCampaign.update({
             where: { id: campaignId },
             data: { status: finalStatus, sentCount }

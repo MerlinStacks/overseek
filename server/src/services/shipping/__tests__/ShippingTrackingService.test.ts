@@ -184,5 +184,9 @@ describe('ShippingTrackingService', () => {
             normalizedState: 'out_for_delivery',
             triggerType: 'SHIPMENT_OUT_FOR_DELIVERY',
         });
+        expect(shippingTrackingService.normalizeTrackingEvent({ description: 'On board for delivery, expected to be delivered today' })).toMatchObject({
+            normalizedState: 'out_for_delivery',
+            triggerType: 'SHIPMENT_OUT_FOR_DELIVERY',
+        });
     });
 });

@@ -318,7 +318,10 @@ export class NodeExecutor {
                         {
                             source: 'AUTOMATION',
                             sourceId: enrollment.automationId,
-                            category: config.emailCategory === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING'
+                            category: config.emailCategory === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING',
+                            fromName: config.overrideFrom ? config.fromName : undefined,
+                            fromEmail: config.overrideFrom ? config.fromEmail : undefined,
+                            replyToEmail: config.overrideFrom ? config.replyToEmail : undefined
                         }
                     );
 

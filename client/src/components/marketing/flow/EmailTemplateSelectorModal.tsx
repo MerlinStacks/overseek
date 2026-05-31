@@ -1,7 +1,7 @@
 /**
  * EmailTemplateSelectorModal - Modal for selecting saved email templates
  */
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { X, Search, Layout, FileText, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
@@ -27,27 +27,34 @@ export function EmailTemplateSelectorModal({ onSelect, onClose }: Props) {
     const accountId = currentAccount?.id;
     const [templates, setTemplates] = useState<EmailTemplate[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
     const [search, setSearch] = useState('');
 
-    useEffect(() => {
-        const fetchTemplates = async () => {
-            if (!accountId) return;
-            try {
-                const res = await fetch('/api/marketing/templates', {
-                    headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setTemplates(data);
-                }
-            } catch (err) {
-                // Silently fail - user can retry by reopening modal
-            } finally {
-                setLoading(false);
+    const fetchTemplates = useCallback(async () => {
+        if (!accountId) return;
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch('/api/marketing/templates', {
+                headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTemplates(data);
+            } else {
+                const data = await res.json().catch(() => ({}));
+                setError(data.error || 'Failed to load templates');
             }
-        };
-        fetchTemplates();
+        } catch (err) {
+            setError('Failed to load templates');
+        } finally {
+            setLoading(false);
+        }
     }, [token, accountId]);
+
+    useEffect(() => {
+        void fetchTemplates();
+    }, [fetchTemplates]);
 
     const filtered = templates.filter(t =>
         t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -95,6 +102,18 @@ export function EmailTemplateSelectorModal({ onSelect, onClose }: Props) {
                     {loading ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 size={24} className="animate-spin text-indigo-500" />
+                        </div>
+                    ) : error ? (
+                        <div className="text-center py-12">
+                            <FileText size={48} className="mx-auto text-red-300 mb-3" />
+                            <p className="text-red-600">{error}</p>
+                            <button
+                                type="button"
+                                onClick={() => void fetchTemplates()}
+                                className="mt-3 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+                            >
+                                Retry
+                            </button>
                         </div>
                     ) : filtered.length === 0 ? (
                         <div className="text-center py-12">
