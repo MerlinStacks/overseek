@@ -503,12 +503,23 @@ export class MarketingService {
 
         const automationIds = automations.map((automation) => automation.id);
 
-        const [enrollmentGroups, failedRunGroups, goalGroups] = await Promise.all([
+        const now = new Date();
+        const [enrollmentGroups, holdingGroups, failedRunGroups, goalGroups] = await Promise.all([
             prisma.automationEnrollment.groupBy({
                 by: ['automationId', 'status'],
                 where: {
                     accountId,
                     automationId: { in: automationIds }
+                },
+                _count: true
+            }),
+            prisma.automationEnrollment.groupBy({
+                by: ['automationId'],
+                where: {
+                    accountId,
+                    automationId: { in: automationIds },
+                    status: 'ACTIVE',
+                    nextRunAt: { gt: now }
                 },
                 _count: true
             }),
@@ -534,13 +545,17 @@ export class MarketingService {
             })
         ]);
 
-        const enrollmentStats = new Map<string, { active: number; paused: number; completed: number }>();
+        const enrollmentStats = new Map<string, { active: number; completed: number }>();
         for (const group of enrollmentGroups) {
-            const existing = enrollmentStats.get(group.automationId) || { active: 0, paused: 0, completed: 0 };
+            const existing = enrollmentStats.get(group.automationId) || { active: 0, completed: 0 };
             if (group.status === 'ACTIVE') existing.active = group._count;
-            if (group.status === 'CANCELLED') existing.paused = group._count;
             if (group.status === 'COMPLETED') existing.completed = group._count;
             enrollmentStats.set(group.automationId, existing);
+        }
+
+        const holdingStats = new Map<string, number>();
+        for (const group of holdingGroups) {
+            holdingStats.set(group.automationId, group._count);
         }
 
         const failedStats = new Map<string, number>();
@@ -554,12 +569,12 @@ export class MarketingService {
         }
 
         return automations.map((automation) => {
-            const enrollment = enrollmentStats.get(automation.id) || { active: 0, paused: 0, completed: 0 };
+            const enrollment = enrollmentStats.get(automation.id) || { active: 0, completed: 0 };
             return {
                 ...automation,
                 metrics: {
                     activeInFlow: enrollment.active,
-                    pausedInFlow: enrollment.paused,
+                    pausedInFlow: holdingStats.get(automation.id) || 0,
                     completedInFlow: enrollment.completed,
                     failedInFlow: failedStats.get(automation.id) || 0,
                     revenue: revenueStats.get(automation.id) || 0

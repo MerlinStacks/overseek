@@ -921,7 +921,8 @@ export function FlowsPage() {
                     page: String(nodeAnalyticsPage),
                     perPage: '10'
                 });
-                const res = await fetch(`/api/marketing/automations/${editingItem.id}/nodes/${nodeAnalyticsNodeId}/analytics?${params.toString()}`, {
+                const encodedNodeId = encodeURIComponent(nodeAnalyticsNodeId);
+                const res = await fetch(`/api/marketing/automations/${editingItem.id}/nodes/${encodedNodeId}/analytics?${params.toString()}`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
                         'x-account-id': currentAccount.id

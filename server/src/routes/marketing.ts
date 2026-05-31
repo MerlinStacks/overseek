@@ -15,6 +15,12 @@ import { HTTP_LIMITS } from '../config/limits';
 
 const service = new MarketingService();
 
+function parsePositiveInt(value: string | undefined, fallback: number, max?: number): number {
+    const parsed = value ? parseInt(value, 10) : fallback;
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return max ? Math.min(parsed, max) : parsed;
+}
+
 function getAccountId(request: FastifyRequest): string {
     const accountId = request.accountId || request.user?.accountId;
     if (!accountId) {
@@ -298,8 +304,8 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         '/automations/:id/nodes/:nodeId/analytics',
         async (request, reply) => {
             try {
-                const page = request.query.page ? parseInt(request.query.page, 10) : 1;
-                const perPage = request.query.perPage ? parseInt(request.query.perPage, 10) : 10;
+                const page = parsePositiveInt(request.query.page, 1);
+                const perPage = parsePositiveInt(request.query.perPage, 10, 100);
                 return await service.getAutomationNodeAnalytics(
                     request.params.id,
                     getAccountId(request),

@@ -34,14 +34,20 @@ function formatRevenue(value: number): string {
 function MetricPill({
     icon,
     value,
+    label,
     className
 }: {
     icon: React.ReactNode;
     value: string | number;
+    label: string;
     className?: string;
 }) {
     return (
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-5 ${className || 'bg-slate-100 text-slate-700'}`}>
+        <span
+            title={`${label}: ${value}`}
+            aria-label={`${label}: ${value}`}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-5 ${className || 'bg-slate-100 text-slate-700'}`}
+        >
             {icon}
             {value}
         </span>
@@ -272,15 +278,15 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                         <td className="px-3 py-1.5 align-middle text-slate-700">-</td>
                                         <td className="px-3 py-1.5 align-middle">
                                             <div className="flex flex-wrap items-center gap-1.5">
-                                                <MetricPill icon={<Circle size={12} />} value={flow.metrics?.activeInFlow || flow.enrollments?.length || 0} />
-                                                <MetricPill icon={<Pause size={12} />} value={flow.metrics?.pausedInFlow || 0} />
-                                                <MetricPill icon={<CheckCircle2 size={12} />} value={flow.metrics?.completedInFlow || 0} />
-                                                <MetricPill icon={<XCircle size={12} />} value={flow.metrics?.failedInFlow || 0} />
+                                                <MetricPill icon={<Circle size={12} />} label="Active in flow" value={flow.metrics?.activeInFlow || flow.enrollments?.length || 0} />
+                                                <MetricPill icon={<Pause size={12} />} label="Holding until next step" value={flow.metrics?.pausedInFlow || 0} />
+                                                <MetricPill icon={<CheckCircle2 size={12} />} label="Completed flow" value={flow.metrics?.completedInFlow || 0} />
+                                                <MetricPill icon={<XCircle size={12} />} label="Failed flow events" value={flow.metrics?.failedInFlow || 0} />
                                             </div>
                                         </td>
                                         <td className="px-3 py-1.5 align-middle">
                                             {flow.metrics?.revenue ? (
-                                                <MetricPill icon={<DollarSign size={12} />} value={formatRevenue(flow.metrics.revenue)} className="bg-teal-100 text-teal-800" />
+                                                <MetricPill icon={<DollarSign size={12} />} label="Revenue" value={formatRevenue(flow.metrics.revenue)} className="bg-teal-100 text-teal-800" />
                                             ) : '-'}
                                         </td>
                                         <td className="px-3 py-1.5 align-middle">
