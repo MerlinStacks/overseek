@@ -52,12 +52,14 @@ export function normalizeShipmentStatus(...values: Array<string | undefined>): S
     const nonEmptyValues = values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
     if (nonEmptyValues.length === 0) return null;
 
-    for (const rawValue of nonEmptyValues) {
-        const value = rawValue.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const normalizedValues = nonEmptyValues.map((rawValue) => rawValue.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''));
+    const text = nonEmptyValues.join(' ').trim().toLowerCase();
+    if (normalizedValues.includes('out_for_delivery') || /(out[\s_-]*for[\s_-]*delivery|on[\s_-]*board[\s_-]*for[\s_-]*delivery|onboard[\s_-]*for[\s_-]*delivery)/.test(text)) return 'out_for_delivery';
+
+    for (const value of normalizedValues) {
         switch (value) {
             case 'in_transit':
             case 'received_by_carrier':
-            case 'out_for_delivery':
             case 'delivery_attempted':
             case 'delivered':
             case 'exception':
@@ -65,8 +67,6 @@ export function normalizeShipmentStatus(...values: Array<string | undefined>): S
         }
     }
 
-    const text = nonEmptyValues.join(' ').trim().toLowerCase();
-    if (/(out[\s_-]*for[\s_-]*delivery|on[\s_-]*board[\s_-]*for[\s_-]*delivery|onboard[\s_-]*for[\s_-]*delivery)/.test(text)) return 'out_for_delivery';
     if (/(delivery attempted|attempted delivery|card left|awaiting collection|collection point)/.test(text)) return 'delivery_attempted';
     if (/(delivered|successfully delivered)/.test(text)) return 'delivered';
     if (/(exception|delay|delayed|held|return to sender|returned|damaged|lost|address issue|failed)/.test(text)) return 'exception';

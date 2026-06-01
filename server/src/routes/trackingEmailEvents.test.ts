@@ -20,4 +20,8 @@ describe('normalizeShipmentStatus', () => {
     it('falls back to event name and description when status is missing', () => {
         expect(normalizeShipmentStatus(undefined, 'Shipment update', 'Parcel is out for delivery')).toBe('out_for_delivery');
     });
+
+    it('prioritizes out-for-delivery over generic delivered text', () => {
+        expect(normalizeShipmentStatus('delivered', 'shipment_out_for_delivery', 'On board for delivery, expected to be delivered today')).toBe('out_for_delivery');
+    });
 });
