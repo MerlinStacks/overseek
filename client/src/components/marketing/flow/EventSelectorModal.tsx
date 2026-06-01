@@ -48,7 +48,7 @@ const EVENTS_BY_CATEGORY: Record<string, { subcategory?: string; events: EventIt
         {
             subcategory: 'Orders',
             events: [
-                { id: 'ORDER_CREATED', label: 'Order Created', icon: 'Cart' },
+                { id: 'ORDER_CREATED', label: 'New Paid Order', icon: 'Cart' },
                 { id: 'ORDER_PAID', label: 'Order Paid', icon: 'Card' },
                 { id: 'ORDER_COMPLETED', label: 'Order Completed', icon: 'Check' },
                 { id: 'FIRST_ORDER', label: 'First Order', icon: 'Sparkles' },

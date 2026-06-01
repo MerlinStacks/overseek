@@ -72,6 +72,7 @@ export class PinterestCAPIService implements ConversionPlatformService {
                 client_user_agent: userData.userAgent,
                 // Pinterest click ID
                 click_id: userData.epq || undefined,
+                ...(userData.externalId ? { external_id: [hashSHA256(userData.externalId)] } : {}),
             },
         };
 
@@ -94,12 +95,17 @@ export class PinterestCAPIService implements ConversionPlatformService {
                 customData.order_id = String(data.payload.orderId);
             }
             if (Array.isArray(data.payload.items)) {
+                const getProductId = (item: any): string => String(
+                    item.productId || item.product_id || item.contentId || item.id || item.sku || '',
+                );
+
                 customData.contents = data.payload.items.map((item: any) => ({
-                    id: String(item.contentId || item.id || item.sku || ''),
+                    id: getProductId(item),
                     item_name: item.name || '',
                     quantity: item.quantity || 1,
                     item_price: String(item.price || 0),
                 }));
+                customData.content_ids = data.payload.items.map(getProductId).filter(Boolean);
                 customData.num_items = data.payload.items.length;
             }
 

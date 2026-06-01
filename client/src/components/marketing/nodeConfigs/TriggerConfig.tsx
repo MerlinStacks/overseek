@@ -70,7 +70,7 @@ const formatStatusLabel = (status: string) => status
 const normalizeStatusSlug = (status: string) => status.replace(/^wc-/, '').toLowerCase();
 
 const TRIGGER_TYPES = [
-    { value: 'ORDER_CREATED', label: 'Order Created', group: 'WooCommerce' },
+    { value: 'ORDER_CREATED', label: 'New Paid Order', group: 'WooCommerce' },
     { value: 'ORDER_PAID', label: 'Order Paid', group: 'WooCommerce' },
     { value: 'ORDER_COMPLETED', label: 'Order Completed', group: 'WooCommerce' },
     { value: 'ORDER_STATUS_CHANGED', label: 'Order Status Changed', group: 'WooCommerce' },

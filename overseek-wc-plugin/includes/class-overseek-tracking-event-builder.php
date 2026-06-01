@@ -33,6 +33,7 @@ class OverSeek_Tracking_Event_Builder
             'price' => ($product && is_object($product)) ? floatval($product->get_price()) : 0,
             'currency' => self::get_currency(),
             'eventId' => $event_id,
+            'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 
         $payload = OverSeek_Tracking_Payload_Utils::attach_platform_cookies(self::add_cart_totals($payload, $cart));
@@ -84,6 +85,7 @@ class OverSeek_Tracking_Event_Builder
             'email' => $email,
             'currency' => self::get_currency(),
             'eventId' => $event_id,
+            'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 
         if ($source !== '') {
@@ -117,6 +119,7 @@ class OverSeek_Tracking_Event_Builder
                 'items' => OverSeek_Tracking_Payload_Utils::get_cart_items_snapshot($cart),
                 'source' => 'checkout_email_capture',
                 'eventId' => wp_generate_uuid4(),
+                'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
             ),
         );
     }
@@ -188,6 +191,7 @@ class OverSeek_Tracking_Event_Builder
             'billingCountry' => $order->get_billing_country(),
             'billingFirst' => $order->get_billing_first_name(),
             'billingLast' => $order->get_billing_last_name(),
+            'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 
         $recovery_enrollment_id = $order->get_meta('_overseek_recovery_enrollment_id');

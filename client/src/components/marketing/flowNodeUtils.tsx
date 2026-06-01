@@ -81,7 +81,7 @@ export function getTriggerIcon(config: unknown) {
 export function getTriggerLabel(config: unknown): string {
     const triggerType = asNodeConfig(config).triggerType;
     const labels: Record<string, string> = {
-        'ORDER_CREATED': 'Order Created',
+        'ORDER_CREATED': 'New Paid Order',
         'ORDER_PAID': 'Order Paid',
         'ORDER_COMPLETED': 'Order Completed',
         'ORDER_STATUS_CHANGED': 'Order Status Changed',

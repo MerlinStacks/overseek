@@ -8,10 +8,12 @@ function subscribeAutomationTrigger(
     eventName: string,
     triggerName: string,
     getPayload: (data: any) => unknown,
-    automationEngine: AutomationEngine
+    automationEngine: AutomationEngine,
+    shouldProcess: (data: any) => boolean = () => true
 ): void {
     EventBus.on(eventName, async (data: any) => {
         try {
+            if (!shouldProcess(data)) return;
             await automationEngine.processTrigger(data.accountId, triggerName, getPayload(data));
         } catch (error) {
             Logger.error('[EventBus] Failed to process automation trigger', {
@@ -25,7 +27,16 @@ function subscribeAutomationTrigger(
 }
 
 export function subscribeEventBus(chatService: ChatService, automationEngine: AutomationEngine): void {
-    subscribeAutomationTrigger(EVENTS.ORDER.CREATED, 'ORDER_CREATED', data => data.order, automationEngine);
+    // "Order Created" automations intentionally run from paid events so flows
+    // only enroll orders that reached processing, including orders first
+    // seen by Overseek after WooCommerce has already changed status.
+    subscribeAutomationTrigger(
+        EVENTS.ORDER.PAID,
+        'ORDER_CREATED',
+        data => data.order,
+        automationEngine,
+        data => String(data?.order?.status || '').toLowerCase() === 'processing'
+    );
     subscribeAutomationTrigger(EVENTS.ORDER.PAID, 'ORDER_PAID', data => data.order, automationEngine);
     subscribeAutomationTrigger(EVENTS.ORDER.COMPLETED, 'ORDER_COMPLETED', data => data.order, automationEngine);
     subscribeAutomationTrigger(EVENTS.ORDER.FIRST, 'FIRST_ORDER', data => data.order, automationEngine);

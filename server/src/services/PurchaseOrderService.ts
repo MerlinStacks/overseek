@@ -3,6 +3,8 @@ import { WooService } from './woo';
 import { Logger } from '../utils/logger';
 import { BOMConsumptionService } from './BOMConsumptionService';
 
+const VALID_PO_STATUSES = new Set(['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED']);
+
 /** Max retries for WooCommerce API calls in background sync */
 const WOO_MAX_RETRIES = 3;
 /** Base delay (ms) for exponential backoff — doubles each retry */
@@ -130,7 +132,12 @@ export class PurchaseOrderService {
         expectedDate?: string;
         trackingNumber?: string;
         trackingLink?: string;
+        status?: string;
     }) {
+        if (data.status !== undefined && !VALID_PO_STATUSES.has(data.status)) {
+            throw new Error('Invalid Purchase Order status');
+        }
+
         await this.validateOwnershipForPOInputs(accountId, data.supplierId, data.items);
 
         // Calculate totals
@@ -154,7 +161,7 @@ export class PurchaseOrderService {
             data: {
                 accountId,
                 supplierId: data.supplierId,
-                status: 'DRAFT',
+                status: data.status || 'DRAFT',
                 notes: data.notes,
                 orderDate: data.orderDate ? new Date(data.orderDate) : null,
                 expectedDate: data.expectedDate ? new Date(data.expectedDate) : null,
@@ -189,6 +196,10 @@ export class PurchaseOrderService {
             sku?: string;
         }[];
     }) {
+        if (data.status !== undefined && !VALID_PO_STATUSES.has(data.status)) {
+            throw new Error('Invalid Purchase Order status');
+        }
+
         // Guard: RECEIVED POs restrict status and item updates
         const existing = await prisma.purchaseOrder.findFirst({
             where: { id: poId, accountId },

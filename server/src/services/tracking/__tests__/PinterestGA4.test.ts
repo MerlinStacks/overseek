@@ -76,6 +76,31 @@ describe('PinterestCAPIService', () => {
         expect(body.data[0].user_data.click_id).toBe('pinterest-epik-123');
     });
 
+    it('should include hashed external_id for match quality', async () => {
+        await service.sendEvent(accountId, config, {
+            ...purchaseData,
+            payload: { ...purchaseData.payload, externalId: 'wc_42' },
+        }, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.data[0].user_data.external_id).toHaveLength(1);
+        expect(body.data[0].user_data.external_id[0]).toHaveLength(64);
+    });
+
+    it('should include explicit content_ids from product IDs', async () => {
+        await service.sendEvent(accountId, config, {
+            ...purchaseData,
+            payload: {
+                ...purchaseData.payload,
+                items: [{ productId: 123, contentId: 'sku-123', sku: 'SKU-123', name: 'Product', quantity: 2, price: 10 }],
+            },
+        }, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.data[0].custom_data.content_ids).toEqual(['123']);
+        expect(body.data[0].custom_data.contents[0].id).toBe('123');
+    });
+
     it('should use Bearer token auth', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 

@@ -13,6 +13,8 @@ import { usePODraftPersistence } from '../hooks/usePODraftPersistence';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 import { getSafeHref } from '../utils/url';
 
+const PURCHASE_ORDERS_PATH = '/inventory/supply-chain';
+
 interface POItem {
     id?: string;
     productId?: string;
@@ -309,7 +311,7 @@ export function PurchaseOrderEditPage() {
                         resourceId: savedId,
                     });
                 }
-                navigate('/inventory?tab=purchasing');
+                navigate(PURCHASE_ORDERS_PATH);
             } else {
                 let errorMessage = 'Failed to save';
                 try {
@@ -358,7 +360,7 @@ export function PurchaseOrderEditPage() {
                         resourceId: id,
                     });
                 }
-                navigate('/inventory?tab=purchasing');
+                navigate(PURCHASE_ORDERS_PATH);
             } else {
                 let errorMessage = 'Failed to delete';
                 try {
@@ -390,7 +392,7 @@ export function PurchaseOrderEditPage() {
         <div className="max-w-7xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => navigate('/inventory?tab=purchasing')} className="p-2 hover:bg-gray-100 rounded-full">
+                    <button onClick={() => navigate(PURCHASE_ORDERS_PATH)} className="p-2 hover:bg-gray-100 rounded-full">
                         <ArrowLeft size={20} />
                     </button>
                     <div>

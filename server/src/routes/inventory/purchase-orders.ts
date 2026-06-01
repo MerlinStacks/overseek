@@ -57,11 +57,29 @@ const purchaseOrderRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/purchase-orders', async (request, reply) => {
         const accountId = request.accountId!;
         try {
-            return await poService.createPurchaseOrder(accountId, request.body as any);
+            const body = request.body as any;
+            const shouldReceiveStock = body.status === 'RECEIVED';
+            const created = await poService.createPurchaseOrder(accountId, {
+                ...body,
+                status: shouldReceiveStock ? 'ORDERED' : body.status,
+            });
+
+            if (!shouldReceiveStock) return created;
+
+            const stockResult = await poService.receiveStock(accountId, created.id);
+            Logger.info('Stock received from newly created PO', { poId: created.id, ...stockResult });
+            backgroundReindex(accountId, [...stockResult.updatedProductIds]);
+
+            const updated = await poService.getPurchaseOrder(accountId, created.id);
+            if (stockResult.errors.length) {
+                return { ...updated, _warnings: stockResult.errors };
+            }
+            return updated;
         } catch (error: any) {
             const msg = error?.message || '';
             if (msg === 'Supplier not found') return reply.code(404).send({ error: msg });
             if (msg === 'One or more PO items are invalid for this account') return reply.code(400).send({ error: msg });
+            if (msg === 'Invalid Purchase Order status') return reply.code(400).send({ error: msg });
             Logger.error('Error creating PO', { error });
             return reply.code(500).send({ error: 'Failed to create PO' });
         }
@@ -109,6 +127,7 @@ const purchaseOrderRoutes: FastifyPluginAsync = async (fastify) => {
             const msg = error?.message || '';
             if (msg === 'Supplier not found') return reply.code(404).send({ error: msg });
             if (msg === 'One or more PO items are invalid for this account') return reply.code(400).send({ error: msg });
+            if (msg === 'Invalid Purchase Order status') return reply.code(400).send({ error: msg });
             Logger.error('Error updating PO', { error, poId: id });
             return reply.code(500).send({ error: 'Failed to update PO' });
         }
