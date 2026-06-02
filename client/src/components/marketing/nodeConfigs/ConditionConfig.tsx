@@ -99,6 +99,11 @@ const MONTH_OPTIONS = [
     { value: '12', label: 'December' },
 ];
 
+const SHIPPING_TYPE_OPTIONS = [
+    { value: 'delivery', label: 'Delivery' },
+    { value: 'click_and_collect', label: 'Click and collect' },
+];
+
 const COUNTRY_OPTIONS = [
     'United States',
     'United Kingdom',
@@ -174,6 +179,7 @@ export const CONDITION_GROUPS: ConditionGroup[] = [
         conditions: [
             { field: 'order.total', label: 'Order Total', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
             { field: 'order.status', label: 'Order Status', operators: ['eq', 'neq'] },
+            { field: 'order.shippingType', label: 'Order Shipping Type', operators: ['eq', 'neq'] },
             { field: 'order.itemCount', label: 'Order Item Count', operators: ['gt', 'gte', 'lt', 'lte', 'eq'] },
             { field: 'order.productId', label: 'Order contains product', operators: ['eq', 'neq'] },
             { field: 'order.categoryId', label: 'Order contains category', operators: ['eq', 'neq'] },
@@ -486,6 +492,21 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
             );
         }
 
+        if (cond.field === 'order.shippingType') {
+            return (
+                <select
+                    value={cond.value || ''}
+                    onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-sm px-2 py-1"
+                >
+                    <option value="">Select shipping type...</option>
+                    {SHIPPING_TYPE_OPTIONS.map((shippingType) => (
+                        <option key={shippingType.value} value={shippingType.value}>{shippingType.label}</option>
+                    ))}
+                </select>
+            );
+        }
+
         if (cond.field === 'segment.id') {
             return (
                 <select
@@ -648,6 +669,10 @@ export const ConditionConfig: React.FC<ConditionConfigProps> = ({ config, onUpda
 
         if (cond.field === 'order.status') {
             return formatStatusLabel(cond.value);
+        }
+
+        if (cond.field === 'order.shippingType') {
+            return SHIPPING_TYPE_OPTIONS.find((shippingType) => shippingType.value === cond.value)?.label || cond.value;
         }
 
         if (cond.field === 'user.isLoggedIn' || cond.field === 'inbox.customerSentEmail') {

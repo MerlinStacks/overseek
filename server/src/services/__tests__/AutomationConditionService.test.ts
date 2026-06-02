@@ -59,6 +59,36 @@ describe('AutomationConditionService', () => {
         expect(result).toBe(true);
     });
 
+    it('evaluates click and collect shipping type conditions', () => {
+        const result = automationConditionService.evaluate({
+            matchType: 'all',
+            conditions: [
+                { field: 'order.shippingType', operator: 'eq', value: 'click_and_collect' }
+            ]
+        }, {
+            order: {
+                shipping_lines: [{ method_id: 'local_pickup', method_title: 'Click and Collect' }]
+            }
+        });
+
+        expect(result).toBe(true);
+    });
+
+    it('evaluates delivery shipping type conditions', () => {
+        const result = automationConditionService.evaluate({
+            matchType: 'all',
+            conditions: [
+                { field: 'order.shippingType', operator: 'eq', value: 'delivery' }
+            ]
+        }, {
+            order: {
+                shipping_lines: [{ method_id: 'flat_rate', method_title: 'Standard shipping' }]
+            }
+        });
+
+        expect(result).toBe(true);
+    });
+
     it('supports between comparisons for hour-based conditions', () => {
         const result = automationConditionService.evaluate({
             matchType: 'all',

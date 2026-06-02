@@ -154,6 +154,8 @@ export class AutomationConditionService {
                 return context.customer?.postcode || context.billing?.postcode || context.order?.billing?.postcode || context.postcode;
             case 'order.status':
                 return context.order?.status || context.status || context.newStatus;
+            case 'order.shippingType':
+                return this.resolveOrderShippingType(context);
             case 'order.couponCode': {
                 const couponLines = context.order?.coupon_lines || context.coupon_lines || [];
                 return Array.isArray(couponLines)
@@ -180,6 +182,40 @@ export class AutomationConditionService {
                     return acc[key];
                 }, context);
         }
+    }
+
+    private resolveOrderShippingType(context: any): string {
+        const order = context.order || context.rawOrder || context.rawData || context;
+        const shippingLines = Array.isArray(order?.shipping_lines)
+            ? order.shipping_lines
+            : Array.isArray(order?.shippingLines)
+                ? order.shippingLines
+                : [];
+
+        const shippingText = [
+            order?.shippingType,
+            order?.shipping_type,
+            order?.shippingMethod,
+            order?.shipping_method,
+            order?.shipping_method_title,
+            order?.shipping_lines_text,
+            ...shippingLines.flatMap((line: any) => [
+                line?.method_id,
+                line?.methodId,
+                line?.method_title,
+                line?.methodTitle,
+                line?.title,
+                line?.name,
+            ]),
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        if (!shippingText) return '';
+
+        if (/(click\s*(and|&)\s*collect|collect\s*(and|&)\s*click|local[_\s-]*pickup|pick\s*up|pickup|collection)/.test(shippingText)) {
+            return 'click_and_collect';
+        }
+
+        return 'delivery';
     }
 
     private toNumber(value: unknown): number | null {

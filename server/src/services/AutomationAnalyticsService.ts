@@ -37,8 +37,30 @@ export class AutomationAnalyticsService {
         return { queued: 0, completed: 0, skipped: 0, failed: 0 };
     }
 
+    private countCompletedEnrollmentsWithOnlySkippedNodes(events: Array<{ enrollmentId: string; outcome: string | null; metadata: unknown }>) {
+        const nodeEventsByEnrollment = new Map<string, { hasNodeEvent: boolean; hasNonSkippedNodeEvent: boolean }>();
+
+        for (const event of events) {
+            const metadata = (event.metadata && typeof event.metadata === 'object') ? event.metadata as Record<string, unknown> : {};
+            if (String(metadata.nodeType || '').toUpperCase() === 'TRIGGER') continue;
+
+            const stats = nodeEventsByEnrollment.get(event.enrollmentId) || { hasNodeEvent: false, hasNonSkippedNodeEvent: false };
+            stats.hasNodeEvent = true;
+            if (!String(event.outcome || '').toUpperCase().includes('SKIPPED')) {
+                stats.hasNonSkippedNodeEvent = true;
+            }
+            nodeEventsByEnrollment.set(event.enrollmentId, stats);
+        }
+
+        let skippedOnlyCount = 0;
+        for (const stats of nodeEventsByEnrollment.values()) {
+            if (stats.hasNodeEvent && !stats.hasNonSkippedNodeEvent) skippedOnlyCount += 1;
+        }
+        return skippedOnlyCount;
+    }
+
     async getAutomationAnalytics(accountId: string, automationId: string) {
-        const [enrollmentGroups, eventGroups, goalAggregate, recentRuns, runEventGroups, nodeEvents] = await Promise.all([
+        const [enrollmentGroups, eventGroups, goalAggregate, recentRuns, runEventGroups, nodeEvents, completedNodeEvents] = await Promise.all([
             prisma.automationEnrollment.groupBy({
                 by: ['status'],
                 where: { accountId, automationId },
@@ -79,6 +101,19 @@ export class AutomationAnalyticsService {
                 },
                 orderBy: { createdAt: 'desc' },
                 take: 5000
+            }),
+            prisma.automationRunEvent.findMany({
+                where: {
+                    accountId,
+                    automationId,
+                    eventType: 'NODE_EXECUTED',
+                    enrollment: { status: 'COMPLETED' }
+                },
+                select: {
+                    enrollmentId: true,
+                    outcome: true,
+                    metadata: true
+                }
             })
         ]);
 
@@ -153,11 +188,13 @@ export class AutomationAnalyticsService {
                 return b.lastSeenAt.getTime() - a.lastSeenAt.getTime();
             })
             .slice(0, 12);
+        const completedEnrollments = enrollmentStats.COMPLETED || 0;
+        const skippedOnlyCompletedEnrollments = this.countCompletedEnrollmentsWithOnlySkippedNodes(completedNodeEvents);
 
         return {
             enrollments: {
                 active: enrollmentStats.ACTIVE || 0,
-                completed: enrollmentStats.COMPLETED || 0,
+                completed: Math.max(0, completedEnrollments - skippedOnlyCompletedEnrollments),
                 cancelled: enrollmentStats.CANCELLED || 0,
                 total: enrollmentGroups.reduce((sum, group) => sum + group._count, 0)
             },

@@ -8,6 +8,7 @@ import type { Edge, Node } from '@xyflow/react';
 import { useSearchParams } from 'react-router-dom';
 import { AutomationsList } from '../components/marketing/AutomationsList';
 import { FlowBuilder } from '../components/marketing/FlowBuilder';
+import { getActionLabel, getTriggerLabel } from '../components/marketing/flowNodeUtils';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { Modal } from '../components/ui/Modal';
 import { Toast, ToastType } from '../components/ui/Toast';
@@ -104,6 +105,19 @@ function sanitizeFlowDefinition(flow: FlowDefinition): FlowDefinition {
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);
 const OPERATORS_WITHOUT_VALUE = new Set(['is_set', 'not_set']);
+
+function pluralizeUnit(unit: string, amount: number): string {
+    if (amount === 1 && unit.endsWith('s')) return unit.slice(0, -1);
+    return unit;
+}
+
+function formatConditionRule(rule: { field?: unknown; operator?: unknown; value?: unknown }): string | null {
+    if (!rule.field || !rule.operator) return null;
+    const operator = String(rule.operator);
+    if (OPERATORS_WITHOUT_VALUE.has(operator)) return `${rule.field} ${operator}`;
+    if (String(rule.value ?? '').trim() === '') return null;
+    return `${rule.field} ${operator} ${rule.value}`;
+}
 
 function hasConditionValue(rule: { operator?: unknown; value?: unknown }): boolean {
     if (OPERATORS_WITHOUT_VALUE.has(String(rule.operator || ''))) return true;
@@ -415,8 +429,26 @@ export function FlowsPage() {
     const getNodeLabel = useCallback((nodeId: string | null) => {
         if (!nodeId) return 'Node';
         const node = editingFlowData?.flowDefinition?.nodes?.find((candidate) => candidate.id === nodeId);
-        const data = node?.data as { label?: string; config?: { subject?: string; actionType?: string } } | undefined;
-        return data?.label || data?.config?.subject || data?.config?.actionType || `Node ${nodeId}`;
+        const data = node?.data as { label?: string; config?: Record<string, unknown> } | undefined;
+        const config = data?.config || {};
+        if (!node) return `Node ${nodeId}`;
+        if (node.type === 'trigger') return getTriggerLabel(config);
+        if (node.type === 'action') return getActionLabel(config);
+        if (node.type === 'delay') {
+            const durationRaw = Number(config.duration || 1);
+            const duration = Number.isFinite(durationRaw) ? durationRaw : 1;
+            const unit = String(config.unit || 'hours');
+            if (config.delayUntilTime) return `Delay until ${config.delayUntilTime}`;
+            return `Delay ${duration} ${pluralizeUnit(unit, duration)}`;
+        }
+        if (node.type === 'condition') {
+            const rules = Array.isArray(config.conditions) ? config.conditions : [];
+            const firstRule = rules
+                .map((rule) => formatConditionRule(rule as { field?: unknown; operator?: unknown; value?: unknown }))
+                .find(Boolean);
+            return firstRule || data?.label || 'Condition';
+        }
+        return data?.label || `Node ${nodeId}`;
     }, [editingFlowData?.flowDefinition?.nodes]);
 
     const getNodeSupportedStatuses = useCallback((nodeId: string | null): NodeAnalyticsStatus[] => {
@@ -1435,7 +1467,7 @@ export function FlowsPage() {
                                                     </div>
                                                     <div className="mt-1 text-xs text-gray-500">
                                                         {event.eventType}
-                                                        {event.nodeId ? ` · node ${event.nodeId}` : ''}
+                                                        {event.nodeId ? ` · ${getNodeLabel(event.nodeId)}` : ''}
                                                     </div>
                                                     {badges.length > 0 && (
                                                         <div className="mt-2 flex flex-wrap gap-2">
@@ -1463,7 +1495,7 @@ export function FlowsPage() {
                                         {analytics.nodePerformance.map((nodeStats) => (
                                             <div key={nodeStats.nodeId} className="rounded-xl border border-gray-200 p-3 text-sm text-gray-700">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <span className="font-medium text-gray-900">Node {nodeStats.nodeId}</span>
+                                                    <span className="font-medium text-gray-900">{getNodeLabel(nodeStats.nodeId)}</span>
                                                     <span className="text-xs text-gray-500">{nodeStats.executions} runs</span>
                                                 </div>
                                                 <div className="mt-1 text-xs text-gray-500">
