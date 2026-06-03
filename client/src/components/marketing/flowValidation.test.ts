@@ -28,4 +28,16 @@ describe('validateFlow', () => {
             expect.objectContaining({ id: 'unsupported-action-future', nodeId: 'future', severity: 'blocking' }),
         ]));
     });
+
+    it('allows unsubscribe action steps without extra config', () => {
+        const nodes: Node[] = [
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, data: { config: { triggerType: 'MANUAL' } } },
+            { id: 'unsubscribe', type: 'action', position: { x: 0, y: 100 }, data: { config: { actionType: 'UNSUBSCRIBE' } } },
+        ];
+        const edges: Edge[] = [{ id: 'edge', source: 'trigger', target: 'unsubscribe' }];
+
+        const issues = validateFlow(nodes, edges);
+
+        expect(issues.some((issue) => issue.id === 'unsupported-action-unsubscribe')).toBe(false);
+    });
 });

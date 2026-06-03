@@ -107,6 +107,10 @@ export class NodeExecutor {
         if (actionType === 'UPDATE_ORDER_STATUS') {
             await this.executeUpdateOrderStatus(config, enrollment);
         }
+
+        if (actionType === 'UNSUBSCRIBE') {
+            return this.executeUnsubscribe(enrollment);
+        }
     }
 
     private async executeAssignConversation(config: any, enrollment: any): Promise<void> {
@@ -583,6 +587,66 @@ export class NodeExecutor {
                 error
             });
         }
+    }
+
+    private async executeUnsubscribe(enrollment: any): Promise<NodeExecutionResult> {
+        const email = typeof enrollment.email === 'string' ? enrollment.email.trim().toLowerCase() : '';
+
+        if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+            Logger.warn('Cannot unsubscribe customer: No valid email in enrollment', {
+                accountId: enrollment.automation?.accountId,
+                automationId: enrollment.automationId,
+                enrollmentId: enrollment.id
+            });
+            return {
+                action: 'NEXT',
+                outcome: 'UNSUBSCRIBE_FAILED',
+                metadata: { error: 'No valid email in enrollment' }
+            };
+        }
+
+        const accountId = enrollment.automation.accountId;
+
+        await prisma.$transaction([
+            prisma.emailUnsubscribe.upsert({
+                where: { accountId_email: { accountId, email } },
+                create: {
+                    accountId,
+                    email,
+                    scope: 'ALL',
+                    reason: 'Automation unsubscribe action'
+                },
+                update: {
+                    scope: 'ALL',
+                    reason: 'Automation unsubscribe action'
+                }
+            }),
+            prisma.emailListMember.updateMany({
+                where: {
+                    accountId,
+                    email: { equals: email, mode: 'insensitive' },
+                    isSubscribed: true
+                },
+                data: {
+                    isSubscribed: false,
+                    unsubscribedAt: new Date(),
+                    source: 'AUTOMATION'
+                }
+            })
+        ]);
+
+        Logger.info('Customer unsubscribed by automation action', {
+            accountId,
+            automationId: enrollment.automationId,
+            enrollmentId: enrollment.id,
+            email
+        });
+
+        return {
+            action: 'NEXT',
+            outcome: 'UNSUBSCRIBED',
+            metadata: { email, scope: 'ALL' }
+        };
     }
 
     private getRequiredConditionFields(config: any): string[] {

@@ -4,7 +4,7 @@
  * Type definitions and utility functions for flow nodes.
  */
 import {
-    Mail, Zap, MessageSquare, Tag, Link, ShoppingCart,
+    Mail, MailX, Zap, MessageSquare, Tag, Link, ShoppingCart,
     CheckCircle, Star, User, Eye, UserPlus, CreditCard, XCircle,
     MousePointer, Target, ArrowUpDown, LogOut
 } from 'lucide-react';
@@ -127,6 +127,7 @@ export function getActionIcon(config: unknown) {
         case 'GENERATE_COUPON': return <ShoppingCart size={16} className="text-white" />;
         case 'ADD_ORDER_NOTE': return <CheckCircle size={16} className="text-white" />;
         case 'UPDATE_ORDER_STATUS': return <ArrowUpDown size={16} className="text-white" />;
+        case 'UNSUBSCRIBE': return <MailX size={16} className="text-white" />;
         case 'WEBHOOK': return <Link size={16} className="text-white" />;
         case 'GOAL': return <Target size={16} className="text-white" />;
         case 'JUMP': return <ArrowUpDown size={16} className="text-white" />;
@@ -148,6 +149,7 @@ export function getActionLabel(config: unknown): string {
         'GENERATE_COUPON': 'Generate Coupon',
         'ADD_ORDER_NOTE': 'Add Order Note',
         'UPDATE_ORDER_STATUS': 'Update Order Status',
+        'UNSUBSCRIBE': 'Unsubscribe Customer',
         'WEBHOOK': 'Webhook',
         'GOAL': 'Goal',
         'JUMP': 'Jump',
@@ -168,6 +170,7 @@ export function getActionGradient(config: unknown): string {
         case 'GENERATE_COUPON': return 'bg-linear-to-br from-amber-500 to-orange-600';
         case 'ADD_ORDER_NOTE': return 'bg-linear-to-br from-sky-500 to-blue-600';
         case 'UPDATE_ORDER_STATUS': return 'bg-linear-to-br from-cyan-500 to-teal-600';
+        case 'UNSUBSCRIBE': return 'bg-linear-to-br from-red-500 to-rose-600';
         default: return 'bg-linear-to-br from-green-500 to-green-600';
     }
 }

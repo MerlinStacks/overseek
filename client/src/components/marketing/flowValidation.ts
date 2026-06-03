@@ -19,6 +19,7 @@ const SUPPORTED_ACTIONS = new Set([
     'GENERATE_COUPON',
     'ADD_ORDER_NOTE',
     'UPDATE_ORDER_STATUS',
+    'UNSUBSCRIBE',
     'GOAL',
     'JUMP',
     'EXIT',

@@ -1,7 +1,7 @@
-import { Box, Code2, Download, ImageIcon, List, MapPin, Menu, MessageSquareQuote, Minus, PanelTop, RectangleHorizontal, ReceiptText, Share2, Smartphone, Ticket, Type } from 'lucide-react';
+import { Box, Code2, Download, ImageIcon, Link2, List, MapPin, Menu, MessageSquareQuote, Minus, PanelTop, RectangleHorizontal, ReceiptText, ShoppingCart, Share2, Smartphone, Ticket, Truck, Type } from 'lucide-react';
 import { createEmailDesignId, type EmailBlock } from '../../../lib/emailDesignerV2';
 
-export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'orderSummary' | 'address' | 'coupon' | 'review' | 'invoiceDownload';
+export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'cartItems' | 'cartLink' | 'orderSummary' | 'orderTracking' | 'address' | 'coupon' | 'review' | 'invoiceDownload';
 
 export interface PaletteItem {
     key: PaletteKey;
@@ -22,7 +22,10 @@ export const paletteItems: PaletteItem[] = [
     { key: 'rawHtml', label: 'HTML', group: 'General', icon: Code2 },
     { key: 'footer', label: 'Footer', group: 'General', icon: Smartphone },
     { key: 'product', label: 'Product', group: 'WooCommerce', icon: Box },
+    { key: 'cartItems', label: 'Cart Items', group: 'WooCommerce', icon: ShoppingCart },
+    { key: 'cartLink', label: 'Cart Link', group: 'WooCommerce', icon: Link2 },
     { key: 'orderSummary', label: 'Order Summary', group: 'WooCommerce', icon: ReceiptText },
+    { key: 'orderTracking', label: 'Order Tracking', group: 'WooCommerce', icon: Truck },
     { key: 'address', label: 'Customer Address', group: 'WooCommerce', icon: MapPin },
     { key: 'coupon', label: 'Coupon', group: 'WooCommerce', icon: Ticket },
     { key: 'review', label: 'Review', group: 'WooCommerce', icon: MessageSquareQuote },
@@ -58,7 +61,10 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
             },
         };
     }
+    if (type === 'cartItems') return { id, type, props: { heading: 'Your cart', showTotal: true, align: 'left' } };
+    if (type === 'cartLink') return { id, type, props: { label: 'Return to your cart', href: '{{cart.recoveryUrl}}', body: 'Your items are saved and ready when you are.', align: 'center' } };
     if (type === 'orderSummary') return { id, type, props: { heading: 'Order summary', showTotals: true, itemsFormat: 'table' } };
+    if (type === 'orderTracking') return { id, type, props: { heading: 'Track your order', body: 'Your order is on its way. Use the button below to track it with Australia Post.', buttonLabel: 'Track with AusPost', showTrackingNumber: true, align: 'center' } };
     if (type === 'address') return { id, type, props: { title: 'Shipping address', source: 'shipping' } };
     if (type === 'coupon') return { id, type, props: { headline: 'Your exclusive offer', code: '{{coupon.code}}', description: '{{coupon.description}}' } };
     if (type === 'review') return { id, type, props: { headline: 'How did we do?', rating: '{{review.rating}}', content: '{{review.content}}', reviewer: '{{review.reviewer}}', productName: '{{review.productName}}', ctaLabel: 'Write your review', ctaHref: '{{review.productUrl}}' } };

@@ -11,7 +11,7 @@ import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 import { getSupportedFlowActionIds } from '../flowValidation';
 
 interface ActionNodeConfig {
-    actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK' | 'GENERATE_COUPON' | 'ADD_ORDER_NOTE' | 'UPDATE_ORDER_STATUS';
+    actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK' | 'GENERATE_COUPON' | 'ADD_ORDER_NOTE' | 'UPDATE_ORDER_STATUS' | 'UNSUBSCRIBE';
     smsMessage?: string;
     isTransactional?: boolean;
     tagName?: string;
@@ -40,6 +40,7 @@ const ACTION_TYPES = [
     { value: 'GENERATE_COUPON', label: 'Generate Coupon' },
     { value: 'ADD_ORDER_NOTE', label: 'Add Order Note' },
     { value: 'UPDATE_ORDER_STATUS', label: 'Update Order Status' },
+    { value: 'UNSUBSCRIBE', label: 'Unsubscribe Customer' },
     { value: 'ADD_TAG', label: 'Add Tag' },
     { value: 'REMOVE_TAG', label: 'Remove Tag' },
     { value: 'WEBHOOK', label: 'Webhook' },
@@ -122,6 +123,15 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
 
             {selectedActionType === 'SEND_EMAIL' && (
                 <SendEmailConfig config={config} onUpdate={onUpdate} onUpdateMany={onUpdateMany} />
+            )}
+
+            {selectedActionType === 'UNSUBSCRIBE' && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                    <h4 className="text-sm font-semibold text-red-900">Unsubscribe from all emails</h4>
+                    <p className="mt-1 text-sm text-red-800">
+                        When this step runs, the enrolled customer email will be suppressed from all future marketing and transactional emails for this account.
+                    </p>
+                </div>
             )}
 
             {isUnsupportedAction && (

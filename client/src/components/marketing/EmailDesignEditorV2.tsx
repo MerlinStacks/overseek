@@ -136,6 +136,11 @@ interface PreviewMergeContext {
     reviewContent: string;
     reviewProductName: string;
     reviewProductUrl: string;
+    cartRecoveryUrl: string;
+    cartCheckoutUrl: string;
+    cartTotal: string;
+    cartCurrency: string;
+    cartItemsTable: string;
 }
 
 function applyPreviewMergeTags(html: string, context: PreviewMergeContext): string {
@@ -182,6 +187,11 @@ function applyPreviewMergeTags(html: string, context: PreviewMergeContext): stri
         [/\{\{review\.content\}\}/g, context.reviewContent],
         [/\{\{review\.productName\}\}/g, context.reviewProductName],
         [/\{\{review\.productUrl\}\}/g, context.reviewProductUrl],
+        [/\{\{cart\.recoveryUrl\}\}/g, context.cartRecoveryUrl],
+        [/\{\{cart\.checkoutUrl\}\}/g, context.cartCheckoutUrl],
+        [/\{\{cart\.total\}\}/g, context.cartTotal],
+        [/\{\{cart\.currency\}\}/g, context.cartCurrency],
+        [/\{\{cart\.itemsTable\}\}/g, context.cartItemsTable],
     ];
 
     return replacements.reduce((result, [pattern, value]) => result.replace(pattern, value || ''), html);
@@ -224,6 +234,11 @@ function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContex
         reviewContent: 'Great quality and very fast shipping.',
         reviewProductName: 'Classic Hoodie',
         reviewProductUrl: `${storeUrl.replace(/\/$/, '')}/products/classic-hoodie`,
+        cartRecoveryUrl: `${storeUrl.replace(/\/$/, '')}/checkout/?recover_cart=preview`,
+        cartCheckoutUrl: `${storeUrl.replace(/\/$/, '')}/checkout/`,
+        cartTotal: '$99.00',
+        cartCurrency: 'AUD',
+        cartItemsTable: '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tbody><tr><td style="padding:12px;border-bottom:1px solid #e5e7eb;">Classic Hoodie</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:center;">1</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;">$89.00</td></tr></tbody></table>',
     };
 }
 
@@ -247,11 +262,14 @@ function extractPreviewTracking(order: Record<string, unknown>): { trackingNumbe
             ? order.trackingItems as Array<Record<string, unknown>>
             : [];
     const firstItem = directItems[0] || {};
+    const metaTracking = extractPreviewMetaTracking(order.rawData || order.raw_data || order);
     const trackingNumber = String(
         firstItem.trackingNumber
         || firstItem.tracking_number
         || order.trackingNumber
         || order.tracking_number
+        || order._tracking_number
+        || metaTracking.trackingNumber
         || ''
     ).trim();
     const auspostTrackingUrl = buildAusPostPreviewTrackingUrl(trackingNumber);
@@ -261,11 +279,48 @@ function extractPreviewTracking(order: Record<string, unknown>): { trackingNumbe
         || firstItem.tracking_link
         || order.trackingUrl
         || order.tracking_url
+        || order.trackingLink
+        || order.tracking_link
+        || metaTracking.trackingUrl
         || auspostTrackingUrl
         || ''
     ).trim();
 
     return { trackingNumber, trackingUrl, auspostTrackingUrl };
+}
+
+function extractPreviewMetaTracking(rawOrder: unknown): { trackingNumber: string; trackingUrl: string } {
+    if (!rawOrder || typeof rawOrder !== 'object') return { trackingNumber: '', trackingUrl: '' };
+    const metaData = (rawOrder as Record<string, unknown>).meta_data;
+    if (!Array.isArray(metaData)) return { trackingNumber: '', trackingUrl: '' };
+
+    const shipmentEntry = metaData.find((meta) => (
+        meta && typeof meta === 'object' && (meta as Record<string, unknown>).key === '_wc_shipment_tracking_items'
+    )) as Record<string, unknown> | undefined;
+    const shipmentItems = shipmentEntry?.value;
+    if (Array.isArray(shipmentItems)) {
+        const firstShipment = shipmentItems.find((item) => item && typeof item === 'object' && String((item as Record<string, unknown>).tracking_number || '').trim()) as Record<string, unknown> | undefined;
+        if (firstShipment) {
+            return {
+                trackingNumber: String(firstShipment.tracking_number || '').trim(),
+                trackingUrl: String(firstShipment.tracking_link || '').trim(),
+            };
+        }
+    }
+
+    let trackingNumber = '';
+    let trackingUrl = '';
+    for (const meta of metaData) {
+        if (!meta || typeof meta !== 'object') continue;
+        const entry = meta as Record<string, unknown>;
+        const key = String(entry.key || '').toLowerCase();
+        const value = entry.value != null ? String(entry.value).trim() : '';
+        if (!value) continue;
+        if (key.includes('tracking_number') || key === '_tracking_number') trackingNumber = value;
+        else if (key.includes('tracking_url') || key.includes('tracking_link') || key === '_tracking_url') trackingUrl = value;
+    }
+
+    return { trackingNumber, trackingUrl };
 }
 
 function escapePreviewHtml(value: string): string {
@@ -526,6 +581,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 const productPath = firstItem.slug ? `/product/${String(firstItem.slug)}` : `/?p=${String(firstItem.product_id || '')}`;
                 const resolvedProductUrl = lineItemPermalink || `${storeUrl.replace(/\/$/, '')}${productPath}`;
                 const tracking = extractPreviewTracking(order);
+                const previewTrackingNumber = tracking.trackingNumber || fallbackContext.orderTrackingNumber;
+                const previewAuspostTrackingUrl = tracking.auspostTrackingUrl || buildAusPostPreviewTrackingUrl(previewTrackingNumber) || fallbackContext.orderAuspostTrackingUrl;
 
                 setPreviewMergeContext({
                     storeUrl,
@@ -545,9 +602,9 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     orderItemsCompact: renderPreviewOrderItemsCompact(lineItems, fmtMoney),
                     orderItemsList: renderPreviewOrderItemsList(lineItems),
                     orderCustomerNote: String(order.customer_note || ''),
-                    orderTrackingNumber: tracking.trackingNumber,
-                    orderTrackingUrl: tracking.trackingUrl,
-                    orderAuspostTrackingUrl: tracking.auspostTrackingUrl,
+                    orderTrackingNumber: previewTrackingNumber,
+                    orderTrackingUrl: tracking.trackingUrl || previewAuspostTrackingUrl || fallbackContext.orderTrackingUrl,
+                    orderAuspostTrackingUrl: previewAuspostTrackingUrl,
                     billingAddress: fmtAddress(billing),
                     shippingAddress: fmtAddress(shipping),
                     productName,
@@ -559,6 +616,11 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     reviewContent: `I love my ${productName}. Great quality and fast shipping.`,
                     reviewProductName: productName,
                     reviewProductUrl: resolvedProductUrl,
+                    cartRecoveryUrl: `${storeUrl.replace(/\/$/, '')}/checkout/?recover_cart=preview`,
+                    cartCheckoutUrl: `${storeUrl.replace(/\/$/, '')}/checkout/`,
+                    cartTotal: fmtMoney(order.total),
+                    cartCurrency: currency,
+                    cartItemsTable: renderPreviewOrderItemsTable(lineItems, fmtMoney),
                 });
             } catch {
                 // Preview data is best-effort and should not block editing.
@@ -958,13 +1020,15 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         width: 100,
                         blocks: [
                             { id: createEmailDesignId('text'), type: 'text', props: { html: heroCopy[type], align: 'center', size: 16, lineHeight: 1.65 } },
-                            type === 'product'
-                                ? createBlock('product')
-                                : type === 'coupon'
-                                    ? createBlock('coupon')
-                                    : type === 'review'
-                                        ? createBlock('review')
-                                        : createBlock('button'),
+                            ...(type === 'cart'
+                                ? [createBlock('cartItems'), createBlock('cartLink')]
+                                : [type === 'product'
+                                    ? createBlock('product')
+                                    : type === 'coupon'
+                                        ? createBlock('coupon')
+                                        : type === 'review'
+                                            ? createBlock('review')
+                                            : createBlock('button')]),
                         ],
                     }],
                 },
@@ -1875,6 +1939,9 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                 <Field label="Button URL" value={block.props.buttonHref} onChange={(value) => patchProps({ buttonHref: value, productUrl: value })} />
             </>}
             {block.type === 'orderSummary' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><SelectField label="Format" value={block.props.itemsFormat || 'table'} options={ORDER_ITEMS_FORMATS} onChange={(value) => patchProps({ itemsFormat: value as OrderItemsFormat })} /><ToggleField label="Show total" checked={block.props.showTotals} onChange={(checked) => patchProps({ showTotals: checked })} /></>}
+            {block.type === 'cartItems' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><ToggleField label="Show cart total" checked={block.props.showTotal} onChange={(checked) => patchProps({ showTotal: checked })} /><SelectField label="Alignment" value={block.props.align || 'left'} options={['left', 'center', 'right']} onChange={(value) => patchProps({ align: value as 'left' | 'center' | 'right' })} /></>}
+            {block.type === 'cartLink' && <><TextArea label="Body" value={block.props.body || ''} onChange={(value) => patchProps({ body: value })} /><Field label="Button label" value={block.props.label} onChange={(value) => patchProps({ label: value })} /><Field label="Button URL" value={block.props.href} onChange={(value) => patchProps({ href: value })} /><SelectField label="Alignment" value={block.props.align || 'center'} options={['left', 'center', 'right']} onChange={(value) => patchProps({ align: value as 'left' | 'center' | 'right' })} /></>}
+            {block.type === 'orderTracking' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><TextArea label="Body" value={block.props.body} onChange={(value) => patchProps({ body: value })} /><Field label="Button label" value={block.props.buttonLabel} onChange={(value) => patchProps({ buttonLabel: value })} /><ToggleField label="Show tracking number" checked={block.props.showTrackingNumber !== false} onChange={(checked) => patchProps({ showTrackingNumber: checked })} /><SelectField label="Alignment" value={block.props.align || 'center'} options={['left', 'center', 'right']} onChange={(value) => patchProps({ align: value as 'left' | 'center' | 'right' })} /></>}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
             {block.type === 'review' && <>

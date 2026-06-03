@@ -63,4 +63,60 @@ describe('emailDesignerV2', () => {
         expect(html).toContain('GST: {{order.taxTotal}}');
         expect(html).toContain('Total: {{order.total}}');
     });
+
+    it('renders abandoned cart items and recovery links', () => {
+        const design = createDefaultEmailDesignV2({ title: 'Cart test' });
+        design.document.sections = [{
+            id: 'section-cart',
+            backgroundColor: '#ffffff',
+            columns: [{
+                id: 'column-cart',
+                width: 100,
+                blocks: [{
+                    id: 'cart-items-1',
+                    type: 'cartItems',
+                    props: { heading: 'Still in your cart', showTotal: true },
+                }, {
+                    id: 'cart-link-1',
+                    type: 'cartLink',
+                    props: { label: 'Complete checkout', href: '{{cart.recoveryUrl}}', body: 'Pick up where you left off.' },
+                }],
+            }],
+        }];
+
+        const html = compileEmailDesignV2(design);
+
+        expect(html).toContain('{{cart.itemsTable}}');
+        expect(html).toContain('Cart total: {{cart.total}}');
+        expect(html).toContain('href="{{cart.recoveryUrl}}"');
+        expect(html).toContain('Complete checkout');
+    });
+
+    it('wires order tracking blocks to AusPost order tracking merge tags', () => {
+        const design = createDefaultEmailDesignV2({ title: 'Tracking test' });
+        design.document.sections = [{
+            id: 'section-order-tracking',
+            backgroundColor: '#ffffff',
+            columns: [{
+                id: 'column-order-tracking',
+                width: 100,
+                blocks: [{
+                    id: 'order-tracking-1',
+                    type: 'orderTracking',
+                    props: {
+                        heading: 'Track your order',
+                        body: 'Track this delivery through Australia Post.',
+                        buttonLabel: 'Track with AusPost',
+                        showTrackingNumber: true,
+                    },
+                }],
+            }],
+        }];
+
+        const html = compileEmailDesignV2(design);
+
+        expect(html).toContain('href="{{order.auspostTrackingUrl}}"');
+        expect(html).toContain('{{order.trackingNumber}}');
+        expect(html).toContain('Track with AusPost');
+    });
 });

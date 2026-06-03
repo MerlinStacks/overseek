@@ -78,7 +78,10 @@ export type EmailBlock =
     | DividerBlock
     | SpacerBlock
     | ProductBlock
+    | CartItemsBlock
+    | CartLinkBlock
     | OrderSummaryBlock
+    | OrderTrackingBlock
     | AddressBlock
     | CouponBlock
     | ReviewBlock
@@ -193,12 +196,48 @@ export interface ProductBlock extends BaseBlock {
     };
 }
 
+export interface CartItemsBlock extends BaseBlock {
+    type: 'cartItems';
+    props: {
+        heading: string;
+        showTotal: boolean;
+        padding?: string;
+        align?: 'left' | 'center' | 'right';
+    };
+}
+
+export interface CartLinkBlock extends BaseBlock {
+    type: 'cartLink';
+    props: {
+        label: string;
+        href: string;
+        body?: string;
+        align?: 'left' | 'center' | 'right';
+        backgroundColor?: string;
+        color?: string;
+        padding?: string;
+        borderRadius?: number;
+    };
+}
+
 export interface OrderSummaryBlock extends BaseBlock {
     type: 'orderSummary';
     props: {
         heading: string;
         showTotals: boolean;
         itemsFormat?: OrderItemsFormat;
+    };
+}
+
+export interface OrderTrackingBlock extends BaseBlock {
+    type: 'orderTracking';
+    props: {
+        heading: string;
+        body: string;
+        buttonLabel: string;
+        showTrackingNumber?: boolean;
+        align?: 'left' | 'center' | 'right';
+        padding?: string;
     };
 }
 
@@ -731,6 +770,23 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '12px 0'};text-align:${(block.props as { align?: string }).align || 'left'};"><h3 class="os-email-heading" style="margin:0 0 12px;color:${theme.textColor};font-size:18px;">${escapeHtml(block.props.heading || 'Order summary')}</h3>${itemsTag}${block.props.showTotals ? `<div class="os-email-text" style="margin:14px 0 0;text-align:right;color:${theme.textColor};"><p style="margin:0 0 4px;font-weight:600;">GST: {{order.taxTotal}}</p><p style="margin:0;font-weight:700;">Total: {{order.total}}</p></div>` : ''}</div>`;
     }
 
+    if (block.type === 'cartItems') {
+        const align = block.props.align || 'left';
+        return `<div class="${blockClass}" style="padding:${block.props.padding || '12px 0'};text-align:${align};"><h3 class="os-email-heading" style="margin:0 0 12px;color:${theme.textColor};font-size:18px;">${escapeHtml(block.props.heading || 'Your cart')}</h3>{{cart.itemsTable}}${block.props.showTotal ? `<div class="os-email-text" style="margin:14px 0 0;text-align:right;color:${theme.textColor};"><p style="margin:0;font-weight:700;">Cart total: {{cart.total}}</p></div>` : ''}</div>`;
+    }
+
+    if (block.type === 'cartLink') {
+        const props = block.props;
+        const align = props.align || 'center';
+        return `<div class="${blockClass}" style="padding:${props.padding || '16px 0'};text-align:${align};">${props.body ? `<p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};line-height:1.6;">${escapeHtml(props.body)}</p>` : ''}<a href="${escapeHtml(toAbsoluteUrl(props.href || '{{cart.recoveryUrl}}'))}" style="display:inline-block;background:${props.backgroundColor || theme.primaryColor};color:${props.color || '#ffffff'};text-decoration:none;border-radius:${props.borderRadius ?? theme.borderRadius}px;padding:12px 20px;font-weight:700;font-size:14px;">${escapeHtml(props.label || 'Return to your cart')}</a></div>`;
+    }
+
+    if (block.type === 'orderTracking') {
+        const props = block.props;
+        const align = props.align || 'center';
+        return `<div class="${blockClass}" style="padding:${props.padding || '18px 0'};text-align:${align};"><h3 class="os-email-heading" style="margin:0 0 8px;color:${theme.textColor};font-size:18px;line-height:1.35;">${escapeHtml(props.heading || 'Track your order')}</h3><p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};line-height:1.6;">${escapeHtml(props.body || 'Your order is on its way. Use the button below to track it with Australia Post.')}</p>${props.showTrackingNumber !== false ? `<p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;line-height:1.4;">Tracking number: <strong style="color:${theme.textColor};">{{order.trackingNumber}}</strong></p>` : ''}<a href="{{order.auspostTrackingUrl}}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:12px 20px;font-weight:700;font-size:14px;">${escapeHtml(props.buttonLabel || 'Track with AusPost')}</a></div>`;
+    }
+
     if (block.type === 'address') {
         const tag = block.props.source === 'shipping' ? '{{order.shippingAddress}}' : '{{order.billingAddress}}';
         return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '12px 0'};text-align:${(block.props as { align?: string }).align || 'left'};"><h3 class="os-email-heading" style="margin:0 0 8px;color:${theme.textColor};font-size:16px;">${escapeHtml(block.props.title)}</h3><p class="os-email-muted" style="margin:0;color:${theme.mutedTextColor};line-height:1.6;">${tag}</p></div>`;
@@ -895,7 +951,10 @@ export function getEmailDesignV2BlockLabel(block: EmailBlock): string {
         divider: 'Divider',
         spacer: 'Spacer',
         product: 'Product',
+        cartItems: 'Cart Items',
+        cartLink: 'Cart Link',
         orderSummary: 'Order Summary',
+        orderTracking: 'Order Tracking',
         address: 'Address',
         coupon: 'Coupon',
         review: 'Review',

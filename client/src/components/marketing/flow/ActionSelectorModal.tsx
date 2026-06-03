@@ -22,6 +22,7 @@ const ACTIONS_BY_CATEGORY: Record<string, { subcategory?: string; actions: Actio
             subcategory: 'Email',
             actions: [
                 { id: 'SEND_EMAIL', label: 'Send Email', icon: '✉️' },
+                { id: 'UNSUBSCRIBE', label: 'Unsubscribe Customer', icon: '🚫' },
             ]
         },
         {
