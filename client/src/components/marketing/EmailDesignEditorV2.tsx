@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { getInvoiceItemMeta } from '@overseek/core';
 import { AlertTriangle, CheckCircle, ClipboardList, Eye, Globe2, GripVertical, History, Layers, Loader2, Lock, LockOpen, Monitor, Pencil, Search, Send, Settings, Smartphone, Trash2, Upload, X } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
@@ -114,6 +115,7 @@ interface PreviewMergeContext {
     orderShippingTotal: string;
     orderDiscountTotal: string;
     orderTotal: string;
+    orderItemsTable: string;
     orderCustomerNote: string;
     orderTrackingNumber: string;
     orderTrackingUrl: string;
@@ -154,6 +156,7 @@ function applyPreviewMergeTags(html: string, context: PreviewMergeContext): stri
         [/\{\{order\.shippingTotal\}\}/g, context.orderShippingTotal],
         [/\{\{order\.discountTotal\}\}/g, context.orderDiscountTotal],
         [/\{\{order\.total\}\}/g, context.orderTotal],
+        [/\{\{order\.itemsTable\}\}/g, context.orderItemsTable],
         [/\{\{order\.customerNote\}\}/g, context.orderCustomerNote],
         [/\{\{order\.trackingNumber\}\}/g, context.orderTrackingNumber],
         [/\{\{order\.trackingUrl\}\}/g, context.orderTrackingUrl],
@@ -194,6 +197,7 @@ function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContex
         orderShippingTotal: '$10.00',
         orderDiscountTotal: '$0.00',
         orderTotal: '$99.00',
+        orderItemsTable: '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tbody><tr><td style="padding:12px;border-bottom:1px solid #e5e7eb;">Classic Hoodie</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:center;">1</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;">$89.00</td></tr></tbody></table>',
         orderCustomerNote: 'Please leave at front door.',
         orderTrackingNumber: '33A1234567890',
         orderTrackingUrl: 'https://auspost.com.au/mypost/track/#/details/33A1234567890',
@@ -251,6 +255,34 @@ function extractPreviewTracking(order: Record<string, unknown>): { trackingNumbe
     ).trim();
 
     return { trackingNumber, trackingUrl, auspostTrackingUrl };
+}
+
+function escapePreviewHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderPreviewOrderItemsTable(items: Array<Record<string, unknown>>, formatMoney: (value: unknown) => string): string {
+    if (!items.length) return '<p style="color:#6b7280;font-style:italic;">No items</p>';
+
+    const rows = items.map((item) => {
+        const image = String((item.image as Record<string, unknown> | undefined)?.src || item.image || '').trim();
+        const name = escapePreviewHtml(String(item.name || item.productName || 'Product'));
+        const quantity = escapePreviewHtml(String(item.quantity || 1));
+        const price = escapePreviewHtml(formatMoney(item.total || item.price));
+        const itemMeta = getInvoiceItemMeta(item)
+            .filter((meta) => String(meta.value || '').trim())
+            .slice(0, 12)
+            .map((meta) => `${escapePreviewHtml(meta.label)}: ${escapePreviewHtml(String(meta.value || '').replace(/\s+/g, ' ').trim())}`)
+            .join('<br />');
+        return `<tr style="border-bottom:1px solid #e5e7eb;">${image ? `<td style="padding:12px;vertical-align:top;"><img src="${escapePreviewHtml(image)}" alt="${name}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;" /></td>` : '<td style="padding:12px;"></td>'}<td style="padding:12px;color:#374151;">${name}${itemMeta ? `<br /><span style="font-size:12px;color:#6b7280;">${itemMeta}</span>` : ''}</td><td style="padding:12px;text-align:center;color:#374151;">${quantity}</td><td style="padding:12px;text-align:right;color:#374151;">${price}</td></tr>`;
+    }).join('');
+
+    return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-family:Arial,sans-serif;"><thead><tr style="background:#f3f4f6;"><th style="padding:12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;width:60px;"></th><th style="padding:12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;">Product</th><th style="padding:12px;text-align:center;font-size:12px;color:#6b7280;text-transform:uppercase;width:60px;">Qty</th><th style="padding:12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;width:100px;">Price</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function parseBoxSpacing(value: string): [number, number, number, number] {
@@ -438,6 +470,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     orderShippingTotal: fmtMoney(order.shipping_total),
                     orderDiscountTotal: fmtMoney(order.discount_total),
                     orderTotal: fmtMoney(order.total),
+                    orderItemsTable: renderPreviewOrderItemsTable(lineItems, fmtMoney),
                     orderCustomerNote: String(order.customer_note || ''),
                     orderTrackingNumber: tracking.trackingNumber,
                     orderTrackingUrl: tracking.trackingUrl,
@@ -1768,7 +1801,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                 <Field label="Button label" value={block.props.buttonLabel} onChange={(value) => patchProps({ buttonLabel: value })} />
                 <Field label="Button URL" value={block.props.buttonHref} onChange={(value) => patchProps({ buttonHref: value, productUrl: value })} />
             </>}
-            {block.type === 'orderSummary' && <Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} />}
+            {block.type === 'orderSummary' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><ToggleField label="Show total" checked={block.props.showTotals} onChange={(checked) => patchProps({ showTotals: checked })} /></>}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
             {block.type === 'review' && <>

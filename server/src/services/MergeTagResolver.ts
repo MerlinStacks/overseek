@@ -299,8 +299,10 @@ export function renderOrderItemsTable(items: any[]): string {
 
     const rows = items.map(item => {
         const derivedMeta = getInvoiceItemMeta(item)
+            .filter((entry) => String(entry?.value || '').trim().length > 0)
+            .slice(0, 12)
             .map((entry) => `${entry.label}: ${entry.value}`)
-            .join(', ');
+            .join('<br>');
         const fallbackMeta = item.meta?.length
             ? item.meta.map((m: any) => `${m.key}: ${m.value}`).join(', ')
             : '';

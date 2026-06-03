@@ -1,7 +1,7 @@
-import { Box, Code2, Download, ImageIcon, List, Menu, MessageSquareQuote, Minus, PanelTop, RectangleHorizontal, Share2, Smartphone, Ticket, Type } from 'lucide-react';
+import { Box, Code2, Download, ImageIcon, List, MapPin, Menu, MessageSquareQuote, Minus, PanelTop, RectangleHorizontal, ReceiptText, Share2, Smartphone, Ticket, Type } from 'lucide-react';
 import { createEmailDesignId, type EmailBlock } from '../../../lib/emailDesignerV2';
 
-export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'coupon' | 'review' | 'invoiceDownload';
+export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'orderSummary' | 'address' | 'coupon' | 'review' | 'invoiceDownload';
 
 export interface PaletteItem {
     key: PaletteKey;
@@ -22,6 +22,8 @@ export const paletteItems: PaletteItem[] = [
     { key: 'rawHtml', label: 'HTML', group: 'General', icon: Code2 },
     { key: 'footer', label: 'Footer', group: 'General', icon: Smartphone },
     { key: 'product', label: 'Product', group: 'WooCommerce', icon: Box },
+    { key: 'orderSummary', label: 'Order Summary', group: 'WooCommerce', icon: ReceiptText },
+    { key: 'address', label: 'Customer Address', group: 'WooCommerce', icon: MapPin },
     { key: 'coupon', label: 'Coupon', group: 'WooCommerce', icon: Ticket },
     { key: 'review', label: 'Review', group: 'WooCommerce', icon: MessageSquareQuote },
     { key: 'invoiceDownload', label: 'Invoice Download', group: 'WooCommerce', icon: Download },
