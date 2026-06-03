@@ -121,6 +121,9 @@ export class SchedulerService {
                 case 'email-body-cleanup':
                     await MaintenanceScheduler.dispatchEmailBodyCleanup();
                     break;
+                case 'notification-cleanup':
+                    await MaintenanceScheduler.dispatchNotificationCleanup();
+                    break;
                 case 'shipping-tracking-poll':
                     await ShippingTrackingScheduler.dispatchTrackingPoll();
                     break;

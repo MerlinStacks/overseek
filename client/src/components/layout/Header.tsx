@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useCommandPalette } from '../../hooks/useCommandPalette';
+import { useSocket } from '../../context/SocketContext';
 
 interface HeaderProps {
     /** Callback when hamburger menu is clicked (mobile only) */
@@ -25,6 +26,7 @@ interface HeaderNotification {
 export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     const { token, user, logout } = useAuth();
     const { currentAccount } = useAccount();
+    const { isConnected } = useSocket();
     const { open: openSearch } = useCommandPalette();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
@@ -75,6 +77,26 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     }, [token, currentAccount]);
 
     useVisibilityPolling(fetchNotifications, 30000, [fetchNotifications], 'notifications');
+
+    useEffect(() => {
+        if (isConnected) {
+            fetchNotifications();
+        }
+    }, [isConnected, fetchNotifications]);
+
+    useEffect(() => {
+        const refreshNotifications = () => {
+            fetchNotifications();
+        };
+
+        window.addEventListener('focus', refreshNotifications);
+        window.addEventListener('online', refreshNotifications);
+
+        return () => {
+            window.removeEventListener('focus', refreshNotifications);
+            window.removeEventListener('online', refreshNotifications);
+        };
+    }, [fetchNotifications]);
 
     const markAllRead = async () => {
         if (!token || !currentAccount) return;

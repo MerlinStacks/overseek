@@ -14,6 +14,12 @@ import { Logger } from '../utils/logger';
  */
 export function setupSocketHandlers(io: Server): void {
     io.on('connection', (socket: Socket) => {
+        const requestedAccountId = socket.data.requestedAccountId;
+        if (requestedAccountId) {
+            socket.join(`account:${requestedAccountId}`);
+            Logger.debug(`[Socket] Client auto-joined account room: account:${requestedAccountId}`, { socketId: socket.id });
+        }
+
         // Account room join
         socket.on('join:account', (accountId) => {
             if (!accountId) return;

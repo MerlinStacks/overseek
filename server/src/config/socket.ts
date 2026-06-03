@@ -44,10 +44,15 @@ export async function initializeSocketIO(server: http.Server, fastify: FastifyIn
                     where: { userId: decoded.userId },
                     select: { accountId: true }
                 });
+                const accountIds = memberships.map(m => m.accountId);
+                const requestedAccountId = socket.handshake.query?.accountId as string | undefined;
 
                 socket.data.userId = decoded.userId;
                 socket.data.isSuperAdmin = user?.isSuperAdmin === true;
-                socket.data.accountIds = memberships.map(m => m.accountId);
+                socket.data.accountIds = accountIds;
+                socket.data.requestedAccountId = requestedAccountId && (socket.data.isSuperAdmin || accountIds.includes(requestedAccountId))
+                    ? requestedAccountId
+                    : undefined;
 
                 return next();
             } catch (dbError) {

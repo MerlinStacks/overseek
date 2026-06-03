@@ -118,6 +118,8 @@ interface PreviewMergeContext {
     orderDiscountTotal: string;
     orderTotal: string;
     orderItemsTable: string;
+    orderItemsCompact: string;
+    orderItemsList: string;
     orderCustomerNote: string;
     orderTrackingNumber: string;
     orderTrackingUrl: string;
@@ -159,6 +161,8 @@ function applyPreviewMergeTags(html: string, context: PreviewMergeContext): stri
         [/\{\{order\.discountTotal\}\}/g, context.orderDiscountTotal],
         [/\{\{order\.total\}\}/g, context.orderTotal],
         [/\{\{order\.itemsTable\}\}/g, context.orderItemsTable],
+        [/\{\{order\.itemsCompact\}\}/g, context.orderItemsCompact],
+        [/\{\{order\.itemsList\}\}/g, context.orderItemsList],
         [/\{\{order\.customerNote\}\}/g, context.orderCustomerNote],
         [/\{\{order\.trackingNumber\}\}/g, context.orderTrackingNumber],
         [/\{\{order\.trackingUrl\}\}/g, context.orderTrackingUrl],
@@ -200,6 +204,8 @@ function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContex
         orderDiscountTotal: '$0.00',
         orderTotal: '$99.00',
         orderItemsTable: '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tbody><tr><td style="padding:12px;border-bottom:1px solid #e5e7eb;">Classic Hoodie</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:center;">1</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;">$89.00</td></tr></tbody></table>',
+        orderItemsCompact: '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-family:Arial,sans-serif;"><div style="padding:12px;color:#374151;"><strong>Classic Hoodie</strong><br><span style="font-size:13px;color:#6b7280;">Qty: 1 &middot; $89.00</span></div></div>',
+        orderItemsList: '<ul style="margin:0;padding-left:20px;color:#374151;line-height:1.6;font-family:Arial,sans-serif;"><li>1 x Classic Hoodie</li></ul>',
         orderCustomerNote: 'Please leave at front door.',
         orderTrackingNumber: '33A1234567890',
         orderTrackingUrl: 'https://auspost.com.au/mypost/track/#/details/33A1234567890',
@@ -268,11 +274,32 @@ function escapePreviewHtml(value: string): string {
         .replace(/'/g, '&#39;');
 }
 
+function getPreviewOrderItemImage(item: Record<string, unknown>): string {
+    const image = item.image;
+    if (typeof image === 'string') return image.trim();
+    if (image && typeof image === 'object') {
+        const imageValue = image as Record<string, unknown>;
+        return String(imageValue.src || imageValue.url || '').trim();
+    }
+
+    const images = item.images;
+    if (Array.isArray(images) && images.length > 0) {
+        const firstImage = images[0];
+        if (typeof firstImage === 'string') return firstImage.trim();
+        if (firstImage && typeof firstImage === 'object') {
+            const imageValue = firstImage as Record<string, unknown>;
+            return String(imageValue.src || imageValue.url || '').trim();
+        }
+    }
+
+    return String(item.productImage || item.product_image || item.thumbnail || item.thumbnail_url || '').trim();
+}
+
 function renderPreviewOrderItemsTable(items: Array<Record<string, unknown>>, formatMoney: (value: unknown) => string): string {
     if (!items.length) return '<p style="color:#6b7280;font-style:italic;">No items</p>';
 
     const rows = items.map((item) => {
-        const image = String((item.image as Record<string, unknown> | undefined)?.src || item.image || '').trim();
+        const image = getPreviewOrderItemImage(item);
         const name = escapePreviewHtml(String(item.name || item.productName || 'Product'));
         const quantity = escapePreviewHtml(String(item.quantity || 1));
         const price = escapePreviewHtml(formatMoney(item.total || item.price));
@@ -285,6 +312,27 @@ function renderPreviewOrderItemsTable(items: Array<Record<string, unknown>>, for
     }).join('');
 
     return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-family:Arial,sans-serif;"><thead><tr style="background:#f3f4f6;"><th style="padding:12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;width:60px;"></th><th style="padding:12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;">Product</th><th style="padding:12px;text-align:center;font-size:12px;color:#6b7280;text-transform:uppercase;width:60px;">Qty</th><th style="padding:12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;width:100px;">Price</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderPreviewOrderItemsCompact(items: Array<Record<string, unknown>>, formatMoney: (value: unknown) => string): string {
+    if (!items.length) return '<p style="color:#6b7280;font-style:italic;">No items</p>';
+
+    return `<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-family:Arial,sans-serif;">${items.map((item) => {
+        const name = escapePreviewHtml(String(item.name || item.productName || item.product_name || 'Product'));
+        const quantity = escapePreviewHtml(String(item.quantity || 1));
+        const total = escapePreviewHtml(formatMoney(item.total || item.price));
+        return `<div style="padding:12px;border-bottom:1px solid #e5e7eb;color:#374151;"><strong>${name}</strong><br><span style="font-size:13px;color:#6b7280;">Qty: ${quantity} &middot; ${total}</span></div>`;
+    }).join('')}</div>`;
+}
+
+function renderPreviewOrderItemsList(items: Array<Record<string, unknown>>): string {
+    if (!items.length) return '<p style="color:#6b7280;font-style:italic;">No items</p>';
+
+    return `<ul style="margin:0;padding-left:20px;color:#374151;line-height:1.6;font-family:Arial,sans-serif;">${items.map((item) => {
+        const name = escapePreviewHtml(String(item.name || item.productName || item.product_name || 'Product'));
+        const quantity = escapePreviewHtml(String(item.quantity || 1));
+        return `<li>${quantity} x ${name}</li>`;
+    }).join('')}</ul>`;
 }
 
 function parseBoxSpacing(value: string): [number, number, number, number] {
@@ -473,6 +521,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     orderDiscountTotal: fmtMoney(order.discount_total),
                     orderTotal: fmtMoney(order.total),
                     orderItemsTable: renderPreviewOrderItemsTable(lineItems, fmtMoney),
+                    orderItemsCompact: renderPreviewOrderItemsCompact(lineItems, fmtMoney),
+                    orderItemsList: renderPreviewOrderItemsList(lineItems),
                     orderCustomerNote: String(order.customer_note || ''),
                     orderTrackingNumber: tracking.trackingNumber,
                     orderTrackingUrl: tracking.trackingUrl,

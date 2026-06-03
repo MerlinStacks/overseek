@@ -388,6 +388,7 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([accountId, isRead])
+  @@index([createdAt])
 }
 
 model NotificationRead {
@@ -2621,9 +2622,10 @@ model NotificationDelivery {
   createdAt      DateTime @default(now())
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  
+
   @@index([accountId, createdAt])
   @@index([eventType, createdAt])
+  @@index([createdAt])
 }
 
 // --------------------------------------

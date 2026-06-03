@@ -11,6 +11,7 @@
  * - Meta token proactive refresh (daily)
  * - Queue depth enforcement (every 5 minutes)
  * - Conversion retry (every 10 minutes)
+ * - Notification retention cleanup (daily)
  */
 import { QueueFactory, QUEUES } from '../queue/QueueFactory';
 import { Logger } from '../../utils/logger';
@@ -92,6 +93,12 @@ export class MaintenanceScheduler {
             jobId: 'email-body-cleanup-daily'
         });
         Logger.info('Scheduled Email Sent-Body Cleanup (Daily at 03:15 UTC)');
+
+        await this.queue.add('notification-cleanup', {}, {
+            repeat: { pattern: '35 3 * * *' },
+            jobId: 'notification-cleanup-daily'
+        });
+        Logger.info('Scheduled Notification Cleanup (Daily at 03:35 UTC)');
     }
 
     /**
@@ -110,6 +117,7 @@ export class MaintenanceScheduler {
         this.webVitalsInterval = setInterval(() => this.runWebVitalsCleanup(), 24 * 60 * 60 * 1000);
 
         this.dispatchEmailBodyCleanup().catch(e => Logger.error('Email Body Cleanup Error', { error: e }));
+        this.dispatchNotificationCleanup().catch(e => Logger.error('Notification Cleanup Error', { error: e }));
 
         // Run queue depth check on startup then every 5 minutes
         this.dispatchQueueDepthCheck().catch(e => Logger.error('Queue Depth Check Error', { error: e }));
@@ -455,6 +463,78 @@ export class MaintenanceScheduler {
         } catch (error) {
             Logger.error('[Scheduler] Email sent-body cleanup failed', { error });
         }
+    }
+
+    /**
+     * Prune old notification rows so the notification and delivery-log tables
+     * stay bounded. Unread ERROR notifications are kept for manual review.
+     */
+    static async dispatchNotificationCleanup() {
+        const notificationRetentionDays = this.getRetentionDays('NOTIFICATION_RETENTION_DAYS', 180);
+        const deliveryRetentionDays = this.getRetentionDays('NOTIFICATION_DELIVERY_RETENTION_DAYS', 30);
+        const batchSize = this.getRetentionDays('NOTIFICATION_CLEANUP_BATCH_SIZE', 1000);
+        const notificationCutoff = new Date(Date.now() - notificationRetentionDays * 24 * 60 * 60 * 1000);
+        const deliveryCutoff = new Date(Date.now() - deliveryRetentionDays * 24 * 60 * 60 * 1000);
+
+        Logger.info('[Scheduler] Starting notification cleanup', {
+            notificationRetentionDays,
+            deliveryRetentionDays,
+            batchSize
+        });
+
+        try {
+            let notificationDeliveriesDeleted = 0;
+            let notificationsDeleted = 0;
+
+            while (true) {
+                const rows = await prisma.notificationDelivery.findMany({
+                    where: { createdAt: { lt: deliveryCutoff } },
+                    select: { id: true },
+                    orderBy: { createdAt: 'asc' },
+                    take: batchSize
+                });
+                if (rows.length === 0) break;
+
+                const result = await prisma.notificationDelivery.deleteMany({
+                    where: { id: { in: rows.map(row => row.id) } }
+                });
+                notificationDeliveriesDeleted += result.count;
+            }
+
+            while (true) {
+                const rows = await prisma.notification.findMany({
+                    where: {
+                        createdAt: { lt: notificationCutoff },
+                        OR: [
+                            { isRead: true },
+                            { type: { not: 'ERROR' } }
+                        ]
+                    },
+                    select: { id: true },
+                    orderBy: { createdAt: 'asc' },
+                    take: batchSize
+                });
+                if (rows.length === 0) break;
+
+                const result = await prisma.notification.deleteMany({
+                    where: { id: { in: rows.map(row => row.id) } }
+                });
+                notificationsDeleted += result.count;
+            }
+
+            Logger.info('[Scheduler] Notification cleanup completed', {
+                notificationDeliveriesDeleted,
+                notificationsDeleted
+            });
+        } catch (error) {
+            Logger.error('[Scheduler] Notification cleanup failed', { error });
+        }
+    }
+
+    private static getRetentionDays(envName: string, fallbackDays: number): number {
+        const value = Number.parseInt(process.env[envName] || '', 10);
+        if (!Number.isFinite(value) || value < 1) return fallbackDays;
+        return value;
     }
 
     /**
