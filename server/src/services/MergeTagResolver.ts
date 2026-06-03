@@ -110,12 +110,7 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         // Downloads
         replaceMergeTag('{{order.downloads}}', renderDownloadsTable(order.downloads || []));
 
-        const invoiceUrl =
-            order.invoiceUrl
-            || order.invoice_url
-            || order.pdfUrl
-            || order.pdf_url
-            || '';
+        const invoiceUrl = getInvoiceUrl(order, storeUrl);
         replaceMergeTag('{{order.invoiceUrl}}', invoiceUrl);
         replaceMergeTag('{{invoice_url}}', invoiceUrl);
         replaceMergeTag('{{pdf_url}}', invoiceUrl);
@@ -306,6 +301,52 @@ function getOrderItems(order: any): any[] {
     return Array.isArray(items) ? items : [];
 }
 
+function getInvoiceUrl(order: any, storeUrl: string): string {
+    const directUrl = order.invoiceUrl
+        || order.invoice_url
+        || order.pdfUrl
+        || order.pdf_url
+        || order.invoice?.invoiceUrl
+        || order.invoice?.invoice_url
+        || order.invoice?.pdfUrl
+        || order.invoice?.pdf_url
+        || order.invoice?.downloadUrl
+        || order.invoice?.download_url
+        || order.invoice?.url;
+
+    if (directUrl) return String(directUrl);
+
+    const orderId = order.id || order.orderId || order.order_id || order.wooId || order.woo_id;
+    const orderKey = order.orderKey || order.order_key || order.key;
+    if (storeUrl && orderId && orderKey) {
+        const base = `${storeUrl.replace(/\/$/, '')}/wp-json/overseek/v1/invoices/download`;
+        return `${base}?order_id=${encodeURIComponent(String(orderId))}&order_key=${encodeURIComponent(String(orderKey))}`;
+    }
+
+    return order.viewOrderUrl || order.view_order_url || order.orderUrl || order.order_url || '';
+}
+
+function getOrderItemImageUrl(item: any): string {
+    const image = item?.image;
+    if (typeof image === 'string') return image;
+    if (image?.src) return String(image.src);
+    if (image?.url) return String(image.url);
+
+    const images = item?.images;
+    if (Array.isArray(images) && images.length > 0) {
+        const firstImage = images[0];
+        if (typeof firstImage === 'string') return firstImage;
+        if (firstImage?.src) return String(firstImage.src);
+        if (firstImage?.url) return String(firstImage.url);
+    }
+
+    return item?.productImage
+        || item?.product_image
+        || item?.thumbnail
+        || item?.thumbnail_url
+        || '';
+}
+
 function getOrderTrackingItems(order: any): TrackingItem[] {
     const directItems = order.trackingItems || order.tracking_items || order.shipments || order.shipmentTracking;
     if (Array.isArray(directItems) && directItems.length > 0) {
@@ -365,6 +406,8 @@ export function renderOrderItemsTable(items: any[]): string {
     }
 
     const rows = items.map(item => {
+        const itemName = item.name || item.productName || item.product_name || 'Product';
+        const imageUrl = getOrderItemImageUrl(item);
         const derivedMeta = getInvoiceItemMeta(item)
             .filter((entry) => String(entry?.value || '').trim().length > 0)
             .slice(0, 12)
@@ -378,10 +421,10 @@ export function renderOrderItemsTable(items: any[]): string {
         return `
         <tr style="border-bottom: 1px solid #e5e7eb;">
             <td style="padding: 12px; vertical-align: top;">
-                ${item.image ? `<img src="${item.image}" alt="${item.name}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;" />` : ''}
+                ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(itemName)}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;" />` : ''}
             </td>
             <td style="padding: 12px; color: #374151;">
-                ${item.name || item.productName || 'Product'}
+                ${escapeHtml(itemName)}
                 ${itemMeta ? `<br><span style="font-size: 12px; color: #6b7280;">${itemMeta}</span>` : ''}
             </td>
             <td style="padding: 12px; text-align: center; color: #374151;">${item.quantity || 1}</td>

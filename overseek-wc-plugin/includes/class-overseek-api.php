@@ -294,6 +294,11 @@ class OverSeek_API {
 			return true;
 		}
 
+		$provided_order_key = (string) $request->get_param( 'order_key' );
+		if ( $provided_order_key !== '' && hash_equals( $order->get_order_key(), $provided_order_key ) ) {
+			return true;
+		}
+
 		if ( $user_id <= 0 ) {
 			return $this->integration_error( 'invoice_unauthenticated', 'Authentication or valid order key required.', 401 );
 		}

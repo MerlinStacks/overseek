@@ -312,6 +312,43 @@ describe('MergeTagResolver all merge tags', () => {
         expect(html).not.toMatch(/\{\{[^}]+\}\}/);
     });
 
+    it('renders WooCommerce item image objects in order item tables', () => {
+        const html = resolveMergeTags(
+            '{{order.itemsTable}}',
+            {
+                order: {
+                    line_items: [
+                        {
+                            name: 'Photo Mug',
+                            quantity: 1,
+                            total: '19.95',
+                            image: { src: 'https://store.example.com/uploads/photo-mug.jpg' },
+                        },
+                    ],
+                },
+            }
+        );
+
+        expect(html).toContain('src="https://store.example.com/uploads/photo-mug.jpg"');
+        expect(html).toContain('alt="Photo Mug"');
+    });
+
+    it('builds invoice download URLs from store URL, order id, and order key', () => {
+        const html = resolveMergeTags(
+            '<a href="{{order.invoiceUrl}}">Download Invoice</a>',
+            {
+                storeUrl: 'https://store.example.com',
+                order: {
+                    id: 1234,
+                    order_key: 'wc_order_abc123',
+                },
+            }
+        );
+
+        expect(html).toContain('https://store.example.com/wp-json/overseek/v1/invoices/download?order_id=1234&order_key=wc_order_abc123');
+        expect(html).not.toContain('{{order.invoiceUrl}}');
+    });
+
     it('replaces the designer preheader with escaped preview text', () => {
         const html = '<body><div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Old preview</div><p>Hello</p></body>';
 
