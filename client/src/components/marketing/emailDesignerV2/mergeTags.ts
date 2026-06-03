@@ -16,6 +16,7 @@ export const EMAIL_MERGE_TAGS: MergeTagDefinition[] = [
     { category: 'order', label: 'Order Subtotal', value: '{{order.subtotal}}' },
     { category: 'order', label: 'Order Shipping Total', value: '{{order.shippingTotal}}' },
     { category: 'order', label: 'Order Discount Total', value: '{{order.discountTotal}}' },
+    { category: 'order', label: 'Order Tax Total', value: '{{order.taxTotal}}' },
     { category: 'order', label: 'Order Total', value: '{{order.total}}' },
     { category: 'order', label: 'Customer Note', value: '{{order.customerNote}}' },
     { category: 'order', label: 'Tracking Number', value: '{{order.trackingNumber}}' },

@@ -14,6 +14,7 @@ describe('MergeTagResolver all merge tags', () => {
         '{{order.subtotal}}',
         '{{order.shippingTotal}}',
         '{{order.discountTotal}}',
+        '{{order.taxTotal}}',
         '{{order.total}}',
         '{{order.customerNote}}',
         '{{order.trackingNumber}}',
@@ -63,6 +64,7 @@ describe('MergeTagResolver all merge tags', () => {
             subtotal: 100,
             shippingTotal: 12,
             discountTotal: 10,
+            taxTotal: 9.27,
             total: 102,
             currency: 'AUD',
             customerNote: 'Leave at reception',
@@ -93,7 +95,7 @@ describe('MergeTagResolver all merge tags', () => {
                 country: 'AU',
             },
             lineItems: [
-                { name: 'Classic Hoodie', quantity: 1, total: 89, currency: 'AUD' },
+                { name: 'Classic Hoodie', quantity: 1, total: 89, total_tax: 8.09, currency: 'AUD' },
             ],
             downloads: [
                 { name: 'Manual', download_url: 'https://store.example.com/download/manual' },
@@ -152,6 +154,7 @@ describe('MergeTagResolver all merge tags', () => {
             '{{order.subtotal}}',
             '{{order.shippingTotal}}',
             '{{order.discountTotal}}',
+            '{{order.taxTotal}}',
             '{{order.total}}',
             '{{order.customerNote}}',
             '{{order.trackingNumber}}',
@@ -200,6 +203,7 @@ describe('MergeTagResolver all merge tags', () => {
         expect(html).toContain('https://store.example.com/checkout');
         expect(html).toContain('Alex');
         expect(html).toContain('Classic Hoodie');
+        expect(html).toContain('GST: $8.09');
         expect(html).toContain('WELCOME10');
         expect(html).toContain('33A1234567890');
         expect(html).toContain('https://auspost.com.au/mypost/track/#/details/33A1234567890');
@@ -259,6 +263,7 @@ describe('MergeTagResolver all merge tags', () => {
                     payment_method_title: 'Direct bank transfer',
                     currency: 'AUD',
                     total: '42.50',
+                    total_tax: '3.86',
                     billing: {
                         first_name: 'Jordan',
                         last_name: 'Smith',
@@ -278,7 +283,7 @@ describe('MergeTagResolver all merge tags', () => {
                         country: 'AU',
                     },
                     line_items: [
-                        { name: 'Printed Tee', quantity: 2, total: '42.50' },
+                        { name: 'Printed Tee', quantity: 2, total: '42.50', total_tax: '3.86' },
                     ],
                 },
             }
@@ -290,6 +295,7 @@ describe('MergeTagResolver all merge tags', () => {
         expect(html).toContain('22 Test Lane');
         expect(html).toContain('44 Ship Road');
         expect(html).toContain('Printed Tee');
+        expect(html).toContain('GST: $3.86');
         expect(html).toContain('$42.50');
         expect(html).not.toMatch(/\{\{[^}]+\}\}/);
     });
@@ -300,7 +306,7 @@ describe('MergeTagResolver all merge tags', () => {
             {
                 order: {
                     line_items: [
-                        { name: 'Printed Tee', quantity: 2, total: '42.50', currency: 'AUD' },
+                        { name: 'Printed Tee', quantity: 2, total: '42.50', total_tax: '3.86', currency: 'AUD' },
                     ],
                 },
             }
@@ -308,6 +314,7 @@ describe('MergeTagResolver all merge tags', () => {
 
         expect(html).toContain('Qty: 2');
         expect(html).toContain('$42.50');
+        expect(html).toContain('GST: $3.86');
         expect(html).toContain('<li>2 x Printed Tee</li>');
         expect(html).not.toMatch(/\{\{[^}]+\}\}/);
     });

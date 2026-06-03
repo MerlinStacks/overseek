@@ -82,6 +82,7 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{order.subtotal}}', formatCurrency(order.subtotal ?? order.sub_total, order.currency));
         replaceMergeTag('{{order.shippingTotal}}', formatCurrency(order.shippingTotal ?? order.shipping_total, order.currency));
         replaceMergeTag('{{order.discountTotal}}', formatCurrency(order.discountTotal ?? order.discount_total, order.currency));
+        replaceMergeTag('{{order.taxTotal}}', formatCurrency(order.taxTotal ?? order.tax_total ?? order.totalTax ?? order.total_tax, order.currency));
         replaceMergeTag('{{order.total}}', formatCurrency(order.total, order.currency));
         replaceMergeTag('{{order.customerNote}}', order.customerNote || order.customer_note || '');
 
@@ -408,6 +409,9 @@ export function renderOrderItemsTable(items: any[]): string {
     const rows = items.map(item => {
         const itemName = item.name || item.productName || item.product_name || 'Product';
         const imageUrl = getOrderItemImageUrl(item);
+        const quantity = item.quantity || 1;
+        const itemTotal = formatCurrency(item.total || item.price, item.currency);
+        const itemTax = formatCurrency(getOrderItemTaxTotal(item), item.currency);
         const derivedMeta = getInvoiceItemMeta(item)
             .filter((entry) => String(entry?.value || '').trim().length > 0)
             .slice(0, 12)
@@ -420,15 +424,17 @@ export function renderOrderItemsTable(items: any[]): string {
 
         return `
         <tr style="border-bottom: 1px solid #e5e7eb;">
-            <td style="padding: 12px; vertical-align: top;">
-                ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(itemName)}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;" />` : ''}
+            <td style="padding: 12px; color: #374151; vertical-align: top; width: 70%;">
+                ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(itemName)}" width="50" height="50" style="display: inline-block; width: 50px; height: 50px; object-fit: cover; border-radius: 4px; margin: 0 10px 8px 0; vertical-align: top;" />` : ''}
+                <span style="display: inline-block; max-width: 100%; vertical-align: top; line-height: 1.35; word-break: break-word;">
+                    <strong style="font-weight: 500; color: #374151;">${escapeHtml(itemName)}</strong>
+                    ${itemMeta ? `<br><span style="font-size: 12px; color: #6b7280;">${itemMeta}</span>` : ''}
+                </span>
             </td>
-            <td style="padding: 12px; color: #374151;">
-                ${escapeHtml(itemName)}
-                ${itemMeta ? `<br><span style="font-size: 12px; color: #6b7280;">${itemMeta}</span>` : ''}
+            <td style="padding: 12px 8px; text-align: center; color: #374151; vertical-align: top; width: 44px; white-space: nowrap;">${quantity}</td>
+            <td style="padding: 12px 8px; text-align: right; color: #374151; vertical-align: top; width: 86px; white-space: nowrap;">
+                ${itemTotal}<br><span style="font-size: 12px; color: #6b7280;">GST: ${itemTax}</span>
             </td>
-            <td style="padding: 12px; text-align: center; color: #374151;">${item.quantity || 1}</td>
-            <td style="padding: 12px; text-align: right; color: #374151;">${formatCurrency(item.total || item.price, item.currency)}</td>
         </tr>
     `;
     }).join('');
@@ -437,10 +443,9 @@ export function renderOrderItemsTable(items: any[]): string {
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif;">
             <thead>
                 <tr style="background: #f3f4f6;">
-                    <th style="padding: 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 60px;"></th>
-                    <th style="padding: 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase;">Product</th>
-                    <th style="padding: 12px; text-align: center; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 60px;">Qty</th>
-                    <th style="padding: 12px; text-align: right; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 100px;">Price</th>
+                    <th style="padding: 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 70%;">Product</th>
+                    <th style="padding: 12px 8px; text-align: center; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 44px;">Qty</th>
+                    <th style="padding: 12px 8px; text-align: right; font-size: 12px; color: #6b7280; text-transform: uppercase; width: 86px;">Price</th>
                 </tr>
             </thead>
             <tbody>
@@ -459,8 +464,19 @@ export function renderOrderItemsCompact(items: any[]): string {
         const name = item.name || item.productName || item.product_name || 'Product';
         const quantity = item.quantity || 1;
         const total = formatCurrency(item.total || item.price, item.currency);
-        return `<div style="padding: 12px; border-bottom: 1px solid #e5e7eb; color: #374151;"><strong>${name}</strong><br><span style="font-size: 13px; color: #6b7280;">Qty: ${quantity} &middot; ${total}</span></div>`;
+        const tax = formatCurrency(getOrderItemTaxTotal(item), item.currency);
+        return `<div style="padding: 12px; border-bottom: 1px solid #e5e7eb; color: #374151;"><strong>${escapeHtml(String(name))}</strong><br><span style="font-size: 13px; color: #6b7280;">Qty: ${escapeHtml(String(quantity))} &middot; ${total} &middot; GST: ${tax}</span></div>`;
     }).join('')}</div>`;
+}
+
+function getOrderItemTaxTotal(item: any): number | string | undefined {
+    const directTax = item.totalTax ?? item.total_tax ?? item.taxTotal ?? item.tax_total ?? item.tax;
+    if (directTax !== undefined && directTax !== null && directTax !== '') return directTax;
+
+    const taxes = item.taxes || item.tax_lines;
+    if (!Array.isArray(taxes)) return undefined;
+
+    return taxes.reduce((sum, taxLine) => sum + (parseFloat(String(taxLine?.total ?? taxLine?.subtotal ?? 0)) || 0), 0);
 }
 
 export function renderOrderItemsList(items: any[]): string {

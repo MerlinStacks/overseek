@@ -231,11 +231,17 @@ export function MobileDashboard() {
         ? ((stats.todayRevenue - stats.yesterdayRevenue) / stats.yesterdayRevenue) * 100
         : 0;
 
-    const quickActions = [
-        { label: 'Orders', icon: ShoppingCart, path: '/m/orders', color: 'from-blue-500 to-indigo-600' },
-        { label: 'Inbox', icon: MessageSquare, path: '/m/inbox', color: 'from-emerald-500 to-teal-600' },
-        { label: 'Analytics', icon: TrendingUp, path: '/m/analytics', color: 'from-purple-500 to-violet-600' },
-        { label: 'Inventory', icon: Package, path: '/m/inventory', color: 'from-orange-500 to-amber-600' },
+    const commandActions = [
+        { label: 'Run orders', helper: `${stats?.todayOrders || 0} today`, icon: ShoppingCart, path: '/m/orders', tone: 'bg-sky-400/15 text-sky-100 ring-sky-300/20' },
+        { label: 'Open inbox', helper: `${stats?.pendingMessages || 0} unread`, icon: MessageSquare, path: '/m/inbox', tone: 'bg-violet-400/15 text-violet-100 ring-violet-300/20' },
+        { label: 'Stock risk', helper: `${stats?.lowStockItems || 0} low`, icon: Package, path: '/m/inventory', tone: 'bg-amber-400/15 text-amber-100 ring-amber-300/20' },
+        { label: 'Revenue', helper: formatAccountCurrency(stats?.todayRevenue || 0), icon: TrendingUp, path: '/m/analytics', tone: 'bg-emerald-400/15 text-emerald-100 ring-emerald-300/20' },
+    ];
+
+    const commandBrief = [
+        (stats?.todayOrders || 0) > 0 ? `${stats?.todayOrders || 0} orders landed today` : 'No orders landed yet today',
+        (stats?.pendingMessages || 0) > 0 ? `${stats?.pendingMessages || 0} customer messages need attention` : 'Inbox is clear',
+        (stats?.lowStockItems || 0) > 0 ? `${stats?.lowStockItems || 0} stock alerts to review` : 'No stock alerts',
     ];
 
     // Dark-mode activity status colors - different from standard light-mode utility
@@ -254,162 +260,133 @@ export function MobileDashboard() {
     }
 
     return (
-        <div className="space-y-6">
-            {/* Revenue Anomaly Alert Banner - only show if user has finance permission */}
+        <div className="space-y-5 pb-28">
             {hasPermission('view_finance') && <RevenueAnomalyBanner anomaly={anomaly} />}
 
-            {/* Greeting Header */}
-            <div className="flex items-center justify-between animate-fade-slide-up">
-                <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <greeting.icon size={20} className={greeting.color} />
-                        <span className={`text-sm font-medium ${greeting.color}`}>{greeting.text}</span>
+            <div className="rounded-[2rem] border border-white/10 bg-slate-950 px-4 py-5 shadow-2xl shadow-black/30 animate-fade-slide-up">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-400/10 px-2.5 py-1 text-xs font-semibold text-indigo-100 ring-1 ring-indigo-300/20">
+                            <greeting.icon size={13} className={greeting.color} />
+                            {greeting.text}, {firstName}
+                        </div>
+                        <h1 className="text-3xl font-black tracking-tight text-white">Command centre</h1>
+                        <p className="mt-1 text-sm text-slate-400">Live store priorities for today.</p>
                     </div>
-                    <h1 className="text-2xl font-bold text-white">{firstName} 👋</h1>
+                    <button onClick={() => navigate('/m/notifications')} className="rounded-2xl bg-white/10 p-3 text-slate-200 active:scale-95" aria-label="Open notifications">
+                        <Bell size={20} />
+                    </button>
                 </div>
-                <button
-                    onClick={() => navigate('/m/notifications')}
-                    className="p-3 rounded-2xl bg-slate-700/40 border border-white/10 hover:bg-slate-700/50 active:scale-95 transition-all"
-                >
-                    <Bell size={20} className="text-slate-300" />
+                <div className="mt-5 space-y-2">
+                    {commandBrief.map((brief) => (
+                        <div key={brief} className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-3 py-2 text-sm text-slate-300 ring-1 ring-white/10">
+                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-300" />
+                            {brief}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => navigate('/m/orders')} className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 active:scale-[0.99] animate-fade-slide-up" style={{ animationDelay: '25ms' }}>
+                    <div className="mb-3 flex items-center justify-between">
+                        <div className="rounded-2xl bg-sky-400/15 p-2 text-sky-100 ring-1 ring-sky-300/20"><ShoppingCart size={18} /></div>
+                        {stats?.yesterdayOrders !== undefined && <TrendBadge value={ordersTrend} />}
+                    </div>
+                    <p className="text-3xl font-black text-white">{stats?.todayOrders || 0}</p>
+                    <p className="mb-3 text-xs font-medium text-slate-400">Orders today</p>
+                    <Sparkline data={sparklines.orders} color="#7dd3fc" height={24} />
+                </button>
+
+                {hasPermission('view_finance') && (
+                    <button onClick={() => navigate('/m/analytics')} className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 active:scale-[0.99] animate-fade-slide-up" style={{ animationDelay: '50ms' }}>
+                        <div className="mb-3 flex items-center justify-between">
+                            <div className="rounded-2xl bg-emerald-400/15 p-2 text-emerald-100 ring-1 ring-emerald-300/20"><DollarSign size={18} /></div>
+                            {stats?.yesterdayRevenue !== undefined && <TrendBadge value={revenueTrend} />}
+                        </div>
+                        <p className="text-3xl font-black text-white">{formatAccountCurrency(stats?.todayRevenue || 0)}</p>
+                        <p className="mb-3 text-xs font-medium text-slate-400">Revenue today</p>
+                        <Sparkline data={sparklines.revenue} color="#6ee7b7" height={24} />
+                    </button>
+                )}
+
+                <button onClick={() => navigate('/m/inbox')} className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 active:scale-[0.99] animate-fade-slide-up" style={{ animationDelay: '75ms' }}>
+                    <div className="mb-3 flex items-center justify-between">
+                        <div className="rounded-2xl bg-violet-400/15 p-2 text-violet-100 ring-1 ring-violet-300/20"><MessageSquare size={18} /></div>
+                        {(stats?.pendingMessages || 0) > 0 && <span className="rounded-full bg-violet-400/15 px-2 py-0.5 text-xs font-bold text-violet-100 ring-1 ring-violet-300/20">New</span>}
+                    </div>
+                    <p className="text-3xl font-black text-white">{stats?.pendingMessages || 0}</p>
+                    <p className="text-xs font-medium text-slate-400">Unread messages</p>
+                </button>
+
+                <button onClick={() => navigate('/m/inventory')} className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 active:scale-[0.99] animate-fade-slide-up" style={{ animationDelay: '100ms' }}>
+                    <div className="mb-3 flex items-center justify-between">
+                        <div className="rounded-2xl bg-amber-400/15 p-2 text-amber-100 ring-1 ring-amber-300/20"><Package size={18} /></div>
+                        {(stats?.lowStockItems || 0) > 0 && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-bold text-amber-100 ring-1 ring-amber-300/20">Alert</span>}
+                    </div>
+                    <p className="text-3xl font-black text-white">{stats?.lowStockItems || 0}</p>
+                    <p className="text-xs font-medium text-slate-400">Low stock items</p>
                 </button>
             </div>
 
-            {/* Stat Cards with Sparklines */}
-            <div className="grid grid-cols-2 gap-3">
-                {/* Orders Card */}
-                <div
-                    className="pwa-card-interactive p-4 animate-fade-slide-up"
-                    style={{ animationDelay: '25ms' }}
-                    onClick={() => navigate('/m/orders')}
-                >
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="p-2 rounded-xl bg-blue-500/20">
-                            <ShoppingCart size={18} className="text-blue-400" />
-                        </div>
-                        {stats?.yesterdayOrders !== undefined && <TrendBadge value={ordersTrend} />}
-                    </div>
-                    <p className="text-2xl font-bold text-white mb-0.5">{stats?.todayOrders || 0}</p>
-                    <p className="text-xs text-slate-400 mb-2">Orders today</p>
-                    <Sparkline data={sparklines.orders} color="#60a5fa" height={24} />
-                </div>
-
-                {/* Revenue Card - only show if user has finance permission */}
-                {hasPermission('view_finance') && (
-                    <div
-                        className="pwa-card-interactive p-4 animate-fade-slide-up"
-                        style={{ animationDelay: '50ms' }}
-                        onClick={() => navigate('/m/analytics')}
-                    >
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="p-2 rounded-xl bg-emerald-500/20">
-                                <DollarSign size={18} className="text-emerald-400" />
-                            </div>
-                            {stats?.yesterdayRevenue !== undefined && <TrendBadge value={revenueTrend} />}
-                        </div>
-                        <p className="text-2xl font-bold text-white mb-0.5">{formatAccountCurrency(stats?.todayRevenue || 0)}</p>
-                        <p className="text-xs text-slate-400 mb-2">Revenue today</p>
-                        <Sparkline data={sparklines.revenue} color="#34d399" height={24} />
-                    </div>
-                )}
-
-                {/* Messages Card */}
-                <div
-                    className="pwa-card-interactive p-4 animate-fade-slide-up"
-                    style={{ animationDelay: '75ms' }}
-                    onClick={() => navigate('/m/inbox')}
-                >
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="p-2 rounded-xl bg-purple-500/20">
-                            <MessageSquare size={18} className="text-purple-400" />
-                        </div>
-                        {(stats?.pendingMessages || 0) > 0 && (
-                            <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs font-medium">
-                                New
-                            </span>
-                        )}
-                    </div>
-                    <p className="text-2xl font-bold text-white mb-0.5">{stats?.pendingMessages || 0}</p>
-                    <p className="text-xs text-slate-400">Unread messages</p>
-                </div>
-
-                {/* Low Stock Card */}
-                <div
-                    className="pwa-card-interactive p-4 animate-fade-slide-up"
-                    style={{ animationDelay: '100ms' }}
-                    onClick={() => navigate('/m/inventory')}
-                >
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="p-2 rounded-xl bg-amber-500/20">
-                            <Package size={18} className="text-amber-400" />
-                        </div>
-                        {(stats?.lowStockItems || 0) > 0 && (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-medium">
-                                Alert
-                            </span>
-                        )}
-                    </div>
-                    <p className="text-2xl font-bold text-white mb-0.5">{stats?.lowStockItems || 0}</p>
-                    <p className="text-xs text-slate-400">Low stock items</p>
-                </div>
-            </div>
-
-            {/* Quick Actions */}
             <div>
-                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Quick Actions</h2>
-                <div className="grid grid-cols-4 gap-3">
-                    {quickActions.map((action, index) => (
+                <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Command shortcuts</h2>
+                <div className="grid grid-cols-2 gap-3">
+                    {commandActions.map((action, index) => (
                         <button
                             key={action.label}
                             onClick={() => navigate(action.path)}
-                            className="flex flex-col items-center p-3 pwa-card-interactive active:scale-95 animate-fade-slide-up"
+                            className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-slate-950 p-3 text-left shadow-lg shadow-black/20 active:scale-[0.99] animate-fade-slide-up"
                             style={{ animationDelay: `${125 + index * 25}ms` }}
                         >
-                            <div className={`p-2.5 rounded-xl bg-gradient-to-br ${action.color} mb-2 shadow-lg`}>
-                                <action.icon size={18} className="text-white" />
+                            <div className={`rounded-2xl p-2.5 ring-1 ${action.tone}`}>
+                                <action.icon size={18} />
                             </div>
-                            <span className="text-xs font-medium text-slate-300">{action.label}</span>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-black text-white">{action.label}</p>
+                                <p className="truncate text-xs text-slate-500">{action.helper}</p>
+                            </div>
+                            <ArrowRight size={15} className="text-slate-600" />
                         </button>
                     ))}
                 </div>
             </div>
 
-            {/* Recent Activity */}
             <div>
-                <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Recent Activity</h2>
+                <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Recent orders</h2>
                     <button
                         onClick={() => navigate('/m/orders')}
-                        className="text-sm text-indigo-400 font-medium flex items-center gap-1 hover:text-indigo-300 transition-colors"
+                        className="flex items-center gap-1 text-sm font-bold text-indigo-200"
                     >
                         View All <ArrowRight size={14} />
                     </button>
                 </div>
-                <div className="pwa-card divide-y divide-white/5 overflow-hidden">
+                <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950 shadow-lg shadow-black/20">
                     {activities.length === 0 ? (
                         <div className="p-6 text-center">
-                            <Users size={32} className="text-slate-600 mx-auto mb-2" />
-                            <p className="text-slate-400 text-sm">No recent activity</p>
+                            <Users size={32} className="mx-auto mb-2 text-slate-600" />
+                            <p className="text-sm text-slate-400">No recent activity</p>
                         </div>
                     ) : (
                         activities.map((activity, index) => (
                             <button
                                 key={activity.id}
                                 onClick={() => navigate(`/m/orders/${activity.id}`)}
-                                className="w-full flex items-center p-4 text-left hover:bg-white/5 active:bg-white/10 transition-colors animate-fade-slide-up"
+                                className="flex w-full items-center p-4 text-left transition-colors active:bg-white/10 animate-fade-slide-up"
                                 style={{ animationDelay: `${225 + index * 25}ms` }}
                             >
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mr-3 shadow-lg">
-                                    <ShoppingCart size={18} className="text-white" />
+                                <div className="mr-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-400/15 text-indigo-100 ring-1 ring-indigo-300/20">
+                                    <ShoppingCart size={18} />
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-white truncate">{activity.title}</p>
-                                    <p className="text-sm text-slate-400 truncate">{activity.subtitle}</p>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate font-black text-white">{activity.title}</p>
+                                    <p className="truncate text-sm text-slate-400">{activity.subtitle}</p>
                                 </div>
-                                <div className="flex flex-col items-end gap-1 ml-2">
+                                <div className="ml-2 flex flex-col items-end gap-1">
                                     <span className="text-xs text-slate-500">{activity.time}</span>
                                     {activity.status && (
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${getDarkStatusColor(activity.status)}`}>
+                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${getDarkStatusColor(activity.status)}`}>
                                             {activity.status}
                                         </span>
                                     )}

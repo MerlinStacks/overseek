@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag, ChevronUp, ChevronDown, RotateCcw, Sparkles, FileText } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useToast } from '../../context/ToastContext';
@@ -77,13 +77,13 @@ interface OrderDetail {
 type MobilePanelId = 'tracking' | 'customer' | 'shipping' | 'cogs' | 'tags' | 'attribution';
 const DEFAULT_MOBILE_PANEL_ORDER: MobilePanelId[] = ['tracking', 'customer', 'shipping', 'cogs', 'tags', 'attribution'];
 
-const STATUS_CONFIG: Record<string, { icon: typeof Package; color: string; bg: string; text: string }> = {
-    pending: { icon: Clock, color: 'text-yellow-600', bg: 'bg-yellow-100', text: 'Pending' },
-    processing: { icon: Package, color: 'text-blue-600', bg: 'bg-blue-100', text: 'Processing' },
-    shipped: { icon: Truck, color: 'text-purple-600', bg: 'bg-purple-100', text: 'Shipped' },
-    delivered: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-100', text: 'Delivered' },
-    completed: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-100', text: 'Completed' },
-    cancelled: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-100', text: 'Cancelled' },
+const STATUS_CONFIG: Record<string, { icon: typeof Package; color: string; bg: string; ring: string; text: string }> = {
+    pending: { icon: Clock, color: 'text-amber-200', bg: 'bg-amber-500/15', ring: 'ring-amber-400/20', text: 'Pending' },
+    processing: { icon: Package, color: 'text-sky-200', bg: 'bg-sky-500/15', ring: 'ring-sky-400/20', text: 'Processing' },
+    shipped: { icon: Truck, color: 'text-violet-200', bg: 'bg-violet-500/15', ring: 'ring-violet-400/20', text: 'Shipped' },
+    delivered: { icon: CheckCircle, color: 'text-emerald-200', bg: 'bg-emerald-500/15', ring: 'ring-emerald-400/20', text: 'Delivered' },
+    completed: { icon: CheckCircle, color: 'text-emerald-200', bg: 'bg-emerald-500/15', ring: 'ring-emerald-400/20', text: 'Completed' },
+    cancelled: { icon: XCircle, color: 'text-rose-200', bg: 'bg-rose-500/15', ring: 'ring-rose-400/20', text: 'Cancelled' },
 };
 
 export function MobileOrderDetail() {
@@ -97,6 +97,7 @@ export function MobileOrderDetail() {
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [attribution, setAttribution] = useState<Attribution | null>(null);
     const [orderTags, setOrderTags] = useState<string[]>([]);
+    const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
     const [mobilePanelOrder, setMobilePanelOrder] = useState<MobilePanelId[]>(DEFAULT_MOBILE_PANEL_ORDER);
     const { hasPermission } = usePermissions();
     const canViewCogs = hasPermission('view_cogs');
@@ -245,6 +246,34 @@ export function MobileOrderDetail() {
     const formatDate = (date: string) => formatDateTime(date);
     const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); if ('vibrate' in navigator) navigator.vibrate(10); };
 
+    const generateInvoice = async () => {
+        if (!currentAccount || !token || !order) return;
+        const orderId = Number(order.id);
+        if (!Number.isFinite(orderId)) {
+            toast.error('Unable to generate invoice for this order.');
+            return;
+        }
+
+        setIsGeneratingInvoice(true);
+        try {
+            const res = await fetch(`/api/invoices/orders/${encodeURIComponent(String(orderId))}/generate`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ forceRegenerate: true })
+            });
+            const payload = await res.json().catch(() => null) as { artifact_download_url?: string; error?: string } | null;
+            if (!res.ok) throw new Error(payload?.error || 'Failed to generate invoice');
+            if (payload?.artifact_download_url) window.open(payload.artifact_download_url, '_blank', 'noopener,noreferrer');
+            toast.success('Invoice generated.');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Invoice generation failed';
+            Logger.error('[MobileOrderDetail] Invoice generation failed', { error: message });
+            toast.error(message);
+        } finally {
+            setIsGeneratingInvoice(false);
+        }
+    };
+
     const removeTag = async (tag: string) => {
         if (!currentAccount || !token || !order) return;
         try {
@@ -281,30 +310,30 @@ export function MobileOrderDetail() {
         });
     }, []);
 
-    if (loading) return <div className="space-y-4 animate-pulse"><div className="h-10 bg-gray-200 rounded w-1/3" /><div className="h-24 bg-gray-200 rounded-xl" /><div className="h-40 bg-gray-200 rounded-xl" /></div>;
-    if (!order) return <div className="text-center py-12"><Package className="mx-auto text-gray-300 mb-4" size={48} /><p className="text-gray-500">Order not found</p><button onClick={() => navigate('/m/orders')} className="mt-4 text-indigo-600 font-medium">Back to Orders</button></div>;
+    if (loading) return <div className="space-y-4 animate-pulse"><div className="h-36 rounded-[2rem] bg-slate-900" /><div className="h-20 rounded-2xl bg-slate-900" /><div className="h-44 rounded-[1.5rem] bg-slate-900" /></div>;
+    if (!order) return <div className="rounded-[2rem] border border-white/10 bg-slate-950 px-5 py-14 text-center"><Package className="mx-auto mb-4 text-slate-500" size={48} /><p className="text-lg font-black text-white">Order not found</p><button onClick={() => navigate('/m/orders')} className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950">Back to Orders</button></div>;
 
     const statusConfig = STATUS_CONFIG[order.status.toLowerCase()] || STATUS_CONFIG.pending;
     const StatusIcon = statusConfig.icon;
     const mobilePanels: Record<MobilePanelId, ReactNode | null> = {
             tracking: order.trackingItems.length > 0 ? (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
                     <div className="flex items-center gap-2 mb-3">
-                        <Truck size={18} className="text-indigo-600" />
-                        <h2 className="font-semibold text-gray-900">Shipment Tracking</h2>
+                        <Truck size={18} className="text-indigo-200" />
+                        <h2 className="font-black text-white">Shipment Tracking</h2>
                     </div>
                     <div className="space-y-3">
                         {order.trackingItems.map((item, idx) => (
-                            <div key={idx} className={`space-y-1.5 ${idx > 0 ? 'pt-3 border-t border-gray-100' : ''}`}>
+                            <div key={idx} className={`space-y-1.5 ${idx > 0 ? 'pt-3 border-t border-white/10' : ''}`}>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-500 uppercase">{item.provider}</span>
-                                    {item.dateShipped && <span className="text-xs text-gray-400">Shipped {item.dateShipped}</span>}
+                                    <span className="text-xs font-semibold uppercase text-slate-500">{item.provider}</span>
+                                    {item.dateShipped && <span className="text-xs text-slate-500">Shipped {item.dateShipped}</span>}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <code className="text-sm font-mono text-gray-900 bg-gray-50 px-2 py-1 rounded flex-1 truncate">{item.trackingNumber}</code>
-                                    <button onClick={() => copyToClipboard(item.trackingNumber)} className="p-1.5 active:bg-gray-100 rounded text-gray-400"><Copy size={14} /></button>
+                                    <code className="flex-1 truncate rounded-lg bg-white/[0.06] px-2 py-1 font-mono text-sm text-white">{item.trackingNumber}</code>
+                                    <button onClick={() => copyToClipboard(item.trackingNumber)} className="rounded-lg p-1.5 text-slate-400 active:bg-white/10"><Copy size={14} /></button>
                                     {item.trackingUrl && (
-                                        <a href={getSafeHref(item.trackingUrl)} target="_blank" rel="noopener noreferrer" className="p-1.5 active:bg-blue-50 rounded text-blue-500"><ExternalLink size={14} /></a>
+                                        <a href={getSafeHref(item.trackingUrl)} target="_blank" rel="noopener noreferrer" className="rounded-lg p-1.5 text-indigo-200 active:bg-white/10"><ExternalLink size={14} /></a>
                                     )}
                                 </div>
                             </div>
@@ -313,38 +342,38 @@ export function MobileOrderDetail() {
                 </div>
             ) : null,
             customer: (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                    <h2 className="font-semibold text-gray-900 mb-3">Customer</h2>
+                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+                    <h2 className="mb-3 font-black text-white">Customer</h2>
                     <div className="space-y-3">
-                        <div className="flex items-center gap-3"><User size={18} className="text-gray-400" /><span className="text-gray-700">{order.customer.name}</span></div>
-                        {order.customer.email && <a href={`mailto:${order.customer.email}`} className="flex items-center gap-3"><Mail size={18} className="text-gray-400" /><span className="text-indigo-600">{order.customer.email}</span></a>}
-                        {order.customer.phone && <a href={`tel:${order.customer.phone}`} className="flex items-center gap-3"><Phone size={18} className="text-gray-400" /><span className="text-indigo-600">{order.customer.phone}</span></a>}
+                        <div className="flex items-center gap-3"><User size={18} className="text-slate-500" /><span className="text-slate-200">{order.customer.name}</span></div>
+                        {order.customer.email && <a href={`mailto:${order.customer.email}`} className="flex items-center gap-3"><Mail size={18} className="text-slate-500" /><span className="text-indigo-200">{order.customer.email}</span></a>}
+                        {order.customer.phone && <a href={`tel:${order.customer.phone}`} className="flex items-center gap-3"><Phone size={18} className="text-slate-500" /><span className="text-indigo-200">{order.customer.phone}</span></a>}
                     </div>
                 </div>
             ),
             shipping: (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                    <h2 className="font-semibold text-gray-900 mb-3">Shipping Address</h2>
-                    <div className="flex items-start gap-3"><MapPin size={18} className="text-gray-400 mt-0.5" /><div className="text-gray-700"><p>{order.shipping.address1}</p><p>{order.shipping.city}, {order.shipping.state} {order.shipping.postcode}</p><p>{order.shipping.country}</p></div></div>
+                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+                    <h2 className="mb-3 font-black text-white">Shipping Address</h2>
+                    <div className="flex items-start gap-3"><MapPin size={18} className="mt-0.5 text-slate-500" /><div className="text-slate-300"><p>{order.shipping.address1 || 'No street address'}</p><p>{order.shipping.city}, {order.shipping.state} {order.shipping.postcode}</p><p>{order.shipping.country}</p></div></div>
                 </div>
             ),
             cogs: canViewCogs ? <OrderCOGSPanel orderId={order.id} currency={order.currency} /> : null,
             tags: orderTags.length > 0 ? (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
                     <div className="flex items-center gap-2 mb-3">
-                        <Tag size={18} className="text-indigo-600" />
-                        <h2 className="font-semibold text-gray-900">Tags</h2>
+                        <Tag size={18} className="text-indigo-200" />
+                        <h2 className="font-black text-white">Tags</h2>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         {orderTags.map((tag) => (
                             <span
                                 key={tag}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-sm bg-gray-100 text-gray-700 group"
+                                className="group inline-flex items-center gap-1 rounded-full bg-white/[0.08] px-3 py-1.5 text-sm text-slate-200 ring-1 ring-white/10"
                             >
                                 {tag}
                                 <button
                                     onClick={() => removeTag(tag)}
-                                    className="ml-1 p-0.5 rounded active:bg-gray-200 opacity-60 active:opacity-100"
+                                    className="ml-1 rounded p-0.5 opacity-60 active:bg-white/10 active:opacity-100"
                                 >
                                     <X size={12} />
                                 </button>
@@ -354,41 +383,41 @@ export function MobileOrderDetail() {
                 </div>
             ) : null,
             attribution: (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
                     <div className="flex items-center gap-2 mb-3">
-                        <TrendingUp size={18} className="text-indigo-600" />
-                        <h2 className="font-semibold text-gray-900">Attribution</h2>
+                        <TrendingUp size={18} className="text-indigo-200" />
+                        <h2 className="font-black text-white">Attribution</h2>
                     </div>
                     {attribution ? (
                         <div className="space-y-3">
                             <div className="flex flex-wrap gap-2">
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-sky-400/15 px-2.5 py-1 text-xs font-bold text-sky-100 ring-1 ring-sky-300/20">
                                     First: {attribution.firstTouchSource}
                                 </span>
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-bold text-emerald-100 ring-1 ring-emerald-300/20">
                                     Last: {attribution.lastTouchSource}
                                 </span>
                             </div>
 
                             {(attribution.utmSource || attribution.utmMedium || attribution.utmCampaign) && (
-                                <div className="text-xs text-gray-600 space-y-1 pt-2 border-t border-gray-100">
-                                    {attribution.utmSource && <div>Source: <span className="text-gray-900">{attribution.utmSource}</span></div>}
-                                    {attribution.utmMedium && <div>Medium: <span className="text-gray-900">{attribution.utmMedium}</span></div>}
-                                    {attribution.utmCampaign && <div>Campaign: <span className="text-gray-900">{attribution.utmCampaign}</span></div>}
+                                <div className="space-y-1 border-t border-white/10 pt-2 text-xs text-slate-400">
+                                    {attribution.utmSource && <div>Source: <span className="text-slate-100">{attribution.utmSource}</span></div>}
+                                    {attribution.utmMedium && <div>Medium: <span className="text-slate-100">{attribution.utmMedium}</span></div>}
+                                    {attribution.utmCampaign && <div>Campaign: <span className="text-slate-100">{attribution.utmCampaign}</span></div>}
                                 </div>
                             )}
 
                             {(attribution.deviceType || attribution.country) && (
-                                <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+                                <div className="flex flex-wrap gap-2 border-t border-white/10 pt-2">
                                     {attribution.deviceType && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
+                                        <span className="inline-flex items-center gap-1 rounded-lg bg-white/[0.06] px-2 py-1 text-xs text-slate-200">
                                             {attribution.deviceType === 'mobile' ? <Smartphone size={12} /> :
                                                 attribution.deviceType === 'tablet' ? <Tablet size={12} /> : <Monitor size={12} />}
                                             {attribution.deviceType}
                                         </span>
                                     )}
                                     {attribution.country && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700">
+                                        <span className="inline-flex items-center gap-1 rounded-lg bg-white/[0.06] px-2 py-1 text-xs text-slate-200">
                                             <Globe size={12} />
                                             {attribution.city ? `${attribution.city}, ` : ''}{attribution.country}
                                         </span>
@@ -397,7 +426,7 @@ export function MobileOrderDetail() {
                             )}
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-500 italic">No attribution data</p>
+                        <p className="text-sm italic text-slate-500">No attribution data</p>
                     )}
                 </div>
             )
@@ -405,57 +434,61 @@ export function MobileOrderDetail() {
     const visiblePanelOrder = mobilePanelOrder.filter((panelId) => mobilePanels[panelId]);
 
     return (
-        <div className="space-y-4 pb-8">
-            <div className="flex items-center gap-3">
-                <button onClick={() => navigate('/m/orders')} className="p-2 -ml-2 rounded-lg active:bg-gray-100"><ArrowLeft size={24} className="text-gray-700" /></button>
-                <div className="flex-1"><h1 className="text-xl font-bold text-gray-900">{order.orderNumber}</h1><p className="text-sm text-gray-500">{formatDate(order.createdAt)}</p></div>
-            </div>
-
-            <div className={`${statusConfig.bg} rounded-xl p-4 flex items-center gap-4`}>
-                <div className="p-3 bg-white rounded-lg shadow-sm"><StatusIcon size={24} className={statusConfig.color} /></div>
-                <div className="flex-1">
-                    <p className={`font-semibold ${statusConfig.color}`}>{statusConfig.text}</p>
-                    {order.trackingItems.length > 0 && (
-                        <button onClick={() => copyToClipboard(order.trackingItems[0].trackingNumber)} className="flex items-center gap-1 text-sm text-gray-600 mt-1">
-                            <span>Tracking: {order.trackingItems[0].trackingNumber}</span><Copy size={14} />
-                        </button>
-                    )}
+        <div className="space-y-4 pb-28">
+            <div className="rounded-[2rem] border border-white/10 bg-slate-950 px-4 py-5 shadow-2xl shadow-black/30">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                    <button onClick={() => navigate('/m/orders')} className="rounded-2xl bg-white/10 p-3 text-slate-200 active:scale-95" aria-label="Back to orders"><ArrowLeft size={20} /></button>
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black ${statusConfig.bg} ${statusConfig.color} ring-1 ${statusConfig.ring}`}><StatusIcon size={13} />{statusConfig.text}</span>
                 </div>
-                {order.trackingItems[0]?.trackingUrl && <a href={getSafeHref(order.trackingItems[0].trackingUrl)} target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-lg shadow-sm"><ExternalLink size={20} className="text-gray-600" /></a>}
+                <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-400/10 px-2.5 py-1 text-xs font-semibold text-indigo-100 ring-1 ring-indigo-300/20"><Sparkles size={12} /> Order command</p>
+                <h1 className="text-3xl font-black tracking-tight text-white">{order.orderNumber}</h1>
+                <p className="mt-1 text-sm text-slate-400">{formatDate(order.createdAt)} · {order.customer.name}</p>
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{formatCurrency(order.total)}</p><p className="text-[11px] font-medium text-slate-400">Total</p></div>
+                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{order.lineItems.length}</p><p className="text-[11px] font-medium text-slate-400">Items</p></div>
+                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{order.trackingItems.length}</p><p className="text-[11px] font-medium text-slate-400">Tracking</p></div>
+                </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <h2 className="font-semibold text-gray-900 p-4 border-b border-gray-100">Items ({order.lineItems.length})</h2>
-                <div className="divide-y divide-gray-100">
+            <div className="sticky top-2 z-10 grid grid-cols-3 gap-2 rounded-3xl border border-white/10 bg-slate-950/90 p-2 shadow-xl shadow-black/20 backdrop-blur-xl">
+                {order.customer.email && <a href={`mailto:${order.customer.email}`} className="rounded-2xl bg-white px-3 py-3 text-center text-xs font-black text-slate-950 active:scale-95"><Mail size={15} className="mx-auto mb-1" />Email</a>}
+                {order.trackingItems[0]?.trackingUrl && <a href={getSafeHref(order.trackingItems[0].trackingUrl)} target="_blank" rel="noopener noreferrer" className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white active:scale-95"><Truck size={15} className="mx-auto mb-1" />Track</a>}
+                {order.trackingItems[0]?.trackingNumber && <button onClick={() => copyToClipboard(order.trackingItems[0].trackingNumber)} className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white active:scale-95"><Copy size={15} className="mx-auto mb-1" />Copy</button>}
+                <button onClick={generateInvoice} disabled={isGeneratingInvoice} className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white disabled:opacity-50 active:scale-95"><FileText size={15} className="mx-auto mb-1" />{isGeneratingInvoice ? 'Wait' : 'Invoice'}</button>
+            </div>
+
+            <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950 shadow-lg shadow-black/20">
+                <h2 className="border-b border-white/10 p-4 font-black text-white">Items ({order.lineItems.length})</h2>
+                <div className="divide-y divide-white/10">
                     {order.lineItems.map((item) => (
                         <div key={item.id} className="p-4">
                             <div className="flex items-start gap-3">
                                 {item.image ? (
-                                    <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                                    <img src={item.image} alt={item.name} className="h-16 w-16 flex-shrink-0 rounded-2xl object-cover ring-1 ring-white/10" />
                                 ) : (
-                                    <div className="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                                        <Package size={20} className="text-gray-400" />
+                                    <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-white/[0.06] ring-1 ring-white/10">
+                                        <Package size={20} className="text-slate-500" />
                                     </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-gray-900">{item.name}</p>
-                                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                                    <p className="font-bold text-white">{item.name}</p>
+                                    <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
                                         <span>Qty: {item.quantity}</span>
-                                        {item.sku && <span>• SKU: {item.sku}</span>}
+                                        {item.sku && <span>SKU: {item.sku}</span>}
                                     </div>
                                 </div>
-                                <span className="font-medium text-gray-900">{formatCurrency(item.price)}</span>
+                                <span className="font-black text-white">{formatCurrency(item.price)}</span>
                             </div>
                             {/* Product Variations / Metadata */}
                             {item.meta_data && item.meta_data.length > 0 && (
-                                <div className="mt-2 ml-[68px] space-y-1">
+                                <div className="ml-[76px] mt-3 space-y-1.5">
                                     {item.meta_data
                                         .filter((meta) => !meta.key.startsWith('_'))
                                         .map((meta, idx) => {
                                             const imageUrls = extractAllImageUrls(meta.value);
                                             return (
                                                 <div key={idx} className="text-xs">
-                                                    <span className="font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                    <span className="rounded bg-white/[0.08] px-1.5 py-0.5 font-bold text-slate-400">
                                                         {fixMojibake(meta.key)}:
                                                     </span>
                                                     {imageUrls.length > 0 ? (
@@ -469,13 +502,13 @@ export function MobileOrderDetail() {
                                                                     <img
                                                                         src={imgUrl}
                                                                         alt={`${meta.key} ${imgIdx + 1}`}
-                                                                        className="h-12 w-auto rounded border border-gray-200"
+                                                                        className="h-12 w-auto rounded-lg border border-white/10"
                                                                     />
                                                                 </button>
                                                             ))}
                                                         </div>
                                                     ) : (
-                                                        <span className="ml-1 text-gray-700 whitespace-pre-line">{normalizeMetaValue(fixMojibake(meta.value))}</span>
+                                                        <span className="ml-1 whitespace-pre-line text-slate-300">{normalizeMetaValue(fixMojibake(meta.value))}</span>
                                                     )}
                                                 </div>
                                             );
@@ -487,26 +520,26 @@ export function MobileOrderDetail() {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-900 mb-3">Order Summary</h2>
+            <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+                <h2 className="mb-3 font-black text-white">Order Summary</h2>
                 <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-gray-600">Subtotal</span><span className="text-gray-900">{formatCurrency(order.subtotal)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-600">Shipping</span><span className="text-gray-900">{formatCurrency(order.shippingTotal)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-600">Tax</span><span className="text-gray-900">{formatCurrency(order.taxTotal)}</span></div>
-                    <div className="flex justify-between pt-2 border-t border-gray-100"><span className="font-semibold text-gray-900">Total</span><span className="font-bold text-gray-900">{formatCurrency(order.total)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span className="text-slate-200">{formatCurrency(order.subtotal)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Shipping</span><span className="text-slate-200">{formatCurrency(order.shippingTotal)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Tax</span><span className="text-slate-200">{formatCurrency(order.taxTotal)}</span></div>
+                    <div className="flex justify-between border-t border-white/10 pt-3"><span className="font-black text-white">Total</span><span className="font-black text-white">{formatCurrency(order.total)}</span></div>
                 </div>
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100"><CreditCard size={16} className="text-gray-400" /><span className="text-sm text-gray-600">{order.paymentMethod}</span></div>
+                <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3"><CreditCard size={16} className="text-slate-500" /><span className="text-sm text-slate-400">{order.paymentMethod}</span></div>
             </div>
 
-            <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+            <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-3 shadow-lg shadow-black/20">
                 <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase text-gray-500 tracking-wide">Reorder detail panels</span>
+                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Reorder detail panels</span>
                     <button
                         onClick={() => {
                             setMobilePanelOrder(DEFAULT_MOBILE_PANEL_ORDER);
                             toast.success('Panel order reset');
                         }}
-                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 active:bg-gray-50"
+                        className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 active:bg-white/10"
                     >
                         <RotateCcw size={12} />
                         Reset
@@ -520,7 +553,7 @@ export function MobileOrderDetail() {
                         <button
                             onClick={() => movePanel(panelId, 'up')}
                             disabled={index === 0}
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-slate-950 px-2 py-1 text-xs text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                             <ChevronUp size={12} />
                             Up
@@ -528,7 +561,7 @@ export function MobileOrderDetail() {
                         <button
                             onClick={() => movePanel(panelId, 'down')}
                             disabled={index === visiblePanelOrder.length - 1}
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-slate-950 px-2 py-1 text-xs text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                             <ChevronDown size={12} />
                             Down

@@ -555,7 +555,7 @@ export class MarketingService {
         const automationIds = automations.map((automation) => automation.id);
 
         const now = new Date();
-        const [enrollmentGroups, holdingGroups, failedRunGroups, goalGroups] = await Promise.all([
+        const [enrollmentGroups, holdingGroups, completedActionEvents, failedActionEvents, goalGroups] = await Promise.all([
             prisma.automationEnrollment.groupBy({
                 by: ['automationId', 'status'],
                 where: {
@@ -574,17 +574,33 @@ export class MarketingService {
                 },
                 _count: true
             }),
-            prisma.automationRunEvent.groupBy({
-                by: ['automationId'],
+            prisma.automationRunEvent.findMany({
                 where: {
                     accountId,
                     automationId: { in: automationIds },
-                    OR: [
-                        { eventType: 'FAILED' },
-                        { outcome: { contains: 'FAILED', mode: 'insensitive' } }
-                    ]
+                    eventType: 'NODE_EXECUTED',
+                    enrollment: { status: 'COMPLETED' },
+                    NOT: { outcome: { contains: 'SKIPPED', mode: 'insensitive' } }
                 },
-                _count: true
+                select: {
+                    automationId: true,
+                    enrollmentId: true,
+                    metadata: true
+                }
+            }),
+            prisma.automationRunEvent.findMany({
+                where: {
+                    accountId,
+                    automationId: { in: automationIds },
+                    eventType: 'NODE_EXECUTED',
+                    outcome: { contains: 'FAILED', mode: 'insensitive' },
+                    NOT: { outcome: { contains: 'SKIPPED', mode: 'insensitive' } }
+                },
+                select: {
+                    automationId: true,
+                    enrollmentId: true,
+                    metadata: true
+                }
             }),
             prisma.automationGoalEvent.groupBy({
                 by: ['automationId'],
@@ -600,7 +616,6 @@ export class MarketingService {
         for (const group of enrollmentGroups) {
             const existing = enrollmentStats.get(group.automationId) || { active: 0, completed: 0 };
             if (group.status === 'ACTIVE') existing.active = group._count;
-            if (group.status === 'COMPLETED') existing.completed = group._count;
             enrollmentStats.set(group.automationId, existing);
         }
 
@@ -609,9 +624,35 @@ export class MarketingService {
             holdingStats.set(group.automationId, group._count);
         }
 
+        const completedEnrollmentIdsByAutomation = new Map<string, Set<string>>();
+        for (const event of completedActionEvents) {
+            const metadata = (event.metadata && typeof event.metadata === 'object') ? event.metadata as Record<string, unknown> : {};
+            if (String(metadata.nodeType || '').toUpperCase() === 'TRIGGER') continue;
+
+            const enrollmentIds = completedEnrollmentIdsByAutomation.get(event.automationId) || new Set<string>();
+            enrollmentIds.add(event.enrollmentId);
+            completedEnrollmentIdsByAutomation.set(event.automationId, enrollmentIds);
+        }
+
+        for (const [automationId, enrollmentIds] of completedEnrollmentIdsByAutomation) {
+            const existing = enrollmentStats.get(automationId) || { active: 0, completed: 0 };
+            existing.completed = enrollmentIds.size;
+            enrollmentStats.set(automationId, existing);
+        }
+
+        const failedEnrollmentIdsByAutomation = new Map<string, Set<string>>();
+        for (const event of failedActionEvents) {
+            const metadata = (event.metadata && typeof event.metadata === 'object') ? event.metadata as Record<string, unknown> : {};
+            if (String(metadata.nodeType || '').toUpperCase() === 'TRIGGER') continue;
+
+            const enrollmentIds = failedEnrollmentIdsByAutomation.get(event.automationId) || new Set<string>();
+            enrollmentIds.add(event.enrollmentId);
+            failedEnrollmentIdsByAutomation.set(event.automationId, enrollmentIds);
+        }
+
         const failedStats = new Map<string, number>();
-        for (const group of failedRunGroups) {
-            failedStats.set(group.automationId, group._count);
+        for (const [automationId, enrollmentIds] of failedEnrollmentIdsByAutomation) {
+            failedStats.set(automationId, enrollmentIds.size);
         }
 
         const revenueStats = new Map<string, number>();

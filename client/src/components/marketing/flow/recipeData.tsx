@@ -8,6 +8,8 @@
 import React from 'react';
 import { ShoppingCart, Mail, Star, Tag, Gift, Heart } from 'lucide-react';
 import type { Node, Edge } from '@xyflow/react';
+import { compileEmailDesignV2, createDefaultEmailDesignV2 } from '../../../lib/emailDesignerV2';
+import { createBlock } from '../emailDesignerV2/blockFactory';
 
 export interface AutomationRecipe {
     id: string;
@@ -22,6 +24,59 @@ export interface AutomationRecipe {
 export const AUTOMATION_CATEGORIES = ['All', 'Onboarding', 'Sales', 'Engagement', 'Segmentation', 'Retention'] as const;
 
 export type AutomationCategory = typeof AUTOMATION_CATEGORIES[number];
+
+const createReviewRequestEmailConfig = () => {
+    const subject = 'How was your order?';
+    const previewText = 'Tell us how everything went with your recent order.';
+    const design = createDefaultEmailDesignV2({ title: subject, previewText, appName: '{{store.name}}' });
+    const introBlock = createBlock('text');
+    const reviewBlock = createBlock('review');
+
+    if (introBlock.type === 'text') {
+        introBlock.props = {
+            html: '<h2>How was your order?</h2><p>Thanks for shopping with us. Your feedback helps other customers choose with confidence and helps us keep improving.</p>',
+            align: 'center',
+            size: 16,
+            lineHeight: 1.65,
+        };
+    }
+
+    if (reviewBlock.type === 'review') {
+        reviewBlock.props = {
+            ...reviewBlock.props,
+            headline: 'Review {{review.productName}}',
+            content: 'Could you take a minute to share your experience with {{review.productName}}?',
+            ctaLabel: 'Leave a review',
+            ctaHref: '{{review.productUrl}}',
+            showRating: false,
+            showReviewer: false,
+            showProductName: false,
+        };
+    }
+
+    design.document.sections[1] = {
+        ...design.document.sections[1],
+        name: 'Review Request',
+        columns: [{
+            ...design.document.sections[1].columns[0],
+            blocks: [
+                introBlock,
+                reviewBlock,
+            ],
+        }],
+    };
+
+    return {
+        actionType: 'SEND_EMAIL',
+        templateType: 'visual',
+        emailCategory: 'MARKETING',
+        to: '{{customer.email}}',
+        subject,
+        previewText,
+        htmlContent: compileEmailDesignV2(design),
+        designJson: design,
+    };
+};
 
 export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     {
@@ -71,7 +126,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
         nodes: [
             { id: 'trigger', type: 'trigger', data: { label: 'Order Completed', config: { triggerType: 'ORDER_COMPLETED' } } },
             { id: 'delay1', type: 'delay', data: { label: 'Wait 7 Days', config: { duration: 7, unit: 'days' } } },
-            { id: 'email1', type: 'action', data: { label: 'Review Request', config: { actionType: 'SEND_EMAIL', subject: 'How was your order?' } } },
+            { id: 'email1', type: 'action', data: { label: 'Review Request', config: createReviewRequestEmailConfig() } },
         ],
         edges: [
             { source: 'trigger', target: 'delay1' },

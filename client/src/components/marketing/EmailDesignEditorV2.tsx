@@ -116,6 +116,7 @@ interface PreviewMergeContext {
     orderSubtotal: string;
     orderShippingTotal: string;
     orderDiscountTotal: string;
+    orderTaxTotal: string;
     orderTotal: string;
     orderItemsTable: string;
     orderItemsCompact: string;
@@ -159,6 +160,7 @@ function applyPreviewMergeTags(html: string, context: PreviewMergeContext): stri
         [/\{\{order\.subtotal\}\}/g, context.orderSubtotal],
         [/\{\{order\.shippingTotal\}\}/g, context.orderShippingTotal],
         [/\{\{order\.discountTotal\}\}/g, context.orderDiscountTotal],
+        [/\{\{order\.taxTotal\}\}/g, context.orderTaxTotal],
         [/\{\{order\.total\}\}/g, context.orderTotal],
         [/\{\{order\.itemsTable\}\}/g, context.orderItemsTable],
         [/\{\{order\.itemsCompact\}\}/g, context.orderItemsCompact],
@@ -202,9 +204,10 @@ function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContex
         orderSubtotal: '$89.00',
         orderShippingTotal: '$10.00',
         orderDiscountTotal: '$0.00',
+        orderTaxTotal: '$9.00',
         orderTotal: '$99.00',
-        orderItemsTable: '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tbody><tr><td style="padding:12px;border-bottom:1px solid #e5e7eb;">Classic Hoodie</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:center;">1</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;">$89.00</td></tr></tbody></table>',
-        orderItemsCompact: '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-family:Arial,sans-serif;"><div style="padding:12px;color:#374151;"><strong>Classic Hoodie</strong><br><span style="font-size:13px;color:#6b7280;">Qty: 1 &middot; $89.00</span></div></div>',
+        orderItemsTable: '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tbody><tr><td style="padding:12px;border-bottom:1px solid #e5e7eb;">Classic Hoodie</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:center;">1</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;">$89.00<br><span style="font-size:12px;color:#6b7280;">GST: $8.09</span></td></tr></tbody></table>',
+        orderItemsCompact: '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-family:Arial,sans-serif;"><div style="padding:12px;color:#374151;"><strong>Classic Hoodie</strong><br><span style="font-size:13px;color:#6b7280;">Qty: 1 &middot; $89.00 &middot; GST: $8.09</span></div></div>',
         orderItemsList: '<ul style="margin:0;padding-left:20px;color:#374151;line-height:1.6;font-family:Arial,sans-serif;"><li>1 x Classic Hoodie</li></ul>',
         orderCustomerNote: 'Please leave at front door.',
         orderTrackingNumber: '33A1234567890',
@@ -303,15 +306,16 @@ function renderPreviewOrderItemsTable(items: Array<Record<string, unknown>>, for
         const name = escapePreviewHtml(String(item.name || item.productName || 'Product'));
         const quantity = escapePreviewHtml(String(item.quantity || 1));
         const price = escapePreviewHtml(formatMoney(item.total || item.price));
+        const tax = escapePreviewHtml(formatMoney(getPreviewOrderItemTaxTotal(item)));
         const itemMeta = getInvoiceItemMeta(item)
             .filter((meta) => String(meta.value || '').trim())
             .slice(0, 12)
             .map((meta) => `${escapePreviewHtml(meta.label)}: ${escapePreviewHtml(String(meta.value || '').replace(/\s+/g, ' ').trim())}`)
             .join('<br />');
-        return `<tr style="border-bottom:1px solid #e5e7eb;">${image ? `<td style="padding:12px;vertical-align:top;"><img src="${escapePreviewHtml(image)}" alt="${name}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;" /></td>` : '<td style="padding:12px;"></td>'}<td style="padding:12px;color:#374151;">${name}${itemMeta ? `<br /><span style="font-size:12px;color:#6b7280;">${itemMeta}</span>` : ''}</td><td style="padding:12px;text-align:center;color:#374151;">${quantity}</td><td style="padding:12px;text-align:right;color:#374151;">${price}</td></tr>`;
+        return `<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:12px;color:#374151;vertical-align:top;width:70%;">${image ? `<img src="${escapePreviewHtml(image)}" alt="${name}" width="50" height="50" style="display:inline-block;width:50px;height:50px;object-fit:cover;border-radius:4px;margin:0 10px 8px 0;vertical-align:top;" />` : ''}<span style="display:inline-block;max-width:100%;vertical-align:top;line-height:1.35;word-break:break-word;"><strong style="font-weight:500;color:#374151;">${name}</strong>${itemMeta ? `<br /><span style="font-size:12px;color:#6b7280;">${itemMeta}</span>` : ''}</span></td><td style="padding:12px 8px;text-align:center;color:#374151;vertical-align:top;width:44px;white-space:nowrap;">${quantity}</td><td style="padding:12px 8px;text-align:right;color:#374151;vertical-align:top;width:86px;white-space:nowrap;">${price}<br><span style="font-size:12px;color:#6b7280;">GST: ${tax}</span></td></tr>`;
     }).join('');
 
-    return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-family:Arial,sans-serif;"><thead><tr style="background:#f3f4f6;"><th style="padding:12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;width:60px;"></th><th style="padding:12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;">Product</th><th style="padding:12px;text-align:center;font-size:12px;color:#6b7280;text-transform:uppercase;width:60px;">Qty</th><th style="padding:12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;width:100px;">Price</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-family:Arial,sans-serif;"><thead><tr style="background:#f3f4f6;"><th style="padding:12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;width:70%;">Product</th><th style="padding:12px 8px;text-align:center;font-size:12px;color:#6b7280;text-transform:uppercase;width:44px;">Qty</th><th style="padding:12px 8px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;width:86px;">Price</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function renderPreviewOrderItemsCompact(items: Array<Record<string, unknown>>, formatMoney: (value: unknown) => string): string {
@@ -321,8 +325,24 @@ function renderPreviewOrderItemsCompact(items: Array<Record<string, unknown>>, f
         const name = escapePreviewHtml(String(item.name || item.productName || item.product_name || 'Product'));
         const quantity = escapePreviewHtml(String(item.quantity || 1));
         const total = escapePreviewHtml(formatMoney(item.total || item.price));
-        return `<div style="padding:12px;border-bottom:1px solid #e5e7eb;color:#374151;"><strong>${name}</strong><br><span style="font-size:13px;color:#6b7280;">Qty: ${quantity} &middot; ${total}</span></div>`;
+        const tax = escapePreviewHtml(formatMoney(getPreviewOrderItemTaxTotal(item)));
+        return `<div style="padding:12px;border-bottom:1px solid #e5e7eb;color:#374151;"><strong>${name}</strong><br><span style="font-size:13px;color:#6b7280;">Qty: ${quantity} &middot; ${total} &middot; GST: ${tax}</span></div>`;
     }).join('')}</div>`;
+}
+
+function getPreviewOrderItemTaxTotal(item: Record<string, unknown>): unknown {
+    const directTax = item.totalTax ?? item.total_tax ?? item.taxTotal ?? item.tax_total ?? item.tax;
+    if (directTax !== undefined && directTax !== null && directTax !== '') return directTax;
+
+    const taxes = item.taxes || item.tax_lines;
+    if (!Array.isArray(taxes)) return undefined;
+
+    return taxes.reduce((sum, taxLine) => {
+        const value = taxLine && typeof taxLine === 'object'
+            ? Number((taxLine as Record<string, unknown>).total ?? (taxLine as Record<string, unknown>).subtotal ?? 0)
+            : 0;
+        return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
 }
 
 function renderPreviewOrderItemsList(items: Array<Record<string, unknown>>): string {
@@ -519,6 +539,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     orderSubtotal: fmtMoney(order.subtotal),
                     orderShippingTotal: fmtMoney(order.shipping_total),
                     orderDiscountTotal: fmtMoney(order.discount_total),
+                    orderTaxTotal: fmtMoney(order.total_tax ?? order.taxTotal ?? order.tax_total),
                     orderTotal: fmtMoney(order.total),
                     orderItemsTable: renderPreviewOrderItemsTable(lineItems, fmtMoney),
                     orderItemsCompact: renderPreviewOrderItemsCompact(lineItems, fmtMoney),
