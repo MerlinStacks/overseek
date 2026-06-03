@@ -180,7 +180,7 @@ describe('CustomersService', () => {
 
                 return [];
             });
-            mockQueryRaw.mockResolvedValueOnce([{ wooId: 123 }]);
+            mockQueryRaw.mockResolvedValueOnce([{ wooId: 123, email: 'alice@example.com', rawData: {} }]);
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'ALL', []);
 
@@ -203,7 +203,7 @@ describe('CustomersService', () => {
                 return [];
             });
             mockQueryRaw
-                .mockResolvedValueOnce([{ wooId: 123 }])
+                .mockResolvedValueOnce([{ wooId: 123, email: 'alice@example.com', rawData: {} }])
                 .mockResolvedValueOnce([{
                     id: 'customer-db-1',
                     wooId: 123,

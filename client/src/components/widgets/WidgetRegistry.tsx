@@ -23,6 +23,7 @@ const VisitorCountWidget = lazy(() => import('./VisitorCountWidget').then(m => (
 const OpenInboxWidget = lazy(() => import('./OpenInboxWidget').then(m => ({ default: m.OpenInboxWidget })));
 const GoldPriceMarginWidget = lazy(() => import('./GoldPriceMarginWidget').then(m => ({ default: m.GoldPriceMarginWidget })));
 const SeoKeywordsWidget = lazy(() => import('./SeoKeywordsWidget').then(m => ({ default: m.SeoKeywordsWidget })));
+const EmailLogWidget = lazy(() => import('./EmailLogWidget').then(m => ({ default: m.EmailLogWidget })));
 
 // Medium widgets (moderate bundle impact)
 const LiveCartsWidget = lazy(() => import('./LiveCartsWidget'));
@@ -98,6 +99,7 @@ export const WidgetRegistry: Record<string, {
     'cart-abandonment': { component: CartAbandonmentWidget, label: 'Cart Abandonment', defaultW: 6, defaultH: 5, requiredPermission: 'view_finance' },
     'gold-price-margin': { component: GoldPriceMarginWidget, label: 'Gold Price Margins', defaultW: 4, defaultH: 4, requiredPermission: 'view_finance' },
     'seo-keywords': { component: SeoKeywordsWidget, label: 'SEO Keywords', defaultW: 6, defaultH: 5 },
+    'email-log': { component: EmailLogWidget, label: 'Email Log', defaultW: 6, defaultH: 5, requiredPermission: 'view_marketing' },
     'status-center': { component: StatusCenterWidget, label: 'Status Center', defaultW: 6, defaultH: 5 },
     'funnel': { component: FunnelWidget, label: 'Conversion Funnel', defaultW: 6, defaultH: 5 },
     'analytics-stats': { component: AnalyticsStatsWidget, label: 'Analytics Stats', defaultW: 6, defaultH: 5 }
