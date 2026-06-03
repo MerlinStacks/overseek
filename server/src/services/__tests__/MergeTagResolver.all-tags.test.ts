@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveMergeTags } from '../MergeTagResolver';
+import { applyPreviewText, resolveMergeTags } from '../MergeTagResolver';
 
 describe('MergeTagResolver all merge tags', () => {
     const catalogMergeTags = [
@@ -22,6 +22,8 @@ describe('MergeTagResolver all merge tags', () => {
         '{{order.billingAddress}}',
         '{{order.shippingAddress}}',
         '{{order.itemsTable}}',
+        '{{order.itemsCompact}}',
+        '{{order.itemsList}}',
         '{{order.downloads}}',
         '{{order.invoiceUrl}}',
         '{{product.name}}',
@@ -160,6 +162,8 @@ describe('MergeTagResolver all merge tags', () => {
             '{{order.billingAddress}}',
             '{{order.shippingAddress}}',
             '{{order.itemsTable}}',
+            '{{order.itemsCompact}}',
+            '{{order.itemsList}}',
             '{{order.downloads}}',
             '{{order.invoiceUrl}}',
             '{{invoice_url}}',
@@ -242,5 +246,88 @@ describe('MergeTagResolver all merge tags', () => {
 
         expect(html).toContain('ABC 123');
         expect(html).toContain('https://auspost.com.au/mypost/track/#/details/ABC%20123');
+    });
+
+    it('resolves order blocks from raw WooCommerce order payloads', () => {
+        const html = resolveMergeTags(
+            '{{order.number}} {{order.date}} {{order.paymentMethod}} {{order.billingAddress}} {{order.shippingAddress}} {{order.itemsTable}} Total: {{order.total}}',
+            {
+                order: {
+                    id: 123,
+                    number: '100123',
+                    date_created: '2026-06-02T10:15:00',
+                    payment_method_title: 'Direct bank transfer',
+                    currency: 'AUD',
+                    total: '42.50',
+                    billing: {
+                        first_name: 'Jordan',
+                        last_name: 'Smith',
+                        address_1: '22 Test Lane',
+                        city: 'Melbourne',
+                        state: 'VIC',
+                        postcode: '3000',
+                        country: 'AU',
+                    },
+                    shipping: {
+                        first_name: 'Jordan',
+                        last_name: 'Smith',
+                        address_1: '44 Ship Road',
+                        city: 'Brisbane',
+                        state: 'QLD',
+                        postcode: '4000',
+                        country: 'AU',
+                    },
+                    line_items: [
+                        { name: 'Printed Tee', quantity: 2, total: '42.50' },
+                    ],
+                },
+            }
+        );
+
+        expect(html).toContain('100123');
+        expect(html).toContain('2 June 2026');
+        expect(html).toContain('Direct bank transfer');
+        expect(html).toContain('22 Test Lane');
+        expect(html).toContain('44 Ship Road');
+        expect(html).toContain('Printed Tee');
+        expect(html).toContain('$42.50');
+        expect(html).not.toMatch(/\{\{[^}]+\}\}/);
+    });
+
+    it('renders compact and list order item formats', () => {
+        const html = resolveMergeTags(
+            '{{order.itemsCompact}} {{order.itemsList}}',
+            {
+                order: {
+                    line_items: [
+                        { name: 'Printed Tee', quantity: 2, total: '42.50', currency: 'AUD' },
+                    ],
+                },
+            }
+        );
+
+        expect(html).toContain('Qty: 2');
+        expect(html).toContain('$42.50');
+        expect(html).toContain('<li>2 x Printed Tee</li>');
+        expect(html).not.toMatch(/\{\{[^}]+\}\}/);
+    });
+
+    it('replaces the designer preheader with escaped preview text', () => {
+        const html = '<body><div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Old preview</div><p>Hello</p></body>';
+
+        const result = applyPreviewText(html, 'New <preview> & copy');
+
+        expect(result).toContain('New &lt;preview&gt; &amp; copy');
+        expect(result).toContain('<p>Hello</p>');
+        expect(result).not.toContain('Old preview');
+    });
+
+    it('uses fallback syntax only when a merge tag has no resolved value', () => {
+        const html = resolveMergeTags(
+            'Hi {{customer.firstName | fallback: "there"}}, your order is {{order.number | fallback: "ready"}}.',
+            { customer: { first_name: 'Alex' } }
+        );
+
+        expect(html).toBe('Hi Alex, your order is ready.');
     });
 });

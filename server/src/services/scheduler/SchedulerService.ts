@@ -118,6 +118,9 @@ export class SchedulerService {
                 case 'conversion-retry':
                     await MaintenanceScheduler.dispatchConversionRetry();
                     break;
+                case 'email-body-cleanup':
+                    await MaintenanceScheduler.dispatchEmailBodyCleanup();
+                    break;
                 case 'shipping-tracking-poll':
                     await ShippingTrackingScheduler.dispatchTrackingPoll();
                     break;

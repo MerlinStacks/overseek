@@ -4,7 +4,7 @@
  * Handles SMTP sending and IMAP receiving using the unified EmailAccount model.
  */
 
-import { EmailAccount } from '@prisma/client';
+import { EmailAccount, Prisma } from '@prisma/client';
 import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
 import { simpleParser, ParsedMail } from 'mailparser';
@@ -35,6 +35,55 @@ async function safeRelayJson(response: Response, endpoint: string): Promise<any>
 export class EmailService {
     private static readonly RELAY_MAX_ATTACHMENTS = 10;
     private static readonly RELAY_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+    private static readonly DEFAULT_SENT_BODY_RETENTION_DAYS = 30;
+    private static readonly DEFAULT_SENT_BODY_MAX_CHARS = 500_000;
+
+    private getSentBodyRetentionDays() {
+        const configured = Number.parseInt(process.env.EMAIL_LOG_BODY_RETENTION_DAYS || '', 10);
+        return Number.isFinite(configured) && configured > 0
+            ? configured
+            : EmailService.DEFAULT_SENT_BODY_RETENTION_DAYS;
+    }
+
+    private getSentBodyMaxChars() {
+        const configured = Number.parseInt(process.env.EMAIL_LOG_BODY_MAX_CHARS || '', 10);
+        return Number.isFinite(configured) && configured > 0
+            ? configured
+            : EmailService.DEFAULT_SENT_BODY_MAX_CHARS;
+    }
+
+    private getSentBodyExpiresAt() {
+        return new Date(Date.now() + this.getSentBodyRetentionDays() * 24 * 60 * 60 * 1000);
+    }
+
+    private buildStoredSentBodyPayload(html: string, options?: { category?: 'MARKETING' | 'TRANSACTIONAL' }): Prisma.InputJsonValue {
+        const maxChars = this.getSentBodyMaxChars();
+        const truncated = html.length > maxChars;
+        return {
+            html: truncated ? html.slice(0, maxChars) : html,
+            type: 'sent_body_preview',
+            truncated,
+            originalLength: html.length,
+            storedAt: new Date().toISOString(),
+            category: options?.category || 'MARKETING'
+        };
+    }
+
+    static async cleanupExpiredStoredBodies(): Promise<{ cleared: number }> {
+        const result = await prisma.emailLog.updateMany({
+            where: {
+                emailBodyExpiresAt: { lt: new Date() },
+                status: { in: ['SUCCESS', 'RETRIED', 'BOUNCED', 'COMPLAINED'] }
+            },
+            data: {
+                emailPayload: Prisma.DbNull,
+                emailBodyExpiresAt: null
+            }
+        });
+
+        Logger.info('[EmailService] Expired sent-body cleanup completed', { cleared: result.count });
+        return { cleared: result.count };
+    }
 
     private wait(ms: number) {
         return new Promise((resolve) => setTimeout(resolve, ms));
@@ -384,7 +433,9 @@ export class EmailService {
                         trackingId,
                         source: options?.source,
                         sourceId: options?.sourceId,
-                        canRetry: false
+                        canRetry: false,
+                        emailPayload: this.buildStoredSentBodyPayload(htmlWithMergeTagUrls, { category: emailCategory }),
+                        emailBodyExpiresAt: this.getSentBodyExpiresAt()
                     }
                 });
 
@@ -464,7 +515,9 @@ export class EmailService {
                     trackingId,
                     source: options?.source,
                     sourceId: options?.sourceId,
-                    canRetry: false
+                    canRetry: false,
+                    emailPayload: this.buildStoredSentBodyPayload(htmlWithMergeTagUrls, { category: emailCategory }),
+                    emailBodyExpiresAt: this.getSentBodyExpiresAt()
                 }
             });
 

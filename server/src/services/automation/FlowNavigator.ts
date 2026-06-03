@@ -50,18 +50,31 @@ export function calculateDelayDuration(data: any): number {
 /**
  * Replace {{variable}} placeholders with values from context.
  */
-export function renderTemplate(template: string, context: any): string {
+export function renderTemplate(template: string, context: any, options?: { preserveUnknown?: boolean }): string {
     if (!template) return '';
 
-    return template.replace(/\{\{(.*?)\}\}/g, (_match, path) => {
-        const keys = path.trim().split('.');
+    return template.replace(/\{\{(.*?)\}\}/g, (match, expression) => {
+        const { path, fallback } = parseTemplateExpression(expression);
+        const keys = path.split('.');
         let value = context;
 
         for (const key of keys) {
-            if (value === undefined || value === null) return '';
+            if (value === undefined || value === null) return options?.preserveUnknown ? match : fallback;
             value = value[key];
         }
 
-        return value !== undefined && value !== null ? String(value) : '';
+        return value !== undefined && value !== null ? String(value) : (options?.preserveUnknown ? match : fallback);
     });
+}
+
+function parseTemplateExpression(expression: string): { path: string; fallback: string } {
+    const fallbackMatch = expression.match(/^(.+?)\s*\|\s*fallback\s*:\s*((?:"[^"]*")|(?:'[^']*')|.*)$/);
+    if (!fallbackMatch) return { path: expression.trim(), fallback: '' };
+
+    const rawFallback = fallbackMatch[2].trim();
+    const fallback = ((rawFallback.startsWith('"') && rawFallback.endsWith('"')) || (rawFallback.startsWith("'") && rawFallback.endsWith("'")))
+        ? rawFallback.slice(1, -1)
+        : rawFallback;
+
+    return { path: fallbackMatch[1].trim(), fallback };
 }

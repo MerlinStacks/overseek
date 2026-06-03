@@ -58,7 +58,7 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
             },
         };
     }
-    if (type === 'orderSummary') return { id, type, props: { heading: 'Order summary', showTotals: true } };
+    if (type === 'orderSummary') return { id, type, props: { heading: 'Order summary', showTotals: true, itemsFormat: 'table' } };
     if (type === 'address') return { id, type, props: { title: 'Shipping address', source: 'shipping' } };
     if (type === 'coupon') return { id, type, props: { headline: 'Your exclusive offer', code: '{{coupon.code}}', description: '{{coupon.description}}' } };
     if (type === 'review') return { id, type, props: { headline: 'How did we do?', rating: '{{review.rating}}', content: '{{review.content}}', reviewer: '{{review.reviewer}}', productName: '{{review.productName}}', ctaLabel: 'Write your review', ctaHref: '{{review.productUrl}}' } };

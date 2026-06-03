@@ -592,6 +592,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                 <EmailPreviewModal
                     htmlContent={config.htmlContent || ''}
                     subject={config.subject}
+                    previewText={config.previewText}
                     category={emailCategory}
                     onClose={() => setShowPreview(false)}
                 />

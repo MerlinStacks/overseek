@@ -24,6 +24,8 @@ export const EMAIL_MERGE_TAGS: MergeTagDefinition[] = [
     { category: 'order', label: 'Billing Address', value: '{{order.billingAddress}}' },
     { category: 'order', label: 'Shipping Address', value: '{{order.shippingAddress}}' },
     { category: 'order', label: 'Order Items Table', value: '{{order.itemsTable}}' },
+    { category: 'order', label: 'Order Items Compact', value: '{{order.itemsCompact}}' },
+    { category: 'order', label: 'Order Items List', value: '{{order.itemsList}}' },
     { category: 'order', label: 'Downloads Table', value: '{{order.downloads}}' },
     { category: 'order', label: 'Invoice Download URL', value: '{{order.invoiceUrl}}' },
     { category: 'product', label: 'Product Name', value: '{{product.name}}' },

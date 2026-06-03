@@ -7,6 +7,7 @@
  * - BOM inventory sync (hourly)
  * - Account backups (hourly)
  * - Janitor cleanup (daily)
+ * - Email sent-body cleanup (daily)
  * - Meta token proactive refresh (daily)
  * - Queue depth enforcement (every 5 minutes)
  * - Conversion retry (every 10 minutes)
@@ -85,6 +86,12 @@ export class MaintenanceScheduler {
             jobId: 'conversion-retry-10min'
         });
         Logger.info('Scheduled Conversion Retry (Every 10 minutes)');
+
+        await this.queue.add('email-body-cleanup', {}, {
+            repeat: { pattern: '15 3 * * *' },
+            jobId: 'email-body-cleanup-daily'
+        });
+        Logger.info('Scheduled Email Sent-Body Cleanup (Daily at 03:15 UTC)');
     }
 
     /**
@@ -101,6 +108,8 @@ export class MaintenanceScheduler {
         // Nightly Web Vitals cleanup (90-day retention)
         this.runWebVitalsCleanup();
         this.webVitalsInterval = setInterval(() => this.runWebVitalsCleanup(), 24 * 60 * 60 * 1000);
+
+        this.dispatchEmailBodyCleanup().catch(e => Logger.error('Email Body Cleanup Error', { error: e }));
 
         // Run queue depth check on startup then every 5 minutes
         this.dispatchQueueDepthCheck().catch(e => Logger.error('Queue Depth Check Error', { error: e }));
@@ -432,6 +441,19 @@ export class MaintenanceScheduler {
             }
         } catch (error) {
             Logger.error('[Scheduler] Conversion retry failed', { error });
+        }
+    }
+
+    /**
+     * Clear stored sent-email bodies after their retention window.
+     */
+    static async dispatchEmailBodyCleanup() {
+        Logger.info('[Scheduler] Starting email sent-body cleanup');
+        try {
+            const { EmailService } = await import('../EmailService');
+            await EmailService.cleanupExpiredStoredBodies();
+        } catch (error) {
+            Logger.error('[Scheduler] Email sent-body cleanup failed', { error });
         }
     }
 

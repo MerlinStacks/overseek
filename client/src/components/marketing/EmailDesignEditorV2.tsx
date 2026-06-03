@@ -16,6 +16,7 @@ import {
     type EmailDeviceVisibility,
     type EmailSection,
     type EmailStackMode,
+    type OrderItemsFormat,
     type SocialIconSet,
     type SocialIconStyle,
 } from '../../lib/emailDesignerV2';
@@ -84,6 +85,7 @@ const MAX_TEST_RECIPIENTS = 5;
 const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'X', 'Twitter', 'LinkedIn', 'Pinterest'];
 const SOCIAL_ICON_STYLES: SocialIconStyle[] = ['solid', 'outline', 'glyph'];
 const SOCIAL_ICON_SETS: SocialIconSet[] = ['native', 'classic'];
+const ORDER_ITEMS_FORMATS: OrderItemsFormat[] = ['table', 'compact', 'list'];
 const LTR_TEXT_STYLE = { direction: 'ltr', unicodeBidi: 'plaintext', writingMode: 'horizontal-tb' } as const;
 const PRODUCT_VISIBILITY_FIELDS = [
     { key: 'showImage', label: 'Image' },
@@ -1801,7 +1803,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                 <Field label="Button label" value={block.props.buttonLabel} onChange={(value) => patchProps({ buttonLabel: value })} />
                 <Field label="Button URL" value={block.props.buttonHref} onChange={(value) => patchProps({ buttonHref: value, productUrl: value })} />
             </>}
-            {block.type === 'orderSummary' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><ToggleField label="Show total" checked={block.props.showTotals} onChange={(checked) => patchProps({ showTotals: checked })} /></>}
+            {block.type === 'orderSummary' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><SelectField label="Format" value={block.props.itemsFormat || 'table'} options={ORDER_ITEMS_FORMATS} onChange={(value) => patchProps({ itemsFormat: value as OrderItemsFormat })} /><ToggleField label="Show total" checked={block.props.showTotals} onChange={(checked) => patchProps({ showTotals: checked })} /></>}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}
             {block.type === 'review' && <>

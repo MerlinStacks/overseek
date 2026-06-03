@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail, AlertTriangle, ShieldAlert, Clock3 } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail, AlertTriangle, ShieldAlert, Clock3, Eye } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
 interface EmailLog {
@@ -17,6 +17,8 @@ interface EmailLog {
     sourceId?: string;
     messageId?: string;
     createdAt: string;
+    emailBodyExpiresAt?: string | null;
+    hasStoredEmailBody?: boolean;
     trackingEvents?: Array<{
         id: string;
         eventType: 'BOUNCE' | 'COMPLAINT';
@@ -26,6 +28,17 @@ interface EmailLog {
         name: string;
         email: string;
     };
+}
+
+interface EmailLogContent {
+    id: string;
+    subject: string;
+    to: string;
+    html: string;
+    truncated: boolean;
+    originalLength: number;
+    storedAt: string | null;
+    expiresAt: string | null;
 }
 
 interface EmailLogsResponse {
@@ -43,6 +56,9 @@ export function EmailLogPanel() {
     const [total, setTotal] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [contentByLogId, setContentByLogId] = useState<Record<string, EmailLogContent>>({});
+    const [contentErrorByLogId, setContentErrorByLogId] = useState<Record<string, string>>({});
+    const [loadingContentId, setLoadingContentId] = useState<string | null>(null);
     const [offset, setOffset] = useState(0);
     const [busyLogId, setBusyLogId] = useState<string | null>(null);
     const location = useLocation();
@@ -204,6 +220,37 @@ export function EmailLogPanel() {
             toast.error(error?.message || 'Failed to retry email');
         } finally {
             setBusyLogId(null);
+        }
+    };
+
+    const fetchEmailContent = async (logId: string) => {
+        if (!currentAccount || !token) return;
+        if (contentByLogId[logId]) return;
+        setLoadingContentId(logId);
+        setContentErrorByLogId((current) => ({ ...current, [logId]: '' }));
+
+        try {
+            const res = await fetch(`/api/email/logs/${logId}/content`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'x-account-id': currentAccount.id
+                }
+            });
+
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Stored email body is not available');
+            }
+
+            const content: EmailLogContent = await res.json();
+            setContentByLogId((current) => ({ ...current, [logId]: content }));
+        } catch (error: any) {
+            setContentErrorByLogId((current) => ({
+                ...current,
+                [logId]: error?.message || 'Failed to load email body'
+            }));
+        } finally {
+            setLoadingContentId(null);
         }
     };
 
@@ -398,6 +445,48 @@ export function EmailLogPanel() {
                                             <div className="col-span-2">
                                                 <span className="text-gray-500">Message ID:</span>
                                                 <p className="font-mono text-xs break-all">{log.messageId}</p>
+                                            </div>
+                                        )}
+                                        {log.hasStoredEmailBody && (
+                                            <div className="col-span-2 rounded-lg border border-gray-200 bg-white p-3">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                        <span className="text-gray-500">Sent Email:</span>
+                                                        <p className="text-xs text-gray-500">
+                                                            Stored until {log.emailBodyExpiresAt ? formatDate(log.emailBodyExpiresAt) : 'retention cleanup'}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => fetchEmailContent(log.id)}
+                                                        disabled={loadingContentId === log.id}
+                                                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                                                    >
+                                                        <Eye size={14} />
+                                                        {loadingContentId === log.id ? 'Loading...' : contentByLogId[log.id] ? 'Email loaded' : 'View email'}
+                                                    </button>
+                                                </div>
+
+                                                {contentErrorByLogId[log.id] && (
+                                                    <div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">
+                                                        {contentErrorByLogId[log.id]}
+                                                    </div>
+                                                )}
+
+                                                {contentByLogId[log.id] && (
+                                                    <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+                                                        {contentByLogId[log.id].truncated && (
+                                                            <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                                                Preview truncated from {contentByLogId[log.id].originalLength.toLocaleString()} characters.
+                                                            </div>
+                                                        )}
+                                                        <iframe
+                                                            title={`Sent email preview: ${log.subject}`}
+                                                            sandbox=""
+                                                            srcDoc={contentByLogId[log.id].html}
+                                                            className="h-[520px] w-full bg-white"
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         {log.errorMessage && (

@@ -57,7 +57,18 @@ const emailLogRoutes: FastifyPluginAsync = async (fastify) => {
                     orderBy: { createdAt: 'desc' },
                     take: limit,
                     skip: offset,
-                    include: {
+                    select: {
+                        id: true,
+                        to: true,
+                        subject: true,
+                        status: true,
+                        errorMessage: true,
+                        errorCode: true,
+                        source: true,
+                        sourceId: true,
+                        messageId: true,
+                        createdAt: true,
+                        emailBodyExpiresAt: true,
                         emailAccount: { select: { name: true, email: true } },
                         trackingEvents: {
                             where: { eventType: { in: ['BOUNCE', 'COMPLAINT'] } },
@@ -68,10 +79,63 @@ const emailLogRoutes: FastifyPluginAsync = async (fastify) => {
                 }),
                 prisma.emailLog.count({ where })
             ]);
-            return { logs, total, limit, offset };
+            return {
+                logs: logs.map((log) => ({
+                    ...log,
+                    hasStoredEmailBody: Boolean(log.emailBodyExpiresAt && log.emailBodyExpiresAt > new Date())
+                })),
+                total,
+                limit,
+                offset
+            };
         } catch (error: any) {
             Logger.error('Failed to fetch email logs', { error });
             return reply.code(500).send({ error: 'Failed to fetch email logs' });
+        }
+    });
+
+    fastify.get('/logs/:id/content', async (request, reply) => {
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
+        const { id } = request.params as { id: string };
+
+        try {
+            const log = await prisma.emailLog.findFirst({
+                where: { id, accountId },
+                select: {
+                    id: true,
+                    subject: true,
+                    to: true,
+                    emailPayload: true,
+                    emailBodyExpiresAt: true
+                }
+            });
+
+            if (!log) return reply.code(404).send({ error: 'Email log not found' });
+
+            const payload = log.emailPayload as {
+                html?: unknown;
+                truncated?: unknown;
+                originalLength?: unknown;
+                storedAt?: unknown;
+            } | null;
+            if (!payload || typeof payload.html !== 'string') {
+                return reply.code(404).send({ error: 'Stored email body not available' });
+            }
+
+            return {
+                id: log.id,
+                subject: log.subject,
+                to: log.to,
+                html: payload.html,
+                truncated: payload.truncated === true,
+                originalLength: typeof payload.originalLength === 'number' ? payload.originalLength : payload.html.length,
+                storedAt: typeof payload.storedAt === 'string' ? payload.storedAt : null,
+                expiresAt: log.emailBodyExpiresAt
+            };
+        } catch (error: any) {
+            Logger.error('Failed to fetch email log content', { error, emailLogId: id });
+            return reply.code(500).send({ error: 'Failed to fetch email log content' });
         }
     });
 

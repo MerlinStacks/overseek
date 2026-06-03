@@ -2166,7 +2166,8 @@ model EmailLog {
   maxRetries     Int      @default(3)   // Max allowed retries
   canRetry       Boolean  @default(true) // Whether retry is allowed
   lastRetryAt    DateTime?              // When last retry was attempted
-  emailPayload   Json?                  // Stored payload for retry { html, attachments, options }
+  emailPayload   Json?                  // Stored retry payload or sent-body preview payload
+  emailBodyExpiresAt DateTime?          // When stored sent-body preview should be removed
   
   createdAt      DateTime @default(now())
   
@@ -2178,6 +2179,7 @@ model EmailLog {
   @@index([emailAccountId])
   @@index([trackingId])
   @@index([status, canRetry]) // For finding retryable failed emails
+  @@index([emailBodyExpiresAt])
 }
 
 model MessageTrackingEvent {

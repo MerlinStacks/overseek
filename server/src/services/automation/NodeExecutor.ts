@@ -14,7 +14,7 @@ import { cartRecoveryService } from '../CartRecoveryService';
 import { automationConditionService } from '../AutomationConditionService';
 import { automationContextService } from '../AutomationContextService';
 import { automationCouponService } from '../AutomationCouponService';
-import { resolveMergeTags } from '../MergeTagResolver';
+import { applyPreviewText, resolveMergeTags } from '../MergeTagResolver';
 import { WooService } from '../woo';
 import { FlowNode, NodeExecutionResult } from './types';
 import { renderTemplate } from './FlowNavigator';
@@ -302,14 +302,21 @@ export class NodeExecutor {
 
             if (emailAccountId) {
                 const subject = resolveMergeTags(
-                    renderTemplate(config.subject || 'Automated Email', context),
+                    renderTemplate(config.subject || 'Automated Email', context, { preserveUnknown: true }),
                     context
                 );
                 const bodyTemplate = config.htmlContent || config.body || config.html || '';
                 const body = resolveMergeTags(
-                    renderTemplate(bodyTemplate, context),
+                    renderTemplate(bodyTemplate, context, { preserveUnknown: true }),
                     context
                 );
+                const previewText = resolveMergeTags(
+                    renderTemplate(config.previewText || '', context, { preserveUnknown: true }),
+                    context
+                );
+                const finalBody = body
+                    ? applyPreviewText(body, previewText)
+                    : `<p>Email Template: ${config.templateId}</p>`;
 
                 let skippedCount = 0;
                 let sentCount = 0;
@@ -321,7 +328,7 @@ export class NodeExecutor {
                         emailAccountId,
                         recipientEmail,
                         subject,
-                        body || `<p>Email Template: ${config.templateId}</p>`,
+                        finalBody,
                         enrollment.contextData?.attachments,
                         {
                             source: 'AUTOMATION',

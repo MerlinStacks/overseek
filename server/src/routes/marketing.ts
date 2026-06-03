@@ -10,7 +10,7 @@ import { prisma } from '../utils/prisma';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { cartRecoveryService } from '../services/CartRecoveryService';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
-import { resolveMergeTags } from '../services/MergeTagResolver';
+import { applyPreviewText, resolveMergeTags } from '../services/MergeTagResolver';
 import { HTTP_LIMITS } from '../config/limits';
 
 const service = new MarketingService();
@@ -396,9 +396,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Test Email (standalone, for flow builder)
-    fastify.post<{ Body: { to: string; subject: string; content: string; category?: 'MARKETING' | 'TRANSACTIONAL' } }>('/test-email', async (request, reply) => {
+    fastify.post<{ Body: { to: string; subject: string; content: string; previewText?: string; category?: 'MARKETING' | 'TRANSACTIONAL' } }>('/test-email', async (request, reply) => {
         try {
-            const { to, subject, content, category } = request.body;
+            const { to, subject, content, previewText, category } = request.body;
 
             if (!to || !subject || !content) {
                 return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
@@ -462,13 +462,15 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
             const resolvedSubject = resolveMergeTags(subject, testContext);
             const resolvedContent = resolveMergeTags(content, testContext);
+            const resolvedPreviewText = resolveMergeTags(previewText || '', testContext);
+            const contentWithPreviewText = applyPreviewText(resolvedContent, resolvedPreviewText);
 
             const result = await emailService.sendEmail(
                 accountId,
                 emailAccount.id,
                 to,
                 resolvedSubject,
-                resolvedContent,
+                contentWithPreviewText,
                 undefined,
                 { source: 'TEST', category: category === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING' }
             );

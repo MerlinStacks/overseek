@@ -5,6 +5,7 @@ export type EmailStackMode = 'stack' | 'reverse' | 'none';
 export type SocialIconStyle = 'solid' | 'outline' | 'glyph';
 export type SocialPlatform = 'facebook' | 'instagram' | 'tiktok' | 'youtube' | 'x' | 'linkedin' | 'pinterest' | 'generic';
 export type SocialIconSet = 'native' | 'classic';
+export type OrderItemsFormat = 'table' | 'compact' | 'list';
 
 export interface EmailDesignV2Envelope {
     engine: 'overseek-v2';
@@ -190,6 +191,7 @@ export interface OrderSummaryBlock extends BaseBlock {
     props: {
         heading: string;
         showTotals: boolean;
+        itemsFormat?: OrderItemsFormat;
     };
 }
 
@@ -701,7 +703,8 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     }
 
     if (block.type === 'orderSummary') {
-        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '12px 0'};text-align:${(block.props as { align?: string }).align || 'left'};"><h3 style="margin:0 0 12px;color:${theme.textColor};font-size:18px;">${escapeHtml(block.props.heading || 'Order summary')}</h3>{{order.itemsTable}}${block.props.showTotals ? '<p style="text-align:right;font-weight:700;color:#0f172a;">Total: {{order.total}}</p>' : ''}</div>`;
+        const itemsTag = getOrderItemsMergeTag(block.props.itemsFormat);
+        return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '12px 0'};text-align:${(block.props as { align?: string }).align || 'left'};"><h3 style="margin:0 0 12px;color:${theme.textColor};font-size:18px;">${escapeHtml(block.props.heading || 'Order summary')}</h3>${itemsTag}${block.props.showTotals ? '<p style="text-align:right;font-weight:700;color:#0f172a;">Total: {{order.total}}</p>' : ''}</div>`;
     }
 
     if (block.type === 'address') {
@@ -749,6 +752,12 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     }
 
     return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '8px 0'};text-align:${(block.props as { align?: string }).align || 'left'};">${block.props.html}</div>`;
+}
+
+function getOrderItemsMergeTag(format: OrderItemsFormat | undefined): string {
+    if (format === 'compact') return '{{order.itemsCompact}}';
+    if (format === 'list') return '{{order.itemsList}}';
+    return '{{order.itemsTable}}';
 }
 
 export function getSocialPlatform(label: string): SocialPlatform {

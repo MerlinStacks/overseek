@@ -9,11 +9,12 @@ import { useAccount } from '../../../context/AccountContext';
 interface Props {
     htmlContent: string;
     subject?: string;
+    previewText?: string;
     category?: 'MARKETING' | 'TRANSACTIONAL';
     onClose: () => void;
 }
 
-export function EmailPreviewModal({ htmlContent, subject, category = 'MARKETING', onClose }: Props) {
+export function EmailPreviewModal({ htmlContent, subject, previewText, category = 'MARKETING', onClose }: Props) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [testEmail, setTestEmail] = useState('');
@@ -43,6 +44,7 @@ export function EmailPreviewModal({ htmlContent, subject, category = 'MARKETING'
                     to: testEmail.trim(),
                     subject: subject || 'Test Email',
                     content: htmlContent,
+                    previewText,
                     category
                 })
             });

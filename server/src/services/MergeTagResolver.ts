@@ -38,6 +38,11 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     let result = html;
 
     const replaceMergeTag = (tag: string, value: string): void => {
+        const tagName = getMergeTagName(tag);
+        if (tagName) {
+            result = result.replace(createMergeTagPattern(tagName), (_match, fallbackValue) => value || parseFallbackValue(fallbackValue));
+        }
+
         const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         result = result.replace(new RegExp(`https?:\\/\\/[^\\s"'<>]+\\/${escapedTag}`, 'gi'), value);
         result = result.replace(new RegExp(escapedTag, 'g'), value);
@@ -63,16 +68,22 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     if (context.order) {
         const order = context.order;
 
-        replaceMergeTag('{{order.number}}', order.orderNumber || order.id || '');
-        replaceMergeTag('{{order_id}}', order.orderNumber || order.id || '');
-        replaceMergeTag('{{order.date}}', formatDate(order.dateCreated));
+        const orderNumber = order.orderNumber || order.order_number || order.number || order.id || '';
+        const orderDate = order.dateCreated || order.date_created || order.date_created_gmt || order.createdAt || order.created_at;
+        const billingAddress = order.billingAddress || order.billing_address || order.billing;
+        const shippingAddress = order.shippingAddress || order.shipping_address || order.shipping || billingAddress;
+        const orderItems = getOrderItems(order);
+
+        replaceMergeTag('{{order.number}}', orderNumber);
+        replaceMergeTag('{{order_id}}', orderNumber);
+        replaceMergeTag('{{order.date}}', formatDate(orderDate));
         replaceMergeTag('{{order.status}}', formatStatus(order.status));
-        replaceMergeTag('{{order.paymentMethod}}', order.paymentMethodTitle || '');
-        replaceMergeTag('{{order.subtotal}}', formatCurrency(order.subtotal, order.currency));
-        replaceMergeTag('{{order.shippingTotal}}', formatCurrency(order.shippingTotal, order.currency));
-        replaceMergeTag('{{order.discountTotal}}', formatCurrency(order.discountTotal, order.currency));
+        replaceMergeTag('{{order.paymentMethod}}', order.paymentMethodTitle || order.payment_method_title || order.paymentMethod || order.payment_method || '');
+        replaceMergeTag('{{order.subtotal}}', formatCurrency(order.subtotal ?? order.sub_total, order.currency));
+        replaceMergeTag('{{order.shippingTotal}}', formatCurrency(order.shippingTotal ?? order.shipping_total, order.currency));
+        replaceMergeTag('{{order.discountTotal}}', formatCurrency(order.discountTotal ?? order.discount_total, order.currency));
         replaceMergeTag('{{order.total}}', formatCurrency(order.total, order.currency));
-        replaceMergeTag('{{order.customerNote}}', order.customerNote || '');
+        replaceMergeTag('{{order.customerNote}}', order.customerNote || order.customer_note || '');
 
         const trackingItems = getOrderTrackingItems(order);
         const primaryTracking = trackingItems[0];
@@ -85,12 +96,15 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{tracking_url}}', trackingUrl);
 
         // Address blocks
-        replaceMergeTag('{{order.billingAddress}}', formatAddress(order.billingAddress || order.billing));
-        replaceMergeTag('{{order.shippingAddress}}', formatAddress(order.shippingAddress || order.shipping));
+        const formattedBillingAddress = formatAddress(billingAddress);
+        const formattedShippingAddress = formatAddress(shippingAddress) || formattedBillingAddress;
+        replaceMergeTag('{{order.billingAddress}}', formattedBillingAddress);
+        replaceMergeTag('{{order.shippingAddress}}', formattedShippingAddress);
 
         // Items table
-        const orderItems = order.lineItems || order.items || order.line_items || [];
         replaceMergeTag('{{order.itemsTable}}', renderOrderItemsTable(orderItems));
+        replaceMergeTag('{{order.itemsCompact}}', renderOrderItemsCompact(orderItems));
+        replaceMergeTag('{{order.itemsList}}', renderOrderItemsList(orderItems));
         result = result.replace(/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, renderOrderItemsText(orderItems));
 
         // Downloads
@@ -195,7 +209,55 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         result = result.replace(/\{\{shipment\.latestScanTime\}\}/g, formatDate(shipment.latestScanTime));
     }
 
-    return result;
+    return replaceFallbackOnlyTags(result);
+}
+
+function getMergeTagName(tag: string): string {
+    return tag.replace(/^\{\{\s*/, '').replace(/\s*\}\}$/, '').trim();
+}
+
+function createMergeTagPattern(tagName: string): RegExp {
+    const escapedTagName = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\{\\{\\s*${escapedTagName}\\s*(?:\\|\\s*fallback\\s*:\\s*((?:"[^"]*")|(?:'[^']*')|[^}]*?))?\\s*\\}\\}`, 'g');
+}
+
+function replaceFallbackOnlyTags(value: string): string {
+    return value.replace(/\{\{\s*[^}|]+\s*\|\s*fallback\s*:\s*((?:"[^"]*")|(?:'[^']*')|[^}]*?)\s*\}\}/g, (_match, fallbackValue) => parseFallbackValue(fallbackValue));
+}
+
+function parseFallbackValue(value: unknown): string {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+        return trimmed.slice(1, -1);
+    }
+    return trimmed;
+}
+
+export function applyPreviewText(html: string, previewText: string): string {
+    const trimmedPreviewText = String(previewText || '').trim();
+    if (!trimmedPreviewText) return html;
+
+    const preheader = `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(trimmedPreviewText)}</div>`;
+    const withoutDesignerPreheader = html.replace(
+        /<div\s+style=["']display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;?["']>[\s\S]*?<\/div>\s*/i,
+        ''
+    );
+
+    if (/<body\b[^>]*>/i.test(withoutDesignerPreheader)) {
+        return withoutDesignerPreheader.replace(/<body\b[^>]*>/i, (bodyTag) => `${bodyTag}\n  ${preheader}`);
+    }
+
+    return `${preheader}${withoutDesignerPreheader}`;
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function normalizeStoreUrl(rawUrl?: string): string {
@@ -222,7 +284,7 @@ function withReviewAnchor(url: string): string {
 function getReviewFallback(context: MergeTagContext, storeUrl: string): { productName: string; productUrl: string } {
     const product = context.product || {};
     const order = context.order || {};
-    const orderItems = order.lineItems || order.items || order.line_items || [];
+    const orderItems = getOrderItems(order);
     const firstItem = Array.isArray(orderItems) ? orderItems[0] : null;
     const productName = product.name || firstItem?.name || '';
     const directProductUrl = product.permalink || product.url || product.productUrl || firstItem?.permalink || firstItem?.productUrl || firstItem?.product_url;
@@ -237,6 +299,11 @@ function getReviewFallback(context: MergeTagContext, storeUrl: string): { produc
     }
 
     return { productName, productUrl: storeUrl };
+}
+
+function getOrderItems(order: any): any[] {
+    const items = order?.lineItems || order?.line_items || order?.items || order?.orderItems || order?.order_items || [];
+    return Array.isArray(items) ? items : [];
 }
 
 function getOrderTrackingItems(order: any): TrackingItem[] {
@@ -338,6 +405,31 @@ export function renderOrderItemsTable(items: any[]): string {
             </tbody>
         </table>
     `;
+}
+
+export function renderOrderItemsCompact(items: any[]): string {
+    if (!items || items.length === 0) {
+        return '<p style="color: #6b7280; font-style: italic;">No items</p>';
+    }
+
+    return `<div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; font-family: Arial, sans-serif;">${items.map((item) => {
+        const name = item.name || item.productName || item.product_name || 'Product';
+        const quantity = item.quantity || 1;
+        const total = formatCurrency(item.total || item.price, item.currency);
+        return `<div style="padding: 12px; border-bottom: 1px solid #e5e7eb; color: #374151;"><strong>${name}</strong><br><span style="font-size: 13px; color: #6b7280;">Qty: ${quantity} &middot; ${total}</span></div>`;
+    }).join('')}</div>`;
+}
+
+export function renderOrderItemsList(items: any[]): string {
+    if (!items || items.length === 0) {
+        return '<p style="color: #6b7280; font-style: italic;">No items</p>';
+    }
+
+    return `<ul style="margin: 0; padding-left: 20px; color: #374151; line-height: 1.6; font-family: Arial, sans-serif;">${items.map((item) => {
+        const name = item.name || item.productName || item.product_name || 'Product';
+        const quantity = item.quantity || 1;
+        return `<li>${quantity} x ${name}</li>`;
+    }).join('')}</ul>`;
 }
 
 function renderOrderItemsText(items: any[]): string {
