@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Archive, CheckCheck, Sparkles, Plus, Zap } from 'lucide-react';
+import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Archive, CheckCheck, Plus, Zap } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useSocket } from '../../context/SocketContext';
@@ -55,7 +55,7 @@ const CHANNEL_CONFIG: Record<string, { icon: typeof Mail; color: string; bg: str
 };
 
 const FILTER_OPTIONS = [
-    { label: 'Command', value: 'All', helper: 'Open threads' },
+    { label: 'All', value: 'All', helper: 'Open threads' },
     { label: 'Unread', value: 'Unread', helper: 'Needs reply' },
     { label: 'Email', value: 'Email', helper: 'Mail only' },
     { label: 'Social', value: 'Social', helper: 'DM channels' },
@@ -76,7 +76,6 @@ export function MobileInbox() {
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
-    const [showSearch, setShowSearch] = useState(false);
     const [composeDraft, setComposeDraft] = useState<SharedComposeDraft | null>(null);
 
     const fetchConversations = useCallback(async (initialLoad = false) => {
@@ -244,14 +243,6 @@ export function MobileInbox() {
     const unreadCount = conversations.filter(c => c.unread).length;
     const emailCount = conversations.filter(c => c.channel === 'email').length;
     const socialCount = conversations.filter(c => SOCIAL_CHANNELS.has(c.channel)).length;
-    const activeCount = activeFilter === 'Unread'
-        ? unreadCount
-        : activeFilter === 'Email'
-            ? emailCount
-            : activeFilter === 'Social'
-                ? socialCount
-                : conversations.length;
-
     const closeCompose = () => {
         setComposeDraft(null);
         sessionStorage.removeItem('sharedContent');
@@ -266,58 +257,30 @@ export function MobileInbox() {
 
     return (
         <div className="min-h-full flex flex-col space-y-4 pb-28 animate-fade-slide-up">
-            <div className="rounded-[2rem] border border-white/10 bg-slate-950 px-4 py-5 shadow-2xl shadow-black/30">
-                <div className="flex items-start justify-between gap-3">
-                    <div>
-                        <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-violet-400/10 px-2.5 py-1 text-xs font-semibold text-violet-100 ring-1 ring-violet-300/20"><Sparkles size={12} /> Inbox command</p>
-                        <h1 className="text-3xl font-black tracking-tight text-white">Inbox</h1>
-                        <p className="mt-1 text-sm text-slate-400">{activeCount.toLocaleString()} active · {unreadCount.toLocaleString()} unread</p>
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => {
-                                triggerHaptic();
-                                setShowSearch(!showSearch);
-                            }}
-                            className="rounded-2xl bg-white/10 p-3 text-slate-200 active:scale-95"
-                            aria-label="Search conversations"
-                        >
-                            <Search size={18} />
-                        </button>
-                        <button
-                            onClick={() => {
-                                triggerHaptic();
-                                setComposeDraft({});
-                            }}
-                            className="rounded-2xl bg-white p-3 text-slate-950 active:scale-95"
-                            aria-label="Compose email"
-                        >
-                            <Plus size={18} />
-                        </button>
-                    </div>
-                </div>
-                <div className="mt-5 grid grid-cols-3 gap-2">
-                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{conversations.length}</p><p className="text-[11px] font-medium text-slate-400">Open</p></div>
-                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{unreadCount}</p><p className="text-[11px] font-medium text-slate-400">Unread</p></div>
-                    <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{socialCount}</p><p className="text-[11px] font-medium text-slate-400">Social</p></div>
-                </div>
-            </div>
-
-            {showSearch && (
-                <div className="sticky top-2 z-10 animate-fade-slide-up">
-                    <div className="relative rounded-2xl border border-white/10 bg-slate-950/90 shadow-xl shadow-black/20 backdrop-blur-xl">
+            <div className="sticky top-2 z-10 flex gap-2">
+                <div className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/90 shadow-xl shadow-black/20 backdrop-blur-xl">
+                    <div className="relative">
                         <Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                             type="search"
                             placeholder="Search conversations..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            autoFocus
                             className="w-full bg-transparent py-3.5 pl-11 pr-4 text-[15px] text-white placeholder-slate-500 outline-none"
                         />
                     </div>
                 </div>
-            )}
+                <button
+                    onClick={() => {
+                        triggerHaptic();
+                        setComposeDraft({});
+                    }}
+                    className="shrink-0 rounded-2xl bg-white px-4 text-slate-950 shadow-xl shadow-black/20 active:scale-95"
+                    aria-label="Compose email"
+                >
+                    <Plus size={18} />
+                </button>
+            </div>
 
             <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar">
                 {FILTER_OPTIONS.map((filter) => {

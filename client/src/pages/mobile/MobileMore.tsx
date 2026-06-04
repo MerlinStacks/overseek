@@ -1,44 +1,40 @@
 import { useNavigate } from 'react-router-dom';
 import {
+    Bell,
+    ChevronRight,
+    Eye,
+    LogOut,
     Package,
     Settings,
-    Bell,
     User,
-    LogOut,
-    HelpCircle,
-    ChevronRight,
-    Smartphone,
     Users,
-    Eye
+    type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useAccount } from '../../context/AccountContext';
 import { useHaptic } from '../../hooks/useHaptic';
-
-/**
- * MobileMore - Premium dark glassmorphism settings menu for mobile PWA.
- * 
- * Provides access to:
- * - Inventory & Customers
- * - Settings & Notifications
- * - Profile
- * - Help & Logout
- */
 
 interface MenuItem {
     id: string;
     label: string;
-    icon: typeof Package;
+    description: string;
+    icon: LucideIcon;
     path?: string;
     action?: () => void;
-    badge?: string;
-    iconColor?: string;
-    iconBg?: string;
+    iconColor: string;
+    iconBg: string;
     danger?: boolean;
+}
+
+interface MenuSection {
+    title: string;
+    items: MenuItem[];
 }
 
 export function MobileMore() {
     const navigate = useNavigate();
     const { logout, user } = useAuth();
+    const { currentAccount } = useAccount();
     const { triggerHaptic } = useHaptic();
 
     const handleLogout = () => {
@@ -54,111 +50,140 @@ export function MobileMore() {
         navigate(path);
     };
 
-    const menuSections: { title: string; items: MenuItem[] }[] = [
+    const menuSections: MenuSection[] = [
         {
-            title: 'Store',
+            title: 'Store tools',
             items: [
-                { id: 'inventory', label: 'Inventory', icon: Package, path: '/m/inventory', iconColor: 'text-orange-400', iconBg: 'bg-orange-500/20' },
-                { id: 'customers', label: 'Customers', icon: Users, path: '/m/customers', iconColor: 'text-blue-400', iconBg: 'bg-blue-500/20' },
-                { id: 'visitors', label: 'Live Visitors', icon: Eye, path: '/m/live-visitors', iconColor: 'text-emerald-400', iconBg: 'bg-emerald-500/20' },
-            ]
+                {
+                    id: 'inventory',
+                    label: 'Inventory',
+                    description: 'Stock levels and product checks',
+                    icon: Package,
+                    path: '/m/inventory',
+                    iconColor: 'text-amber-100',
+                    iconBg: 'bg-amber-400/15',
+                },
+                {
+                    id: 'customers',
+                    label: 'Customers',
+                    description: 'Customer records and order history',
+                    icon: Users,
+                    path: '/m/customers',
+                    iconColor: 'text-sky-100',
+                    iconBg: 'bg-sky-400/15',
+                },
+                {
+                    id: 'live-visitors',
+                    label: 'Live visitors',
+                    description: 'See who is browsing right now',
+                    icon: Eye,
+                    path: '/m/live-visitors',
+                    iconColor: 'text-emerald-100',
+                    iconBg: 'bg-emerald-400/15',
+                },
+            ],
         },
         {
-            title: 'Settings',
+            title: 'Account',
             items: [
-                { id: 'notifications', label: 'Notifications', icon: Bell, path: '/m/notifications', iconColor: 'text-purple-400', iconBg: 'bg-purple-500/20' },
-                { id: 'profile', label: 'Profile', icon: User, path: '/m/profile', iconColor: 'text-indigo-400', iconBg: 'bg-indigo-500/20' },
-                { id: 'settings', label: 'App Settings', icon: Settings, path: '/m/settings', iconColor: 'text-slate-400', iconBg: 'bg-slate-500/20' },
-            ]
+                {
+                    id: 'notifications',
+                    label: 'Notifications',
+                    description: 'Push setup and notification status',
+                    icon: Bell,
+                    path: '/m/notifications',
+                    iconColor: 'text-violet-100',
+                    iconBg: 'bg-violet-400/15',
+                },
+                {
+                    id: 'profile',
+                    label: 'Profile',
+                    description: 'Name, avatar, and account details',
+                    icon: User,
+                    path: '/m/profile',
+                    iconColor: 'text-indigo-100',
+                    iconBg: 'bg-indigo-400/15',
+                },
+                {
+                    id: 'settings',
+                    label: 'Settings',
+                    description: 'Store sync and mobile preferences',
+                    icon: Settings,
+                    path: '/m/settings',
+                    iconColor: 'text-slate-100',
+                    iconBg: 'bg-slate-400/15',
+                },
+            ],
         },
         {
-            title: 'Support',
+            title: 'Session',
             items: [
-                { id: 'help', label: 'Help Center', icon: HelpCircle, path: '/help', iconColor: 'text-cyan-400', iconBg: 'bg-cyan-500/20' },
-            ]
+                {
+                    id: 'logout',
+                    label: 'Log out',
+                    description: 'End this mobile session',
+                    icon: LogOut,
+                    action: handleLogout,
+                    danger: true,
+                    iconColor: 'text-rose-100',
+                    iconBg: 'bg-rose-400/15',
+                },
+            ],
         },
-        {
-            title: '',
-            items: [
-                { id: 'logout', label: 'Log Out', icon: LogOut, action: handleLogout, danger: true, iconColor: 'text-red-400', iconBg: 'bg-red-500/20' },
-            ]
-        }
     ];
 
-    return (
-        <div className="space-y-6 animate-fade-slide-up">
-            {/* User Card */}
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-xl shadow-indigo-500/20">
-                <div className="flex items-center gap-4">
-                    {user?.avatarUrl ? (
-                        <img
-                            src={user.avatarUrl}
-                            alt="Profile"
-                            className="w-14 h-14 rounded-xl object-cover ring-2 ring-white/30"
-                        />
-                    ) : (
-                        <div className="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-xl font-bold">
-                            {user?.fullName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
-                        </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                        <h2 className="font-semibold truncate text-lg">
-                            {user?.fullName || 'User'}
-                        </h2>
-                        <p className="text-sm text-white/70 truncate">
-                            {user?.email}
-                        </p>
-                    </div>
-                    <button
-                        onClick={() => handleNavigate('/m/profile')}
-                        className="p-2 rounded-xl bg-white/10 active:bg-white/20 transition-colors"
-                    >
-                        <ChevronRight size={20} />
-                    </button>
-                </div>
-                <div className="mt-4 pt-4 border-t border-white/20 flex items-center gap-2 text-sm text-white/80">
-                    <Smartphone size={16} />
-                    <span>OverSeek Companion v1.0</span>
-                </div>
-            </div>
+    const initial = user?.fullName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
 
-            {/* Menu Sections */}
-            {menuSections.map((section, idx) => (
-                <div key={idx}>
-                    {section.title && (
-                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-1">
-                            {section.title}
-                        </h3>
-                    )}
-                    <div className="pwa-card divide-y divide-white/5 overflow-hidden">
+    return (
+        <div className="space-y-5 pb-28 animate-fade-slide-up">
+            <button
+                onClick={() => handleNavigate('/m/profile')}
+                className="flex w-full items-center gap-4 rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 active:scale-[0.99]"
+            >
+                {user?.avatarUrl ? (
+                    <img src={user.avatarUrl} alt="Profile" className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/20" />
+                ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500 text-xl font-black text-white shadow-lg shadow-indigo-500/25">
+                        {initial}
+                    </div>
+                )}
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-lg font-black text-white">{user?.fullName || 'Profile'}</p>
+                    <p className="truncate text-sm text-slate-400">{user?.email || 'Manage your account'}</p>
+                    {currentAccount?.name && <p className="mt-1 truncate text-xs font-bold text-indigo-200">{currentAccount.name}</p>}
+                </div>
+                <ChevronRight size={18} className="shrink-0 text-slate-600" />
+            </button>
+
+            {menuSections.map((section) => (
+                <section key={section.title}>
+                    <h2 className="mb-3 px-1 text-xs font-bold uppercase tracking-wider text-slate-500">{section.title}</h2>
+                    <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950 shadow-lg shadow-black/20">
                         {section.items.map((item) => {
                             const Icon = item.icon;
+
                             return (
                                 <button
                                     key={item.id}
                                     onClick={() => item.action ? item.action() : item.path && handleNavigate(item.path)}
-                                    className="w-full flex items-center gap-4 p-4 text-left active:bg-white/5 transition-colors"
+                                    className="flex w-full items-center gap-3 border-b border-white/5 p-4 text-left last:border-b-0 active:bg-white/[0.06]"
                                 >
-                                    <div className={`w-10 h-10 rounded-xl ${item.iconBg} flex items-center justify-center`}>
-                                        <Icon size={20} className={item.iconColor} />
+                                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${item.iconBg} ring-1 ring-white/10`}>
+                                        <Icon size={19} className={item.iconColor} />
                                     </div>
-                                    <span className={`flex-1 font-medium ${item.danger ? 'text-red-400' : 'text-white'}`}>
-                                        {item.label}
-                                    </span>
-                                    {item.badge && (
-                                        <span className="bg-indigo-500/20 text-indigo-400 text-xs font-medium px-2.5 py-1 rounded-lg">
-                                            {item.badge}
-                                        </span>
-                                    )}
-                                    {!item.action && (
-                                        <ChevronRight size={18} className="text-slate-500" />
-                                    )}
+                                    <div className="min-w-0 flex-1">
+                                        <p className={`font-black ${item.danger ? 'text-rose-200' : 'text-white'}`}>{item.label}</p>
+                                        <p className="mt-0.5 truncate text-sm text-slate-500">{item.description}</p>
+                                    </div>
+                                    {!item.action && <ChevronRight size={17} className="shrink-0 text-slate-600" />}
                                 </button>
                             );
                         })}
                     </div>
-                </div>
+                </section>
             ))}
+
+            <p className="px-1 text-center text-xs text-slate-600">OverSeek Companion v1.0</p>
         </div>
     );
 }

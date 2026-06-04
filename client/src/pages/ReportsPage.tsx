@@ -3,7 +3,7 @@ import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
-import { FileText } from 'lucide-react';
+import { BarChart3, FileText, Lock, Plus, Sparkles } from 'lucide-react';
 
 import { ReportBuilder } from '../components/ReportBuilder';
 import { Toast, ToastType } from '../components/ui/Toast';
@@ -15,6 +15,7 @@ import { ReportsDateSelector } from '../components/analytics/reports/ReportsDate
 import { ReportsOverviewTab } from '../components/analytics/reports/ReportsOverviewTab';
 import { ReportsLockedState } from '../components/analytics/reports/ReportsLockedState';
 import { ReportsTabs } from '../components/analytics/reports/ReportsTabs';
+import { ReportsActionCenter } from '../components/analytics/reports/ReportsActionCenter';
 import { getDateRange, DateRangeOption } from '../utils/dateUtils';
 import { ReportTemplate } from '../types/analytics';
 
@@ -33,6 +34,14 @@ interface CustomerGrowth {
     date: string;
     newCustomers: number;
 }
+
+const TAB_LABELS = {
+    overview: 'Overview',
+    stock_velocity: 'Stock Velocity',
+    profitability: 'Profitability',
+    premade: 'Report Library',
+    custom: 'Custom Builder'
+};
 
 export function ReportsPage() {
     const { token } = useAuth();
@@ -61,6 +70,12 @@ export function ReportsPage() {
     const [toastType, setToastType] = useState<ToastType>('error');
     const showToast = useCallback((message: string, type: ToastType = 'error') => {
         setToastMessage(message); setToastType(type); setToastVisible(true);
+    }, []);
+
+    const enterCustomBuilder = useCallback(() => {
+        setShouldAutoRun(false);
+        setSelectedTemplateId(undefined);
+        setActiveTab('custom');
     }, []);
 
     const fetchTemplates = useCallback(async () => {
@@ -141,26 +156,57 @@ export function ReportsPage() {
         fetchData();
     }, [fetchTemplates, fetchData]);
 
+    const dateRange = getDateRange(dateOption);
+    const totalRevenue = salesData.reduce((acc, curr) => acc + curr.sales, 0);
+    const totalOrders = salesData.reduce((acc, curr) => acc + curr.orders, 0);
+    const newCustomersCount = customerGrowth.reduce((acc, curr) => acc + curr.newCustomers, 0);
+
     return (
         <>
             <div className="space-y-6">
                 {/* Header */}
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
-                        <p className="text-sm text-gray-500 mt-1">Deep dive into your store performance with custom and premade reports</p>
-                    </div>
+                <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xs dark:border-slate-700 dark:bg-slate-900/80">
+                    <div className="relative p-6 sm:p-8">
+                        <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-blue-500 via-indigo-500 to-purple-500" />
+                        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                            <div className="max-w-3xl">
+                                <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+                                    <BarChart3 size={14} />
+                                    {TAB_LABELS[activeTab]}
+                                </div>
+                                <h1 className="text-3xl font-bold tracking-tight text-gray-950 dark:text-white">Reports & Analytics</h1>
+                                <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-slate-400">
+                                    Explore sales, inventory, profitability, and custom report templates from one workspace.
+                                </p>
+                            </div>
 
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+                                    <p className="text-xs font-medium text-gray-500 dark:text-slate-400">Templates</p>
+                                    <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{templates.length}</p>
+                                </div>
+                                <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+                                    <p className="text-xs font-medium text-gray-500 dark:text-slate-400">Revenue Rows</p>
+                                    <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{salesData.length}</p>
+                                </div>
+                                <div className="col-span-2 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80 sm:col-span-1">
+                                    <p className="text-xs font-medium text-gray-500 dark:text-slate-400">Advanced</p>
+                                    <p className="mt-1 flex items-center gap-2 text-sm font-bold text-gray-950 dark:text-white">
+                                        {isAdvancedReportsEnabled ? <Sparkles size={16} className="text-purple-500" /> : <Lock size={16} className="text-gray-400" />}
+                                        {isAdvancedReportsEnabled ? 'Enabled' : 'Locked'}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="border-t border-gray-100 bg-gray-50/70 p-3 dark:border-slate-700 dark:bg-slate-950/30">
                     <ReportsTabs
                         activeTab={activeTab}
                         isAdvancedReportsEnabled={isAdvancedReportsEnabled}
                         onChangeTab={setActiveTab}
-                        onEnterCustomBuilder={() => {
-                            setShouldAutoRun(false);
-                            setSelectedTemplateId(undefined);
-                            setActiveTab('custom');
-                        }}
+                        onEnterCustomBuilder={enterCustomBuilder}
                     />
+                    </div>
                 </div>
 
                 {/* Date Range Selector (for applicable tabs) */}
@@ -170,12 +216,27 @@ export function ReportsPage() {
 
                 {
                     activeTab === 'overview' && (
-                        <ReportsOverviewTab
-                            isLoading={isLoading}
-                            salesData={salesData}
-                            topProducts={topProducts}
-                            customerGrowth={customerGrowth}
-                        />
+                        <div className="space-y-6">
+                            <ReportsOverviewTab
+                                isLoading={isLoading}
+                                salesData={salesData}
+                                topProducts={topProducts}
+                                customerGrowth={customerGrowth}
+                                currency={currentAccount?.currency || 'USD'}
+                            />
+                            <ReportsActionCenter
+                                dateOption={dateOption}
+                                startDate={dateRange.startDate}
+                                endDate={dateRange.endDate}
+                                totalRevenue={totalRevenue}
+                                totalOrders={totalOrders}
+                                newCustomers={newCustomersCount}
+                                currency={currentAccount?.currency || 'USD'}
+                                templateCount={templates.length}
+                                onOpenLibrary={() => setActiveTab('premade')}
+                                onOpenCustomBuilder={enterCustomBuilder}
+                            />
+                        </div>
                     )
                 }
 
@@ -190,8 +251,8 @@ export function ReportsPage() {
                 {
                     activeTab === 'profitability' && (
                         <ProfitabilityReport
-                            startDate={getDateRange(dateOption).startDate}
-                            endDate={getDateRange(dateOption).endDate}
+                            startDate={dateRange.startDate}
+                            endDate={dateRange.endDate}
                         />
                     )
                 }
@@ -205,14 +266,15 @@ export function ReportsPage() {
                                 colorClass="bg-blue-100 text-blue-600"
                             />
                         ) : (
-                            <div className="flex gap-6 items-start h-[calc(100vh-14rem)]">
+                            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:h-[calc(100vh-14rem)]">
                                 <ReportsSidebar
                                     templates={templates}
                                     selectedTemplateId={selectedTemplateId}
                                     onSelect={handleSelectTemplate}
                                     onDelete={handleDeleteTemplate}
+                                    onCreateCustom={enterCustomBuilder}
                                 />
-                                <div className="flex-1 h-full min-h-0 overflow-hidden">
+                                <div className="min-h-[28rem] flex-1 overflow-hidden lg:h-full lg:min-h-0">
                                     {customReportConfig ? (
                                         <ReportBuilder
                                             initialConfig={customReportConfig}
@@ -221,12 +283,19 @@ export function ReportsPage() {
                                             onTemplateSaved={handleTemplateSaved}
                                         />
                                     ) : (
-                                        <div className="h-full flex flex-col items-center justify-center text-gray-400 border border-gray-200/60 rounded-2xl bg-gray-50/30">
-                                            <div className="p-4 bg-white rounded-2xl shadow-xs mb-4">
+                                        <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 p-8 text-center text-gray-400 dark:border-slate-700 dark:bg-slate-900/40">
+                                            <div className="mb-4 rounded-2xl bg-white p-4 shadow-xs dark:bg-slate-800">
                                                 <FileText size={48} className="text-gray-300" />
                                             </div>
-                                            <p className="text-lg font-medium text-gray-500">Select a report to view details</p>
-                                            <p className="text-sm text-gray-400 mt-1 max-w-xs text-center">Choose from the system templates or your saved reports on the left.</p>
+                                            <p className="text-lg font-semibold text-gray-700 dark:text-slate-200">Choose a report or build a new one</p>
+                                            <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-slate-400">Select a system template from the library, open one of your saved reports, or start a custom report from scratch.</p>
+                                            <button
+                                                onClick={enterCustomBuilder}
+                                                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-blue-700"
+                                            >
+                                                <Plus size={16} />
+                                                Build Custom Report
+                                            </button>
                                         </div>
                                     )}
                                 </div>

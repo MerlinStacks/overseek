@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { BarChart3, Trash2, Search, DollarSign, Globe, Users, TrendingUp, PieChart } from 'lucide-react';
+import { BarChart3, Trash2, Search, DollarSign, Globe, Users, TrendingUp, PieChart, Plus } from 'lucide-react';
 import { ReportTemplate } from '../../types/analytics';
 
 interface ReportsSidebarProps {
@@ -7,6 +7,7 @@ interface ReportsSidebarProps {
     selectedTemplateId?: string;
     onSelect: (template: ReportTemplate) => void;
     onDelete: (e: React.MouseEvent, id: string) => void;
+    onCreateCustom: () => void;
 }
 
 /** Icon mapping for template categories */
@@ -25,7 +26,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; ring: string }
     Conversion: { bg: 'bg-purple-500/10', text: 'text-purple-600', ring: 'ring-purple-500/20' }
 };
 
-export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDelete }: ReportsSidebarProps) {
+export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDelete, onCreateCustom }: ReportsSidebarProps) {
     const [searchTerm, setSearchTerm] = useState('');
 
     // Filter templates by search term
@@ -108,10 +109,23 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
     };
 
     return (
-        <div className="w-80 shrink-0 bg-white/50 backdrop-blur-xl border border-white/20 h-[calc(100vh-12rem)] overflow-y-auto flex flex-col sticky top-0 rounded-2xl shadow-lg">
+        <div className="flex max-h-[32rem] w-full shrink-0 flex-col overflow-y-auto rounded-2xl border border-gray-200 bg-white/70 shadow-lg backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/70 lg:sticky lg:top-0 lg:h-[calc(100vh-12rem)] lg:max-h-none lg:w-80">
 
             {/* Search Header */}
-            <div className="p-4 sticky top-0 bg-white/80 backdrop-blur-md z-10 border-b border-gray-100/50">
+            <div className="sticky top-0 z-10 border-b border-gray-100/70 bg-white/85 p-4 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/85">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                        <h2 className="text-sm font-bold text-gray-950 dark:text-white">Report Library</h2>
+                        <p className="text-xs text-gray-500 dark:text-slate-400">{templates.length} templates available</p>
+                    </div>
+                    <button
+                        onClick={onCreateCustom}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-blue-700"
+                    >
+                        <Plus size={14} />
+                        New
+                    </button>
+                </div>
                 <div className="relative">
                     <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
                     <input
@@ -119,7 +133,7 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
                         placeholder="Search reports..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 bg-gray-50/50 border border-gray-200/60 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all outline-hidden"
+                        className="w-full rounded-xl border border-gray-200/60 bg-gray-50/70 py-2 pl-9 pr-4 text-sm outline-hidden transition-all focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                     />
                 </div>
             </div>
@@ -156,7 +170,7 @@ export function ReportsSidebar({ templates, selectedTemplateId, onSelect, onDele
 
                 {/* Empty State */}
                 {filteredTemplates.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                    <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400">
                         <Search size={32} className="mb-3 opacity-50" />
                         <p className="text-sm font-medium">No reports found</p>
                         <p className="text-xs mt-1">Try a different search term</p>

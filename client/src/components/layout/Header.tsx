@@ -79,9 +79,15 @@ export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
     useVisibilityPolling(fetchNotifications, 30000, [fetchNotifications], 'notifications');
 
     useEffect(() => {
-        if (isConnected) {
-            fetchNotifications();
+        if (!isConnected) {
+            return;
         }
+
+        const timeout = window.setTimeout(() => {
+            fetchNotifications();
+        }, 0);
+
+        return () => window.clearTimeout(timeout);
     }, [isConnected, fetchNotifications]);
 
     useEffect(() => {
