@@ -9,7 +9,7 @@
  * - Smart attachment handling with image thumbnails
  * - Email signature detection
  */
-import { useState, useMemo, useRef, memo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
 import { cn } from '../../utils/cn';
@@ -58,7 +58,6 @@ export const MessageBubble = memo(function MessageBubble({
     onUndoPending
 }: MessageBubbleProps) {
     const [showQuoted, setShowQuoted] = useState(false);
-    const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
     const { user } = useAuth();
 
     const isMe = message.senderType === 'AGENT';
@@ -203,25 +202,10 @@ export const MessageBubble = memo(function MessageBubble({
         });
     }, [quotedContent]);
 
-    const handleContentPointerDown = (e: React.MouseEvent) => {
-        pointerDownRef.current = { x: e.clientX, y: e.clientY };
-    };
-
-    const handleContentPointerUp = (e: React.MouseEvent) => {
-        const start = pointerDownRef.current;
-        pointerDownRef.current = null;
-
-        // Don't intercept when the user has selected text (allows highlight + copy)
+    const handleContentClick = (e: React.MouseEvent) => {
+        // Don't intercept when the user has selected text (allows highlight + copy).
         const selection = window.getSelection();
         if (selection && selection.toString().length > 0) return;
-
-        // Ignore drag/release interactions used for text highlighting
-        if (start) {
-            const dx = Math.abs(e.clientX - start.x);
-            const dy = Math.abs(e.clientY - start.y);
-            const moved = dx + dy;
-            if (moved > 6) return;
-        }
 
         const target = e.target as HTMLElement;
         if (target.tagName === 'IMG' && onImageClick) {
@@ -277,7 +261,7 @@ export const MessageBubble = memo(function MessageBubble({
 
                     {/* Bubble */}
                     <div className={cn(
-                        "rounded-2xl px-4 py-2.5 relative shadow-sm",
+                        "rounded-2xl px-4 py-2.5 relative shadow-sm select-text",
                         isMe
                             ? "bg-blue-600 text-white rounded-br-md"
                             : "bg-white text-gray-900 rounded-bl-md border border-gray-200",
@@ -287,7 +271,7 @@ export const MessageBubble = memo(function MessageBubble({
                         {/* Subject line (if present) */}
                         {subject && (
                             <div className={cn(
-                                "text-xs font-semibold mb-1.5 pb-1.5 border-b",
+                                "text-xs font-semibold mb-1.5 pb-1.5 border-b select-text",
                                 isMe ? "border-blue-500/30" : "border-gray-200"
                             )}>
                                 {subject}
@@ -297,7 +281,7 @@ export const MessageBubble = memo(function MessageBubble({
                         {/* Message content */}
                         <div
                             className={cn(
-                                "text-sm leading-relaxed select-text",
+                                "text-sm leading-relaxed select-text cursor-text",
                                 !isHtmlContent && "whitespace-pre-wrap",
                                 isHtmlContent && cn(
                                     "[&_table]:max-w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:cursor-pointer",
@@ -307,8 +291,7 @@ export const MessageBubble = memo(function MessageBubble({
                                         : "[&_a]:text-blue-600 [&_a]:underline [&_blockquote]:border-gray-400"
                                 )
                             )}
-                            onMouseDown={handleContentPointerDown}
-                            onMouseUp={handleContentPointerUp}
+                            onClick={handleContentClick}
                             dangerouslySetInnerHTML={{ __html: sanitizedContent }}
                         />
 
