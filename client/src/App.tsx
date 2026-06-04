@@ -8,6 +8,7 @@ import { SocketProvider } from './context/SocketContext';
 import { SyncStatusProvider } from './context/SyncStatusContext';
 import { ToastProvider } from './context/ToastContext';
 import { getRouteTitle, ROUTE_PATHS, ROUTE_PREFIXES, ROUTE_PATTERNS } from './utils/routeTitles';
+import { usePushNotifications } from './hooks/usePushNotifications';
 
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { AdminLayout } from './components/layout/AdminLayout';
@@ -225,6 +226,11 @@ function PageTitleManager() {
     return null;
 }
 
+function PushNotificationBootstrap() {
+    usePushNotifications();
+    return null;
+}
+
 function App() {
     return (
         <ErrorBoundary>
@@ -235,6 +241,7 @@ function App() {
                         <SyncStatusProvider>
                         <ToastProvider>
                             <PageTitleManager />
+                            <PushNotificationBootstrap />
                             <MobileRedirect>
                                 <Suspense fallback={<PageLoader />}>
                                     <Routes>

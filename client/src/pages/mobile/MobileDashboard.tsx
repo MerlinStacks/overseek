@@ -1,18 +1,12 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import {
     ShoppingCart,
     MessageSquare,
-    TrendingUp,
     Package,
     ArrowRight,
-    Bell,
     DollarSign,
-    Sun,
-    Moon,
-    Sunrise,
-    Sunset,
     Users
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -28,7 +22,6 @@ import { usePermissions } from '../../hooks/usePermissions';
  * MobileDashboard - Premium dark dashboard for the PWA companion app.
  * 
  * Features:
- * - Time-of-day greeting with icon
  * - Glassmorphism stat cards with sparklines
  * - Trend indicators
  * - Smooth staggered animations
@@ -80,7 +73,7 @@ interface SparklineData {
 
 export function MobileDashboard() {
     const navigate = useNavigate();
-    const { token, user } = useAuth();
+    const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { hasPermission } = usePermissions();
     const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -88,22 +81,6 @@ export function MobileDashboard() {
     const [anomaly, setAnomaly] = useState<AnomalyData | null>(null);
     const [sparklines, setSparklines] = useState<SparklineData>({ orders: [], revenue: [] });
     const [loading, setLoading] = useState(true);
-
-    // Time-based greeting
-    const greeting = useMemo(() => {
-        const hour = new Date().getHours();
-        if (hour >= 5 && hour < 12) {
-            return { text: 'Good morning', icon: Sunrise, color: 'text-amber-400' };
-        } else if (hour >= 12 && hour < 17) {
-            return { text: 'Good afternoon', icon: Sun, color: 'text-yellow-400' };
-        } else if (hour >= 17 && hour < 21) {
-            return { text: 'Good evening', icon: Sunset, color: 'text-orange-400' };
-        } else {
-            return { text: 'Good night', icon: Moon, color: 'text-indigo-400' };
-        }
-    }, []);
-
-    const firstName = user?.fullName?.split(' ')[0] || 'there';
 
     const accountCurrency = currentAccount?.currency || 'USD';
 
@@ -231,19 +208,6 @@ export function MobileDashboard() {
         ? ((stats.todayRevenue - stats.yesterdayRevenue) / stats.yesterdayRevenue) * 100
         : 0;
 
-    const commandActions = [
-        { label: 'Run orders', helper: `${stats?.todayOrders || 0} today`, icon: ShoppingCart, path: '/m/orders', tone: 'bg-sky-400/15 text-sky-100 ring-sky-300/20' },
-        { label: 'Open inbox', helper: `${stats?.pendingMessages || 0} unread`, icon: MessageSquare, path: '/m/inbox', tone: 'bg-violet-400/15 text-violet-100 ring-violet-300/20' },
-        { label: 'Stock risk', helper: `${stats?.lowStockItems || 0} low`, icon: Package, path: '/m/inventory', tone: 'bg-amber-400/15 text-amber-100 ring-amber-300/20' },
-        { label: 'Revenue', helper: formatAccountCurrency(stats?.todayRevenue || 0), icon: TrendingUp, path: '/m/analytics', tone: 'bg-emerald-400/15 text-emerald-100 ring-emerald-300/20' },
-    ];
-
-    const commandBrief = [
-        (stats?.todayOrders || 0) > 0 ? `${stats?.todayOrders || 0} orders landed today` : 'No orders landed yet today',
-        (stats?.pendingMessages || 0) > 0 ? `${stats?.pendingMessages || 0} customer messages need attention` : 'Inbox is clear',
-        (stats?.lowStockItems || 0) > 0 ? `${stats?.lowStockItems || 0} stock alerts to review` : 'No stock alerts',
-    ];
-
     // Dark-mode activity status colors - different from standard light-mode utility
     const getDarkStatusColor = (status?: string) => {
         switch (status?.toLowerCase()) {
@@ -262,30 +226,6 @@ export function MobileDashboard() {
     return (
         <div className="space-y-5 pb-28">
             {hasPermission('view_finance') && <RevenueAnomalyBanner anomaly={anomaly} />}
-
-            <div className="rounded-[2rem] border border-white/10 bg-slate-950 px-4 py-5 shadow-2xl shadow-black/30 animate-fade-slide-up">
-                <div className="flex items-start justify-between gap-3">
-                    <div>
-                        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-400/10 px-2.5 py-1 text-xs font-semibold text-indigo-100 ring-1 ring-indigo-300/20">
-                            <greeting.icon size={13} className={greeting.color} />
-                            {greeting.text}, {firstName}
-                        </div>
-                        <h1 className="text-3xl font-black tracking-tight text-white">Command centre</h1>
-                        <p className="mt-1 text-sm text-slate-400">Live store priorities for today.</p>
-                    </div>
-                    <button onClick={() => navigate('/m/notifications')} className="rounded-2xl bg-white/10 p-3 text-slate-200 active:scale-95" aria-label="Open notifications">
-                        <Bell size={20} />
-                    </button>
-                </div>
-                <div className="mt-5 space-y-2">
-                    {commandBrief.map((brief) => (
-                        <div key={brief} className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-3 py-2 text-sm text-slate-300 ring-1 ring-white/10">
-                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-300" />
-                            {brief}
-                        </div>
-                    ))}
-                </div>
-            </div>
 
             <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => navigate('/m/orders')} className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 active:scale-[0.99] animate-fade-slide-up" style={{ animationDelay: '25ms' }}>
@@ -330,29 +270,6 @@ export function MobileDashboard() {
             </div>
 
             <div>
-                <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Command shortcuts</h2>
-                <div className="grid grid-cols-2 gap-3">
-                    {commandActions.map((action, index) => (
-                        <button
-                            key={action.label}
-                            onClick={() => navigate(action.path)}
-                            className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-slate-950 p-3 text-left shadow-lg shadow-black/20 active:scale-[0.99] animate-fade-slide-up"
-                            style={{ animationDelay: `${125 + index * 25}ms` }}
-                        >
-                            <div className={`rounded-2xl p-2.5 ring-1 ${action.tone}`}>
-                                <action.icon size={18} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-black text-white">{action.label}</p>
-                                <p className="truncate text-xs text-slate-500">{action.helper}</p>
-                            </div>
-                            <ArrowRight size={15} className="text-slate-600" />
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div>
                 <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Recent orders</h2>
                     <button
@@ -374,7 +291,7 @@ export function MobileDashboard() {
                                 key={activity.id}
                                 onClick={() => navigate(`/m/orders/${activity.id}`)}
                                 className="flex w-full items-center p-4 text-left transition-colors active:bg-white/10 animate-fade-slide-up"
-                                style={{ animationDelay: `${225 + index * 25}ms` }}
+                                style={{ animationDelay: `${125 + index * 25}ms` }}
                             >
                                 <div className="mr-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-400/15 text-indigo-100 ring-1 ring-indigo-300/20">
                                     <ShoppingCart size={18} />

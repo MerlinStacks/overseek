@@ -30,6 +30,13 @@ interface CapacitorBridge {
     platform?: string;
 }
 
+const DEFAULT_PUSH_PREFERENCES: PushPreferences = {
+    notifyNewMessages: true,
+    notifyNewOrders: true,
+    notifyLowStock: false,
+    notifyDailySummary: false
+};
+
 /**
  * React hook for managing Web Push notification subscriptions.
  * 
@@ -42,12 +49,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
     const [isSupported, setIsSupported] = useState(false);
     const [isSubscribed, setIsSubscribed] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [preferences, setPreferences] = useState<PushPreferences>({
-        notifyNewMessages: true,
-        notifyNewOrders: true,
-        notifyLowStock: false,
-        notifyDailySummary: false
-    });
+    const [preferences, setPreferences] = useState<PushPreferences>(DEFAULT_PUSH_PREFERENCES);
     const [permissionState, setPermissionState] = useState<NotificationPermission | 'unsupported'>('default');
     const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
     const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
@@ -141,6 +143,69 @@ export function usePushNotifications(): UsePushNotificationsReturn {
                     setCurrentEndpoint(browserEndpoint);
                 }
 
+                const saveSubscription = async (pushSubscription: PushSubscription) => {
+                    const subRes = await fetch('/api/notifications/push/subscribe', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                            'x-account-id': currentAccount.id
+                        },
+                        body: JSON.stringify({
+                            subscription: {
+                                endpoint: pushSubscription.endpoint,
+                                keys: {
+                                    p256dh: arrayBufferToBase64(pushSubscription.getKey('p256dh')),
+                                    auth: arrayBufferToBase64(pushSubscription.getKey('auth'))
+                                }
+                            },
+                            preferences: DEFAULT_PUSH_PREFERENCES
+                        })
+                    });
+
+                    if (!subRes.ok) {
+                        const errorData = await subRes.json().catch(() => ({}));
+                        Logger.error('[usePushNotifications] Subscription repair failed', { status: subRes.status, errorData });
+                        return false;
+                    }
+
+                    setCurrentEndpoint(pushSubscription.endpoint);
+                    setIsSubscribed(true);
+                    return true;
+                };
+
+                const repairSubscription = async () => {
+                    if (Notification.permission !== 'granted') return false;
+
+                    const keyRes = await fetch('/api/notifications/vapid-public-key', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'x-account-id': currentAccount.id
+                        }
+                    });
+
+                    if (!keyRes.ok) return false;
+
+                    const { publicKey } = await keyRes.json();
+                    const applicationServerKey = urlBase64ToUint8Array(publicKey) as BufferSource;
+                    const existingKey = subscription?.options.applicationServerKey;
+
+                    if (subscription && existingKey && buffersEqual(existingKey, applicationServerKey)) {
+                        return saveSubscription(subscription);
+                    }
+
+                    if (subscription) {
+                        await subscription.unsubscribe();
+                    }
+
+                    const repairedSubscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey
+                    });
+
+                    return saveSubscription(repairedSubscription);
+                };
+
                 // Fetch status from backend - pass browser endpoint for device-specific check
                 const url = browserEndpoint
                     ? `/api/notifications/push/subscription?endpoint=${encodeURIComponent(browserEndpoint)}`
@@ -159,13 +224,20 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
                     // If we have a browser subscription, check if backend knows about THIS device
                     if (browserEndpoint) {
-                        setIsSubscribed(data.isSubscribed);
+                        if (data.isSubscribed) {
+                            setIsSubscribed(true);
+                        } else {
+                            const repaired = await repairSubscription();
+                            setIsSubscribed(repaired);
+                        }
                         if (data.preferences) {
                             setPreferences(data.preferences);
                         }
                     } else {
-                        // No browser subscription - show as unsubscribed on this device
-                        setIsSubscribed(false);
+                        // Permission was already granted, so recreate a missing browser
+                        // subscription silently instead of making users toggle after deploys.
+                        const repaired = await repairSubscription();
+                        setIsSubscribed(repaired);
                     }
                 } else {
                     Logger.error('[usePushNotifications] Backend status check failed', { status: res.status });
@@ -373,4 +445,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
         binary += String.fromCharCode(bytes[i]);
     }
     return window.btoa(binary);
+}
+
+function buffersEqual(a: BufferSource, b: BufferSource): boolean {
+    const aBytes = a instanceof ArrayBuffer ? new Uint8Array(a) : new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    const bBytes = b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+
+    if (aBytes.byteLength !== bBytes.byteLength) return false;
+
+    return aBytes.every((value, index) => value === bBytes[index]);
 }
