@@ -31,6 +31,22 @@ function buildHeaders(token: string, accountId: string, json = false) {
     return h;
 }
 
+function areMessagesEquivalent(current: InboxMessage[], next: InboxMessage[]) {
+    if (current.length !== next.length) return false;
+
+    return current.every((message, index) => {
+        const nextMessage = next[index];
+        return nextMessage &&
+            message.id === nextMessage.id &&
+            message.content === nextMessage.content &&
+            message.createdAt === nextMessage.createdAt &&
+            message.status === nextMessage.status &&
+            message.readAt === nextMessage.readAt &&
+            message.firstOpenedAt === nextMessage.firstOpenedAt &&
+            message.openCount === nextMessage.openCount;
+    });
+}
+
 export function useInbox() {
     const { socket, isConnected } = useSocket();
     const { token, user } = useAuth();
@@ -358,8 +374,11 @@ export function useInbox() {
                 const data: unknown = await messagesRes.json();
                 const nextMessages = (data as { messages?: InboxMessage[] }).messages;
                 if (nextMessages) {
-                    setMessages(nextMessages);
-                    messagesCache.current.set(selectedId, nextMessages);
+                    setMessages(prev => {
+                        if (areMessagesEquivalent(prev, nextMessages)) return prev;
+                        messagesCache.current.set(selectedId, nextMessages);
+                        return nextMessages;
+                    });
                     if (messagesCache.current.size > 20) {
                         const firstKey = messagesCache.current.keys().next().value;
                         if (firstKey) messagesCache.current.delete(firstKey);
