@@ -151,7 +151,7 @@ export class ProductsService {
                     goldPriceType: productData.goldPriceType,
                     cogs: toNumberOrNull(productData.cogs),
                     miscCosts: productData.miscCosts || undefined,
-                    supplierId: productData.supplierId || null,
+                    supplierId: productData.supplierId !== undefined ? productData.supplierId || null : undefined,
                     images: productData.images || undefined,
                     rawData: updatedRawData,
                     seoData: updatedSeoData

@@ -2,7 +2,7 @@
  * BOMPanel - Bill of Materials configuration panel.
  * Manages composite product components, costs, and WooCommerce inventory sync.
  */
-import { useState, useEffect, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { useState, useEffect, useImperativeHandle, forwardRef, useCallback, useRef } from 'react';
 import { Logger } from '../../utils/logger';
 import { GitBranch, Loader2, Save } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -74,6 +74,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     const [bomItems, setBomItems] = useState<BOMItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const hadPersistedBomItemsRef = useRef(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState<BOMSearchResultProduct[]>([]);
@@ -108,6 +109,10 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     // 0 = Main Product, otherwise Variant ID
     // If fixedVariationId is defined, use it, else default to 0
     const [selectedScope, setSelectedScope] = useState<number>(fixedVariationId !== undefined ? fixedVariationId : 0);
+
+    useEffect(() => {
+        hadPersistedBomItemsRef.current = false;
+    }, [productId, selectedScope]);
 
     // Search for products with debounce
     useEffect(() => {
@@ -238,11 +243,14 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
                 const data = await res.json();
                 if (data && data.items) {
                     const mapped = data.items.map((item: BomResponseItem) => mapBOMItemFromResponse(item));
+                    hadPersistedBomItemsRef.current = mapped.length > 0;
                     setBomItems(mapped);
                 } else {
+                    hadPersistedBomItemsRef.current = false;
                     setBomItems([]);
                 }
             } else {
+                hadPersistedBomItemsRef.current = false;
                 setBomItems([]);
             }
         } catch (err) {
@@ -378,6 +386,10 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
     }, 0);
 
     const handleSave = useCallback(async (): Promise<boolean> => {
+        if (bomItems.length === 0 && !hadPersistedBomItemsRef.current) {
+            return true;
+        }
+
         setSaving(true);
         try {
             const payload = {
@@ -403,6 +415,7 @@ export const BOMPanel = forwardRef<BOMPanelRef, BOMPanelProps>(function BOMPanel
             });
 
             if (res.ok) {
+                hadPersistedBomItemsRef.current = bomItems.length > 0;
                 fetchBOM();
                 onCOGSUpdate?.(totalCost, bomItems.length > 0);
                 onSaveComplete?.();
