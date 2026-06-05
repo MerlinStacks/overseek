@@ -5,7 +5,8 @@ import { LiveBlock } from './LiveBlock';
 
 interface Props {
     theme: EmailDesignTheme;
-    previewMode: 'desktop' | 'mobile';
+    previewWidth: number;
+    isMobilePreview: boolean;
     sections: EmailSection[];
     selectedSectionId: string;
     selectedBlockId: string | null;
@@ -21,11 +22,11 @@ interface Props {
     onDropStructure: (event: DragEvent, insertIndex: number) => void;
 }
 
-export function EmailDropCanvas({ theme, previewMode, sections, selectedSectionId, selectedBlockId, onSelectSection, onSelectBlock, onUpdateBlock, onDuplicateBlock, onDeleteBlock, onDeleteSection, onOpenSettings, onOpenSectionSettings, onDropOnSection, onDropStructure }: Props) {
+export function EmailDropCanvas({ theme, previewWidth, isMobilePreview, sections, selectedSectionId, selectedBlockId, onSelectSection, onSelectBlock, onUpdateBlock, onDuplicateBlock, onDeleteBlock, onDeleteSection, onOpenSettings, onOpenSectionSettings, onDropOnSection, onDropStructure }: Props) {
     const [dropTarget, setDropTarget] = useState<string | null>(null);
     const [sectionDropIndex, setSectionDropIndex] = useState<number | null>(null);
     const canvasStyle: CSSProperties = { background: theme.backgroundColor, fontFamily: theme.fontFamily, color: theme.textColor };
-    const emailStyle: CSSProperties = { maxWidth: previewMode === 'mobile' ? 390 : theme.contentWidth, background: theme.contentBackgroundColor, borderRadius: theme.borderRadius };
+    const emailStyle: CSSProperties = { width: isMobilePreview ? previewWidth : '100%', maxWidth: isMobilePreview ? previewWidth : theme.contentWidth, background: theme.contentBackgroundColor, borderRadius: theme.borderRadius };
 
     const isStructureDrag = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('application/x-overseek-structure');
     const getSectionInsertIndex = (event: DragEvent<HTMLElement>, sectionIndex: number) => {
@@ -68,7 +69,7 @@ export function EmailDropCanvas({ theme, previewMode, sections, selectedSectionI
     };
 
     return (
-        <div className={`mx-auto rounded-3xl p-4 shadow-2xl transition-all ${previewMode === 'mobile' ? 'max-w-[430px] border-[10px] border-slate-900 shadow-slate-900/30' : 'max-w-5xl'}`} style={canvasStyle}>
+        <div className={`mx-auto rounded-3xl p-4 shadow-2xl transition-all ${isMobilePreview ? 'border-[10px] border-slate-900 shadow-slate-900/30' : 'max-w-5xl'}`} style={{ ...canvasStyle, maxWidth: isMobilePreview ? previewWidth + 52 : undefined }}>
             <div className="mx-auto overflow-hidden shadow-xl" style={emailStyle}>
                 {sections.map((section, sectionIndex) => {
                     const radius = section.borderRadius || [0, 0, 0, 0];

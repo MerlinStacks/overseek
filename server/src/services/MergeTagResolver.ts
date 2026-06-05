@@ -172,13 +172,15 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
 
     // Review merge tags
     const reviewFallback = getReviewFallback(context, storeUrl);
+    const explicitReviewUrl = getExplicitReviewUrl(context, storeUrl);
     if (context.review) {
         const review = context.review;
         replaceMergeTag('{{review.reviewer}}', review.reviewer || review.reviewerName || '');
         replaceMergeTag('{{review.rating}}', review.rating ? String(review.rating) : '');
         replaceMergeTag('{{review.content}}', review.content || review.review || '');
         replaceMergeTag('{{review.productName}}', review.productName || review.product_name || reviewFallback.productName);
-        replaceMergeTag('{{review.productUrl}}', getReviewProductUrl(review.productUrl || review.product_url, reviewFallback.productUrl, storeUrl));
+        replaceMergeTag('{{review.url}}', explicitReviewUrl || getReviewProductUrl(review.reviewUrl || review.review_url, reviewFallback.productUrl, storeUrl));
+        replaceMergeTag('{{review.productUrl}}', explicitReviewUrl || getReviewProductUrl(review.productUrl || review.product_url, reviewFallback.productUrl, storeUrl));
     } else {
         const reviewer = [
             context.customer?.firstName || context.customer?.first_name,
@@ -189,7 +191,8 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{review.rating}}', '5');
         replaceMergeTag('{{review.content}}', 'Thanks for your order. We would love to hear your feedback.');
         replaceMergeTag('{{review.productName}}', reviewFallback.productName || 'your recent purchase');
-        replaceMergeTag('{{review.productUrl}}', getReviewProductUrl('', reviewFallback.productUrl, storeUrl));
+        replaceMergeTag('{{review.url}}', explicitReviewUrl || getReviewProductUrl('', reviewFallback.productUrl, storeUrl));
+        replaceMergeTag('{{review.productUrl}}', explicitReviewUrl || getReviewProductUrl('', reviewFallback.productUrl, storeUrl));
     }
 
     // Shipment merge tags
@@ -283,6 +286,80 @@ function getReviewProductUrl(rawReviewUrl: unknown, fallbackUrl: string, storeUr
         return withReviewAnchor(reviewUrl);
     }
     return withReviewAnchor(fallbackUrl || reviewUrl || storeUrl);
+}
+
+function getExplicitReviewUrl(context: MergeTagContext, storeUrl: string): string {
+    const review = context.review || {};
+    const directReviewUrl = firstUrl(
+        review.url,
+        review.reviewUrl,
+        review.review_url,
+        review.reminderUrl,
+        review.reminder_url,
+        review.cusRevUrl,
+        review.cusrevUrl,
+        review.cusrev_url,
+        context.order?.reviewUrl,
+        context.order?.review_url,
+        context.order?.reviewReminderUrl,
+        context.order?.review_reminder_url,
+        context.order?.cusRevUrl,
+        context.order?.cusrevUrl,
+        context.order?.cusrev_url,
+        findReviewUrlInMetadata(context.order?.meta_data || context.order?.metaData),
+        findReviewUrlInMetadata(context.order?.rawData?.meta_data || context.order?.raw_data?.meta_data)
+    );
+
+    return directReviewUrl && !isStoreHomepageUrl(directReviewUrl, storeUrl) ? directReviewUrl : '';
+}
+
+function findReviewUrlInMetadata(metaData: unknown): string {
+    if (!Array.isArray(metaData)) return '';
+
+    for (const meta of metaData) {
+        if (!meta || typeof meta !== 'object') continue;
+        const record = meta as Record<string, unknown>;
+        const key = String(record.key || record.name || '').toLowerCase();
+        if (!/(cusrev|ivole|review).*url|url.*(cusrev|ivole|review)|review.*link|link.*review|reminder.*link|reminder.*url/.test(key)) continue;
+
+        const url = firstUrl(record.value, record.display_value);
+        if (url) return url;
+    }
+
+    return '';
+}
+
+function firstUrl(...values: unknown[]): string {
+    for (const value of values) {
+        const url = findUrl(value);
+        if (url) return url;
+    }
+
+    return '';
+}
+
+function findUrl(value: unknown): string {
+    if (!value) return '';
+    if (typeof value === 'string') {
+        const direct = value.trim();
+        if (/^https?:\/\//i.test(direct)) return direct;
+        const match = direct.match(/https?:\/\/[^\s"'<>]+/i);
+        return match?.[0] || '';
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const url = findUrl(item);
+            if (url) return url;
+        }
+    }
+    if (typeof value === 'object') {
+        for (const item of Object.values(value as Record<string, unknown>)) {
+            const url = findUrl(item);
+            if (url) return url;
+        }
+    }
+
+    return '';
 }
 
 function isStoreHomepageUrl(rawUrl: string, storeUrl: string): boolean {

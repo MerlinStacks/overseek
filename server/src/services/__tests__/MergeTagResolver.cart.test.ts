@@ -186,4 +186,23 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).toContain('Review Custom Cap');
         expect(html).toContain('href="https://store.example.com/?p=456#review_form"');
     });
+
+    it('prefers explicit CusRev review URLs from order metadata', () => {
+        const html = resolveMergeTags(
+            '<a href="{{review.productUrl}}">Review your order</a><a href="{{review.url}}">CusRev</a>',
+            {
+                order: {
+                    line_items: [{ product_id: 789, name: 'Custom Shirt' }],
+                    meta_data: [{
+                        key: '_cusrev_review_reminder_url',
+                        value: 'https://store.example.com/review-order/?ivole_order=99&ivole_token=abc123'
+                    }]
+                },
+                storeUrl: 'https://store.example.com',
+            }
+        );
+
+        expect(html).toContain('href="https://store.example.com/review-order/?ivole_order=99&ivole_token=abc123"');
+        expect(html).not.toContain('#review_form');
+    });
 });

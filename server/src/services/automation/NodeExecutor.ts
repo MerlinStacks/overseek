@@ -225,15 +225,21 @@ export class NodeExecutor {
         });
         const storeUrl = account?.wooUrl || account?.domain || '';
 
+        const baseContextData = enrollment.contextData || {};
         const recoveryUrl = cartRecoveryService.createRecoveryUrl({
             accountId: enrollment.automation.accountId,
             enrollmentId: enrollment.id,
-            sessionId: enrollment.contextData?.sessionId,
+            sessionId: baseContextData?.sessionId,
             email: enrollment.email,
-            checkoutUrl: enrollment.contextData?.cart?.checkoutUrl || enrollment.contextData?.checkoutUrl || null
+            checkoutUrl: baseContextData?.cart?.checkoutUrl || baseContextData?.checkoutUrl || null
         });
 
-        const contextData = enrollment.contextData || {};
+        const contextData = await automationContextService.buildContext({
+            accountId: enrollment.automation.accountId,
+            wooCustomerId: enrollment.wooCustomerId,
+            email: enrollment.email,
+            contextData: baseContextData,
+        });
         const orderContext = contextData.order || contextData.rawOrder || contextData.rawData || (
             contextData.line_items || contextData.lineItems || contextData.items || contextData.wooId || contextData.orderId
                 ? contextData

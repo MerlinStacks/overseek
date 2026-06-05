@@ -58,6 +58,14 @@ const MAX_HISTORY = 12;
 
 type BuilderTab = 'structure' | 'blocks' | 'layouts' | 'global';
 type LeftSidebarMode = 'builder' | 'blockSettings' | 'sectionSettings' | 'checklist' | 'history' | 'test';
+type PreviewDeviceId = 'desktop' | 'iphone-se' | 'iphone-15' | 'iphone-15-pro-max' | 'pixel-8' | 'galaxy-s24';
+
+interface PreviewDevicePreset {
+    id: PreviewDeviceId;
+    label: string;
+    width: number;
+    type: 'desktop' | 'mobile';
+}
 
 interface StructurePreset {
     id: string;
@@ -74,6 +82,15 @@ const STRUCTURE_PRESETS: StructurePreset[] = [
     { id: 'four-equal', widths: [25, 25, 25, 25] },
     { id: 'narrow-wide-narrow-wide', widths: [17, 33, 17, 33] },
     { id: 'wide-narrow-narrow-wide', widths: [33, 17, 17, 33] },
+];
+
+const PREVIEW_DEVICES: PreviewDevicePreset[] = [
+    { id: 'desktop', label: 'Desktop', width: 920, type: 'desktop' },
+    { id: 'iphone-se', label: 'iPhone SE', width: 375, type: 'mobile' },
+    { id: 'iphone-15', label: 'iPhone 15', width: 393, type: 'mobile' },
+    { id: 'iphone-15-pro-max', label: 'iPhone 15 Pro Max', width: 430, type: 'mobile' },
+    { id: 'pixel-8', label: 'Google Pixel 8', width: 412, type: 'mobile' },
+    { id: 'galaxy-s24', label: 'Galaxy S24', width: 384, type: 'mobile' },
 ];
 
 const cloneDesign = (design: EmailDesignV2Envelope): EmailDesignV2Envelope => (
@@ -460,7 +477,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [leftSidebarMode, setLeftSidebarMode] = useState<LeftSidebarMode>('builder');
     const [builderTab, setBuilderTab] = useState<BuilderTab>('blocks');
     const [blockSearch, setBlockSearch] = useState('');
-    const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+    const [previewDeviceId, setPreviewDeviceId] = useState<PreviewDeviceId>('desktop');
     const [previewSurface, setPreviewSurface] = useState<'canvas' | 'html'>('canvas');
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState(false);
@@ -494,6 +511,9 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const designWarnings = useMemo(() => getEmailDesignWarnings(design), [design]);
     const visiblePaletteItems = paletteItems.filter((item) => item.label.toLowerCase().includes(blockSearch.trim().toLowerCase()));
     const saveStatus = saving ? 'Autosaving...' : saveError ? 'Autosave failed, draft kept' : hasUnsavedChanges ? 'Autosave pending' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
+    const previewDevice = PREVIEW_DEVICES.find((device) => device.id === previewDeviceId) || PREVIEW_DEVICES[0];
+    const isMobilePreview = previewDevice.type === 'mobile';
+    const previewWidth = isMobilePreview ? previewDevice.width : Math.min(design.document.theme.contentWidth, previewDevice.width);
     const hideOnDesktop = selectedSection?.visibility === 'mobile';
     const hideOnMobile = selectedSection?.visibility === 'desktop';
 
@@ -1337,9 +1357,19 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                             <button onClick={() => setPreviewSurface('canvas')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'canvas' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Live canvas preview" aria-label="Live canvas preview">Canvas</button>
                             <button onClick={() => setPreviewSurface('html')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${previewSurface === 'html' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Real email HTML preview" aria-label="Real email HTML preview">Real Email</button>
                         </div>
-                        <div className="flex rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
-                            <button onClick={() => setPreviewMode('desktop')} className={`rounded-md p-2 ${previewMode === 'desktop' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Desktop preview" aria-label="Desktop preview"><Monitor size={16} /></button>
-                            <button onClick={() => setPreviewMode('mobile')} className={`rounded-md p-2 ${previewMode === 'mobile' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Mobile preview" aria-label="Mobile preview"><Smartphone size={16} /></button>
+                        <div className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
+                            <button onClick={() => setPreviewDeviceId('desktop')} className={`rounded-md p-2 ${previewDeviceId === 'desktop' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`} title="Desktop preview" aria-label="Desktop preview"><Monitor size={16} /></button>
+                            <Smartphone size={16} className="ml-1 text-slate-400" aria-hidden="true" />
+                            <select
+                                value={previewDeviceId}
+                                onChange={(event) => setPreviewDeviceId(event.target.value as PreviewDeviceId)}
+                                className="rounded-md border-0 bg-transparent px-2 py-2 text-xs font-semibold text-slate-600 focus:ring-2 focus:ring-indigo-500 dark:text-slate-300"
+                                aria-label="Preview device"
+                            >
+                                {PREVIEW_DEVICES.map((device) => (
+                                    <option key={device.id} value={device.id}>{device.label} ({device.width}px)</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1560,6 +1590,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     <main className="min-h-0 overflow-auto bg-slate-200/70 p-4 dark:bg-slate-950">
                         <div className="mx-auto mb-3 flex max-w-4xl items-center justify-between gap-3">
                             <p className="text-sm text-slate-600 dark:text-slate-300">{previewSurface === 'canvas' ? 'Live email canvas. Drag blocks into place and edit content directly.' : 'Real email preview from compiled HTML. This is the exact markup that gets saved and sent.'}</p>
+                            <p className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">{previewDevice.label} · {previewWidth}px</p>
                         </div>
                         {designWarnings.length > 0 && (
                             <div className="mx-auto mb-3 max-w-4xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-sm dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-100">
@@ -1580,11 +1611,11 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                     setSelectedBlockId(null);
                                 }}
                             >
-                                <EmailDropCanvas theme={design.document.theme} previewMode={previewMode} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onOpenSectionSettings={() => setLeftSidebarMode('sectionSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                                <EmailDropCanvas theme={design.document.theme} previewWidth={previewWidth} isMobilePreview={isMobilePreview} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onOpenSectionSettings={() => setLeftSidebarMode('sectionSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
                             </ErrorBoundary>
                         ) : (
                             <div className="mx-auto w-full rounded-3xl border border-slate-300 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-                                <div className="mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700" style={{ width: previewMode === 'mobile' ? 390 : Math.min(design.document.theme.contentWidth, 920), maxWidth: '100%' }}>
+                                <div className="mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700" style={{ width: previewWidth, maxWidth: '100%' }}>
                                     <iframe
                                         title="Compiled email HTML preview"
                                         srcDoc={iframePreviewHtml}
