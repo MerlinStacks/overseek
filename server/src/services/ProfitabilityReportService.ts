@@ -38,6 +38,67 @@ interface ProfitabilityReport {
     breakdown: ProfitabilityBreakdown[];
 }
 
+type ProductCogsRecord = {
+    id: string;
+    wooId: number;
+    cogs: unknown;
+    miscCosts: unknown;
+    name: string;
+    sku: string | null;
+};
+
+function calculateBomUnitCogs(items: Array<{
+    quantity: unknown;
+    wasteFactor: unknown;
+    internalProduct?: { cogs: unknown } | null;
+    childVariation?: { cogs: unknown } | null;
+    childProduct?: { cogs: unknown } | null;
+    supplierItem?: { cost: unknown } | null;
+}>): number {
+    return items.reduce((sum, item) => {
+        let unitCost = 0;
+        if (item.internalProduct?.cogs != null) unitCost = Number(item.internalProduct.cogs);
+        else if (item.childVariation?.cogs != null) unitCost = Number(item.childVariation.cogs);
+        else if (item.childProduct?.cogs != null) unitCost = Number(item.childProduct.cogs);
+        else if (item.supplierItem?.cost != null) unitCost = Number(item.supplierItem.cost);
+
+        return sum + (unitCost * Number(item.quantity) * (1 + Number(item.wasteFactor)));
+    }, 0);
+}
+
+async function getBomCogsByTarget(
+    accountId: string,
+    products: ProductCogsRecord[],
+    variationIds: number[]
+): Promise<Map<string, number>> {
+    if (products.length === 0) return new Map();
+
+    const boms = await prisma.bOM.findMany({
+        where: {
+            product: { accountId },
+            productId: { in: products.map(p => p.id) },
+            variationId: { in: [0, ...variationIds] }
+        },
+        include: {
+            items: {
+                where: { isActive: true },
+                include: {
+                    supplierItem: true,
+                    childProduct: { select: { cogs: true } },
+                    childVariation: { select: { cogs: true } },
+                    internalProduct: { select: { cogs: true } }
+                }
+            }
+        }
+    });
+
+    return new Map(
+        boms
+            .filter(bom => bom.items.length > 0)
+            .map(bom => [`${bom.productId}:${bom.variationId}`, calculateBomUnitCogs(bom.items)])
+    );
+}
+
 /**
  * Get Profitability Report
  * Calculates Gross Profit based on COGS for orders in the given date range.
@@ -97,7 +158,7 @@ export async function getProfitabilityReport(
     // Batch fetch COGS - Products
     const products = await prisma.wooProduct.findMany({
         where: { accountId, wooId: { in: Array.from(productIds) } },
-        select: { wooId: true, cogs: true, miscCosts: true, name: true, sku: true }
+        select: { id: true, wooId: true, cogs: true, miscCosts: true, name: true, sku: true }
     });
     const productMap = new Map(products.map(p => [p.wooId, p]));
 
@@ -107,9 +168,11 @@ export async function getProfitabilityReport(
             product: { accountId },
             wooId: { in: Array.from(variationIds) }
         },
-        select: { wooId: true, cogs: true, miscCosts: true, sku: true }
+        select: { productId: true, wooId: true, cogs: true, miscCosts: true, sku: true }
     });
     const variationMap = new Map(variations.map(v => [v.wooId, v]));
+
+    const bomCogsByTarget = await getBomCogsByTarget(accountId, products, Array.from(variationIds));
 
     // Match & Calculate
     let totalRevenue = 0;
@@ -142,6 +205,13 @@ export async function getProfitabilityReport(
             if (!sku) sku = p.sku || '';
         } else if (!sku && productMap.has(line.productId)) {
             sku = productMap.get(line.productId)!.sku || '';
+        }
+
+        if (cogsUnit === 0 && productMap.has(line.productId)) {
+            const product = productMap.get(line.productId)!;
+            cogsUnit = bomCogsByTarget.get(`${product.id}:${line.variationId}`)
+                ?? bomCogsByTarget.get(`${product.id}:0`)
+                ?? 0;
         }
 
         // Add miscellaneous costs (shipping, packaging, etc.) to COGS

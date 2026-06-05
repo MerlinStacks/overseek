@@ -15,6 +15,9 @@ vi.mock('../../utils/prisma', () => ({
         productVariation: {
             findMany: vi.fn(),
         },
+        bOM: {
+            findMany: vi.fn(),
+        },
         // Mocks for other methods in AnalyticsService if they are called (they are not in this test)
         analyticsSession: {
             findMany: vi.fn(),
@@ -46,6 +49,7 @@ vi.mock('../../utils/logger', () => ({
 describe('AnalyticsService.getProfitabilityReport', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        (prisma.bOM.findMany as any).mockResolvedValue([]);
     });
 
     it('should calculate profit including payment fees', async () => {
@@ -206,5 +210,47 @@ describe('AnalyticsService.getProfitabilityReport', () => {
         expect(result.summary.cost).toBe(30);
         expect(result.summary.profit).toBe(70);
         expect(result.breakdown[0].cogsUnit).toBe(15);
+    });
+
+    it('should calculate COGS from BOM components when product COGS is missing', async () => {
+        const accountId = 'acc_123';
+        const startDate = new Date('2023-01-01');
+        const endDate = new Date('2023-01-31');
+
+        (prisma.wooOrder.findMany as any).mockResolvedValue([
+            {
+                id: 'ord_1',
+                wooId: 101,
+                number: '1001',
+                dateCreated: new Date('2023-01-10'),
+                rawData: {
+                    line_items: [
+                        { product_id: 1, quantity: 2, total: '100.00', name: 'BOM Product' }
+                    ],
+                    meta_data: []
+                }
+            }
+        ]);
+
+        (prisma.wooProduct.findMany as any).mockResolvedValue([
+            { id: 'prod_db_1', wooId: 1, cogs: null, miscCosts: [], sku: 'BOM', name: 'BOM Product' }
+        ]);
+        (prisma.productVariation.findMany as any).mockResolvedValue([]);
+        (prisma.bOM.findMany as any).mockResolvedValue([
+            {
+                productId: 'prod_db_1',
+                variationId: 0,
+                items: [
+                    { quantity: '2', wasteFactor: '0', internalProduct: { cogs: '10.00' }, childVariation: null, childProduct: null, supplierItem: null },
+                    { quantity: '1', wasteFactor: '0.1', internalProduct: null, childVariation: null, childProduct: { cogs: '5.00' }, supplierItem: null }
+                ]
+            }
+        ]);
+
+        const result = await AnalyticsService.getProfitabilityReport(accountId, startDate, endDate);
+
+        expect(result.breakdown[0].cogsUnit).toBe(25.5);
+        expect(result.summary.cost).toBe(51);
+        expect(result.summary.profit).toBe(49);
     });
 });

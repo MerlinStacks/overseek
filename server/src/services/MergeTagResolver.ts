@@ -178,7 +178,7 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{review.rating}}', review.rating ? String(review.rating) : '');
         replaceMergeTag('{{review.content}}', review.content || review.review || '');
         replaceMergeTag('{{review.productName}}', review.productName || review.product_name || reviewFallback.productName);
-        replaceMergeTag('{{review.productUrl}}', review.productUrl || review.product_url || reviewFallback.productUrl);
+        replaceMergeTag('{{review.productUrl}}', getReviewProductUrl(review.productUrl || review.product_url, reviewFallback.productUrl, storeUrl));
     } else {
         const reviewer = [
             context.customer?.firstName || context.customer?.first_name,
@@ -189,7 +189,7 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{review.rating}}', '5');
         replaceMergeTag('{{review.content}}', 'Thanks for your order. We would love to hear your feedback.');
         replaceMergeTag('{{review.productName}}', reviewFallback.productName || 'your recent purchase');
-        replaceMergeTag('{{review.productUrl}}', reviewFallback.productUrl || storeUrl);
+        replaceMergeTag('{{review.productUrl}}', getReviewProductUrl('', reviewFallback.productUrl, storeUrl));
     }
 
     // Shipment merge tags
@@ -275,6 +275,32 @@ function withReviewAnchor(url: string): string {
     if (!trimmed) return '';
     if (/#/.test(trimmed)) return trimmed;
     return `${trimmed.replace(/\/$/, '')}#review_form`;
+}
+
+function getReviewProductUrl(rawReviewUrl: unknown, fallbackUrl: string, storeUrl: string): string {
+    const reviewUrl = String(rawReviewUrl || '').trim();
+    if (reviewUrl && !isStoreHomepageUrl(reviewUrl, storeUrl)) {
+        return withReviewAnchor(reviewUrl);
+    }
+    return withReviewAnchor(fallbackUrl || reviewUrl || storeUrl);
+}
+
+function isStoreHomepageUrl(rawUrl: string, storeUrl: string): boolean {
+    if (!rawUrl || !storeUrl) return false;
+
+    try {
+        const parsedUrl = new URL(rawUrl);
+        const parsedStoreUrl = new URL(storeUrl);
+        const normalizedPath = parsedUrl.pathname.replace(/\/$/, '') || '/';
+        const normalizedStorePath = parsedStoreUrl.pathname.replace(/\/$/, '') || '/';
+
+        return parsedUrl.origin === parsedStoreUrl.origin
+            && normalizedPath === normalizedStorePath
+            && !parsedUrl.search
+            && !parsedUrl.hash;
+    } catch {
+        return rawUrl.replace(/\/$/, '') === storeUrl.replace(/\/$/, '');
+    }
 }
 
 function getReviewFallback(context: MergeTagContext, storeUrl: string): { productName: string; productUrl: string } {

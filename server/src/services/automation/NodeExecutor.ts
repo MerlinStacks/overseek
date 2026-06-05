@@ -239,12 +239,11 @@ export class NodeExecutor {
                 ? contextData
                 : undefined
         );
+        const customerContext = await this.buildCustomerMergeContext(enrollment, contextData, orderContext);
 
         const context = {
-            customer: {
-                email: enrollment.email,
-                id: enrollment.wooCustomerId
-            },
+            ...contextData,
+            customer: customerContext,
             order: orderContext,
             coupon: contextData.coupon,
             cart: contextData.cart
@@ -256,8 +255,7 @@ export class NodeExecutor {
                 : undefined,
             store: { url: storeUrl },
             storeUrl,
-            store_url: storeUrl,
-            ...contextData
+            store_url: storeUrl
         };
 
         const recipientTemplate = config.to || enrollment.email;
@@ -404,6 +402,96 @@ export class NodeExecutor {
                 }
             };
         }
+    }
+
+    private async buildCustomerMergeContext(enrollment: any, contextData: any, orderContext: any): Promise<Record<string, any>> {
+        const payloadCustomer = isPlainObject(contextData?.customer) ? contextData.customer : {};
+        const billing = firstPlainObject(
+            contextData?.billing,
+            orderContext?.billing,
+            payloadCustomer.billing
+        );
+        const shipping = firstPlainObject(
+            contextData?.shipping,
+            orderContext?.shipping,
+            payloadCustomer.shipping
+        );
+
+        const wooCustomer = await this.findWooCustomerForEnrollment(enrollment);
+        const rawCustomer = isPlainObject(wooCustomer?.rawData) ? wooCustomer.rawData : {};
+
+        const firstName = firstString(
+            payloadCustomer.firstName,
+            payloadCustomer.first_name,
+            contextData?.firstName,
+            contextData?.first_name,
+            billing.first_name,
+            shipping.first_name,
+            wooCustomer?.firstName,
+            rawCustomer.first_name,
+            rawCustomer.firstName
+        );
+        const lastName = firstString(
+            payloadCustomer.lastName,
+            payloadCustomer.last_name,
+            contextData?.lastName,
+            contextData?.last_name,
+            billing.last_name,
+            shipping.last_name,
+            wooCustomer?.lastName,
+            rawCustomer.last_name,
+            rawCustomer.lastName
+        );
+        const email = firstString(
+            payloadCustomer.email,
+            contextData?.email,
+            billing.email,
+            wooCustomer?.email,
+            rawCustomer.email,
+            enrollment.email
+        );
+
+        return {
+            ...payloadCustomer,
+            id: firstString(payloadCustomer.id, wooCustomer?.id, enrollment.wooCustomerId),
+            wooId: payloadCustomer.wooId ?? payloadCustomer.woo_id ?? wooCustomer?.wooId ?? enrollment.wooCustomerId,
+            firstName,
+            first_name: firstString(payloadCustomer.first_name, firstName),
+            lastName,
+            last_name: firstString(payloadCustomer.last_name, lastName),
+            email,
+            phone: firstString(payloadCustomer.phone, billing.phone, shipping.phone, rawCustomer.phone)
+        };
+    }
+
+    private async findWooCustomerForEnrollment(enrollment: any): Promise<{ id: string; wooId: number; email: string; firstName: string | null; lastName: string | null; rawData: any } | null> {
+        const accountId = enrollment?.automation?.accountId;
+        if (!accountId) return null;
+
+        const filters: any[] = [];
+        const wooCustomerId = Number(enrollment.wooCustomerId);
+        if (Number.isFinite(wooCustomerId)) {
+            filters.push({ wooId: wooCustomerId });
+        }
+        if (typeof enrollment.email === 'string' && enrollment.email.trim()) {
+            filters.push({ email: { equals: enrollment.email.trim(), mode: 'insensitive' } });
+        }
+        if (filters.length === 0) return null;
+
+        return prisma.wooCustomer.findFirst({
+            where: {
+                accountId,
+                OR: filters
+            },
+            select: {
+                id: true,
+                wooId: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                rawData: true
+            }
+        });
     }
 
     /**
@@ -694,4 +782,22 @@ export class NodeExecutor {
 
         return conversation.id;
     }
+}
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function firstPlainObject(...values: unknown[]): Record<string, any> {
+    return values.find(isPlainObject) || {};
+}
+
+function firstString(...values: unknown[]): string {
+    for (const value of values) {
+        if (typeof value !== 'string' && typeof value !== 'number') continue;
+        const stringValue = String(value).trim();
+        if (stringValue) return stringValue;
+    }
+
+    return '';
 }
