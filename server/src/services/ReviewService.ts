@@ -1,7 +1,12 @@
-
 import { prisma } from '../utils/prisma';
+import { WooService } from './woo';
 
-
+export class ReviewServiceError extends Error {
+    constructor(public code: string, message: string) {
+        super(message);
+        this.name = 'ReviewServiceError';
+    }
+}
 
 export class ReviewService {
 
@@ -39,7 +44,17 @@ export class ReviewService {
         ]);
 
         return {
-            reviews,
+            reviews: reviews.map((review) => {
+                const rawData = review.rawData && typeof review.rawData === 'object' && !Array.isArray(review.rawData)
+                    ? review.rawData as Record<string, unknown>
+                    : {};
+
+                return {
+                    ...review,
+                    media: Array.isArray(rawData.media) ? rawData.media : [],
+                    replies: Array.isArray(rawData.replies) ? rawData.replies : [],
+                };
+            }),
             pagination: {
                 total,
                 page,
@@ -51,37 +66,62 @@ export class ReviewService {
 
 
 
-    async replyToReview(accountId: string, reviewId: string, _reply: string) {
-        // 1. Get the local review to find the Woo ID
-        const review = await prisma.wooReview.findUnique({
-            where: { id: reviewId },
-        });
+    async replyToReview(accountId: string, reviewId: string, reply: string) {
+        const review = await this.getOwnedReview(accountId, reviewId);
+        const replyText = String(reply || '').trim();
+        if (!replyText) throw new ReviewServiceError('REVIEW_REPLY_REQUIRED', 'Reply is required');
 
-        if (!review || review.accountId !== accountId) {
-            throw new Error('Review not found');
+        const woo = await WooService.forAccount(accountId);
+        const result = await woo.replyToReview(review.wooId, replyText);
+        await this.mergeRawReviewData(review.id, result?.review);
+
+        return result;
+    }
+
+    async updateReview(accountId: string, reviewId: string, data: { status?: string; content?: string; rating?: number }) {
+        const review = await this.getOwnedReview(accountId, reviewId);
+        const updateData: { status?: string; content?: string; rating?: number } = {};
+
+        if (data.status !== undefined) {
+            updateData.status = this.normalizeStatus(data.status);
         }
 
-        // 2. Post reply to WooCommerce
-        // Note: WooCommerce API for reviews might handle replies as new reviews with parent ID or comments.
-        // Standard Woo REST API v3 supports creating a product review. 
-        // Usually replies are just comments on the review post in WP, but via API it's trickier.
-        // For now, let's assume we just store it locally or use a custom endpoint if needed.
-        // Actually, judge.me style usually means we handle it. 
-        // Let's trying to hit the Woo API to create a comment/review reply if possible.
-        // If not, we just store it. But wait, we don't have a local replies table.
-        // We should probably rely on WooSync to bring it back if we post it to Woo.
+        if (data.content !== undefined) {
+            const content = String(data.content || '').trim();
+            if (!content) throw new ReviewServiceError('REVIEW_CONTENT_REQUIRED', 'Review content is required');
+            updateData.content = content;
+        }
 
-        // For MVP, we might just update the local status or similar. 
-        // But the user asked for "manage" reviews.
+        if (data.rating !== undefined) {
+            const rating = Number(data.rating);
+            if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+                throw new ReviewServiceError('REVIEW_RATING_INVALID', 'Rating must be between 1 and 5');
+            }
+            updateData.rating = rating;
+        }
 
-        // Let's implement a "fake" reply for now that just logs it or assumes success if we can't easily reply via standard API without products permissions.
-        // Actually Woo API /products/reviews allows UPDATING a review.
+        if (Object.keys(updateData).length === 0) {
+            throw new ReviewServiceError('REVIEW_NO_CHANGES', 'No review changes provided');
+        }
 
-        // Use the wooService to post.
-        // await wooService.post(`products/reviews`, ... );
+        const woo = await WooService.forAccount(accountId);
+        const result = await woo.updateReview(review.wooId, updateData);
 
-        // For now, let's just return success to mock the UI flow.
-        return { success: true, message: "Reply feature pending Woo API integration" };
+        await prisma.wooReview.update({
+            where: { id: review.id },
+            data: {
+                ...(updateData.status ? { status: updateData.status } : {}),
+                ...(updateData.content ? { content: updateData.content } : {}),
+                ...(updateData.rating ? { rating: updateData.rating } : {}),
+                ...(result?.review ? { rawData: { ...(review.rawData as any), ...result.review } } : {})
+            }
+        });
+
+        return result;
+    }
+
+    async moderateReview(accountId: string, reviewId: string, status: string) {
+        return this.updateReview(accountId, reviewId, { status });
     }
 
     /**
@@ -257,6 +297,39 @@ export class ReviewService {
         const domain = trimmed.substring(atIndex);
         const plusIndex = localPart.indexOf('+');
         return plusIndex !== -1 ? localPart.substring(0, plusIndex) + domain : trimmed;
+    }
+
+    private async getOwnedReview(accountId: string, reviewId: string) {
+        const review = await prisma.wooReview.findUnique({ where: { id: reviewId } });
+        if (!review || review.accountId !== accountId) {
+            throw new ReviewServiceError('REVIEW_NOT_FOUND', 'Review not found');
+        }
+        return review;
+    }
+
+    private normalizeStatus(status: string): string {
+        const normalized = String(status || '').toLowerCase().trim();
+        const allowed = new Set(['approved', 'hold', 'spam', 'trash']);
+        if (!allowed.has(normalized)) {
+            throw new ReviewServiceError('REVIEW_STATUS_INVALID', 'Invalid review status');
+        }
+        return normalized;
+    }
+
+    private async mergeRawReviewData(reviewId: string, reviewData: unknown) {
+        if (!reviewData || typeof reviewData !== 'object') return;
+
+        const review = await prisma.wooReview.findUnique({ where: { id: reviewId }, select: { rawData: true } });
+        if (!review) return;
+
+        const currentRawData = review.rawData && typeof review.rawData === 'object' && !Array.isArray(review.rawData)
+            ? review.rawData as Record<string, unknown>
+            : {};
+
+        await prisma.wooReview.update({
+            where: { id: reviewId },
+            data: { rawData: { ...currentRawData, ...(reviewData as Record<string, unknown>) } as any }
+        });
     }
 
     private namesMatch(reviewerName: string, billingFirst: string | undefined, billingLast: string | undefined): boolean {

@@ -1,0 +1,15 @@
+{
+  "apiVersion": 3,
+  "name": "overseek/review-rows",
+  "title": "OverSeek Review Rows",
+  "category": "widgets",
+  "icon": "editor-ul",
+  "description": "Render compact review rows.",
+  "textdomain": "overseek-wc",
+  "editorScript": "file:../../assets/reviews-blocks.js",
+  "attributes": {
+    "product_id": { "type": "number", "default": 0 },
+    "limit": { "type": "number", "default": 12 },
+    "show_product": { "type": "string", "default": "1" }
+  }
+}

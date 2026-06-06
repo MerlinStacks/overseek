@@ -23,6 +23,28 @@ class OverSeek_Admin
 	}
 
 	/**
+	 * Clamp review minimum rating to valid star values.
+	 *
+	 * @param mixed $value Raw submitted value.
+	 * @return int
+	 */
+	public function sanitize_review_min_rating($value)
+	{
+		return max(0, min(5, absint($value)));
+	}
+
+	/**
+	 * Sanitize optional review colour fields.
+	 *
+	 * @param mixed $value Raw submitted value.
+	 * @return string
+	 */
+	public function sanitize_review_color($value)
+	{
+		return sanitize_hex_color((string) $value) ?: '';
+	}
+
+	/**
 	 * Enqueue admin-only assets for the OverSeek settings screen.
 	 *
 	 * @param string $hook_suffix Current admin page hook.
@@ -84,6 +106,31 @@ class OverSeek_Admin
 		register_setting('overseek_options_group', 'overseek_enable_chat', array(
 			'type' => 'string',
 			'sanitize_callback' => array($this, 'sanitize_checkbox'),
+		));
+		register_setting('overseek_options_group', 'overseek_reviews_replace_form', array(
+			'type' => 'string',
+			'sanitize_callback' => array($this, 'sanitize_checkbox'),
+		));
+		register_setting('overseek_options_group', 'overseek_enable_google_product_review_feed', array(
+			'type' => 'string',
+			'sanitize_callback' => array($this, 'sanitize_checkbox'),
+		));
+		register_setting('overseek_options_group', 'overseek_reviews_min_rating', array(
+			'type' => 'integer',
+			'default' => 0,
+			'sanitize_callback' => array($this, 'sanitize_review_min_rating'),
+		));
+		register_setting('overseek_options_group', 'overseek_reviews_accent_primary', array(
+			'type' => 'string',
+			'sanitize_callback' => array($this, 'sanitize_review_color'),
+		));
+		register_setting('overseek_options_group', 'overseek_reviews_accent_secondary', array(
+			'type' => 'string',
+			'sanitize_callback' => array($this, 'sanitize_review_color'),
+		));
+		register_setting('overseek_options_group', 'overseek_reviews_accent_tertiary', array(
+			'type' => 'string',
+			'sanitize_callback' => array($this, 'sanitize_review_color'),
 		));
 		
 		// Privacy settings
@@ -177,13 +224,21 @@ class OverSeek_Admin
 		$retention          = (int) get_option('overseek_cookie_retention_days', 365);
 		$invoice_retention  = (int) get_option('overseek_invoice_retention_days', 30);
 		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 25);
+		$reviews_min_rating = (int) get_option('overseek_reviews_min_rating', 0);
+		$reviews_accent_primary = (string) get_option('overseek_reviews_accent_primary', '');
+		$reviews_accent_secondary = (string) get_option('overseek_reviews_accent_secondary', '');
+		$reviews_accent_tertiary = (string) get_option('overseek_reviews_accent_tertiary', '');
+		$woocommerce_brand_color = (string) get_option('woocommerce_email_base_color', '#f59e0b');
 		$relay_endpoint     = home_url('/wp-json/overseek/v1/email-relay');
 		$tracking_events_endpoint = home_url('/wp-json/overseek/v1/tracking-email-events');
 		$artwork_events_endpoint  = home_url('/wp-json/overseek/v1/artwork-events');
+		$product_reviews_feed_url = class_exists('OverSeek_Google_Product_Review_Feed') ? OverSeek_Google_Product_Review_Feed::get_feed_url() : add_query_arg('overseek_google_product_reviews', '1', home_url('/'));
 		$is_configured      = !empty($api_url) && !empty($account_id);
 		$enabled_features   = array_filter(array(
 			get_option('overseek_enable_tracking'),
 			get_option('overseek_enable_chat'),
+			get_option('overseek_reviews_replace_form'),
+			get_option('overseek_enable_google_product_review_feed'),
 			get_option('overseek_enable_vitals', '1'),
 			get_option('overseek_enable_processing_invoice_sync', '1'),
 		));
@@ -222,8 +277,8 @@ class OverSeek_Admin
 				</div>
 				<div class="overseek-admin__stat-card">
 					<span class="overseek-admin__stat-label">Enabled features</span>
-					<strong><?php echo esc_html((string) count($enabled_features)); ?>/4</strong>
-					<p>Tracking, chat, vitals, and invoice sync can be toggled independently.</p>
+					<strong><?php echo esc_html((string) count($enabled_features)); ?>/6</strong>
+					<p>Tracking, chat, reviews, review feed, vitals, and invoice sync can be toggled independently.</p>
 				</div>
 				<div class="overseek-admin__stat-card">
 					<span class="overseek-admin__stat-label">Privacy retention</span>
@@ -375,6 +430,44 @@ class OverSeek_Admin
 
 						<?php $this->render_toggle_field('overseek_enable_tracking', 'Enable global tracking', 'Send storefront analytics and behavioral events to OverSeek.'); ?>
 						<?php $this->render_toggle_field('overseek_enable_chat', 'Enable live chat widget', 'Show the OverSeek chat widget to visitors across your storefront.'); ?>
+						<?php $this->render_toggle_field('overseek_reviews_replace_form', 'Replace WooCommerce review form', 'Use the Overseek review display and media-enabled review form in the product reviews tab.'); ?>
+						<?php $this->render_toggle_field('overseek_enable_google_product_review_feed', 'Generate XML Product Review Feed for Google Shopping', 'Expose approved WooCommerce product reviews in Google Product Ratings XML format.'); ?>
+
+						<label class="overseek-admin__field" for="overseek_reviews_min_rating">
+							<span class="overseek-admin__label">Exclude reviews under</span>
+							<select id="overseek_reviews_min_rating" name="overseek_reviews_min_rating">
+								<option value="0" <?php selected($reviews_min_rating, 0); ?>>Show all reviews</option>
+								<option value="1" <?php selected($reviews_min_rating, 1); ?>>1 star and above</option>
+								<option value="2" <?php selected($reviews_min_rating, 2); ?>>2 stars and above</option>
+								<option value="3" <?php selected($reviews_min_rating, 3); ?>>3 stars and above</option>
+								<option value="4" <?php selected($reviews_min_rating, 4); ?>>4 stars and above</option>
+								<option value="5" <?php selected($reviews_min_rating, 5); ?>>5 stars only</option>
+							</select>
+							<span class="overseek-admin__hint">Global storefront setting. Applies to review blocks, review shortcodes, summaries, and product review displays before anything is rendered.</span>
+						</label>
+
+						<div class="overseek-admin__keyvals">
+							<label for="overseek_reviews_accent_primary">
+								<span class="overseek-admin__key">Review accent primary</span>
+								<input id="overseek_reviews_accent_primary" type="text" name="overseek_reviews_accent_primary" value="<?php echo esc_attr($reviews_accent_primary); ?>" placeholder="<?php echo esc_attr($woocommerce_brand_color); ?>" />
+							</label>
+							<label for="overseek_reviews_accent_secondary">
+								<span class="overseek-admin__key">Review accent secondary</span>
+								<input id="overseek_reviews_accent_secondary" type="text" name="overseek_reviews_accent_secondary" value="<?php echo esc_attr($reviews_accent_secondary); ?>" placeholder="#f97316" />
+							</label>
+							<label for="overseek_reviews_accent_tertiary">
+								<span class="overseek-admin__key">Review accent tertiary</span>
+								<input id="overseek_reviews_accent_tertiary" type="text" name="overseek_reviews_accent_tertiary" value="<?php echo esc_attr($reviews_accent_tertiary); ?>" placeholder="#2563eb" />
+							</label>
+						</div>
+						<p class="overseek-admin__hint">Leave colours blank to use the WooCommerce email brand colour where available. These colours drive the top line on review cards and the summary badge, not extra remote assets.</p>
+
+						<div class="overseek-admin__code-block">
+							<span class="overseek-admin__key">Google product review feed URL</span>
+							<code><?php echo esc_html($product_reviews_feed_url); ?></code>
+							<p>Enable the feed above, then add this URL in Google Merchant Center as a product ratings feed.</p>
+						</div>
+
 						<?php $this->render_toggle_field('overseek_enable_vitals', 'Enable Web Vitals collection', 'Collect LCP, CLS, INP, FCP, and TTFB with near-zero impact using beacon delivery.', '1', 'overseek_enable_vitals'); ?>
 
 						<label class="overseek-admin__field" for="overseek_vitals_sample_rate">

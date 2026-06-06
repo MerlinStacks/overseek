@@ -35,6 +35,20 @@ class OverSeek_API {
 	private const MAX_ATTACHMENT_BYTES = 10485760;
 
 	/**
+	 * Maximum review text length accepted from remote review creation.
+	 *
+	 * @var int
+	 */
+	private const MAX_REVIEW_TEXT_LENGTH = 3000;
+
+	/**
+	 * Maximum review media attachments accepted from remote review creation.
+	 *
+	 * @var int
+	 */
+	private const MAX_REVIEW_ATTACHMENTS = 6;
+
+	/**
 	 * Register REST API routes.
 	 *
 	 * @return void
@@ -97,6 +111,233 @@ class OverSeek_API {
 			'callback'            => [ $this, 'invoice_download_callback' ],
 			'permission_callback' => '__return_true',
 		] );
+
+		register_rest_route( 'overseek/v1', '/reviews', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'create_review_callback' ],
+			'permission_callback' => [ $this, 'check_admin_permission' ],
+		] );
+
+		register_rest_route( 'overseek/v1', '/reviews/(?P<id>\d+)', [
+			'methods'             => [ 'PATCH', 'PUT' ],
+			'callback'            => [ $this, 'update_review_callback' ],
+			'permission_callback' => [ $this, 'check_admin_permission' ],
+		] );
+
+		register_rest_route( 'overseek/v1', '/reviews/(?P<id>\d+)/reply', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'reply_to_review_callback' ],
+			'permission_callback' => [ $this, 'check_admin_permission' ],
+		] );
+	}
+
+	/**
+	 * Add Overseek media/reply fields to standard WooCommerce review REST responses.
+	 *
+	 * @param WP_REST_Response $response REST response.
+	 * @param mixed            $review   Review object.
+	 * @param WP_REST_Request  $request  REST request.
+	 * @return WP_REST_Response
+	 */
+	public function append_review_rest_fields( $response, $review, $request ) {
+		if ( ! $response instanceof WP_REST_Response ) {
+			return $response;
+		}
+
+		$data = $response->get_data();
+		$comment_id = isset( $data['id'] ) ? absint( $data['id'] ) : 0;
+
+		if ( ! $comment_id && is_object( $review ) && isset( $review->comment_ID ) ) {
+			$comment_id = absint( $review->comment_ID );
+		}
+
+		if ( ! $comment_id ) {
+			return $response;
+		}
+
+		$data['media'] = $this->build_review_media_response( $comment_id );
+		$data['replies'] = $this->build_review_replies_response( $comment_id );
+		$data['overseekSource'] = $this->build_review_source_response( $comment_id );
+		$response->set_data( $data );
+
+		return $response;
+	}
+
+	/**
+	 * Create a native WooCommerce review from OverSeek.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function create_review_callback( WP_REST_Request $request ): WP_REST_Response {
+		$params = $this->get_request_body( $request );
+		$product_id = isset( $params['product_id'] ) ? absint( (int) $params['product_id'] ) : 0;
+		$product = $product_id ? wc_get_product( $product_id ) : null;
+		if ( ! $product ) {
+			return $this->integration_error( 'invalid_product_id', 'Product not found.', 404 );
+		}
+
+		$review = isset( $params['review'] ) ? trim( wp_kses_post( (string) $params['review'] ) ) : '';
+		$review = mb_substr( $review, 0, self::MAX_REVIEW_TEXT_LENGTH );
+		$reviewer = isset( $params['reviewer'] ) ? sanitize_text_field( (string) $params['reviewer'] ) : '';
+		$email = isset( $params['reviewer_email'] ) ? sanitize_email( (string) $params['reviewer_email'] ) : '';
+		$rating = isset( $params['rating'] ) ? absint( (int) $params['rating'] ) : 5;
+		$source_email_message_id = isset( $params['source_email_message_id'] ) ? sanitize_text_field( (string) $params['source_email_message_id'] ) : '';
+		$source_email_log_id = isset( $params['source_email_log_id'] ) ? sanitize_text_field( (string) $params['source_email_log_id'] ) : '';
+		$source_order_id = isset( $params['source_order_id'] ) ? sanitize_text_field( (string) $params['source_order_id'] ) : '';
+
+		if ( '' === $review || '' === $reviewer || ! is_email( $email ) || $rating < 1 || $rating > 5 ) {
+			return $this->integration_error( 'invalid_review_payload', 'Review, reviewer, email, and rating are required.', 400 );
+		}
+
+		$comment_id = wp_new_comment(
+			[
+				'comment_post_ID'      => $product_id,
+				'comment_author'       => $reviewer,
+				'comment_author_email' => $email,
+				'comment_content'      => $review,
+				'comment_type'         => 'review',
+				'comment_approved'     => 0,
+				'comment_meta'         => [
+					'rating'          => $rating,
+					'overseek_source' => 'email_reply',
+				],
+			]
+		);
+
+		if ( ! $comment_id || is_wp_error( $comment_id ) ) {
+			$message = is_wp_error( $comment_id ) ? $comment_id->get_error_message() : 'Failed to create review.';
+			return $this->integration_error( 'review_create_failed', $message, 500 );
+		}
+
+		$media_ids = [];
+		if ( ! empty( $params['attachments'] ) && is_array( $params['attachments'] ) ) {
+			$media_ids = $this->sideload_review_attachments( $params['attachments'], $product_id );
+		}
+
+		if ( ! empty( $media_ids ) ) {
+			update_comment_meta( (int) $comment_id, 'overseek_media_ids', $media_ids );
+		}
+
+		if ( '' !== $source_email_message_id ) {
+			update_comment_meta( (int) $comment_id, 'overseek_source_email_message_id', $source_email_message_id );
+		}
+
+		if ( '' !== $source_email_log_id ) {
+			update_comment_meta( (int) $comment_id, 'overseek_source_email_log_id', $source_email_log_id );
+		}
+
+		if ( '' !== $source_order_id ) {
+			update_comment_meta( (int) $comment_id, 'overseek_source_order_id', $source_order_id );
+		}
+
+		return new WP_REST_Response( [
+			'success' => true,
+			'review'  => $this->build_review_response( (int) $comment_id ),
+		], 201 );
+	}
+
+	/**
+	 * Update a native WooCommerce review.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function update_review_callback( WP_REST_Request $request ): WP_REST_Response {
+		$comment_id = absint( (int) $request->get_param( 'id' ) );
+		$comment    = get_comment( $comment_id );
+		if ( ! $comment || ! $this->is_product_review_comment( $comment ) ) {
+			return $this->integration_error( 'review_not_found', 'Review not found.', 404 );
+		}
+
+		$params = $this->get_request_body( $request );
+		$update = [ 'comment_ID' => $comment_id ];
+
+		if ( isset( $params['status'] ) ) {
+			$status = $this->map_review_status( sanitize_key( (string) $params['status'] ) );
+			if ( '' === $status ) {
+				return $this->integration_error( 'invalid_review_status', 'Invalid review status.', 400 );
+			}
+			$update['comment_approved'] = $status;
+		}
+
+		if ( isset( $params['content'] ) ) {
+			$content = trim( wp_kses_post( (string) $params['content'] ) );
+			if ( '' === $content ) {
+				return $this->integration_error( 'invalid_review_content', 'Review content cannot be empty.', 400 );
+			}
+			$update['comment_content'] = $content;
+		}
+
+		if ( isset( $params['rating'] ) ) {
+			$rating = absint( (int) $params['rating'] );
+			if ( $rating < 1 || $rating > 5 ) {
+				return $this->integration_error( 'invalid_review_rating', 'Review rating must be between 1 and 5.', 400 );
+			}
+		}
+
+		$result = wp_update_comment( $update, true );
+		if ( is_wp_error( $result ) ) {
+			return $this->integration_error( 'review_update_failed', $result->get_error_message(), 500 );
+		}
+
+		if ( isset( $params['rating'] ) ) {
+			update_comment_meta( $comment_id, 'rating', $rating );
+		}
+
+		return new WP_REST_Response( [
+			'success' => true,
+			'review'  => $this->build_review_response( $comment_id ),
+		], 200 );
+	}
+
+	/**
+	 * Add a merchant reply to a product review.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function reply_to_review_callback( WP_REST_Request $request ): WP_REST_Response {
+		$comment_id = absint( (int) $request->get_param( 'id' ) );
+		$comment    = get_comment( $comment_id );
+		if ( ! $comment || ! $this->is_product_review_comment( $comment ) ) {
+			return $this->integration_error( 'review_not_found', 'Review not found.', 404 );
+		}
+
+		$params = $this->get_request_body( $request );
+		$reply  = isset( $params['reply'] ) ? trim( wp_kses_post( (string) $params['reply'] ) ) : '';
+		if ( '' === $reply ) {
+			return $this->integration_error( 'invalid_review_reply', 'Reply cannot be empty.', 400 );
+		}
+
+		$user = wp_get_current_user();
+		$name = $user && $user->exists() ? $user->display_name : get_bloginfo( 'name' );
+		$email = $user && $user->exists() ? $user->user_email : get_option( 'admin_email' );
+
+		$reply_id = wp_new_comment(
+			[
+				'comment_post_ID'      => (int) $comment->comment_post_ID,
+				'comment_parent'       => $comment_id,
+				'comment_author'       => $name,
+				'comment_author_email' => $email,
+				'comment_content'      => $reply,
+				'comment_type'         => 'comment',
+				'comment_approved'     => 1,
+			]
+		);
+
+		if ( ! $reply_id || is_wp_error( $reply_id ) ) {
+			$message = is_wp_error( $reply_id ) ? $reply_id->get_error_message() : 'Failed to create review reply.';
+			return $this->integration_error( 'review_reply_failed', $message, 500 );
+		}
+
+		update_comment_meta( (int) $reply_id, 'overseek_review_reply', '1' );
+
+		return new WP_REST_Response( [
+			'success' => true,
+			'replyId' => (int) $reply_id,
+			'review'  => $this->build_review_response( $comment_id ),
+		], 201 );
 	}
 
 	/**
@@ -674,6 +915,243 @@ class OverSeek_API {
 		$params = $request->get_json_params();
 
 		return is_array( $params ) ? $params : [];
+	}
+
+	/**
+	 * Check whether a comment is a product review.
+	 *
+	 * @param WP_Comment $comment Comment object.
+	 * @return bool
+	 */
+	private function is_product_review_comment( WP_Comment $comment ): bool {
+		return 'product' === get_post_type( (int) $comment->comment_post_ID )
+			&& ( 'review' === $comment->comment_type || '' === $comment->comment_type );
+	}
+
+	/**
+	 * Map friendly review status names to WordPress comment statuses.
+	 *
+	 * @param string $status Incoming status.
+	 * @return string
+	 */
+	private function map_review_status( string $status ): string {
+		$map = [
+			'approved' => '1',
+			'approve'  => '1',
+			'hold'     => '0',
+			'pending'  => '0',
+			'spam'     => 'spam',
+			'trash'    => 'trash',
+		];
+
+		return $map[ $status ] ?? '';
+	}
+
+	/**
+	 * Build a compact review payload for API responses.
+	 *
+	 * @param int $comment_id Review comment ID.
+	 * @return array<string, mixed>
+	 */
+	private function build_review_response( int $comment_id ): array {
+		$comment = get_comment( $comment_id );
+		if ( ! $comment ) {
+			return [];
+		}
+
+		return [
+			'id'             => (int) $comment->comment_ID,
+			'product_id'     => (int) $comment->comment_post_ID,
+			'status'         => $this->normalize_review_status( (string) $comment->comment_approved ),
+			'rating'         => (int) get_comment_meta( $comment_id, 'rating', true ),
+			'review'         => (string) $comment->comment_content,
+			'reviewer'       => (string) $comment->comment_author,
+			'reviewer_email' => (string) $comment->comment_author_email,
+			'date_created'   => mysql2date( 'c', $comment->comment_date ),
+			'date_created_gmt' => mysql2date( 'c', $comment->comment_date_gmt ),
+			'media'          => $this->build_review_media_response( $comment_id ),
+			'replies'        => $this->build_review_replies_response( $comment_id ),
+			'overseekSource' => $this->build_review_source_response( $comment_id ),
+		];
+	}
+
+	/**
+	 * Build Overseek source metadata for review API responses.
+	 *
+	 * @param int $comment_id Review comment ID.
+	 * @return array<string, string>
+	 */
+	private function build_review_source_response( int $comment_id ): array {
+		$source = [];
+		$email_message_id = get_comment_meta( $comment_id, 'overseek_source_email_message_id', true );
+		$email_log_id = get_comment_meta( $comment_id, 'overseek_source_email_log_id', true );
+		$order_id = get_comment_meta( $comment_id, 'overseek_source_order_id', true );
+
+		if ( is_string( $email_message_id ) && '' !== $email_message_id ) {
+			$source['emailMessageId'] = $email_message_id;
+		}
+
+		if ( is_string( $email_log_id ) && '' !== $email_log_id ) {
+			$source['emailLogId'] = $email_log_id;
+		}
+
+		if ( is_string( $order_id ) && '' !== $order_id ) {
+			$source['orderId'] = $order_id;
+		}
+
+		return $source;
+	}
+
+	/**
+	 * Build approved review replies payload for API responses.
+	 *
+	 * @param int $comment_id Review comment ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function build_review_replies_response( int $comment_id ): array {
+		$children = get_comments(
+			[
+				'parent' => $comment_id,
+				'status' => 'approve',
+				'order'  => 'ASC',
+			]
+		);
+
+		return array_map(
+			static function ( WP_Comment $reply ): array {
+				return [
+					'id'      => (int) $reply->comment_ID,
+					'author'  => (string) $reply->comment_author,
+					'content' => (string) $reply->comment_content,
+					'date'    => mysql2date( 'c', $reply->comment_date_gmt ),
+				];
+			},
+			array_filter( $children, static fn ( $reply ): bool => $reply instanceof WP_Comment )
+		);
+	}
+
+	/**
+	 * Build review media payload for API responses.
+	 *
+	 * @param int $comment_id Review comment ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function build_review_media_response( int $comment_id ): array {
+		$raw_ids = get_comment_meta( $comment_id, 'overseek_media_ids', true );
+		$ids = is_array( $raw_ids ) ? $raw_ids : array_filter( array_map( 'absint', explode( ',', (string) $raw_ids ) ) );
+
+		return array_values( array_filter( array_map(
+			static function ( $id ): ?array {
+				$attachment_id = absint( $id );
+				$url = wp_get_attachment_url( $attachment_id );
+				if ( ! $url ) {
+					return null;
+				}
+
+				return [
+					'id'       => $attachment_id,
+					'url'      => $url,
+					'type'     => (string) get_post_mime_type( $attachment_id ),
+					'filename' => basename( get_attached_file( $attachment_id ) ?: $url ),
+				];
+			},
+			$ids
+		) ) );
+	}
+
+	/**
+	 * Normalize WordPress comment status to Woo-style names.
+	 *
+	 * @param string $status Comment approved value.
+	 * @return string
+	 */
+	private function normalize_review_status( string $status ): string {
+		if ( '1' === $status ) {
+			return 'approved';
+		}
+
+		if ( '0' === $status ) {
+			return 'hold';
+		}
+
+		return $status;
+	}
+
+	/**
+	 * Sideload remote review attachments into WordPress media.
+	 *
+	 * @param mixed $attachments Attachment payload.
+	 * @param int   $product_id Product ID to attach media to.
+	 * @return array<int, int>
+	 */
+	private function sideload_review_attachments( $attachments, int $product_id ): array {
+		if ( ! is_array( $attachments ) ) {
+			return [];
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+
+		$ids = [];
+		foreach ( array_slice( $attachments, 0, self::MAX_REVIEW_ATTACHMENTS ) as $attachment ) {
+			if ( ! is_array( $attachment ) || empty( $attachment['url'] ) ) {
+				continue;
+			}
+
+			$url = esc_url_raw( (string) $attachment['url'] );
+			$type = isset( $attachment['type'] ) ? sanitize_text_field( (string) $attachment['type'] ) : '';
+			if ( ! $this->review_attachment_type_allowed( $type, $url ) ) {
+				continue;
+			}
+
+			$temp_file = download_url( $url, 15 );
+			if ( is_wp_error( $temp_file ) ) {
+				continue;
+			}
+
+			$filename = isset( $attachment['filename'] ) ? sanitize_file_name( (string) $attachment['filename'] ) : basename( wp_parse_url( $url, PHP_URL_PATH ) ?: 'review-media' );
+			$file = [
+				'name'     => $filename ?: 'review-media',
+				'tmp_name' => $temp_file,
+			];
+
+			$attachment_id = media_handle_sideload( $file, $product_id );
+			if ( is_wp_error( $attachment_id ) ) {
+				wp_delete_file( $temp_file );
+				continue;
+			}
+
+			$ids[] = (int) $attachment_id;
+		}
+
+		return $ids;
+	}
+
+	/**
+	 * Check review attachment type.
+	 *
+	 * @param string $type MIME type.
+	 * @param string $url Attachment URL.
+	 * @return bool
+	 */
+	private function review_attachment_type_allowed( string $type, string $url ): bool {
+		$allowed_mimes = [
+			'image/jpeg',
+			'image/png',
+			'image/webp',
+			'image/gif',
+			'video/mp4',
+			'video/quicktime',
+			'video/webm',
+		];
+
+		if ( in_array( strtolower( $type ), $allowed_mimes, true ) ) {
+			return true;
+		}
+
+		$extension = strtolower( pathinfo( wp_parse_url( $url, PHP_URL_PATH ) ?: '', PATHINFO_EXTENSION ) );
+		return in_array( $extension, [ 'jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'webm' ], true );
 	}
 
 	/**

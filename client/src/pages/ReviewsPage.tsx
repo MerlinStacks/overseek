@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
-import { Star, RefreshCw, Search, CheckCircle, ExternalLink, Link2, MessageSquare } from 'lucide-react';
+import { Star, RefreshCw, Search, CheckCircle, ExternalLink, Link2, MessageSquare, Reply, Paperclip, Video } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { formatDate } from '../utils/format';
 import { useNavigate } from 'react-router-dom';
@@ -23,7 +23,26 @@ interface ReviewRow {
     status: string;
     customer?: { id: string; firstName?: string; lastName?: string };
     order?: { number?: string };
+    media?: ReviewMedia[];
+    replies?: ReviewReply[];
 }
+
+interface ReviewMedia {
+    id?: number;
+    url?: string;
+    type?: string;
+    filename?: string;
+}
+
+interface ReviewReply {
+    id?: number;
+    author?: string;
+    content?: string;
+    date?: string;
+}
+
+const isImageMedia = (media: ReviewMedia) => media.type?.startsWith('image/');
+const isVideoMedia = (media: ReviewMedia) => media.type?.startsWith('video/');
 
 export const ReviewsPage = () => {
     const { currentAccount } = useAccount();
@@ -34,6 +53,14 @@ export const ReviewsPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isRematching, setIsRematching] = useState(false);
+    const [actionReviewId, setActionReviewId] = useState<string | null>(null);
+    const [replyReview, setReplyReview] = useState<ReviewRow | null>(null);
+    const [replyText, setReplyText] = useState('');
+    const [editReview, setEditReview] = useState<ReviewRow | null>(null);
+    const [editContent, setEditContent] = useState('');
+    const [editRating, setEditRating] = useState(5);
+    const [editStatus, setEditStatus] = useState('hold');
+    const [mediaViewer, setMediaViewer] = useState<ReviewMedia | null>(null);
 
     // Filters & Pagination
     const [searchQuery, setSearchQuery] = useState('');
@@ -136,6 +163,116 @@ export const ReviewsPage = () => {
         }
     };
 
+    const handleModerate = async (reviewId: string, status: string) => {
+        if (!currentAccount || !token) return;
+        setActionReviewId(reviewId);
+        try {
+            const res = await fetch(`/api/reviews/${reviewId}/moderate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({ status })
+            });
+
+            if (!res.ok) throw new Error('Moderation failed');
+            toast.success(`Review marked ${status}`);
+            fetchReviews();
+        } catch (error) {
+            Logger.error('Review moderation failed', { error });
+            toast.error('Failed to update review');
+        } finally {
+            setActionReviewId(null);
+        }
+    };
+
+    const openReplyModal = (review: ReviewRow) => {
+        setReplyReview(review);
+        setReplyText('');
+    };
+
+    const closeReplyModal = () => {
+        if (actionReviewId) return;
+        setReplyReview(null);
+        setReplyText('');
+    };
+
+    const openEditModal = (review: ReviewRow) => {
+        setEditReview(review);
+        setEditContent(review.content || '');
+        setEditRating(review.rating || 5);
+        setEditStatus(review.status || 'hold');
+    };
+
+    const closeEditModal = () => {
+        if (actionReviewId) return;
+        setEditReview(null);
+        setEditContent('');
+        setEditRating(5);
+        setEditStatus('hold');
+    };
+
+    const handleReply = async () => {
+        if (!currentAccount || !token) return;
+        if (!replyReview || !replyText.trim()) return;
+
+        setActionReviewId(replyReview.id);
+        try {
+            const res = await fetch(`/api/reviews/${replyReview.id}/reply`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({ reply: replyText.trim() })
+            });
+
+            if (!res.ok) throw new Error('Reply failed');
+            toast.success('Reply posted');
+            setReplyReview(null);
+            setReplyText('');
+            fetchReviews();
+        } catch (error) {
+            Logger.error('Review reply failed', { error });
+            toast.error('Failed to reply to review');
+        } finally {
+            setActionReviewId(null);
+        }
+    };
+
+    const handleEditReview = async () => {
+        if (!currentAccount || !token || !editReview) return;
+        const content = editContent.trim();
+        if (!content) return;
+
+        setActionReviewId(editReview.id);
+        try {
+            const res = await fetch(`/api/reviews/${editReview.id}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({ content, rating: editRating, status: editStatus })
+            });
+
+            if (!res.ok) throw new Error('Review update failed');
+            toast.success('Review updated');
+            setEditReview(null);
+            setEditContent('');
+            fetchReviews();
+        } catch (error) {
+            Logger.error('Review update failed', { error });
+            toast.error('Failed to update review');
+        } finally {
+            setActionReviewId(null);
+        }
+    };
+
     // Reset page when filters change
     useEffect(() => {
         setPage(1);
@@ -145,6 +282,21 @@ export const ReviewsPage = () => {
     useEffect(() => {
         fetchReviews();
     }, [currentAccount, token, page, limit, debouncedSearch, statusFilter, fetchReviews]);
+
+    useEffect(() => {
+        const hasOpenModal = replyReview || editReview || mediaViewer;
+        if (!hasOpenModal) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || actionReviewId) return;
+            setReplyReview(null);
+            setEditReview(null);
+            setMediaViewer(null);
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [actionReviewId, editReview, mediaViewer, replyReview]);
 
     return (
         <div className="p-6 space-y-6">
@@ -208,13 +360,14 @@ export const ReviewsPage = () => {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Review</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {isLoading ? (
-                            <TableSkeleton rows={8} columns={6} />
+                            <TableSkeleton rows={8} columns={7} />
                         ) : reviews.length === 0 ? (
-                            <tr><td colSpan={6}>
+                            <tr><td colSpan={7}>
                                 <EmptyState
                                     icon={<MessageSquare size={48} />}
                                     title="No reviews found"
@@ -261,8 +414,42 @@ export const ReviewsPage = () => {
                                             ))}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={review.content}>
-                                        {review.content}
+                                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs" title={review.content}>
+                                        <div className="space-y-2">
+                                            <p className="truncate">{review.content || <span className="text-gray-400">No review text</span>}</p>
+                                            {review.media && review.media.length > 0 && (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {review.media.map((media, index) => (
+                                                        <button
+                                                            type="button"
+                                                            key={media.id || `${media.url}-${index}`}
+                                                            onClick={() => setMediaViewer(media)}
+                                                            className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50 text-gray-500 hover:border-blue-300 hover:text-blue-600"
+                                                            title={media.filename || media.url || 'Review media'}
+                                                        >
+                                                            {media.url && isImageMedia(media) ? (
+                                                                <img src={media.url} alt={media.filename || 'Review media'} className="h-full w-full object-cover" />
+                                                            ) : isVideoMedia(media) ? (
+                                                                <Video size={16} />
+                                                            ) : (
+                                                                <Paperclip size={16} />
+                                                            )}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {review.replies && review.replies.length > 0 && (
+                                                <div className="space-y-2 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                                                    <div className="font-semibold">{review.replies.length === 1 ? 'Reply' : `${review.replies.length} replies`}</div>
+                                                    {review.replies.map((reply, index) => (
+                                                        <div key={reply.id || `${reply.date || 'reply'}-${index}`} className="border-t border-blue-100 pt-2 first:border-t-0 first:pt-0">
+                                                            <div className="font-medium">{reply.author || 'Store'}</div>
+                                                            <div className="line-clamp-2">{reply.content}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         <div>{formatDate(review.dateCreated)}</div>
@@ -272,9 +459,41 @@ export const ReviewsPage = () => {
                                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                             ${review.status === 'approved' ? 'bg-green-100 text-green-800' :
                                                 review.status === 'hold' ? 'bg-yellow-100 text-yellow-800' :
-                                                    'bg-gray-100 text-gray-800'}`}>
+                                                    review.status === 'spam' ? 'bg-gray-100 text-gray-800' :
+                                                        review.status === 'trash' ? 'bg-red-100 text-red-800' :
+                                                            'bg-gray-100 text-gray-800'}`}>
                                             {review.status}
                                         </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                onClick={() => openReplyModal(review)}
+                                                disabled={actionReviewId === review.id}
+                                                className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                            >
+                                                <Reply size={13} /> Reply
+                                            </button>
+                                            <button
+                                                onClick={() => openEditModal(review)}
+                                                disabled={actionReviewId === review.id}
+                                                className="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                            >
+                                                Edit
+                                            </button>
+                                            {review.status !== 'approved' && (
+                                                <button disabled={actionReviewId === review.id} onClick={() => handleModerate(review.id, 'approved')} className="rounded-md bg-green-50 px-2 py-1 text-green-700 hover:bg-green-100 disabled:opacity-50">Approve</button>
+                                            )}
+                                            {review.status !== 'hold' && (
+                                                <button disabled={actionReviewId === review.id} onClick={() => handleModerate(review.id, 'hold')} className="rounded-md bg-yellow-50 px-2 py-1 text-yellow-700 hover:bg-yellow-100 disabled:opacity-50">Hold</button>
+                                            )}
+                                            {review.status !== 'spam' && (
+                                                <button disabled={actionReviewId === review.id} onClick={() => handleModerate(review.id, 'spam')} className="rounded-md bg-gray-100 px-2 py-1 text-gray-700 hover:bg-gray-200 disabled:opacity-50">Spam</button>
+                                            )}
+                                            {review.status !== 'trash' && (
+                                                <button disabled={actionReviewId === review.id} onClick={() => handleModerate(review.id, 'trash')} className="rounded-md bg-red-50 px-2 py-1 text-red-700 hover:bg-red-100 disabled:opacity-50">Trash</button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))
@@ -295,6 +514,156 @@ export const ReviewsPage = () => {
                     }}
                     allowItemsPerPage={true}
                 />
+            )}
+
+            {replyReview && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="presentation">
+                    <div className="w-full max-w-lg rounded-xl bg-white shadow-xl" role="dialog" aria-modal="true" aria-labelledby="review-reply-title">
+                        <div className="border-b border-gray-200 px-6 py-4">
+                            <h2 id="review-reply-title" className="text-lg font-semibold text-gray-900">Reply to review</h2>
+                            <p className="mt-1 text-sm text-gray-500">
+                                {replyReview.reviewer || 'Customer'} on {replyReview.productName || 'Unknown Product'}
+                            </p>
+                        </div>
+                        <div className="space-y-4 px-6 py-5">
+                            <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                                <div className="mb-1 flex items-center gap-1 text-yellow-400">
+                                    {Array.from({ length: 5 }).map((_, i) => (
+                                        <Star key={i} size={14} fill={i < replyReview.rating ? "currentColor" : "none"} strokeWidth={1} />
+                                    ))}
+                                </div>
+                                <p className="line-clamp-4">{replyReview.content || 'No review text'}</p>
+                            </div>
+                            <label className="block text-sm font-medium text-gray-700" htmlFor="review-reply-text">
+                                Your reply
+                            </label>
+                            <textarea
+                                id="review-reply-text"
+                                value={replyText}
+                                onChange={(event) => setReplyText(event.target.value)}
+                                rows={5}
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                placeholder="Thanks for your feedback..."
+                                autoFocus
+                            />
+                        </div>
+                        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={closeReplyModal}
+                                disabled={!!actionReviewId}
+                                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleReply}
+                                disabled={actionReviewId === replyReview.id || !replyText.trim()}
+                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                                {actionReviewId === replyReview.id ? 'Posting...' : 'Post reply'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {editReview && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="presentation">
+                    <div className="w-full max-w-lg rounded-xl bg-white shadow-xl" role="dialog" aria-modal="true" aria-labelledby="review-edit-title">
+                        <div className="border-b border-gray-200 px-6 py-4">
+                            <h2 id="review-edit-title" className="text-lg font-semibold text-gray-900">Edit review</h2>
+                            <p className="mt-1 text-sm text-gray-500">
+                                {editReview.reviewer || 'Customer'} on {editReview.productName || 'Unknown Product'}
+                            </p>
+                        </div>
+                        <div className="space-y-4 px-6 py-5">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Rating
+                                    <select
+                                        value={editRating}
+                                        onChange={(event) => setEditRating(Number(event.target.value))}
+                                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        {[5, 4, 3, 2, 1].map((rating) => (
+                                            <option key={rating} value={rating}>{rating} star{rating === 1 ? '' : 's'}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Status
+                                    <select
+                                        value={editStatus}
+                                        onChange={(event) => setEditStatus(event.target.value)}
+                                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="approved">Approved</option>
+                                        <option value="hold">Pending</option>
+                                        <option value="spam">Spam</option>
+                                        <option value="trash">Trash</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <label className="block text-sm font-medium text-gray-700" htmlFor="review-edit-content">
+                                Review text
+                            </label>
+                            <textarea
+                                id="review-edit-content"
+                                value={editContent}
+                                onChange={(event) => setEditContent(event.target.value)}
+                                rows={6}
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                autoFocus
+                            />
+                        </div>
+                        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={closeEditModal}
+                                disabled={!!actionReviewId}
+                                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleEditReview}
+                                disabled={actionReviewId === editReview.id || !editContent.trim()}
+                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                                {actionReviewId === editReview.id ? 'Saving...' : 'Save changes'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {mediaViewer && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4" onClick={() => setMediaViewer(null)} role="presentation">
+                    <div className="max-h-[90vh] w-full max-w-4xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Review media viewer">
+                        <div className="mb-3 flex items-center justify-between text-white">
+                            <div className="truncate text-sm">{mediaViewer.filename || mediaViewer.url || 'Review media'}</div>
+                            <button type="button" onClick={() => setMediaViewer(null)} className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20">
+                                Close
+                            </button>
+                        </div>
+                        <div className="flex max-h-[82vh] items-center justify-center overflow-hidden rounded-lg bg-black">
+                            {mediaViewer.url && isImageMedia(mediaViewer) ? (
+                                <img src={mediaViewer.url} alt={mediaViewer.filename || 'Review media'} className="max-h-[82vh] max-w-full object-contain" />
+                            ) : mediaViewer.url && isVideoMedia(mediaViewer) ? (
+                                <video src={mediaViewer.url} controls className="max-h-[82vh] max-w-full" />
+                            ) : mediaViewer.url ? (
+                                <a href={mediaViewer.url} target="_blank" rel="noreferrer" className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100">
+                                    Open attachment
+                                </a>
+                            ) : (
+                                <div className="p-8 text-sm text-white">Media URL unavailable</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

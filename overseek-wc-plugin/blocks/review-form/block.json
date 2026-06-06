@@ -1,0 +1,14 @@
+{
+  "apiVersion": 3,
+  "name": "overseek/review-form",
+  "title": "OverSeek Review Form",
+  "category": "widgets",
+  "icon": "feedback",
+  "description": "Render the media-enabled native WooCommerce review form.",
+  "textdomain": "overseek-wc",
+  "editorScript": "file:../../assets/reviews-blocks.js",
+  "attributes": {
+    "product_id": { "type": "number", "default": 0 },
+    "title": { "type": "string", "default": "Write a review" }
+  }
+}

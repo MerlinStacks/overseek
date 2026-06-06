@@ -40,6 +40,10 @@ class OverSeek_Main
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-admin.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-frontend.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-api.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-review-renderer.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-reviews.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-review-form.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-google-product-review-feed.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crypto-utils.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-http-utils.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-config-provider.php';
@@ -88,10 +92,14 @@ class OverSeek_Main
 		// Initialize API.
 		$api = new OverSeek_API();
 		add_action('rest_api_init', [$api, 'register_routes']);
+		add_filter('woocommerce_rest_prepare_product_review', [$api, 'append_review_rest_fields'], 10, 3);
 
 		new OverSeek_Cart_Recovery();
 		new OverSeek_Order_Invoices();
 		new OverSeek_Preference_Center();
+		new OverSeek_Reviews();
+		new OverSeek_Review_Form();
+		new OverSeek_Google_Product_Review_Feed();
 
 		// Initialize Server-Side Tracking (runs on WooCommerce hooks).
 		if (get_option('overseek_enable_tracking')) {

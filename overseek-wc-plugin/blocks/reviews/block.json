@@ -1,0 +1,19 @@
+{
+  "apiVersion": 3,
+  "name": "overseek/reviews",
+  "title": "OverSeek Reviews",
+  "category": "widgets",
+  "icon": "star-filled",
+  "description": "Render a full customer reviews section.",
+  "textdomain": "overseek-wc",
+  "editorScript": "file:../../assets/reviews-blocks.js",
+  "attributes": {
+    "product_id": { "type": "number", "default": 0 },
+    "limit": { "type": "number", "default": 12 },
+    "layout": { "type": "string", "default": "grid" },
+    "columns": { "type": "number", "default": 3 },
+    "pagination": { "type": "string", "default": "none" },
+    "show_media": { "type": "string", "default": "1" },
+    "show_product": { "type": "string", "default": "1" }
+  }
+}

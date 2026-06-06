@@ -1,0 +1,1015 @@
+<?php
+/**
+ * Native WooCommerce review storefront features.
+ *
+ * @package OverSeek
+ * @since   2.17.0
+ */
+
+declare(strict_types=1);
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * Registers review shortcodes and exposes native WooCommerce review queries.
+ */
+class OverSeek_Reviews {
+	/**
+	 * Shortcodes handled by this feature.
+	 *
+	 * @var array<int, string>
+	 */
+	private array $shortcodes = [
+		'overseek_reviews',
+		'overseek_review_rows',
+		'overseek_product_reviews',
+		'overseek_review_summary',
+		'overseek_review_form',
+		'cusrev_all_reviews',
+		'cusrev_reviews_grid',
+		'cusrev_reviews_slider',
+		'cusrev_reviews_rating',
+		'cusrev_review_button',
+		'cusrev_qna',
+	];
+
+	/**
+	 * Rendered review shell counter.
+	 *
+	 * @var int
+	 */
+	private int $shell_counter = 0;
+
+	/**
+	 * Initialize hooks.
+	 */
+	public function __construct() {
+		add_action( 'init', [ $this, 'register_shortcodes' ] );
+		add_action( 'init', [ $this, 'register_blocks' ] );
+		add_action( 'wp_enqueue_scripts', [ $this, 'maybe_enqueue_assets' ] );
+	}
+
+	/**
+	 * Register review shortcodes.
+	 *
+	 * @return void
+	 */
+	public function register_shortcodes(): void {
+		add_shortcode( 'overseek_reviews', [ $this, 'render_reviews_shortcode' ] );
+		add_shortcode( 'overseek_product_reviews', [ $this, 'render_product_reviews_shortcode' ] );
+		add_shortcode( 'overseek_review_rows', [ $this, 'render_rows_shortcode' ] );
+		add_shortcode( 'overseek_review_summary', [ $this, 'render_summary_shortcode' ] );
+		add_shortcode( 'cusrev_all_reviews', [ $this, 'render_cusrev_all_reviews_shortcode' ] );
+		add_shortcode( 'cusrev_reviews_grid', [ $this, 'render_cusrev_grid_shortcode' ] );
+		add_shortcode( 'cusrev_reviews_slider', [ $this, 'render_cusrev_slider_shortcode' ] );
+		add_shortcode( 'cusrev_reviews_rating', [ $this, 'render_cusrev_rating_shortcode' ] );
+		add_shortcode( 'cusrev_review_button', [ $this, 'render_cusrev_review_button_shortcode' ] );
+		add_shortcode( 'cusrev_qna', [ $this, 'render_cusrev_qna_shortcode' ] );
+	}
+
+	/**
+	 * Register dynamic review blocks.
+	 *
+	 * @return void
+	 */
+	public function register_blocks(): void {
+		if ( ! function_exists( 'register_block_type' ) ) {
+			return;
+		}
+
+		$block_slugs = [
+			'reviews',
+			'review-rows',
+			'product-reviews',
+			'review-summary',
+			'review-form',
+		];
+
+		foreach ( $block_slugs as $slug ) {
+			$block_dir = OVERSEEK_WC_PLUGIN_DIR . 'blocks/' . $slug;
+			if ( ! file_exists( $block_dir . '/block.json' ) ) {
+				continue;
+			}
+
+			register_block_type(
+				$block_dir,
+				[
+					'render_callback' => [ $this, 'render_block' ],
+				]
+			);
+		}
+	}
+
+	/**
+	 * Render dynamic review blocks.
+	 *
+	 * @param array<string, mixed> $attributes Block attributes.
+	 * @param string               $content Block content.
+	 * @param WP_Block|null        $block Block instance.
+	 * @return string
+	 */
+	public function render_block( array $attributes = [], string $content = '', ?WP_Block $block = null ): string {
+		$block_name = $block instanceof WP_Block ? $block->name : '';
+
+		if ( 'overseek/review-rows' === $block_name ) {
+			return $this->render_rows_shortcode( $attributes );
+		}
+
+		if ( 'overseek/product-reviews' === $block_name ) {
+			return $this->render_product_reviews_shortcode( $attributes );
+		}
+
+		if ( 'overseek/review-summary' === $block_name ) {
+			return $this->render_summary_shortcode( $attributes );
+		}
+
+		if ( 'overseek/review-form' === $block_name ) {
+			$product_id = isset( $attributes['product_id'] ) ? absint( $attributes['product_id'] ) : 0;
+			$title      = isset( $attributes['title'] ) ? sanitize_text_field( (string) $attributes['title'] ) : 'Write a review';
+			return do_shortcode( sprintf( '[overseek_review_form product_id="%d" title="%s"]', $product_id, esc_attr( $title ) ) );
+		}
+
+		return $this->render_reviews_shortcode( $attributes );
+	}
+
+	/**
+	 * Enqueue public review CSS when a review shortcode is present or on product pages.
+	 *
+	 * @return void
+	 */
+	public function maybe_enqueue_assets(): void {
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			$this->enqueue_assets();
+			return;
+		}
+
+		$post = get_queried_object();
+		if ( ! ( $post instanceof WP_Post ) ) {
+			return;
+		}
+
+		$content = (string) $post->post_content;
+		foreach ( $this->shortcodes as $shortcode ) {
+			if ( has_shortcode( $content, $shortcode ) ) {
+				$this->enqueue_assets();
+				return;
+			}
+		}
+
+		$blocks = [
+			'overseek/reviews',
+			'overseek/review-rows',
+			'overseek/product-reviews',
+			'overseek/review-summary',
+			'overseek/review-form',
+		];
+
+		foreach ( $blocks as $block_name ) {
+			if ( function_exists( 'has_block' ) && has_block( $block_name, $post ) ) {
+				$this->enqueue_assets();
+				return;
+			}
+		}
+	}
+
+	/**
+	 * Enqueue review styles.
+	 *
+	 * @return void
+	 */
+	private function enqueue_assets(): void {
+		wp_enqueue_style(
+			'overseek-reviews',
+			OVERSEEK_WC_PLUGIN_URL . 'assets/reviews.css',
+			[],
+			OVERSEEK_WC_VERSION
+		);
+
+		$colors = $this->get_review_brand_colors();
+		wp_add_inline_style(
+			'overseek-reviews',
+			sprintf(
+				'.os-reviews-shell{--os-review-accent-1:%1$s;--os-review-accent-2:%2$s;--os-review-accent-3:%3$s;--os-review-star-color:%1$s;}',
+				esc_html( $colors['primary'] ),
+				esc_html( $colors['secondary'] ),
+				esc_html( $colors['tertiary'] )
+			)
+		);
+
+		wp_enqueue_script(
+			'overseek-reviews',
+			OVERSEEK_WC_PLUGIN_URL . 'assets/reviews.js',
+			[],
+			OVERSEEK_WC_VERSION,
+			true
+		);
+	}
+
+	/**
+	 * Render the main review list shortcode.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_reviews_shortcode( array $atts = [] ): string {
+		$args    = $this->normalize_shortcode_args( $atts, 'overseek_reviews' );
+		$reviews = $this->get_reviews( $args );
+		$summary = $this->get_summary( $args );
+		$shell_id = 'os-reviews-' . ++$this->shell_counter;
+
+		return '<div id="' . esc_attr( $shell_id ) . '" class="os-reviews-shell" data-os-reviews-shell>'
+			. ( $this->truthy( $args['show_summary_bar'] ?? '1' ) ? OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( $args, $summary ) ) : '' )
+			. $this->render_schema_markup( $summary, $args )
+			. OverSeek_Review_Renderer::render_reviews( $reviews, $args )
+			. $this->render_pagination( $summary, $args )
+			. $this->maybe_render_add_review_form( $args )
+			. '</div>';
+	}
+
+	/**
+	 * CusRev-compatible all reviews shortcode.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_cusrev_all_reviews_shortcode( array $atts = [] ): string {
+		$atts = $this->map_cusrev_args( $atts, 'all' );
+		return $this->render_reviews_shortcode( $atts );
+	}
+
+	/**
+	 * CusRev-compatible reviews grid shortcode.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_cusrev_grid_shortcode( array $atts = [] ): string {
+		$atts = $this->map_cusrev_args( $atts, 'grid' );
+		return $this->render_reviews_shortcode( $atts );
+	}
+
+	/**
+	 * CusRev-compatible reviews slider shortcode.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_cusrev_slider_shortcode( array $atts = [] ): string {
+		$atts = $this->map_cusrev_args( $atts, 'slider' );
+		$args = $this->normalize_shortcode_args( $atts, 'cusrev_reviews_slider' );
+		$reviews = $this->get_reviews( $args );
+
+		return '<div class="os-reviews-shell os-reviews-shell--slider">'
+			. OverSeek_Review_Renderer::render_reviews( $reviews, array_merge( $args, [ 'layout' => 'slider' ] ) )
+			. '</div>';
+	}
+
+	/**
+	 * CusRev-compatible rating shortcode.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_cusrev_rating_shortcode( array $atts = [] ): string {
+		$product_id = ! empty( $atts['product'] ) ? absint( $atts['product'] ) : $this->get_current_product_id();
+		$summary = $this->get_summary( [ 'product_id' => $product_id, 'limit' => 100, 'status' => 'approved' ] );
+		$color = ! empty( $atts['color_stars'] ) ? sanitize_hex_color( (string) $atts['color_stars'] ) : '';
+		$style = $color ? ' style="--os-review-star-color:' . esc_attr( $color ) . '"' : '';
+
+		return '<span class="os-reviews-rating"' . $style . '>' . OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( [ 'product_id' => $product_id ], $summary ) ) . '</span>';
+	}
+
+	/**
+	 * CusRev-compatible email review button shortcode.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_cusrev_review_button_shortcode( array $atts = [] ): string {
+		$atts = shortcode_atts( [ 'label' => 'Review', 'bg' => '#0073aa', 'color' => '#ffffff', 'radius' => '4px' ], $atts, 'cusrev_review_button' );
+		$url = get_permalink( $this->get_current_product_id() ) ?: home_url( '/#review_form' );
+		$style = sprintf( 'display:inline-block;background:%s;color:%s;border-radius:%s;padding:10px 16px;text-decoration:none;font-weight:700;', esc_attr( sanitize_hex_color( (string) $atts['bg'] ) ?: '#0073aa' ), esc_attr( sanitize_hex_color( (string) $atts['color'] ) ?: '#ffffff' ), esc_attr( sanitize_text_field( (string) $atts['radius'] ) ) );
+
+		return '<a class="os-review-button" href="' . esc_url( $url ) . '" style="' . $style . '">' . esc_html( (string) $atts['label'] ) . '</a>';
+	}
+
+	/**
+	 * CusRev Q&A compatibility placeholder.
+	 *
+	 * @return string
+	 */
+	public function render_cusrev_qna_shortcode(): string {
+		return '<div class="os-reviews-empty">' . esc_html__( 'Questions and answers are not enabled yet.', 'overseek-wc' ) . '</div>';
+	}
+
+	/**
+	 * Render reviews for the current or configured product.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_product_reviews_shortcode( array $atts = [] ): string {
+		$args = $this->normalize_shortcode_args( $atts, 'overseek_product_reviews' );
+		$args['product_reviews'] = 'true';
+		$args['shop_reviews']    = 'false';
+		if ( empty( $args['product_id'] ) ) {
+			$args['product_id'] = $this->get_current_product_id();
+		}
+
+		if ( empty( $args['product_id'] ) ) {
+			return '<div class="os-reviews-empty">' . esc_html__( 'No product was found for these reviews.', 'overseek-wc' ) . '</div>';
+		}
+
+		$args['show_product'] = false;
+		$reviews              = $this->get_reviews( $args );
+		$summary              = $this->get_summary( $args );
+		$shell_id             = 'os-reviews-' . ++$this->shell_counter;
+
+		return '<div id="' . esc_attr( $shell_id ) . '" class="os-reviews-shell os-reviews-shell--product" data-os-reviews-shell>'
+			. OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( $args, $summary ) )
+			. $this->render_schema_markup( $summary, $args )
+			. OverSeek_Review_Renderer::render_reviews( $reviews, $args )
+			. '</div>';
+	}
+
+	/**
+	 * Render compact review rows.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_rows_shortcode( array $atts = [] ): string {
+		$args    = $this->normalize_shortcode_args( $atts, 'overseek_review_rows' );
+		$reviews = $this->get_reviews( $args );
+
+		return OverSeek_Review_Renderer::render_rows( $reviews, $args );
+	}
+
+	/**
+	 * Render only the review summary.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_summary_shortcode( array $atts = [] ): string {
+		$args = $this->normalize_shortcode_args( $atts, 'overseek_review_summary' );
+		if ( empty( $args['product_id'] ) ) {
+			$args['product_id'] = $this->get_current_product_id();
+		}
+
+		$summary = $this->get_summary( $args );
+
+		return OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( $args, $summary ) );
+	}
+
+	/**
+	 * Query native WooCommerce reviews.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function get_reviews( array $args ): array {
+		$query_args = $this->build_comment_query_args( $args );
+		$comments   = get_comments( $query_args );
+		$reviews    = [];
+
+		foreach ( $comments as $comment ) {
+			if ( ! ( $comment instanceof WP_Comment ) ) {
+				continue;
+			}
+
+			$review = $this->map_comment_to_review( $comment );
+			if ( ! empty( $args['min_chars'] ) && strlen( wp_strip_all_tags( (string) $review['content'] ) ) < (int) $args['min_chars'] ) {
+				continue;
+			}
+
+			$reviews[] = $review;
+		}
+
+		if ( isset( $args['sort_by'] ) && 'media' === (string) $args['sort_by'] ) {
+			usort(
+				$reviews,
+				static function ( array $a, array $b ) use ( $args ): int {
+					$count_a = isset( $a['media'] ) && is_array( $a['media'] ) ? count( $a['media'] ) : 0;
+					$count_b = isset( $b['media'] ) && is_array( $b['media'] ) ? count( $b['media'] ) : 0;
+					return 'ASC' === ( $args['order'] ?? 'DESC' ) ? $count_a <=> $count_b : $count_b <=> $count_a;
+				}
+			);
+		}
+
+		return $reviews;
+	}
+
+	/**
+	 * Get review summary for query args.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, mixed>
+	 */
+	public function get_summary( array $args ): array {
+		$cache_key = 'overseek_review_summary_' . md5( wp_json_encode( $args ) ?: '' );
+		$cached    = wp_cache_get( $cache_key, 'overseek_reviews' );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$summary_args           = $this->build_comment_query_args( $args );
+		$summary_args['number'] = 0;
+		$summary_args['offset'] = 0;
+		$comments              = get_comments( $summary_args );
+		$total                 = 0;
+		$rating_total          = 0;
+
+		foreach ( $comments as $comment ) {
+			if ( ! ( $comment instanceof WP_Comment ) ) {
+				continue;
+			}
+
+			$rating = (int) get_comment_meta( (int) $comment->comment_ID, 'rating', true );
+			if ( $rating <= 0 ) {
+				continue;
+			}
+
+			$total++;
+			$rating_total += $rating;
+		}
+
+		$summary = [
+			'total'   => $total,
+			'average' => $total > 0 ? $rating_total / $total : 0,
+		];
+
+		wp_cache_set( $cache_key, $summary, 'overseek_reviews', 10 * MINUTE_IN_SECONDS );
+
+		return $summary;
+	}
+
+	/**
+	 * Build context for the review summary display.
+	 *
+	 * @param array<string, mixed> $args    Query args.
+	 * @param array<string, mixed> $summary Current summary.
+	 * @return array<string, mixed>
+	 */
+	private function get_summary_context( array $args, array $summary ): array {
+		$product_id      = ! empty( $args['product_id'] ) ? (int) $args['product_id'] : 0;
+		$product_summary = $summary;
+
+		if ( $product_id > 0 ) {
+			$store_args = $args;
+			unset( $store_args['product_id'] );
+			$product_summary = $summary;
+			$summary         = $this->get_summary( $store_args );
+		}
+
+		return [
+			'store_name'      => get_bloginfo( 'name' ),
+			'product_summary' => $product_summary,
+			'store_summary'   => $summary,
+		];
+	}
+
+	/**
+	 * Normalize shortcode attributes.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @param string               $tag  Shortcode tag.
+	 * @return array<string, mixed>
+	 */
+	private function normalize_shortcode_args( array $atts, string $tag ): array {
+		$attributes = shortcode_atts(
+			[
+				'product_id'   => 0,
+				'limit'        => 12,
+				'page'         => 1,
+				'layout'       => 'grid',
+				'columns'      => 3,
+				'min_rating'   => 0,
+				'show_media'   => '1',
+				'show_product' => '1',
+				'product_links'=> '1',
+				'show_verified'=> '1',
+				'show_replies' => '1',
+				'avatars'      => 'initials',
+				'max_chars'    => 0,
+				'min_chars'    => 0,
+				'products'     => '',
+				'product_reviews' => 'true',
+				'shop_reviews' => 'false',
+				'inactive_products' => 'false',
+				'categories'   => '',
+				'product_tags' => '',
+				'tags'         => '',
+				'sort_by'      => 'date',
+				'pagination'   => 'none',
+				'add_review'   => 'false',
+				'schema_markup'=> 'false',
+				'color_brdr'   => '',
+				'color_bcrd'   => '',
+				'color_pr_bcrd'=> '',
+				'color_stars'  => '',
+				'status'       => 'approved',
+				'order'        => 'DESC',
+				'class'        => '',
+			],
+			$atts,
+			$tag
+		);
+
+		$attributes['product_id'] = absint( $attributes['product_id'] );
+		$attributes['limit']      = max( 1, min( 100, absint( $attributes['limit'] ) ) );
+		$attributes['page']       = max( 1, absint( $attributes['page'] ) );
+		$attributes['columns']    = max( 1, min( 4, absint( $attributes['columns'] ) ) );
+		$admin_min_rating         = max( 0, min( 5, absint( get_option( 'overseek_reviews_min_rating', 0 ) ) ) );
+		$attributes['min_rating'] = max( $admin_min_rating, max( 0, min( 5, absint( $attributes['min_rating'] ) ) ) );
+		$attributes['max_chars']  = max( 0, absint( $attributes['max_chars'] ) );
+		$attributes['min_chars']  = max( 0, absint( $attributes['min_chars'] ) );
+		$attributes['layout']     = in_array( sanitize_key( (string) $attributes['layout'] ), [ 'grid', 'list' ], true ) ? sanitize_key( (string) $attributes['layout'] ) : 'grid';
+		$attributes['pagination'] = in_array( sanitize_key( (string) $attributes['pagination'] ), [ 'none', 'pages', 'load_more', 'infinite' ], true ) ? sanitize_key( (string) $attributes['pagination'] ) : 'none';
+		$order = strtoupper( (string) $attributes['order'] );
+		$attributes['order']      = in_array( $order, [ 'ASC', 'DESC', 'RAND' ], true ) ? $order : 'DESC';
+		$attributes['status']     = sanitize_key( (string) $attributes['status'] );
+		$attributes['sort_by']    = sanitize_key( (string) $attributes['sort_by'] );
+		$attributes['avatars']    = sanitize_key( (string) $attributes['avatars'] );
+		$attributes['product_reviews'] = $this->truthy( $attributes['product_reviews'] ) ? 'true' : 'false';
+		$attributes['shop_reviews']    = $this->truthy( $attributes['shop_reviews'] ) ? 'true' : 'false';
+		$attributes['inactive_products'] = $this->truthy( $attributes['inactive_products'] ) ? 'true' : 'false';
+
+		if ( isset( $_GET['os_reviews_page'] ) ) {
+			$attributes['page'] = max( 1, absint( wp_unslash( $_GET['os_reviews_page'] ) ) );
+		}
+
+		return $attributes;
+	}
+
+	/**
+	 * Map CusRev shortcode attributes to OverSeek renderer attributes.
+	 *
+	 * @param array<string, mixed> $atts CusRev attrs.
+	 * @param string               $mode Compatibility mode.
+	 * @return array<string, mixed>
+	 */
+	private function map_cusrev_args( array $atts, string $mode ): array {
+		$mapped = $atts;
+		if ( isset( $atts['per_page'] ) ) {
+			$mapped['limit'] = $atts['per_page'];
+		}
+		if ( isset( $atts['count'] ) ) {
+			$mapped['limit'] = $atts['count'];
+		}
+		if ( isset( $atts['show_summary_bar'] ) ) {
+			$mapped['show_summary_bar'] = $this->truthy( $atts['show_summary_bar'] ) ? '1' : '0';
+		}
+		if ( isset( $atts['show_products'] ) ) {
+			$mapped['show_product'] = $this->truthy( $atts['show_products'] ) ? '1' : '0';
+		}
+		if ( isset( $atts['show_media'] ) ) {
+			$mapped['show_media'] = $this->truthy( $atts['show_media'] ) ? '1' : '0';
+		}
+		if ( isset( $atts['show_replies'] ) ) {
+			$mapped['show_replies'] = $this->truthy( $atts['show_replies'] ) ? '1' : '0';
+		}
+		if ( isset( $atts['product_links'] ) ) {
+			$mapped['product_links'] = $this->truthy( $atts['product_links'] ) ? '1' : '0';
+		}
+		if ( isset( $atts['product_reviews'] ) ) {
+			$mapped['product_reviews'] = $this->truthy( $atts['product_reviews'] ) ? 'true' : 'false';
+		}
+		if ( isset( $atts['shop_reviews'] ) ) {
+			$mapped['shop_reviews'] = $this->truthy( $atts['shop_reviews'] ) ? 'true' : 'false';
+		}
+		if ( isset( $atts['inactive_products'] ) ) {
+			$mapped['inactive_products'] = $this->truthy( $atts['inactive_products'] ) ? 'true' : 'false';
+		}
+		if ( isset( $atts['show_more'] ) && absint( $atts['show_more'] ) > 0 ) {
+			$mapped['pagination'] = 'load_more';
+			$mapped['limit'] = absint( $atts['show_more'] );
+		}
+		if ( 'grid' === $mode ) {
+			$mapped['layout'] = 'grid';
+			$mapped['columns'] = 3;
+			$mapped['show_summary_bar'] = $this->truthy( $atts['show_summary_bar'] ?? 'false' ) ? '1' : '0';
+		}
+		if ( 'slider' === $mode ) {
+			$mapped['layout'] = 'slider';
+			$mapped['limit'] = $atts['count'] ?? 5;
+		}
+
+		return $mapped;
+	}
+
+	/**
+	 * Render an optional review form after a reviews shortcode.
+	 *
+	 * @param array<string, mixed> $args Args.
+	 * @return string
+	 */
+	private function maybe_render_add_review_form( array $args ): string {
+		$value = $args['add_review'] ?? 'false';
+		if ( ! $this->truthy( $value ) && ! absint( $value ) ) {
+			return '';
+		}
+
+		$product_id = absint( $value ) ?: ( ! empty( $args['product_id'] ) ? (int) $args['product_id'] : $this->get_current_product_id() );
+		if ( ! $product_id && $this->truthy( $args['shop_reviews'] ?? false ) ) {
+			return do_shortcode( '[overseek_review_form shop_review="true"]' );
+		}
+
+		if ( ! $product_id ) {
+			return '';
+		}
+
+		return do_shortcode( '[overseek_review_form product_id="' . absint( $product_id ) . '"]' );
+	}
+
+	/**
+	 * Render AggregateRating schema for single-product review displays.
+	 *
+	 * @param array<string, mixed> $summary Summary data.
+	 * @param array<string, mixed> $args Args.
+	 * @return string
+	 */
+	private function render_schema_markup( array $summary, array $args ): string {
+		if ( ! $this->truthy( $args['schema_markup'] ?? false ) || empty( $args['product_id'] ) || empty( $summary['total'] ) ) {
+			return '';
+		}
+
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $args['product_id'] ) : null;
+		$data = [
+			'@context' => 'https://schema.org',
+			'@type' => 'Product',
+			'name' => $product ? $product->get_name() : get_the_title( (int) $args['product_id'] ),
+			'aggregateRating' => [
+				'@type' => 'AggregateRating',
+				'ratingValue' => number_format( (float) $summary['average'], 1, '.', '' ),
+				'reviewCount' => (int) $summary['total'],
+			],
+		];
+
+		return '<script type="application/ld+json">' . wp_json_encode( $data ) . '</script>';
+	}
+
+	/**
+	 * Build WP comment query args from normalized args.
+	 *
+	 * @param array<string, mixed> $args Args.
+	 * @return array<string, mixed>
+	 */
+	private function build_comment_query_args( array $args ): array {
+		$limit  = isset( $args['limit'] ) ? (int) $args['limit'] : 12;
+		$page   = isset( $args['page'] ) ? (int) $args['page'] : 1;
+		$status = $this->map_status( isset( $args['status'] ) ? (string) $args['status'] : 'approved' );
+
+		$product_reviews = $this->truthy( $args['product_reviews'] ?? true );
+		$shop_reviews    = $this->truthy( $args['shop_reviews'] ?? false );
+		$post_types       = [];
+		if ( $product_reviews ) {
+			$post_types[] = 'product';
+		}
+		if ( $shop_reviews ) {
+			$post_types[] = 'page';
+		}
+
+		$query_args = [
+			'post_type' => ! empty( $post_types ) ? array_values( array_unique( $post_types ) ) : 'product',
+			'type'      => 'review',
+			'status'    => $status,
+			'number'    => $limit,
+			'offset'    => ( $page - 1 ) * $limit,
+			'orderby'   => $this->map_orderby( $args ),
+			'order'     => isset( $args['order'] ) && 'ASC' === $args['order'] ? 'ASC' : 'DESC',
+		];
+
+		if ( isset( $args['order'] ) && 'RAND' === $args['order'] ) {
+			$query_args['orderby'] = 'rand';
+		}
+
+		if ( $shop_reviews && ! $product_reviews ) {
+			$query_args['post_id'] = $this->get_shop_review_post_id();
+		}
+
+		if ( ! empty( $args['product_id'] ) ) {
+			$query_args['post_id'] = (int) $args['product_id'];
+		} elseif ( ! empty( $args['products'] ) ) {
+			$products = $this->parse_ids( (string) $args['products'] );
+			if ( ! empty( $products ) ) {
+				$query_args['post__in'] = $products;
+			} elseif ( 'current' === (string) $args['products'] && $this->get_current_product_id() ) {
+				$query_args['post_id'] = $this->get_current_product_id();
+			}
+		}
+
+		$post_ids = $this->get_filtered_product_ids( $args );
+		if ( ! empty( $post_ids ) ) {
+			$query_args['post__in'] = isset( $query_args['post__in'] ) ? array_values( array_intersect( (array) $query_args['post__in'], $post_ids ) ) : $post_ids;
+		}
+
+		if ( ! $this->truthy( $args['inactive_products'] ?? false ) && $product_reviews && ! $shop_reviews ) {
+			$query_args['post_status'] = 'publish';
+		}
+
+		if ( ! empty( $args['min_rating'] ) ) {
+			$query_args['meta_query'] = [
+				[
+					'key'     => 'rating',
+					'value'   => (int) $args['min_rating'],
+					'compare' => '>=',
+					'type'    => 'NUMERIC',
+				],
+			];
+		}
+
+		if ( isset( $args['sort_by'] ) && 'rating' === (string) $args['sort_by'] ) {
+			$query_args['meta_key'] = 'rating';
+		}
+
+		return $query_args;
+	}
+
+	/**
+	 * Resolve review accent colours from admin settings or WooCommerce brand colour.
+	 *
+	 * @return array{primary: string, secondary: string, tertiary: string}
+	 */
+	private function get_review_brand_colors(): array {
+		$woocommerce_brand = sanitize_hex_color( (string) get_option( 'woocommerce_email_base_color', '#f59e0b' ) ) ?: '#f59e0b';
+		$primary           = sanitize_hex_color( (string) get_option( 'overseek_reviews_accent_primary', '' ) ) ?: $woocommerce_brand;
+		$secondary         = sanitize_hex_color( (string) get_option( 'overseek_reviews_accent_secondary', '' ) ) ?: $primary;
+		$tertiary          = sanitize_hex_color( (string) get_option( 'overseek_reviews_accent_tertiary', '' ) ) ?: $primary;
+
+		return [
+			'primary'   => $primary,
+			'secondary' => $secondary,
+			'tertiary'  => $tertiary,
+		];
+	}
+
+	/**
+	 * Normalize boolean-like values.
+	 *
+	 * @param mixed $value Value.
+	 * @return bool
+	 */
+	private function truthy( $value ): bool {
+		if ( is_bool( $value ) ) {
+			return $value;
+		}
+
+		return ! in_array( strtolower( (string) $value ), [ '0', 'false', 'no', 'off', '' ], true );
+	}
+
+	/**
+	 * Map sort_by values to comment query orderby.
+	 *
+	 * @param array<string, mixed> $args Args.
+	 * @return string
+	 */
+	private function map_orderby( array $args ): string {
+		$sort_by = isset( $args['sort_by'] ) ? (string) $args['sort_by'] : 'date';
+		if ( 'rating' === $sort_by ) {
+			return 'meta_value_num';
+		}
+		return 'comment_date_gmt';
+	}
+
+	/**
+	 * Parse comma-separated IDs.
+	 *
+	 * @param string $raw Raw IDs.
+	 * @return array<int, int>
+	 */
+	private function parse_ids( string $raw ): array {
+		return array_values( array_filter( array_map( 'absint', preg_split( '/\s*,\s*/', $raw ) ?: [] ) ) );
+	}
+
+	/**
+	 * Get product IDs matching category/tag filters.
+	 *
+	 * @param array<string, mixed> $args Args.
+	 * @return array<int, int>
+	 */
+	private function get_filtered_product_ids( array $args ): array {
+		$tax_query = [];
+		if ( ! empty( $args['categories'] ) ) {
+			$tax_query[] = [ 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $this->parse_ids( (string) $args['categories'] ) ];
+		}
+		if ( ! empty( $args['product_tags'] ) ) {
+			$tax_query[] = [ 'taxonomy' => 'product_tag', 'field' => 'slug', 'terms' => array_filter( array_map( 'sanitize_title', preg_split( '/\s*,\s*/', (string) $args['product_tags'] ) ?: [] ) ) ];
+		}
+		if ( empty( $tax_query ) ) {
+			return [];
+		}
+
+		$ids = get_posts( [ 'post_type' => 'product', 'fields' => 'ids', 'posts_per_page' => -1, 'tax_query' => $tax_query ] );
+		return array_map( 'absint', $ids );
+	}
+
+	/**
+	 * Map shortcode status names to WordPress comment status values.
+	 *
+	 * @param string $status Status value.
+	 * @return string
+	 */
+	private function map_status( string $status ): string {
+		$map = [
+			'approved' => 'approve',
+			'approve'  => 'approve',
+			'hold'     => 'hold',
+			'pending'  => 'hold',
+			'spam'     => 'spam',
+			'trash'    => 'trash',
+			'all'      => 'all',
+		];
+
+		return $map[ $status ] ?? 'approve';
+	}
+
+	/**
+	 * Convert a WordPress comment into renderer data.
+	 *
+	 * @param WP_Comment $comment Review comment.
+	 * @return array<string, mixed>
+	 */
+	private function map_comment_to_review( WP_Comment $comment ): array {
+		$product  = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $comment->comment_post_ID ) : null;
+		$rating   = (int) get_comment_meta( (int) $comment->comment_ID, 'rating', true );
+		$image_id = $product ? (int) $product->get_image_id() : 0;
+		$image    = $image_id > 0 ? wp_get_attachment_image_url( $image_id, 'thumbnail' ) : '';
+		$is_shop_review = ! $product || 'product' !== get_post_type( (int) $comment->comment_post_ID );
+
+		return [
+			'id'           => (int) $comment->comment_ID,
+			'product_id'   => (int) $comment->comment_post_ID,
+			'product_name' => $is_shop_review ? __( 'Shop review', 'overseek-wc' ) : $product->get_name(),
+			'product_url'  => $is_shop_review ? home_url( '/' ) : $product->get_permalink(),
+			'product_image' => $image ? (string) $image : '',
+			'reviewer'     => $comment->comment_author ?: __( 'Customer', 'overseek-wc' ),
+			'rating'       => $rating,
+			'content'      => $comment->comment_content,
+			'date'         => mysql2date( get_option( 'date_format' ), $comment->comment_date ),
+			'date_iso'     => mysql2date( 'c', $comment->comment_date_gmt ),
+			'verified'     => $this->is_verified_review( (int) $comment->comment_ID ),
+			'country'      => $this->get_review_country( $comment ),
+			'replies'      => $this->get_review_replies( (int) $comment->comment_ID ),
+			'media'        => $this->get_review_media( (int) $comment->comment_ID ),
+		];
+	}
+
+	/**
+	 * Render basic pagination controls.
+	 *
+	 * @param array<string, mixed> $summary Summary data.
+	 * @param array<string, mixed> $args Render args.
+	 * @return string
+	 */
+	private function render_pagination( array $summary, array $args ): string {
+		$mode = isset( $args['pagination'] ) ? (string) $args['pagination'] : 'none';
+		if ( 'none' === $mode ) {
+			return '';
+		}
+
+		$total = isset( $summary['total'] ) ? (int) $summary['total'] : 0;
+		$limit = isset( $args['limit'] ) ? max( 1, (int) $args['limit'] ) : 12;
+		$page  = isset( $args['page'] ) ? max( 1, (int) $args['page'] ) : 1;
+		$pages = (int) ceil( $total / $limit );
+
+		if ( $pages <= 1 ) {
+			return '';
+		}
+
+		if ( in_array( $mode, [ 'load_more', 'infinite' ], true ) && $page < $pages ) {
+			$url = esc_url( add_query_arg( 'os_reviews_page', $page + 1 ) );
+			$label = 'infinite' === $mode ? __( 'Load next reviews', 'overseek-wc' ) : __( 'Load more reviews', 'overseek-wc' );
+			return '<div class="os-reviews-pagination os-reviews-pagination--' . esc_attr( $mode ) . '"><a class="os-reviews-pagination__button" href="' . $url . '">' . esc_html( $label ) . '</a></div>';
+		}
+
+		$out = '<nav class="os-reviews-pagination" aria-label="' . esc_attr__( 'Review pages', 'overseek-wc' ) . '">';
+		for ( $i = 1; $i <= $pages; $i++ ) {
+			$out .= '<a class="os-reviews-pagination__page' . ( $i === $page ? ' is-active' : '' ) . '" href="' . esc_url( add_query_arg( 'os_reviews_page', $i ) ) . '">' . esc_html( (string) $i ) . '</a>';
+		}
+		return $out . '</nav>';
+	}
+
+	/**
+	 * Get approved merchant replies for a review.
+	 *
+	 * @param int $comment_id Review comment ID.
+	 * @return array<int, array<string, string>>
+	 */
+	private function get_review_replies( int $comment_id ): array {
+		$children = get_comments( [ 'parent' => $comment_id, 'status' => 'approve', 'order' => 'ASC' ] );
+		$out = [];
+
+		foreach ( $children as $reply ) {
+			if ( ! ( $reply instanceof WP_Comment ) || '' === trim( (string) $reply->comment_content ) ) {
+				continue;
+			}
+
+			$out[] = [
+				'author'  => (string) $reply->comment_author,
+				'content' => (string) $reply->comment_content,
+			];
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Resolve a review country code from known metadata.
+	 *
+	 * @param WP_Comment $comment Review comment.
+	 * @return string
+	 */
+	private function get_review_country( WP_Comment $comment ): string {
+		$comment_id = (int) $comment->comment_ID;
+		foreach ( [ 'overseek_country', 'review_country', 'country', 'billing_country' ] as $key ) {
+			$value = strtoupper( substr( sanitize_text_field( (string) get_comment_meta( $comment_id, $key, true ) ), 0, 2 ) );
+			if ( 2 === strlen( $value ) ) {
+				return $value;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Resolve media attached to a review through comment meta.
+	 *
+	 * @param int $comment_id Comment ID.
+	 * @return array<int, array<string, string>>
+	 */
+	private function get_review_media( int $comment_id ): array {
+		$raw_ids = get_comment_meta( $comment_id, 'overseek_media_ids', true );
+		if ( empty( $raw_ids ) ) {
+			$raw_ids = get_comment_meta( $comment_id, 'ivole_review_image', true );
+		}
+
+		$ids = is_array( $raw_ids ) ? $raw_ids : array_filter( array_map( 'absint', explode( ',', (string) $raw_ids ) ) );
+		$out = [];
+
+		foreach ( $ids as $id ) {
+			$attachment_id = absint( $id );
+			$url           = wp_get_attachment_url( $attachment_id );
+			if ( ! $url ) {
+				continue;
+			}
+
+			$out[] = [
+				'id'   => (string) $attachment_id,
+				'url'  => $url,
+				'type' => (string) get_post_mime_type( $attachment_id ),
+			];
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Determine verified-owner state using WooCommerce if available.
+	 *
+	 * @param int $comment_id Comment ID.
+	 * @return bool
+	 */
+	private function is_verified_review( int $comment_id ): bool {
+		if ( function_exists( 'wc_review_is_from_verified_owner' ) ) {
+			return (bool) wc_review_is_from_verified_owner( $comment_id );
+		}
+
+		return (bool) get_comment_meta( $comment_id, 'verified', true );
+	}
+
+	/**
+	 * Get the current product ID in product contexts.
+	 *
+	 * @return int
+	 */
+	private function get_current_product_id(): int {
+		global $product;
+
+		if ( $product instanceof WC_Product ) {
+			return (int) $product->get_id();
+		}
+
+		$post_id = get_the_ID();
+		return $post_id ? (int) $post_id : 0;
+	}
+
+	/**
+	 * Get the post used as the native comment bucket for shop reviews.
+	 *
+	 * @return int
+	 */
+	private function get_shop_review_post_id(): int {
+		if ( function_exists( 'wc_get_page_id' ) ) {
+			$shop_id = (int) wc_get_page_id( 'shop' );
+			if ( $shop_id > 0 ) {
+				return $shop_id;
+			}
+		}
+
+		$front_id = (int) get_option( 'page_on_front' );
+		return $front_id > 0 ? $front_id : 1;
+	}
+}

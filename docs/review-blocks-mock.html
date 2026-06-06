@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overseek Review Blocks Mock</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(circle at top left, #fff7ed 0, transparent 34%), linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%); color: #172033; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 1240px; margin: 0 auto; padding: 52px 20px 90px; }
+    .preview-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: end; margin-bottom: 36px; }
+    .preview-header h1 { margin: 0 0 12px; max-width: 780px; color: #0f172a; font-size: clamp(36px, 6vw, 72px); line-height: 0.95; letter-spacing: -0.065em; }
+    .preview-header p { max-width: 720px; margin: 0; color: #64748b; font-size: 17px; line-height: 1.65; }
+    .preview-pill { display: inline-flex; align-items: center; gap: 9px; justify-self: end; padding: 10px 14px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 999px; background: rgba(255, 255, 255, 0.78); color: #334155; font-size: 13px; font-weight: 800; box-shadow: 0 14px 35px rgba(15, 23, 42, 0.08); }
+    .preview-pill span { width: 9px; height: 9px; border-radius: 999px; background: #10b981; box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.12); }
+    .preview-section { margin-top: 34px; padding: clamp(20px, 3vw, 32px); border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 32px; background: rgba(255, 255, 255, 0.82); box-shadow: 0 22px 65px rgba(15, 23, 42, 0.08); backdrop-filter: blur(14px); }
+    .preview-section h2 { margin: 0 0 8px; color: #0f172a; font-size: clamp(22px, 3vw, 30px); line-height: 1.1; letter-spacing: -0.04em; }
+    .preview-section > p { max-width: 780px; margin: 0 0 24px; color: #64748b; line-height: 1.6; }
+    .preview-note { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; }
+    .preview-note span { display: inline-flex; align-items: center; padding: 8px 11px; border-radius: 999px; background: #f8fafc; color: #475569; font-size: 12px; font-weight: 800; }
+    .admin-panel { display: grid; gap: 14px; max-width: 520px; padding: 18px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 22px; background: #fff; box-shadow: 0 16px 42px rgba(15, 23, 42, 0.07); }
+    .admin-panel strong { color: #0f172a; font-size: 15px; }
+    .editor-control { display: grid; gap: 8px; }
+    .editor-control label { color: #334155; font-size: 13px; font-weight: 800; }
+    .fake-select { display: inline-flex; align-items: center; justify-content: space-between; width: min(100%, 280px); padding: 10px 12px; border: 1px solid rgba(15, 23, 42, 0.14); border-radius: 12px; background: #f8fafc; color: #0f172a; font-size: 14px; font-weight: 800; }
+    .brand-swatches { display: flex; gap: 8px; }
+    .brand-swatches span { width: 30px; height: 30px; border: 3px solid #fff; border-radius: 999px; box-shadow: 0 5px 16px rgba(15, 23, 42, 0.16); }
+    .editor-help { margin: 0; color: #64748b; font-size: 12px; line-height: 1.45; }
+
+    .os-reviews-shell { --os-review-columns: 3; --os-review-star-color: #d97706; --os-review-accent-1: #d97706; --os-review-accent-2: #b45309; --os-review-accent-3: #92400e; --os-review-card-bg: #ffffff; --os-review-card-border: rgba(15, 23, 42, 0.08); --os-review-product-bg: #f8fafc; color: #172033; font-family: inherit; }
+    .os-reviews-summary { display: flex; align-items: center; gap: clamp(18px, 4vw, 38px); width: fit-content; max-width: 100%; margin: 0 0 26px; padding: 18px 22px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 24px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 22px 60px rgba(15, 23, 42, 0.1); backdrop-filter: blur(12px); }
+    .os-reviews-summary__brand { display: flex; align-items: center; gap: 14px; }
+    .os-reviews-summary__badge { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; clip-path: polygon(50% 0%, 61% 31%, 94% 20%, 72% 48%, 100% 68%, 65% 68%, 66% 100%, 50% 78%, 34% 100%, 35% 68%, 0 68%, 28% 48%, 6% 20%, 39% 31%); background: linear-gradient(135deg, var(--os-review-accent-2), var(--os-review-accent-1)); color: #fff; font-size: 22px; line-height: 1; text-shadow: 0 1px 3px rgba(146, 64, 14, 0.35); }
+    .os-reviews-summary__brand strong { display: block; margin-bottom: 4px; color: #111827; font-size: clamp(20px, 3vw, 28px); line-height: 1.05; }
+    .os-reviews-summary__brand span, .os-reviews-summary__brand small, .os-reviews-summary__rating span { display: block; color: #64748b; font-size: 14px; }
+    .os-reviews-summary__ratings { display: flex; align-items: center; gap: 18px; padding-left: clamp(0px, 2vw, 16px); }
+    .os-reviews-summary__rating { display: grid; grid-template-columns: auto auto auto; align-items: center; gap: 8px; white-space: nowrap; }
+    .os-reviews-summary__rating strong { color: #334155; font-size: 14px; font-weight: 800; }
+    .os-review-stars { display: inline-block; color: var(--os-review-star-color, #f59e0b); font-size: 18px; letter-spacing: 0.06em; line-height: 1; }
+    .os-reviews-list { display: grid; gap: 22px; }
+    .os-reviews-list--grid { grid-template-columns: repeat(var(--os-review-columns), minmax(0, 1fr)); }
+    .os-reviews-list--list { grid-template-columns: 1fr; }
+    .os-reviews-list--slider { display: flex; grid-template-columns: none; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 0 8px; }
+    .os-reviews-list--slider .os-review-card { flex: 0 0 min(380px, 86vw); scroll-snap-align: start; }
+    .os-review-card { position: relative; display: flex; min-width: 0; flex-direction: column; gap: 16px; overflow: hidden; padding: 22px; border: 1px solid var(--os-review-card-border); border-radius: 28px; background: linear-gradient(180deg, var(--os-review-card-bg), #fbfdff); box-shadow: 0 20px 55px rgba(15, 23, 42, 0.08); transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+    .os-review-card::before { position: absolute; top: 0; left: 0; width: 100%; height: 5px; background: linear-gradient(90deg, var(--os-review-accent-1), var(--os-review-accent-2), var(--os-review-accent-3)); content: ""; }
+    .os-review-card:hover { border-color: rgba(245, 158, 11, 0.28); box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12); transform: translateY(-2px); }
+    .os-review-card__header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .os-review-card__reviewer { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .os-review-card__avatar { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: 0 0 auto; border-radius: 999px; background: linear-gradient(135deg, #111827, #334155); color: #fff; font-size: 14px; font-weight: 900; }
+    .os-review-card__author { display: block; overflow: hidden; max-width: 100%; color: #0f172a; font-size: 16px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+    .os-review-card__meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .os-review-card__country { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px; background: rgba(37, 99, 235, 0.08); color: #1d4ed8; font-size: 11px; font-weight: 800; }
+    .os-review-card__verified { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: rgba(16, 185, 129, 0.12); color: #047857; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .os-review-card time { flex: 0 0 auto; padding-top: 2px; color: #64748b; font-size: 13px; }
+    .os-review-card__stars .os-review-stars { font-size: 20px; }
+    .os-review-card__content p { margin: 0 0 10px; color: #263244; font-size: 15px; line-height: 1.68; }
+    .os-review-card__content p:last-child { margin-bottom: 0; }
+    .os-review-card__replies { display: grid; gap: 10px; padding: 14px; border: 1px solid rgba(37, 99, 235, 0.1); border-radius: 18px; background: linear-gradient(135deg, #eff6ff, #fff); }
+    .os-review-card__reply strong { display: block; margin-bottom: 4px; color: #1e3a8a; font-size: 13px; }
+    .os-review-card__reply p { margin: 0; color: #1e40af; font-size: 14px; line-height: 1.5; }
+    .os-review-card__media { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .os-review-media { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 16px; background: #f1f5f9; }
+    video.os-review-media { aspect-ratio: 16 / 10; }
+    .os-review-card__product { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px; margin-top: auto; padding: 12px; border: 1px solid rgba(15, 23, 42, 0.06); border-radius: 18px; background: var(--os-review-product-bg); font-size: 14px; }
+    .os-review-card__product img { display: block; width: 48px; height: 48px; border-radius: 12px; object-fit: cover; background: #e2e8f0; }
+    .os-review-card__product--no-image { grid-template-columns: 1fr; }
+    .os-review-card__product a, .os-review-card__product span { display: block; color: #0f172a; font-weight: 700; line-height: 1.35; text-decoration: none; }
+    .os-review-card__product a:hover, .os-review-card__product a:focus { color: #2563eb; }
+    .os-review-rows { display: grid; gap: 10px; }
+    .os-review-row { display: grid; grid-template-columns: auto 1fr; gap: 14px; padding: 14px 0; border-bottom: 1px solid rgba(23, 32, 51, 0.1); }
+    .os-review-row__content p { margin: 0 0 6px; color: #334155; line-height: 1.5; }
+    .os-review-row__meta { display: flex; flex-wrap: wrap; gap: 8px; color: #64748b; font-size: 13px; }
+    .os-review-row__meta span + span::before { content: "· "; }
+    .os-reviews-pagination { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 24px; }
+    .os-reviews-pagination__page, .os-reviews-pagination__button { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 40px; padding: 0 14px; border: 1px solid rgba(23, 32, 51, 0.14); border-radius: 999px; background: #fff; color: #172033; font-weight: 800; text-decoration: none; }
+    .os-reviews-pagination__page.is-active, .os-reviews-pagination__page:hover, .os-reviews-pagination__button:hover { border-color: #2563eb; background: #2563eb; color: #fff; }
+    .os-review-form { display: grid; gap: 16px; margin-top: 28px; padding: 24px; border: 1px solid rgba(23, 32, 51, 0.1); border-radius: 24px; background: linear-gradient(180deg, #fff, #f8fafc); box-shadow: 0 14px 34px rgba(23, 32, 51, 0.08); }
+    .os-review-form h3 { margin: 0; color: #0f172a; font-size: 24px; }
+    .os-review-form__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .os-review-form__field { display: grid; gap: 7px; }
+    .os-review-form__field span { color: #172033; font-weight: 700; }
+    .os-review-form__rating { margin: 0; padding: 0; border: 0; }
+    .os-review-form__rating legend { margin-bottom: 7px; color: #172033; font-weight: 700; }
+    .os-review-form__stars { display: inline-flex; flex-direction: row-reverse; justify-content: flex-end; gap: 4px; }
+    .os-review-form__stars input { position: absolute; opacity: 0; pointer-events: none; }
+    .os-review-form__stars label { color: #cbd5e1; font-size: 34px; line-height: 1; cursor: pointer; transition: color 120ms ease, transform 120ms ease; }
+    .os-review-form__stars label:hover, .os-review-form__stars label:hover ~ label, .os-review-form__stars input:checked ~ label { color: #d97706; }
+    .os-review-form__stars label:hover { transform: translateY(-1px); }
+    .os-review-form input, .os-review-form select, .os-review-form textarea { width: 100%; border: 1px solid rgba(23, 32, 51, 0.18); border-radius: 12px; padding: 11px 12px; background: #fff; font: inherit; }
+    .os-review-form input:focus, .os-review-form select:focus, .os-review-form textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); outline: none; }
+    .os-review-form small { color: #64748b; line-height: 1.45; }
+    .os-review-form__dropzone { padding: 18px; border: 1px dashed rgba(37, 99, 235, 0.45); border-radius: 18px; background: #eff6ff; cursor: pointer; }
+    .os-review-form__dropzone strong { color: #1d4ed8; }
+    .os-review-form__dropzone input[type="file"] { border: 0; padding: 8px 0 0; background: transparent; }
+    .os-review-form__submit { justify-self: start; border: 0; border-radius: 999px; padding: 12px 20px; background: #0f172a; color: #fff; font-weight: 800; cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease; }
+    .os-review-form__submit:hover, .os-review-form__submit:focus { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18); }
+    @media (max-width: 900px) { .preview-header { grid-template-columns: 1fr; } .preview-pill { justify-self: start; } .os-reviews-summary { align-items: flex-start; width: 100%; } .os-reviews-summary__ratings { flex-wrap: wrap; } .os-reviews-list--grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { main { padding-top: 34px; } .preview-section { border-radius: 24px; } .os-reviews-summary { flex-direction: column; gap: 18px; width: 100%; } .os-reviews-summary__ratings, .os-reviews-summary__rating { width: 100%; } .os-reviews-summary__rating { grid-template-columns: 1fr; gap: 6px; white-space: normal; } .os-reviews-list--grid { grid-template-columns: 1fr; } .os-review-card__header { flex-direction: column; } .os-review-row { grid-template-columns: 1fr; } .os-review-form__grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="preview-header">
+      <div>
+        <h1>Overseek Review Blocks</h1>
+        <p>Standalone preview for the native WooCommerce review blocks. This mock reflects the updated modern cards, product thumbnail pills, summary trust bar, and the editor option to exclude reviews under a selected star rating.</p>
+      </div>
+      <div class="preview-pill"><span></span> Local WooCommerce data only</div>
+    </header>
+
+    <section class="preview-section os-reviews-shell">
+      <h2>Review Summary Block</h2>
+      <p>The summary block now reads like a compact trust bar with store rating and product rating side by side.</p>
+      <div class="os-reviews-summary" aria-label="Average rating 4.9 out of 5 from 4037 reviews">
+        <div class="os-reviews-summary__brand">
+          <span class="os-reviews-summary__badge" aria-hidden="true">★</span>
+          <div><strong>CustomKings</strong><span>4,037 reviews</span><small>what our clients say</small></div>
+        </div>
+        <div class="os-reviews-summary__ratings">
+          <div class="os-reviews-summary__rating"><span class="os-review-stars">★★★★★</span><span>Store rating</span><strong>4.95 / 5</strong></div>
+          <div class="os-reviews-summary__rating"><span class="os-review-stars">★★★★★</span><span>Product rating</span><strong>4.93 / 5</strong></div>
+        </div>
+      </div>
+      <div class="admin-panel">
+        <strong>Admin storefront setting preview</strong>
+        <div class="editor-control"><label>Exclude reviews under</label><div class="fake-select">4 stars and above <span>⌄</span></div><p class="editor-help">This is configured once in OverSeek plugin settings and applies globally to review blocks, shortcodes, summaries, and product review displays.</p></div>
+        <div class="editor-control"><label>Review accent colours</label><div class="brand-swatches"><span style="background:#d97706"></span><span style="background:#b45309"></span><span style="background:#92400e"></span></div><p class="editor-help">Blank colour fields fall back to the WooCommerce email brand colour. These values drive the summary badge and card top line.</p></div>
+      </div>
+    </section>
+
+    <section class="preview-section os-reviews-shell">
+      <h2>Reviews Grid Block</h2>
+      <p>Card layout with verified labels, country markers, review media, merchant replies, and product thumbnail pills.</p>
+      <div class="preview-note"><span>Admin filter: 4 stars and above</span><span>Layout: grid</span><span>Product names enabled</span><span>Media enabled</span></div>
+      <div class="os-reviews-list os-reviews-list--grid">
+        <article class="os-review-card">
+          <header class="os-review-card__header">
+            <div class="os-review-card__reviewer"><span class="os-review-card__avatar">C</span><div><strong class="os-review-card__author">Carly Franklin</strong><div class="os-review-card__meta"><span class="os-review-card__verified">Verified</span><span class="os-review-card__country">🇦🇺 AU</span></div></div></div>
+            <time datetime="2026-06-04">2 days ago</time>
+          </header>
+          <div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div>
+          <div class="os-review-card__content"><p>Thank you so much, it is perfect. The engraving is crisp and the whole thing arrived packed beautifully.</p></div>
+          <div class="os-review-card__media"><img class="os-review-media" src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=500&q=80" alt="Gold necklace"><img class="os-review-media" src="https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=500&q=80" alt="Jewellery box"></div>
+          <footer class="os-review-card__product"><img src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=160&q=80" alt=""><a href="#">Personalised Name Necklace</a></footer>
+        </article>
+
+        <article class="os-review-card">
+          <header class="os-review-card__header">
+            <div class="os-review-card__reviewer"><span class="os-review-card__avatar">D</span><div><strong class="os-review-card__author">Dominique</strong><div class="os-review-card__meta"><span class="os-review-card__verified">Verified</span><span class="os-review-card__country">🇬🇧 GB</span></div></div></div>
+            <time datetime="2026-06-05">15 hours ago</time>
+          </header>
+          <div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div>
+          <div class="os-review-card__content"><p>Fairly quick delivery. I have a long name and title, so I was worried everything would be squishy or small font. It looked perfect.</p></div>
+          <div class="os-review-card__replies"><div class="os-review-card__reply"><strong>CustomKings</strong><p>Thanks Dominique. We are glad the longer engraving came through clearly.</p></div></div>
+          <footer class="os-review-card__product"><img src="https://images.unsplash.com/photo-1590736969955-71cc94901144?auto=format&fit=crop&w=160&q=80" alt=""><a href="#">Themed Name Badges | Printed Acrylic</a></footer>
+        </article>
+
+        <article class="os-review-card">
+          <header class="os-review-card__header">
+            <div class="os-review-card__reviewer"><span class="os-review-card__avatar">A</span><div><strong class="os-review-card__author">Andie Kosmin</strong><div class="os-review-card__meta"><span class="os-review-card__verified">Verified</span><span class="os-review-card__country">🇦🇺 AU</span></div></div></div>
+            <time datetime="2026-05-31">6 days ago</time>
+          </header>
+          <div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div>
+          <div class="os-review-card__content"><p>Came beautifully wrapped and super good quality. Would definitely purchase again.</p></div>
+          <div class="os-review-card__media"><img class="os-review-media" src="https://images.unsplash.com/photo-1603561596112-0a132b757442?auto=format&fit=crop&w=500&q=80" alt="Ring"><video class="os-review-media" controls poster="https://images.unsplash.com/photo-1611591437281-460bfbe1220a?auto=format&fit=crop&w=500&q=80"></video></div>
+          <footer class="os-review-card__product"><img src="https://images.unsplash.com/photo-1603561596112-0a132b757442?auto=format&fit=crop&w=160&q=80" alt=""><a href="#">Engraved Wood Drumsticks Pair</a></footer>
+        </article>
+      </div>
+      <nav class="os-reviews-pagination" aria-label="Review pages"><a class="os-reviews-pagination__page is-active" href="#">1</a><a class="os-reviews-pagination__page" href="#">2</a><a class="os-reviews-pagination__page" href="#">3</a><a class="os-reviews-pagination__button" href="#">Load more reviews</a></nav>
+    </section>
+
+    <section class="preview-section os-reviews-shell">
+      <h2>Slider / Carousel Style</h2>
+      <p>Same server-rendered cards can scroll horizontally for a lightweight testimonial strip.</p>
+      <div class="os-reviews-list os-reviews-list--slider">
+        <article class="os-review-card"><header class="os-review-card__header"><div class="os-review-card__reviewer"><span class="os-review-card__avatar">A</span><div><strong class="os-review-card__author">Antonia</strong><div class="os-review-card__meta"><span class="os-review-card__verified">Verified</span><span class="os-review-card__country">🇦🇺 AU</span></div></div></div><time>1 week ago</time></header><div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div><div class="os-review-card__content"><p>Excellent service from order to delivery. Love my new keychain.</p></div><footer class="os-review-card__product"><img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=160&q=80" alt=""><a href="#">Slimline PlateIt Licence Plate Keychain</a></footer></article>
+        <article class="os-review-card"><header class="os-review-card__header"><div class="os-review-card__reviewer"><span class="os-review-card__avatar">N</span><div><strong class="os-review-card__author">Nick</strong><div class="os-review-card__meta"><span class="os-review-card__country">🇬🇧 GB</span></div></div></div><time>2 weeks ago</time></header><div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div><div class="os-review-card__content"><p>Great product, quick service, thanks.</p></div><footer class="os-review-card__product"><img src="https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&w=160&q=80" alt=""><a href="#">Engraved Outdoor Pet Memorial Spike</a></footer></article>
+        <article class="os-review-card"><header class="os-review-card__header"><div class="os-review-card__reviewer"><span class="os-review-card__avatar">S</span><div><strong class="os-review-card__author">Sofia Turner</strong><div class="os-review-card__meta"><span class="os-review-card__verified">Verified</span><span class="os-review-card__country">🇳🇿 NZ</span></div></div></div><time>Today</time></header><div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div><div class="os-review-card__content"><p>Great quality and quick support after I posted my review.</p></div><footer class="os-review-card__product"><img src="https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=160&q=80" alt=""><a href="#">Photo Pendant</a></footer></article>
+      </div>
+    </section>
+
+    <section class="preview-section os-reviews-shell">
+      <h2>Review Rows Block</h2>
+      <p>Compact format for landing pages, homepages, and sidebars. This can also use the minimum star exclusion filter.</p>
+      <div class="preview-note"><span>Admin filter: 4 stars and above</span><span>Product names enabled</span></div>
+      <div class="os-review-rows">
+        <div class="os-review-row"><div class="os-review-stars">★★★★★</div><div class="os-review-row__content"><p>Perfect gift. The photo upload in the review form worked smoothly.</p><div class="os-review-row__meta"><span>Ruby</span><span>Name Necklace</span><span>Verified owner</span></div></div></div>
+        <div class="os-review-row"><div class="os-review-stars">★★★★★</div><div class="os-review-row__content"><p>Fast dispatch and the merchant replied to my review quickly.</p><div class="os-review-row__meta"><span>Oliver</span><span>Leather Keyring</span></div></div></div>
+        <div class="os-review-row"><div class="os-review-stars">★★★★☆</div><div class="os-review-row__content"><p>Great quality overall. Would love more chain length options.</p><div class="os-review-row__meta"><span>Mia</span><span>Heart Pendant</span></div></div></div>
+      </div>
+    </section>
+
+    <section class="preview-section os-reviews-shell">
+      <h2>Product Reviews Block</h2>
+      <p>Scoped to the current WooCommerce product, with the same summary design and card components.</p>
+      <div class="os-reviews-summary" aria-label="Average rating 4.9 out of 5 from 42 reviews"><div class="os-reviews-summary__brand"><span class="os-reviews-summary__badge" aria-hidden="true">★</span><div><strong>CustomKings</strong><span>4,037 reviews</span><small>what our clients say</small></div></div><div class="os-reviews-summary__ratings"><div class="os-reviews-summary__rating"><span class="os-review-stars">★★★★★</span><span>Store rating</span><strong>4.95 / 5</strong></div><div class="os-reviews-summary__rating"><span class="os-review-stars">★★★★★</span><span>Product rating</span><strong>4.90 / 5</strong></div></div></div>
+      <div class="os-reviews-list os-reviews-list--list">
+        <article class="os-review-card"><header class="os-review-card__header"><div class="os-review-card__reviewer"><span class="os-review-card__avatar">E</span><div><strong class="os-review-card__author">Ethan Cole</strong><div class="os-review-card__meta"><span class="os-review-card__verified">Verified</span></div></div></div><time>Yesterday</time></header><div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div><div class="os-review-card__content"><p>The ring feels substantial and the engraving is exactly like the preview. This is the product-level layout that would sit inside the WooCommerce product reviews section.</p></div></article>
+      </div>
+    </section>
+
+    <section class="preview-section">
+      <h2>Review Form Block</h2>
+      <p>Media-enabled native WooCommerce review form replacement.</p>
+      <form class="os-review-form">
+        <h3>Write a review</h3>
+        <div class="os-review-form__grid">
+          <label class="os-review-form__field"><span>Name</span><input value="Taylor Brooks"></label>
+          <label class="os-review-form__field"><span>Email</span><input value="taylor@example.com"></label>
+        </div>
+        <fieldset class="os-review-form__field os-review-form__rating"><legend>Rating</legend><div class="os-review-form__stars"><input id="star5" name="rating" type="radio" checked><label for="star5">★</label><input id="star4" name="rating" type="radio"><label for="star4">★</label><input id="star3" name="rating" type="radio"><label for="star3">★</label><input id="star2" name="rating" type="radio"><label for="star2">★</label><input id="star1" name="rating" type="radio"><label for="star1">★</label></div></fieldset>
+        <label class="os-review-form__field"><span>Your review</span><textarea rows="5">Beautiful finish and the packaging made it feel really special.</textarea></label>
+        <label class="os-review-form__field os-review-form__dropzone"><span>Photos or videos</span><strong>Drag files here or click to upload</strong><input type="file" multiple><small>Mock field. Live form accepts review media and keeps moderation inside WooCommerce/WordPress.</small></label>
+        <button class="os-review-form__submit" type="button">Submit review</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

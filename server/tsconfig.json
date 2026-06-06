@@ -7,6 +7,7 @@
         "forceConsistentCasingInFileNames": true,
         "strict": false,
         "skipLibCheck": true,
+        "ignoreDeprecations": "5.0",
         "resolveJsonModule": true,
         "moduleResolution": "node",
         "declaration": false,

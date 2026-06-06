@@ -1,0 +1,17 @@
+{
+  "apiVersion": 3,
+  "name": "overseek/product-reviews",
+  "title": "OverSeek Product Reviews",
+  "category": "widgets",
+  "icon": "products",
+  "description": "Render reviews for the current or selected product.",
+  "textdomain": "overseek-wc",
+  "editorScript": "file:../../assets/reviews-blocks.js",
+  "attributes": {
+    "product_id": { "type": "number", "default": 0 },
+    "limit": { "type": "number", "default": 12 },
+    "layout": { "type": "string", "default": "grid" },
+    "columns": { "type": "number", "default": 3 },
+    "show_media": { "type": "string", "default": "1" }
+  }
+}
