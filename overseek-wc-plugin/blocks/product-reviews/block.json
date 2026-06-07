@@ -7,6 +7,7 @@
   "description": "Render reviews for the current or selected product.",
   "textdomain": "overseek-wc",
   "editorScript": "file:../../assets/reviews-blocks.js",
+  "style": "file:../../assets/reviews.css",
   "attributes": {
     "product_id": { "type": "number", "default": 0 },
     "limit": { "type": "number", "default": 12 },

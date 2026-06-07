@@ -135,6 +135,9 @@ class OverSeek_Reviews {
 		if ( 'overseek/review-form' === $block_name ) {
 			$product_id = isset( $attributes['product_id'] ) ? absint( $attributes['product_id'] ) : 0;
 			$title      = isset( $attributes['title'] ) ? sanitize_text_field( (string) $attributes['title'] ) : 'Write a review';
+			if ( $this->is_block_editor_preview_request() && ! $product_id ) {
+				return $this->render_mock_review_form( $title );
+			}
 			return do_shortcode( sprintf( '[overseek_review_form product_id="%d" title="%s"]', $product_id, esc_attr( $title ) ) );
 		}
 
@@ -225,6 +228,10 @@ class OverSeek_Reviews {
 		$args    = $this->normalize_shortcode_args( $atts, 'overseek_reviews' );
 		$reviews = $this->get_reviews( $args );
 		$summary = $this->get_summary( $args );
+		if ( empty( $reviews ) && $this->is_block_editor_preview_request() ) {
+			$reviews = $this->get_mock_reviews( $args );
+			$summary = $this->get_mock_summary();
+		}
 		$shell_id = 'os-reviews-' . ++$this->shell_counter;
 
 		return '<div id="' . esc_attr( $shell_id ) . '" class="os-reviews-shell" data-os-reviews-shell>'
@@ -280,6 +287,9 @@ class OverSeek_Reviews {
 		$args           = $this->normalize_shortcode_args( $atts, $tag );
 		$args['layout'] = 'slider';
 		$reviews        = $this->get_reviews( $args );
+		if ( empty( $reviews ) && $this->is_block_editor_preview_request() ) {
+			$reviews = $this->get_mock_reviews( $args );
+		}
 		$show_arrows    = $this->truthy( $args['slider_arrows'] ?? true );
 		$show_dots      = $this->truthy( $args['slider_dots'] ?? false );
 		$autoplay       = $this->truthy( $args['slider_autoplay'] ?? false );
@@ -348,17 +358,22 @@ class OverSeek_Reviews {
 		$args = $this->normalize_shortcode_args( $atts, 'overseek_product_reviews' );
 		$args['product_reviews'] = 'true';
 		$args['shop_reviews']    = 'false';
+		$is_preview = $this->is_block_editor_preview_request();
 		if ( empty( $args['product_id'] ) ) {
 			$args['product_id'] = $this->get_current_product_id();
 		}
 
-		if ( empty( $args['product_id'] ) ) {
+		if ( empty( $args['product_id'] ) && ! $is_preview ) {
 			return '<div class="os-reviews-empty">' . esc_html__( 'No product was found for these reviews.', 'overseek-wc' ) . '</div>';
 		}
 
 		$args['show_product'] = false;
 		$reviews              = $this->get_reviews( $args );
 		$summary              = $this->get_summary( $args );
+		if ( empty( $reviews ) && $is_preview ) {
+			$reviews = $this->get_mock_reviews( $args );
+			$summary = $this->get_mock_summary();
+		}
 		$shell_id             = 'os-reviews-' . ++$this->shell_counter;
 
 		return '<div id="' . esc_attr( $shell_id ) . '" class="os-reviews-shell os-reviews-shell--product" data-os-reviews-shell>'
@@ -377,6 +392,9 @@ class OverSeek_Reviews {
 	public function render_rows_shortcode( array $atts = [] ): string {
 		$args    = $this->normalize_shortcode_args( $atts, 'overseek_review_rows' );
 		$reviews = $this->get_reviews( $args );
+		if ( empty( $reviews ) && $this->is_block_editor_preview_request() ) {
+			$reviews = $this->get_mock_reviews( $args );
+		}
 
 		return OverSeek_Review_Renderer::render_rows( $reviews, $args );
 	}
@@ -394,6 +412,9 @@ class OverSeek_Reviews {
 		}
 
 		$summary = $this->get_summary( $args );
+		if ( empty( $summary['total'] ) && $this->is_block_editor_preview_request() ) {
+			$summary = $this->get_mock_summary();
+		}
 
 		return OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( $args, $summary ) );
 	}
@@ -519,6 +540,121 @@ class OverSeek_Reviews {
 			'product_summary' => $product_summary,
 			'store_summary'   => $summary,
 		];
+	}
+
+	/**
+	 * Determine whether a dynamic block is being rendered for the editor preview.
+	 *
+	 * @return bool
+	 */
+	private function is_block_editor_preview_request(): bool {
+		if ( ! defined( 'REST_REQUEST' ) || ! REST_REQUEST ) {
+			return false;
+		}
+
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+		return false !== strpos( $request_uri, '/wp/v2/block-renderer/overseek/' ) || false !== strpos( $request_uri, '/wp/v2/block-renderer/overseek%2F' );
+	}
+
+	/**
+	 * Return representative reviews for empty editor previews.
+	 *
+	 * @param array<string, mixed> $args Render args.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function get_mock_reviews( array $args ): array {
+		$reviews = [
+			[
+				'rating'       => 5,
+				'reviewer'     => 'Sarah M.',
+				'content'      => 'Beautiful quality and exactly what I hoped for. The order arrived quickly and the packaging made it feel really special.',
+				'verified'     => true,
+				'country'      => 'GB',
+				'date'         => '2 days ago',
+				'date_iso'     => gmdate( 'Y-m-d', strtotime( '-2 days' ) ),
+				'product_name' => 'Sample Product',
+				'product_url'  => '#',
+				'replies'      => [
+					[
+						'author'  => get_bloginfo( 'name' ),
+						'content' => 'Thank you for taking the time to leave such a kind review.',
+					],
+				],
+			],
+			[
+				'rating'       => 5,
+				'reviewer'     => 'James T.',
+				'content'      => 'Really easy to order and the finished item looks excellent. I would happily buy from this store again.',
+				'verified'     => true,
+				'country'      => 'US',
+				'date'         => '1 week ago',
+				'date_iso'     => gmdate( 'Y-m-d', strtotime( '-1 week' ) ),
+				'product_name' => 'Featured Product',
+				'product_url'  => '#',
+			],
+			[
+				'rating'       => 4,
+				'reviewer'     => 'Emma R.',
+				'content'      => 'Lovely product and helpful updates throughout. The review block preview uses sample content when your store has no reviews yet.',
+				'verified'     => false,
+				'country'      => 'AU',
+				'date'         => '3 weeks ago',
+				'date_iso'     => gmdate( 'Y-m-d', strtotime( '-3 weeks' ) ),
+				'product_name' => 'New Arrival',
+				'product_url'  => '#',
+			],
+		];
+
+		$limit = isset( $args['limit'] ) ? max( 1, min( 3, (int) $args['limit'] ) ) : 3;
+		return array_slice( $reviews, 0, $limit );
+	}
+
+	/**
+	 * Return representative summary data for empty editor previews.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function get_mock_summary(): array {
+		return [
+			'total'   => 128,
+			'average' => 4.8,
+		];
+	}
+
+	/**
+	 * Render a disabled sample review form for editor previews without a product.
+	 *
+	 * @param string $title Form title.
+	 * @return string
+	 */
+	private function render_mock_review_form( string $title ): string {
+		ob_start();
+		?>
+		<form class="os-review-form" aria-label="<?php echo esc_attr( $title ); ?>">
+			<h3><?php echo esc_html( $title ); ?></h3>
+			<fieldset class="os-review-form__field os-review-form__rating">
+				<legend><?php esc_html_e( 'Rating', 'overseek-wc' ); ?></legend>
+				<div class="os-review-form__stars" aria-hidden="true">
+					<label>★</label><label>★</label><label>★</label><label>★</label><label>★</label>
+				</div>
+			</fieldset>
+			<label class="os-review-form__field">
+				<span><?php esc_html_e( 'Review', 'overseek-wc' ); ?></span>
+				<textarea rows="5" disabled><?php esc_html_e( 'Sample review text appears here in the live form.', 'overseek-wc' ); ?></textarea>
+			</label>
+			<div class="os-review-form__grid">
+				<label class="os-review-form__field"><span><?php esc_html_e( 'Name', 'overseek-wc' ); ?></span><input type="text" value="Alex Customer" disabled></label>
+				<label class="os-review-form__field"><span><?php esc_html_e( 'Email', 'overseek-wc' ); ?></span><input type="email" value="alex@example.com" disabled></label>
+			</div>
+			<label class="os-review-form__field os-review-form__dropzone">
+				<span><?php esc_html_e( 'Photos or videos', 'overseek-wc' ); ?></span>
+				<strong><?php esc_html_e( 'Drag files here or click to upload', 'overseek-wc' ); ?></strong>
+				<small><?php esc_html_e( 'Uploads are disabled in this editor preview.', 'overseek-wc' ); ?></small>
+			</label>
+			<button type="button" class="os-review-form__submit" disabled><?php esc_html_e( 'Submit review', 'overseek-wc' ); ?></button>
+		</form>
+		<?php
+		return (string) ob_get_clean();
 	}
 
 	/**

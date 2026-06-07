@@ -1,4 +1,4 @@
-( function( blocks, blockEditor, components, element ) {
+( function( blocks, blockEditor, components, element, serverSideRender ) {
 	if ( window.overseekReviewBlocksRegistered ) {
 		return;
 	}
@@ -13,8 +13,8 @@
 	const RangeControl = components.RangeControl;
 	const SelectControl = components.SelectControl;
 	const ToggleControl = components.ToggleControl;
-	const Placeholder = components.Placeholder;
 	const ColorPalette = components.ColorPalette;
+	const ServerSideRender = serverSideRender;
 
 	function boolAttr( value ) {
 		return value === true || value === '1';
@@ -183,11 +183,19 @@
 		);
 	}
 
-	function placeholder( title, shortcode ) {
+	function preview( name, title, shortcode, attributes ) {
+		if ( ! ServerSideRender ) {
+			return el( 'div', { className: 'os-reviews-empty' }, 'Preview unavailable. Shortcode equivalent: ' + shortcode );
+		}
+
 		return el(
-			Placeholder,
-			{ label: title, instructions: 'This dynamic block renders native WooCommerce reviews on the storefront.' },
-			el( 'p', null, 'Shortcode equivalent: ' + shortcode )
+			'div',
+			{ className: 'os-review-block-preview', 'aria-label': title },
+			el( ServerSideRender, {
+				block: name,
+				attributes: attributes || {},
+				httpMethod: 'POST'
+			} )
 		);
 	}
 
@@ -198,7 +206,7 @@
 					element.Fragment,
 					null,
 					commonControls( props, options || {} ),
-					placeholder( title, shortcode )
+					preview( name, title, shortcode, props.attributes )
 				);
 			},
 			save: function() {
@@ -217,5 +225,6 @@
 	window.wp.blocks,
 	window.wp.blockEditor || window.wp.editor,
 	window.wp.components,
-	window.wp.element
+	window.wp.element,
+	window.wp.serverSideRender
 );

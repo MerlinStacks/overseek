@@ -7,6 +7,7 @@
   "description": "Render the media-enabled native WooCommerce review form.",
   "textdomain": "overseek-wc",
   "editorScript": "file:../../assets/reviews-blocks.js",
+  "style": "file:../../assets/reviews.css",
   "attributes": {
     "product_id": { "type": "number", "default": 0 },
     "title": { "type": "string", "default": "Write a review" }
