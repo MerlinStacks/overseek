@@ -8,6 +8,8 @@
   "textdomain": "overseek-wc",
 	"editorScript": "file:../../assets/reviews-blocks.js",
 	"attributes": {
-		"product_id": { "type": "number", "default": 0 }
+		"product_id": { "type": "number", "default": 0 },
+		"min_rating": { "type": "number", "default": 0 },
+		"review_source": { "type": "string", "default": "product" }
 	}
 }

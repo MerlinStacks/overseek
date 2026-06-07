@@ -10,6 +10,19 @@
   "attributes": {
     "product_id": { "type": "number", "default": 0 },
     "limit": { "type": "number", "default": 12 },
-    "show_product": { "type": "string", "default": "1" }
+    "min_rating": { "type": "number", "default": 0 },
+    "sort_by": { "type": "string", "default": "date_desc" },
+    "verified_only": { "type": "string", "default": "0" },
+    "show_product": { "type": "string", "default": "1" },
+    "show_reviewer": { "type": "string", "default": "1" },
+    "show_verified": { "type": "string", "default": "1" },
+    "show_country": { "type": "string", "default": "1" },
+    "show_date": { "type": "string", "default": "1" },
+    "show_replies": { "type": "string", "default": "1" },
+    "max_chars": { "type": "number", "default": 0 },
+    "products": { "type": "string", "default": "" },
+    "categories": { "type": "string", "default": "" },
+    "product_tags": { "type": "string", "default": "" },
+    "review_source": { "type": "string", "default": "product" }
   }
 }

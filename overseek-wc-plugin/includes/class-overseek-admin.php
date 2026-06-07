@@ -23,17 +23,6 @@ class OverSeek_Admin
 	}
 
 	/**
-	 * Clamp review minimum rating to valid star values.
-	 *
-	 * @param mixed $value Raw submitted value.
-	 * @return int
-	 */
-	public function sanitize_review_min_rating($value)
-	{
-		return max(0, min(5, absint($value)));
-	}
-
-	/**
 	 * Sanitize optional review colour fields.
 	 *
 	 * @param mixed $value Raw submitted value.
@@ -114,11 +103,6 @@ class OverSeek_Admin
 		register_setting('overseek_options_group', 'overseek_enable_google_product_review_feed', array(
 			'type' => 'string',
 			'sanitize_callback' => array($this, 'sanitize_checkbox'),
-		));
-		register_setting('overseek_options_group', 'overseek_reviews_min_rating', array(
-			'type' => 'integer',
-			'default' => 0,
-			'sanitize_callback' => array($this, 'sanitize_review_min_rating'),
 		));
 		register_setting('overseek_options_group', 'overseek_reviews_accent_primary', array(
 			'type' => 'string',
@@ -224,7 +208,6 @@ class OverSeek_Admin
 		$retention          = (int) get_option('overseek_cookie_retention_days', 365);
 		$invoice_retention  = (int) get_option('overseek_invoice_retention_days', 30);
 		$sample_rate        = (int) get_option('overseek_vitals_sample_rate', 25);
-		$reviews_min_rating = (int) get_option('overseek_reviews_min_rating', 0);
 		$reviews_accent_primary = (string) get_option('overseek_reviews_accent_primary', '');
 		$reviews_accent_secondary = (string) get_option('overseek_reviews_accent_secondary', '');
 		$reviews_accent_tertiary = (string) get_option('overseek_reviews_accent_tertiary', '');
@@ -432,19 +415,6 @@ class OverSeek_Admin
 						<?php $this->render_toggle_field('overseek_enable_chat', 'Enable live chat widget', 'Show the OverSeek chat widget to visitors across your storefront.'); ?>
 						<?php $this->render_toggle_field('overseek_reviews_replace_form', 'Replace WooCommerce review form', 'Use the Overseek review display and media-enabled review form in the product reviews tab.'); ?>
 						<?php $this->render_toggle_field('overseek_enable_google_product_review_feed', 'Generate XML Product Review Feed for Google Shopping', 'Expose approved WooCommerce product reviews in Google Product Ratings XML format.'); ?>
-
-						<label class="overseek-admin__field" for="overseek_reviews_min_rating">
-							<span class="overseek-admin__label">Exclude reviews under</span>
-							<select id="overseek_reviews_min_rating" name="overseek_reviews_min_rating">
-								<option value="0" <?php selected($reviews_min_rating, 0); ?>>Show all reviews</option>
-								<option value="1" <?php selected($reviews_min_rating, 1); ?>>1 star and above</option>
-								<option value="2" <?php selected($reviews_min_rating, 2); ?>>2 stars and above</option>
-								<option value="3" <?php selected($reviews_min_rating, 3); ?>>3 stars and above</option>
-								<option value="4" <?php selected($reviews_min_rating, 4); ?>>4 stars and above</option>
-								<option value="5" <?php selected($reviews_min_rating, 5); ?>>5 stars only</option>
-							</select>
-							<span class="overseek-admin__hint">Global storefront setting. Applies to review blocks, review shortcodes, summaries, and product review displays before anything is rendered.</span>
-						</label>
 
 						<div class="overseek-admin__keyvals">
 							<label for="overseek_reviews_accent_primary">

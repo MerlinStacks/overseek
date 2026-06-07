@@ -38,6 +38,18 @@
 	}
 
 	document.addEventListener('click', function (event) {
+		var sliderButton = event.target.closest('[data-os-review-slider-prev], [data-os-review-slider-next]');
+		if (sliderButton) {
+			var sliderShell = sliderButton.closest('[data-os-review-slider]');
+			var sliderList = sliderShell ? sliderShell.querySelector('.os-reviews-list--slider') : null;
+			if (sliderList) {
+				event.preventDefault();
+				var direction = sliderButton.hasAttribute('data-os-review-slider-prev') ? -1 : 1;
+				sliderList.scrollBy({ left: direction * Math.max(280, sliderList.clientWidth * 0.8), behavior: 'smooth' });
+			}
+			return;
+		}
+
 		var button = event.target.closest('.os-reviews-pagination--load_more .os-reviews-pagination__button, .os-reviews-pagination--infinite .os-reviews-pagination__button');
 		if (!button) {
 			return;
@@ -89,4 +101,31 @@
 		document.addEventListener('overseek:reviews:updated', observeInfinitePagination);
 		observeInfinitePagination();
 	}
+
+	function initReviewSliders() {
+		document.querySelectorAll('[data-os-review-slider][data-os-review-autoplay="1"]').forEach(function (shell) {
+			if (shell.dataset.osReviewAutoplayReady) {
+				return;
+			}
+			shell.dataset.osReviewAutoplayReady = '1';
+			var list = shell.querySelector('.os-reviews-list--slider');
+			if (!list) {
+				return;
+			}
+			window.setInterval(function () {
+				if (document.hidden || shell.matches(':hover')) {
+					return;
+				}
+				var nextLeft = list.scrollLeft + Math.max(280, list.clientWidth * 0.8);
+				if (nextLeft >= list.scrollWidth - list.clientWidth - 8) {
+					nextLeft = 0;
+				}
+				list.scrollTo({ left: nextLeft, behavior: 'smooth' });
+			}, 4500);
+		});
+	}
+
+	document.addEventListener('DOMContentLoaded', initReviewSliders);
+	document.addEventListener('overseek:reviews:updated', initReviewSliders);
+	initReviewSliders();
 }());

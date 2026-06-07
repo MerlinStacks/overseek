@@ -23,6 +23,7 @@ class OverSeek_Reviews {
 	 */
 	private array $shortcodes = [
 		'overseek_reviews',
+		'overseek_review_slider',
 		'overseek_review_rows',
 		'overseek_product_reviews',
 		'overseek_review_summary',
@@ -58,6 +59,7 @@ class OverSeek_Reviews {
 	 */
 	public function register_shortcodes(): void {
 		add_shortcode( 'overseek_reviews', [ $this, 'render_reviews_shortcode' ] );
+		add_shortcode( 'overseek_review_slider', [ $this, 'render_slider_shortcode' ] );
 		add_shortcode( 'overseek_product_reviews', [ $this, 'render_product_reviews_shortcode' ] );
 		add_shortcode( 'overseek_review_rows', [ $this, 'render_rows_shortcode' ] );
 		add_shortcode( 'overseek_review_summary', [ $this, 'render_summary_shortcode' ] );
@@ -81,6 +83,7 @@ class OverSeek_Reviews {
 
 		$block_slugs = [
 			'reviews',
+			'review-slider',
 			'review-rows',
 			'product-reviews',
 			'review-summary',
@@ -115,6 +118,10 @@ class OverSeek_Reviews {
 
 		if ( 'overseek/review-rows' === $block_name ) {
 			return $this->render_rows_shortcode( $attributes );
+		}
+
+		if ( 'overseek/review-slider' === $block_name ) {
+			return $this->render_slider_shortcode( $attributes );
 		}
 
 		if ( 'overseek/product-reviews' === $block_name ) {
@@ -160,6 +167,7 @@ class OverSeek_Reviews {
 
 		$blocks = [
 			'overseek/reviews',
+			'overseek/review-slider',
 			'overseek/review-rows',
 			'overseek/product-reviews',
 			'overseek/review-summary',
@@ -258,11 +266,37 @@ class OverSeek_Reviews {
 	 */
 	public function render_cusrev_slider_shortcode( array $atts = [] ): string {
 		$atts = $this->map_cusrev_args( $atts, 'slider' );
-		$args = $this->normalize_shortcode_args( $atts, 'cusrev_reviews_slider' );
-		$reviews = $this->get_reviews( $args );
+		return $this->render_slider_shortcode( $atts, 'cusrev_reviews_slider' );
+	}
 
-		return '<div class="os-reviews-shell os-reviews-shell--slider">'
-			. OverSeek_Review_Renderer::render_reviews( $reviews, array_merge( $args, [ 'layout' => 'slider' ] ) )
+	/**
+	 * Render a lightweight horizontal review slider.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @param string               $tag Shortcode tag.
+	 * @return string
+	 */
+	public function render_slider_shortcode( array $atts = [], string $tag = 'overseek_review_slider' ): string {
+		$args           = $this->normalize_shortcode_args( $atts, $tag );
+		$args['layout'] = 'slider';
+		$reviews        = $this->get_reviews( $args );
+		$show_arrows    = $this->truthy( $args['slider_arrows'] ?? true );
+		$show_dots      = $this->truthy( $args['slider_dots'] ?? false );
+		$autoplay       = $this->truthy( $args['slider_autoplay'] ?? false );
+		$data           = $autoplay ? ' data-os-review-slider data-os-review-autoplay="1"' : ' data-os-review-slider';
+		$controls       = '';
+
+		if ( $show_arrows ) {
+			$controls .= '<div class="os-review-slider__arrows"><button type="button" class="os-review-slider__arrow" data-os-review-slider-prev aria-label="' . esc_attr__( 'Previous reviews', 'overseek-wc' ) . '">‹</button><button type="button" class="os-review-slider__arrow" data-os-review-slider-next aria-label="' . esc_attr__( 'Next reviews', 'overseek-wc' ) . '">›</button></div>';
+		}
+
+		if ( $show_dots && ! empty( $reviews ) ) {
+			$controls .= '<div class="os-review-slider__dots" aria-hidden="true">' . str_repeat( '<span></span>', count( $reviews ) ) . '</div>';
+		}
+
+		return '<div class="os-reviews-shell os-reviews-shell--slider"' . $data . '>'
+			. OverSeek_Review_Renderer::render_reviews( $reviews, $args )
+			. $controls
 			. '</div>';
 	}
 
@@ -384,6 +418,12 @@ class OverSeek_Reviews {
 			if ( ! empty( $args['min_chars'] ) && strlen( wp_strip_all_tags( (string) $review['content'] ) ) < (int) $args['min_chars'] ) {
 				continue;
 			}
+			if ( $this->truthy( $args['only_media'] ?? false ) && empty( $review['media'] ) ) {
+				continue;
+			}
+			if ( $this->truthy( $args['verified_only'] ?? false ) && empty( $review['verified'] ) ) {
+				continue;
+			}
 
 			$reviews[] = $review;
 		}
@@ -425,6 +465,16 @@ class OverSeek_Reviews {
 		foreach ( $comments as $comment ) {
 			if ( ! ( $comment instanceof WP_Comment ) ) {
 				continue;
+			}
+
+			if ( $this->truthy( $args['only_media'] ?? false ) || $this->truthy( $args['verified_only'] ?? false ) ) {
+				$review = $this->map_comment_to_review( $comment );
+				if ( $this->truthy( $args['only_media'] ?? false ) && empty( $review['media'] ) ) {
+					continue;
+				}
+				if ( $this->truthy( $args['verified_only'] ?? false ) && empty( $review['verified'] ) ) {
+					continue;
+				}
 			}
 
 			$rating = (int) get_comment_meta( (int) $comment->comment_ID, 'rating', true );
@@ -487,8 +537,15 @@ class OverSeek_Reviews {
 				'layout'       => 'grid',
 				'columns'      => 3,
 				'min_rating'   => 0,
+				'review_source'=> 'product',
+				'only_media'   => '0',
+				'verified_only'=> '0',
 				'show_media'   => '1',
 				'show_product' => '1',
+				'show_product_image' => '1',
+				'show_reviewer' => '1',
+				'show_country' => '1',
+				'show_date'    => '1',
 				'product_links'=> '1',
 				'show_verified'=> '1',
 				'show_replies' => '1',
@@ -510,6 +567,14 @@ class OverSeek_Reviews {
 				'color_bcrd'   => '',
 				'color_pr_bcrd'=> '',
 				'color_stars'  => '',
+				'card_style'   => 'comfortable',
+				'radius'       => 28,
+				'shadow'       => 2,
+				'slider_desktop' => 3,
+				'slider_mobile' => 1,
+				'slider_autoplay' => '0',
+				'slider_arrows' => '1',
+				'slider_dots'   => '0',
 				'status'       => 'approved',
 				'order'        => 'DESC',
 				'class'        => '',
@@ -522,17 +587,29 @@ class OverSeek_Reviews {
 		$attributes['limit']      = max( 1, min( 100, absint( $attributes['limit'] ) ) );
 		$attributes['page']       = max( 1, absint( $attributes['page'] ) );
 		$attributes['columns']    = max( 1, min( 4, absint( $attributes['columns'] ) ) );
-		$admin_min_rating         = max( 0, min( 5, absint( get_option( 'overseek_reviews_min_rating', 0 ) ) ) );
-		$attributes['min_rating'] = max( $admin_min_rating, max( 0, min( 5, absint( $attributes['min_rating'] ) ) ) );
+		$attributes['min_rating'] = max( 0, min( 5, absint( $attributes['min_rating'] ) ) );
 		$attributes['max_chars']  = max( 0, absint( $attributes['max_chars'] ) );
 		$attributes['min_chars']  = max( 0, absint( $attributes['min_chars'] ) );
-		$attributes['layout']     = in_array( sanitize_key( (string) $attributes['layout'] ), [ 'grid', 'list' ], true ) ? sanitize_key( (string) $attributes['layout'] ) : 'grid';
+		$attributes['radius']     = max( 8, min( 40, absint( $attributes['radius'] ) ) );
+		$attributes['shadow']     = max( 0, min( 3, absint( $attributes['shadow'] ) ) );
+		$attributes['slider_desktop'] = max( 1, min( 5, absint( $attributes['slider_desktop'] ) ) );
+		$attributes['slider_mobile']  = max( 1, min( 2, absint( $attributes['slider_mobile'] ) ) );
+		$attributes['layout']     = in_array( sanitize_key( (string) $attributes['layout'] ), [ 'grid', 'list', 'slider' ], true ) ? sanitize_key( (string) $attributes['layout'] ) : 'grid';
 		$attributes['pagination'] = in_array( sanitize_key( (string) $attributes['pagination'] ), [ 'none', 'pages', 'load_more', 'infinite' ], true ) ? sanitize_key( (string) $attributes['pagination'] ) : 'none';
+		$attributes['card_style'] = in_array( sanitize_key( (string) $attributes['card_style'] ), [ 'compact', 'comfortable', 'feature' ], true ) ? sanitize_key( (string) $attributes['card_style'] ) : 'comfortable';
+		$attributes['review_source'] = in_array( sanitize_key( (string) $attributes['review_source'] ), [ 'product', 'shop', 'both' ], true ) ? sanitize_key( (string) $attributes['review_source'] ) : 'product';
 		$order = strtoupper( (string) $attributes['order'] );
 		$attributes['order']      = in_array( $order, [ 'ASC', 'DESC', 'RAND' ], true ) ? $order : 'DESC';
 		$attributes['status']     = sanitize_key( (string) $attributes['status'] );
-		$attributes['sort_by']    = sanitize_key( (string) $attributes['sort_by'] );
+		$this->normalize_sort_args( $attributes );
 		$attributes['avatars']    = sanitize_key( (string) $attributes['avatars'] );
+		if ( 'shop' === $attributes['review_source'] ) {
+			$attributes['product_reviews'] = 'false';
+			$attributes['shop_reviews']    = 'true';
+		} elseif ( 'both' === $attributes['review_source'] ) {
+			$attributes['product_reviews'] = 'true';
+			$attributes['shop_reviews']    = 'true';
+		}
 		$attributes['product_reviews'] = $this->truthy( $attributes['product_reviews'] ) ? 'true' : 'false';
 		$attributes['shop_reviews']    = $this->truthy( $attributes['shop_reviews'] ) ? 'true' : 'false';
 		$attributes['inactive_products'] = $this->truthy( $attributes['inactive_products'] ) ? 'true' : 'false';
@@ -542,6 +619,43 @@ class OverSeek_Reviews {
 		}
 
 		return $attributes;
+	}
+
+	/**
+	 * Normalize friendly sort labels into query args.
+	 *
+	 * @param array<string, mixed> $attributes Attributes by reference.
+	 * @return void
+	 */
+	private function normalize_sort_args( array &$attributes ): void {
+		$sort_by = sanitize_key( (string) $attributes['sort_by'] );
+		if ( 'date_asc' === $sort_by ) {
+			$attributes['sort_by'] = 'date';
+			$attributes['order']   = 'ASC';
+			return;
+		}
+		if ( 'date_desc' === $sort_by ) {
+			$attributes['sort_by'] = 'date';
+			$attributes['order']   = 'DESC';
+			return;
+		}
+		if ( 'rating_asc' === $sort_by ) {
+			$attributes['sort_by'] = 'rating';
+			$attributes['order']   = 'ASC';
+			return;
+		}
+		if ( 'rating_desc' === $sort_by ) {
+			$attributes['sort_by'] = 'rating';
+			$attributes['order']   = 'DESC';
+			return;
+		}
+		if ( 'random' === $sort_by ) {
+			$attributes['sort_by'] = 'date';
+			$attributes['order']   = 'RAND';
+			return;
+		}
+
+		$attributes['sort_by'] = in_array( $sort_by, [ 'date', 'rating', 'media' ], true ) ? $sort_by : 'date';
 	}
 
 	/**

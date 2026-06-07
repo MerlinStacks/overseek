@@ -124,8 +124,9 @@
         </div>
       </div>
       <div class="admin-panel">
-        <strong>Admin storefront setting preview</strong>
-        <div class="editor-control"><label>Exclude reviews under</label><div class="fake-select">4 stars and above <span>⌄</span></div><p class="editor-help">This is configured once in OverSeek plugin settings and applies globally to review blocks, shortcodes, summaries, and product review displays.</p></div>
+        <strong>Block setting preview</strong>
+        <div class="editor-control"><label>Exclude reviews under</label><div class="fake-select">4 stars and above <span>⌄</span></div><p class="editor-help">This is configured per review block or via the shortcode <code>min_rating</code> attribute.</p></div>
+        <div class="editor-control"><label>Extra block controls</label><div class="fake-select">Sort, filters, visibility, style, colours, slider options <span>⌄</span></div><p class="editor-help">Each display block can now control source, sorting, media/verified filters, card parts, max text length, style, and relevant slider behaviour.</p></div>
         <div class="editor-control"><label>Review accent colours</label><div class="brand-swatches"><span style="background:#d97706"></span><span style="background:#b45309"></span><span style="background:#92400e"></span></div><p class="editor-help">Blank colour fields fall back to the WooCommerce email brand colour. These values drive the summary badge and card top line.</p></div>
       </div>
     </section>
@@ -133,7 +134,7 @@
     <section class="preview-section os-reviews-shell">
       <h2>Reviews Grid Block</h2>
       <p>Card layout with verified labels, country markers, review media, merchant replies, and product thumbnail pills.</p>
-      <div class="preview-note"><span>Admin filter: 4 stars and above</span><span>Layout: grid</span><span>Product names enabled</span><span>Media enabled</span></div>
+      <div class="preview-note"><span>Block filter: 4 stars and above</span><span>Layout: grid</span><span>Product names enabled</span><span>Media enabled</span></div>
       <div class="os-reviews-list os-reviews-list--grid">
         <article class="os-review-card">
           <header class="os-review-card__header">
@@ -172,8 +173,8 @@
     </section>
 
     <section class="preview-section os-reviews-shell">
-      <h2>Slider / Carousel Style</h2>
-      <p>Same server-rendered cards can scroll horizontally for a lightweight testimonial strip.</p>
+      <h2>Review Slider Block</h2>
+      <p>Dedicated front-page block for a lightweight horizontal testimonial strip.</p>
       <div class="os-reviews-list os-reviews-list--slider">
         <article class="os-review-card"><header class="os-review-card__header"><div class="os-review-card__reviewer"><span class="os-review-card__avatar">A</span><div><strong class="os-review-card__author">Antonia</strong><div class="os-review-card__meta"><span class="os-review-card__verified">Verified</span><span class="os-review-card__country">🇦🇺 AU</span></div></div></div><time>1 week ago</time></header><div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div><div class="os-review-card__content"><p>Excellent service from order to delivery. Love my new keychain.</p></div><footer class="os-review-card__product"><img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=160&q=80" alt=""><a href="#">Slimline PlateIt Licence Plate Keychain</a></footer></article>
         <article class="os-review-card"><header class="os-review-card__header"><div class="os-review-card__reviewer"><span class="os-review-card__avatar">N</span><div><strong class="os-review-card__author">Nick</strong><div class="os-review-card__meta"><span class="os-review-card__country">🇬🇧 GB</span></div></div></div><time>2 weeks ago</time></header><div class="os-review-card__stars"><span class="os-review-stars">★★★★★</span></div><div class="os-review-card__content"><p>Great product, quick service, thanks.</p></div><footer class="os-review-card__product"><img src="https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&w=160&q=80" alt=""><a href="#">Engraved Outdoor Pet Memorial Spike</a></footer></article>
@@ -184,7 +185,7 @@
     <section class="preview-section os-reviews-shell">
       <h2>Review Rows Block</h2>
       <p>Compact format for landing pages, homepages, and sidebars. This can also use the minimum star exclusion filter.</p>
-      <div class="preview-note"><span>Admin filter: 4 stars and above</span><span>Product names enabled</span></div>
+      <div class="preview-note"><span>Block filter: 4 stars and above</span><span>Product names enabled</span></div>
       <div class="os-review-rows">
         <div class="os-review-row"><div class="os-review-stars">★★★★★</div><div class="os-review-row__content"><p>Perfect gift. The photo upload in the review form worked smoothly.</p><div class="os-review-row__meta"><span>Ruby</span><span>Name Necklace</span><span>Verified owner</span></div></div></div>
         <div class="os-review-row"><div class="os-review-stars">★★★★★</div><div class="os-review-row__content"><p>Fast dispatch and the merchant replied to my review quickly.</p><div class="os-review-row__meta"><span>Oliver</span><span>Leather Keyring</span></div></div></div>
