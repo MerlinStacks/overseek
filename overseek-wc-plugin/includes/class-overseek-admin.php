@@ -92,6 +92,11 @@ class OverSeek_Admin
 			'type' => 'string',
 			'sanitize_callback' => array($this, 'sanitize_checkbox'),
 		));
+		register_setting('overseek_options_group', 'overseek_track_pageviews', array(
+			'type' => 'string',
+			'default' => '1',
+			'sanitize_callback' => array($this, 'sanitize_checkbox'),
+		));
 		register_setting('overseek_options_group', 'overseek_enable_chat', array(
 			'type' => 'string',
 			'sanitize_callback' => array($this, 'sanitize_checkbox'),
@@ -219,6 +224,7 @@ class OverSeek_Admin
 		$is_configured      = !empty($api_url) && !empty($account_id);
 		$enabled_features   = array_filter(array(
 			get_option('overseek_enable_tracking'),
+			get_option('overseek_track_pageviews', '1'),
 			get_option('overseek_enable_chat'),
 			get_option('overseek_reviews_replace_form'),
 			get_option('overseek_enable_google_product_review_feed'),
@@ -412,6 +418,7 @@ class OverSeek_Admin
 						</div>
 
 						<?php $this->render_toggle_field('overseek_enable_tracking', 'Enable global tracking', 'Send storefront analytics and behavioral events to OverSeek.'); ?>
+						<?php $this->render_toggle_field('overseek_track_pageviews', 'Track general pageviews', 'Send non-commerce pageview events. Turn this off to reduce per-page tracking work while keeping cart, checkout, purchase, product, and review events.', '1'); ?>
 						<?php $this->render_toggle_field('overseek_enable_chat', 'Enable live chat widget', 'Show the OverSeek chat widget to visitors across your storefront.'); ?>
 						<?php $this->render_toggle_field('overseek_reviews_replace_form', 'Replace WooCommerce review form', 'Use the Overseek review display and media-enabled review form in the product reviews tab.'); ?>
 						<?php $this->render_toggle_field('overseek_enable_google_product_review_feed', 'Generate XML Product Review Feed for Google Shopping', 'Expose approved WooCommerce product reviews in Google Product Ratings XML format.'); ?>

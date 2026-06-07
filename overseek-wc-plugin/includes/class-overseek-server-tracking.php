@@ -489,6 +489,10 @@ class OverSeek_Server_Tracking
      */
     public function track_pageview()
     {
+        if (!get_option('overseek_track_pageviews', '1')) {
+            return;
+        }
+
         // Skip admin pages
         if (is_admin()) {
             return;
