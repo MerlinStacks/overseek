@@ -23,6 +23,17 @@ class OverSeek_Admin
 	}
 
 	/**
+	 * Store the product review replacement toggle with an explicit off value.
+	 *
+	 * @param mixed $value Raw submitted value.
+	 * @return string
+	 */
+	public function sanitize_reviews_replace_checkbox($value)
+	{
+		return empty($value) ? '0' : '1';
+	}
+
+	/**
 	 * Sanitize optional review colour fields.
 	 *
 	 * @param mixed $value Raw submitted value.
@@ -103,7 +114,8 @@ class OverSeek_Admin
 		));
 		register_setting('overseek_options_group', 'overseek_reviews_replace_form', array(
 			'type' => 'string',
-			'sanitize_callback' => array($this, 'sanitize_checkbox'),
+			'default' => '1',
+			'sanitize_callback' => array($this, 'sanitize_reviews_replace_checkbox'),
 		));
 		register_setting('overseek_options_group', 'overseek_enable_google_product_review_feed', array(
 			'type' => 'string',
@@ -420,7 +432,7 @@ class OverSeek_Admin
 						<?php $this->render_toggle_field('overseek_enable_tracking', 'Enable global tracking', 'Send storefront analytics and behavioral events to OverSeek.'); ?>
 						<?php $this->render_toggle_field('overseek_track_pageviews', 'Track general pageviews', 'Send non-commerce pageview events. Turn this off to reduce per-page tracking work while keeping cart, checkout, purchase, product, and review events.', '1'); ?>
 						<?php $this->render_toggle_field('overseek_enable_chat', 'Enable live chat widget', 'Show the OverSeek chat widget to visitors across your storefront.'); ?>
-						<?php $this->render_toggle_field('overseek_reviews_replace_form', 'Replace WooCommerce review form', 'Use the Overseek review display and media-enabled review form in the product reviews tab.'); ?>
+						<?php $this->render_toggle_field('overseek_reviews_replace_form', 'Replace WooCommerce review form', 'Use the Overseek review display and media-enabled review form in the product reviews tab.', '1'); ?>
 						<?php $this->render_toggle_field('overseek_enable_google_product_review_feed', 'Generate XML Product Review Feed for Google Shopping', 'Expose approved WooCommerce product reviews in Google Product Ratings XML format.'); ?>
 
 						<div class="overseek-admin__keyvals">
@@ -577,6 +589,10 @@ class OverSeek_Admin
 	private function render_toggle_field($option_name, $label, $description, $default = '0', $id = '')
 	{
 		$field_id = $id ?: $option_name;
+		$value    = get_option($option_name, $default);
+		if ('overseek_reviews_replace_form' === $option_name && '' === $value) {
+			$value = '1';
+		}
 		?>
 		<label class="overseek-admin__toggle" for="<?php echo esc_attr($field_id); ?>">
 			<span class="overseek-admin__toggle-input">
@@ -586,7 +602,7 @@ class OverSeek_Admin
 					type="checkbox"
 					name="<?php echo esc_attr($option_name); ?>"
 					value="1"
-					<?php checked(1, get_option($option_name, $default), true); ?>
+					<?php checked(1, $value, true); ?>
 				/>
 			</span>
 			<span class="overseek-admin__toggle-copy">

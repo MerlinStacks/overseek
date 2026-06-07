@@ -612,17 +612,52 @@ class OverSeek_Reviews {
 				];
 			}
 		} else {
-			$product_args                    = $args;
-			$product_args['review_source']   = 'product';
-			$product_args['product_reviews'] = 'true';
-			$product_args['shop_reviews']    = 'false';
-			$product_summary                 = $this->get_summary( $product_args );
+			$product_summary = $this->get_product_lookup_summary( $args );
 		}
 
 		return [
 			'store_name'      => get_bloginfo( 'name' ),
 			'product_summary' => $product_summary,
 			'store_summary'   => $summary,
+		];
+	}
+
+	/**
+	 * Get the aggregate WooCommerce product rating from product lookup data.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, mixed>
+	 */
+	private function get_product_lookup_summary( array $args ): array {
+		if ( ! function_exists( 'WC' ) ) {
+			return [
+				'total'   => 0,
+				'average' => 0,
+			];
+		}
+
+		global $wpdb;
+
+		$lookup_table = $wpdb->prefix . 'wc_product_meta_lookup';
+		$join         = '';
+		$where        = 'WHERE lookup.rating_count > 0';
+
+		if ( ! $this->truthy( $args['inactive_products'] ?? false ) ) {
+			$join  = " INNER JOIN {$wpdb->posts} posts ON posts.ID = lookup.product_id";
+			$where .= " AND posts.post_type = 'product' AND posts.post_status = 'publish'";
+		}
+
+		$row = $wpdb->get_row(
+			"SELECT SUM(lookup.rating_count) AS total, SUM(lookup.average_rating * lookup.rating_count) AS rating_total FROM {$lookup_table} lookup{$join} {$where}",
+			ARRAY_A
+		);
+
+		$total        = isset( $row['total'] ) ? (int) $row['total'] : 0;
+		$rating_total = isset( $row['rating_total'] ) ? (float) $row['rating_total'] : 0.0;
+
+		return [
+			'total'   => $total,
+			'average' => $total > 0 ? $rating_total / $total : 0,
 		];
 	}
 

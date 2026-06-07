@@ -113,7 +113,7 @@ class OverSeek_Review_Form {
 	 * @return bool
 	 */
 	private function should_replace_product_reviews(): bool {
-		return (bool) get_option( 'overseek_reviews_replace_form', '' );
+		return '0' !== (string) get_option( 'overseek_reviews_replace_form', '1' );
 	}
 
 	/**
