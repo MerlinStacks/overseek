@@ -613,7 +613,14 @@ class OverSeek_Reviews {
 				];
 			}
 		} else {
-			$product_summary = $this->get_product_lookup_summary( $args );
+			$product_args                    = $args;
+			$product_args['review_source']   = 'product';
+			$product_args['product_reviews'] = 'true';
+			$product_args['shop_reviews']    = 'false';
+			$product_summary                 = $this->get_summary( $product_args );
+			if ( empty( $product_summary['total'] ) ) {
+				$product_summary = $this->get_product_lookup_summary( $product_args );
+			}
 		}
 
 		return [

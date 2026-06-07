@@ -32,18 +32,14 @@ class OverSeek_Review_Renderer {
 		$rating          = isset( $summary['average'] ) ? (float) $summary['average'] : 0.0;
 		$store_name      = ! empty( $context['store_name'] ) ? (string) $context['store_name'] : get_bloginfo( 'name' );
 		$product_summary = isset( $context['product_summary'] ) && is_array( $context['product_summary'] ) ? $context['product_summary'] : [];
-		$product_rating  = isset( $product_summary['average'] ) ? (float) $product_summary['average'] : $rating;
+		$product_total   = isset( $product_summary['total'] ) ? (int) $product_summary['total'] : 0;
+		$product_rating  = $product_total > 0 && isset( $product_summary['average'] ) ? (float) $product_summary['average'] : $rating;
 
 		ob_start();
 		?>
 		<div class="os-reviews-summary" aria-label="<?php echo esc_attr( sprintf( 'Average rating %.1f out of 5 from %d reviews', $rating, $total ) ); ?>">
 			<div class="os-reviews-summary__brand">
-				<span class="os-reviews-summary__badge" aria-hidden="true">
-					<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false">
-						<path d="M5.5 12.2 14 5.5l8.5 6.7v9.3a1 1 0 0 1-1 1h-5.1v-6.2h-4.8v6.2H6.5a1 1 0 0 1-1-1v-9.3Z" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-						<path d="M10.3 9.7v-3h3" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-					</svg>
-				</span>
+				<span class="os-reviews-summary__badge" aria-hidden="true"></span>
 				<div>
 					<strong><?php echo esc_html( $store_name ); ?></strong>
 					<span><?php echo esc_html( sprintf( _n( '%d review', '%d reviews', $total, 'overseek-wc' ), $total ) ); ?></span>
