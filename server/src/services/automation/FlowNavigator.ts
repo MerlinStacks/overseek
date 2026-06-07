@@ -28,7 +28,13 @@ export function findNextNodeId(
         return edges[0].target;
     }
 
-    // Handle Conditional Edges
+    // Condition nodes emit literal true/false outcomes. Those must not fall
+    // back to the first edge, otherwise a missing NO branch can run as YES.
+    if (outcome === 'true' || outcome === 'false') {
+        const match = edges.find(e => e.sourceHandle === outcome || e.id === outcome);
+        return match?.target || null;
+    }
+
     if (outcome) {
         const match = edges.find(e => e.sourceHandle === outcome || e.id === outcome);
         if (match) return match.target;

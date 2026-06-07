@@ -168,4 +168,45 @@ describe('AutomationConditionService', () => {
         expect(fiveStarResult).toBe(true);
         expect(fourStarResult).toBe(false);
     });
+
+    it('matches order status conditions after normalizing Woo status prefixes', () => {
+        expect(automationConditionService.evaluate(
+            { field: 'order.status', operator: 'eq', value: 'processing' },
+            { order: { status: 'wc-processing' } }
+        )).toBe(true);
+    });
+
+    it('returns false for non-matching order status conditions', () => {
+        expect(automationConditionService.evaluate(
+            { field: 'order.status', operator: 'eq', value: 'completed' },
+            { order: { status: 'processing' } }
+        )).toBe(false);
+    });
+
+    it('does not treat missing fields as a passing neq condition', () => {
+        expect(automationConditionService.evaluate(
+            { field: 'order.status', operator: 'neq', value: 'completed' },
+            { order: {} }
+        )).toBe(false);
+    });
+
+    it('does not pass unsupported operators by default', () => {
+        expect(automationConditionService.evaluate(
+            { field: 'order.status', operator: 'unknown_operator', value: 'completed' },
+            { order: { status: 'completed' } }
+        )).toBe(false);
+    });
+
+    it('does not pass empty condition config by default', () => {
+        expect(automationConditionService.evaluate({}, { order: { status: 'completed' } })).toBe(false);
+    });
+
+    it('evaluates day-of-week conditions using the UI value format', () => {
+        const today = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][new Date().getDay()];
+
+        expect(automationConditionService.evaluate(
+            { field: 'date.dayOfWeek', operator: 'eq', value: today },
+            {}
+        )).toBe(true);
+    });
 });

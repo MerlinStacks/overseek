@@ -9,13 +9,13 @@ interface EvaluateConditionInput {
 
 export class AutomationConditionService {
     evaluate(config: EvaluateConditionInput, context: any): boolean {
-        if (!config || !context) return true;
+        if (!config || !context) return false;
 
         const conditions = Array.isArray(config.conditions) && config.conditions.length > 0
             ? config.conditions
             : (config.field ? [{ field: config.field, operator: config.operator || 'eq', value: config.value }] : []);
 
-        if (conditions.length === 0) return true;
+        if (conditions.length === 0) return false;
 
         const evaluator = config.matchType === 'any' ? 'some' : 'every';
         return conditions[evaluator]((condition) => this.evaluateSingle(condition, context));
@@ -46,6 +46,7 @@ export class AutomationConditionService {
 
         if (operator === 'is_set') return fieldVal !== undefined && fieldVal !== null && fieldVal !== '';
         if (operator === 'not_set') return fieldVal === undefined || fieldVal === null || fieldVal === '';
+        if (fieldVal === undefined || fieldVal === null || fieldVal === '') return false;
 
         const fieldArray = Array.isArray(fieldVal) ? fieldVal : null;
         if (fieldArray) {
@@ -108,8 +109,14 @@ export class AutomationConditionService {
             case 'gte': return left >= right;
             case 'lt': return left < right;
             case 'lte': return left <= right;
-            default: return true;
+            default: return false;
         }
+    }
+
+    private normalizeOrderStatus(value: unknown): string {
+        return typeof value === 'string'
+            ? value.replace(/^wc-/, '').toLowerCase()
+            : '';
     }
 
     private resolveFieldValue(fieldPath: string, context: any): unknown {
@@ -153,7 +160,7 @@ export class AutomationConditionService {
             case 'customer.postcode':
                 return context.customer?.postcode || context.billing?.postcode || context.order?.billing?.postcode || context.postcode;
             case 'order.status':
-                return context.order?.status || context.status || context.newStatus;
+                return this.normalizeOrderStatus(context.order?.status || context.status || context.newStatus);
             case 'order.shippingType':
                 return this.resolveOrderShippingType(context);
             case 'order.couponCode': {
@@ -171,7 +178,7 @@ export class AutomationConditionService {
             case 'inbox.customerSentEmail':
                 return Boolean(context.customer?.hasInboxEmail || context.inbox?.customerSentEmail);
             case 'date.dayOfWeek':
-                return new Date().getDay();
+                return this.resolveDayOfWeek();
             case 'date.hour':
                 return new Date().getHours();
             case 'date.month':
@@ -221,6 +228,10 @@ export class AutomationConditionService {
     private toNumber(value: unknown): number | null {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    private resolveDayOfWeek(): string {
+        return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][new Date().getDay()];
     }
 
     private toDate(value: unknown): Date | null {

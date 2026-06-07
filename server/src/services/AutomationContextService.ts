@@ -76,7 +76,7 @@ export class AutomationContextService {
             ? await this.getLatestReview(input.accountId, customer?.id || null, normalizedEmail)
             : undefined;
 
-        const latestOrderRaw = this.asRecord(latestOrder?.rawData);
+        const latestOrderRaw = await this.enrichOrderLineItemPermalinks(input.accountId, this.asRecord(latestOrder?.rawData));
         const customerRaw = this.asRecord(customer?.rawData);
         const lastPurchaseDate = latestOrder?.dateCreated || null;
 
@@ -154,6 +154,53 @@ export class AutomationContextService {
                 dateCreated: true
             }
         });
+    }
+
+    private async enrichOrderLineItemPermalinks(accountId: string, order: Record<string, any>): Promise<Record<string, any>> {
+        const lineItems = Array.isArray(order?.line_items)
+            ? order.line_items
+            : Array.isArray(order?.lineItems)
+                ? order.lineItems
+                : [];
+
+        const productIds = Array.from(new Set(lineItems
+            .map((item) => Number(item?.product_id || item?.productId))
+            .filter((id) => Number.isFinite(id) && id > 0)));
+
+        if (productIds.length === 0) return order;
+
+        const products = await prisma.wooProduct.findMany({
+            where: {
+                accountId,
+                wooId: { in: productIds }
+            },
+            select: {
+                wooId: true,
+                permalink: true
+            }
+        });
+        const permalinkByWooId = new Map(products
+            .filter((product) => product.permalink)
+            .map((product) => [product.wooId, product.permalink as string]));
+
+        if (permalinkByWooId.size === 0) return order;
+
+        const enrichedLineItems = lineItems.map((item) => {
+            const productId = Number(item?.product_id || item?.productId);
+            const permalink = permalinkByWooId.get(productId);
+            if (!permalink || item.permalink || item.product_permalink || item.productUrl || item.product_url) return item;
+            return {
+                ...item,
+                permalink,
+                product_permalink: permalink,
+                productUrl: permalink,
+                product_url: permalink
+            };
+        });
+
+        return Array.isArray(order?.line_items)
+            ? { ...order, line_items: enrichedLineItems }
+            : { ...order, lineItems: enrichedLineItems };
     }
 
     private async getLatestReview(
