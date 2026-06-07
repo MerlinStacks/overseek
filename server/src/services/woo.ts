@@ -56,6 +56,7 @@ export class WooService {
     private consumerKey: string;
     private consumerSecret: string;
     private axiosConfig: any;
+    private wpApis = new Map<string, WooCommerceRestApi>();
 
     /**
      * Why singleton pool: each https.Agent holds an internal TCP socket pool.
@@ -319,20 +320,55 @@ export class WooService {
         return this.requestWithRetry('get', 'products/reviews', apiParams);
     }
 
+    async updateReview(reviewId: number, data: { status?: string; content?: string; rating?: number }) {
+        if (this.isDemo) return { success: true, review: { id: reviewId, ...data } };
+        const response = await this.requestWpWithRetry('put', `reviews/${reviewId}`, data, 'overseek/v1');
+        return response.data;
+    }
+
+    async createReview(data: {
+        product_id: number;
+        review: string;
+        reviewer: string;
+        reviewer_email: string;
+        rating?: number;
+        attachments?: Array<{ filename: string; url: string; type: string }>;
+        source_email_message_id?: string;
+        source_email_log_id?: string;
+        source_order_id?: string | number | null;
+    }) {
+        if (this.isDemo) return { success: true, review: { id: Math.floor(Math.random() * 100000), ...data } };
+        const response = await this.requestWpWithRetry('post', 'reviews', data, 'overseek/v1');
+        return response.data;
+    }
+
+    async replyToReview(reviewId: number, reply: string) {
+        if (this.isDemo) return { success: true, replyId: Math.floor(Math.random() * 100000), review: { id: reviewId } };
+        const response = await this.requestWpWithRetry('post', `reviews/${reviewId}/reply`, { reply }, 'overseek/v1');
+        return response.data;
+    }
+
+    private getWpApi(version: 'wp/v2' | 'overseek/v1'): WooCommerceRestApi {
+        let wpApi = this.wpApis.get(version);
+        if (wpApi) return wpApi;
+
+        wpApi = new WooCommerceRestApi({
+            url: this.url,
+            consumerKey: this.consumerKey,
+            consumerSecret: this.consumerSecret,
+            version: version as any,
+            queryStringAuth: true,
+            axiosConfig: this.axiosConfig
+        });
+        this.wpApis.set(version, wpApi);
+        return wpApi;
+    }
+
     private async requestWpWithRetry(method: 'get' | 'post' | 'put', endpoint: string, params: any = {}, version: 'wp/v2' | 'overseek/v1' = 'wp/v2'): Promise<any> {
         try {
             return await retryWithBackoff(
                 async () => {
-                    const wpApi = new WooCommerceRestApi({
-                        url: this.url,
-                        consumerKey: this.consumerKey,
-                        consumerSecret: this.consumerSecret,
-                        version: version as any,
-                        queryStringAuth: true,
-                        axiosConfig: this.axiosConfig
-                    });
-
-                    const response = await wpApi[method](endpoint, params);
+                    const response = await this.getWpApi(version)[method](endpoint, params);
                     return {
                         data: response.data,
                         total: parseInt(response.headers['x-wp-total'] || '0', 10),

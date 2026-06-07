@@ -18,8 +18,11 @@ import { applyPreviewText, resolveMergeTags } from '../MergeTagResolver';
 import { WooService } from '../woo';
 import { FlowNode, NodeExecutionResult } from './types';
 import { renderTemplate } from './FlowNavigator';
+import crypto from 'crypto';
 
 export class NodeExecutor {
+    private static readonly REVIEW_REQUEST_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
     private emailService = new EmailService();
 
     /**
@@ -322,9 +325,11 @@ export class NodeExecutor {
                     renderTemplate(config.previewText || '', context, { preserveUnknown: true }),
                     context
                 );
-                const finalBody = body
+                const finalBodyBase = body
                     ? applyPreviewText(body, previewText)
                     : `<p>Email Template: ${config.templateId}</p>`;
+                const reviewRequestMarker = this.buildReviewReplyMarker(finalBodyBase, context, enrollment.email);
+                const finalBody = reviewRequestMarker.html;
 
                 let skippedCount = 0;
                 let sentCount = 0;
@@ -356,6 +361,14 @@ export class NodeExecutor {
                     }
 
                     sentCount += 1;
+                    if (reviewRequestMarker.request) {
+                        await this.recordReviewRequest(
+                            enrollment.automation.accountId,
+                            recipientEmail,
+                            reviewRequestMarker.request,
+                            sendResult
+                        );
+                    }
                     await campaignTrackingService.trackSend(
                         enrollment.automation.accountId,
                         enrollment.automationId,
@@ -468,6 +481,76 @@ export class NodeExecutor {
             email,
             phone: firstString(payloadCustomer.phone, billing.phone, shipping.phone, rawCustomer.phone)
         };
+    }
+
+    private buildReviewReplyMarker(html: string, context: any, email: string): { html: string; request?: { token: string; productId: number; orderId?: string | number | null } } {
+        if (!html.includes('overseek_review_request=1')) return { html };
+
+        const order = context.order || {};
+        const items = order.lineItems || order.line_items || order.items || [];
+        const firstItem = Array.isArray(items) ? items[0] : null;
+        const productId = context.product?.id
+            || context.product?.productId
+            || context.product?.product_id
+            || context.review?.productId
+            || context.review?.product_id
+            || firstItem?.product_id
+            || firstItem?.productId
+            || firstItem?.id;
+
+        if (!productId) return { html };
+
+        const token = crypto.randomUUID();
+
+        const marker = Buffer.from(JSON.stringify({
+            type: 'overseek_review_request',
+            token,
+            productId: Number(productId),
+            orderId: order.id || order.orderId || order.order_id || order.wooId || order.woo_id || null,
+            email,
+            createdAt: new Date().toISOString()
+        })).toString('base64url');
+
+        return {
+            html: `${html}\n<!-- overseek-review-request:${marker} -->`,
+            request: {
+                token,
+                productId: Number(productId),
+                orderId: order.id || order.orderId || order.order_id || order.wooId || order.woo_id || null
+            }
+        };
+    }
+
+    private async recordReviewRequest(accountId: string, recipientEmail: string, request: { token: string; productId: number; orderId?: string | number | null }, sendResult: any) {
+        const messageId = sendResult?.messageId || sendResult?.message_id || null;
+        const expiresAt = new Date(Date.now() + NodeExecutor.REVIEW_REQUEST_TTL_MS);
+        const emailLog = messageId
+            ? await prisma.emailLog.findFirst({
+                where: { accountId, messageId },
+                select: { id: true }
+            })
+            : null;
+
+        await prisma.reviewRequest.upsert({
+            where: { token: request.token },
+            create: {
+                accountId,
+                token: request.token,
+                email: recipientEmail,
+                productId: request.productId,
+                orderId: request.orderId ? String(request.orderId) : null,
+                emailLogId: emailLog?.id || null,
+                emailMessageId: messageId,
+                expiresAt,
+                metadata: { source: 'automation' }
+            },
+            update: {
+                emailLogId: emailLog?.id || undefined,
+                emailMessageId: messageId || undefined,
+                expiresAt,
+                status: 'sent'
+            }
+        });
     }
 
     private async findWooCustomerForEnrollment(enrollment: any): Promise<{ id: string; wooId: number; email: string; firstName: string | null; lastName: string | null; rawData: any } | null> {

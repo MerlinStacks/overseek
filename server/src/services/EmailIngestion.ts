@@ -12,6 +12,7 @@ import { BlockedContactService } from './BlockedContactService';
 import { EventBus, EVENTS } from './events';
 import { EmailService } from './EmailService';
 import { invalidateCache } from '../utils/cache';
+import { WooService } from './woo';
 
 export interface IncomingEmailData {
     emailAccountId: string;
@@ -27,6 +28,10 @@ export interface IncomingEmailData {
 }
 
 export class EmailIngestion {
+    private static readonly MAX_REVIEW_TEXT_LENGTH = 3000;
+    private static readonly MAX_REVIEW_ATTACHMENTS = 6;
+    private static readonly REVIEW_REQUEST_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
     private io: Server;
     private addMessageFn: (conversationId: string, content: string, senderType: 'SYSTEM', senderId?: string, isInternal?: boolean) => Promise<any>;
     private emailService: EmailService;
@@ -67,8 +72,25 @@ export class EmailIngestion {
             return;
         }
 
-        // Check if sender is blocked
+        // Check if sender is blocked before any special handling such as review reply ingestion.
         const isBlocked = await BlockedContactService.isBlocked(accountId, fromEmail);
+
+        const handledAsReview = !isBlocked && await this.tryHandleReviewReply({
+            accountId,
+            fromEmail,
+            fromName,
+            subject,
+            body,
+            html,
+            messageId,
+            inReplyTo,
+            references,
+            attachments
+        });
+        if (handledAsReview) {
+            Logger.info('[EmailIngestion] Imported reply as product review', { fromEmail, subject });
+            return;
+        }
 
         // IDEMPOTENCY CHECK: Skip if message already exists
         const existingMessage = await prisma.message.findFirst({
@@ -157,6 +179,347 @@ export class EmailIngestion {
      */
     private cleanSubjectForTitle(subject: string): string {
         return subject.replace(/^(re:|fwd:|fw:)\s*/gi, '').trim();
+    }
+
+    private async tryHandleReviewReply(input: {
+        accountId: string;
+        fromEmail: string;
+        fromName?: string;
+        subject: string;
+        body: string;
+        html?: string;
+        messageId: string;
+        inReplyTo?: string | null;
+        references?: string | null;
+        attachments?: Array<{ filename: string; url: string; type: string }>;
+    }): Promise<boolean> {
+        const existingMessage = await prisma.message.findFirst({
+            where: { emailMessageId: input.messageId },
+            select: { id: true }
+        });
+        if (existingMessage) return true;
+
+        const threadIds = this.extractThreadIds(input.inReplyTo, input.references);
+        if (threadIds.length === 0) return false;
+
+        const matchedLog = await prisma.emailLog.findFirst({
+            where: { accountId: input.accountId, messageId: { in: threadIds } },
+            select: { id: true, emailPayload: true, subject: true }
+        });
+        if (!matchedLog) return false;
+
+        const marker = this.extractReviewMarker(matchedLog.emailPayload);
+        if (!marker?.productId) return false;
+
+        const reviewText = this.extractReviewText(input.body || input.html || '');
+        if (!reviewText) return false;
+
+        const reviewRequest = marker.token
+            ? await prisma.reviewRequest.findFirst({ where: { accountId: input.accountId, token: marker.token } })
+            : await prisma.reviewRequest.findFirst({ where: { accountId: input.accountId, emailLogId: matchedLog.id } });
+
+        if (reviewRequest) {
+            const requestEmail = reviewRequest.email.trim().toLowerCase();
+            const senderEmail = input.fromEmail.trim().toLowerCase();
+
+            if (requestEmail !== senderEmail) {
+                Logger.warn('[EmailIngestion] Rejecting review reply from mismatched sender', {
+                    accountId: input.accountId,
+                    requestId: reviewRequest.id,
+                    requestEmail,
+                    senderEmail
+                });
+                return true;
+            }
+
+            if (reviewRequest.expiresAt && reviewRequest.expiresAt.getTime() < Date.now()) {
+                await prisma.reviewRequest.update({
+                    where: { id: reviewRequest.id },
+                    data: { status: 'expired' }
+                });
+                Logger.info('[EmailIngestion] Rejecting expired review request reply', {
+                    accountId: input.accountId,
+                    requestId: reviewRequest.id
+                });
+                return true;
+            }
+        } else if (!this.markerSenderMatches(marker, input.fromEmail) || this.markerExpired(marker)) {
+            Logger.warn('[EmailIngestion] Rejecting review reply with stale or mismatched marker', {
+                accountId: input.accountId,
+                senderEmail: input.fromEmail,
+                markerEmail: marker.email,
+                markerCreatedAt: marker.createdAt
+            });
+            return true;
+        }
+
+        let ingestion: { id: string };
+        try {
+            ingestion = await prisma.reviewIngestion.create({
+                data: {
+                    accountId: input.accountId,
+                    reviewRequestId: reviewRequest?.id || null,
+                    incomingMessageId: input.messageId,
+                    emailLogId: matchedLog.id,
+                    status: 'processing',
+                    rawData: {
+                        fromEmail: input.fromEmail,
+                        subject: input.subject,
+                        marker
+                    }
+                },
+                select: { id: true }
+            });
+        } catch (error: any) {
+            if (error?.code === 'P2002') {
+                Logger.info('[EmailIngestion] Skipping duplicate review ingestion', {
+                    accountId: input.accountId,
+                    messageId: input.messageId
+                });
+                return true;
+            }
+            throw error;
+        }
+
+        if (await this.hasReviewFromEmail(input.accountId, input.messageId)) {
+            Logger.info('[EmailIngestion] Skipping duplicate review reply email', {
+                accountId: input.accountId,
+                emailLogId: matchedLog.id,
+                messageId: input.messageId
+            });
+            await prisma.reviewIngestion.update({
+                where: { id: ingestion.id },
+                data: { status: 'completed', completedAt: new Date() }
+            });
+            return true;
+        }
+
+        let result: any;
+        try {
+            const woo = await WooService.forAccount(input.accountId);
+            result = await woo.createReview({
+                product_id: marker.productId,
+                review: reviewText,
+                reviewer: input.fromName || input.fromEmail.split('@')[0] || 'Customer',
+                reviewer_email: input.fromEmail,
+                rating: marker.rating || 5,
+                attachments: this.buildAbsoluteAttachmentUrls(input.attachments || []),
+                source_email_message_id: input.messageId,
+                source_email_log_id: matchedLog.id,
+                source_order_id: marker.orderId || null
+            });
+        } catch (error: any) {
+            await prisma.reviewIngestion.update({
+                where: { id: ingestion.id },
+                data: { status: 'failed', errorMessage: error?.message || String(error) }
+            });
+            throw error;
+        }
+
+        const projected = await this.upsertEmailReviewProjection(input.accountId, result?.review, {
+            productId: marker.productId,
+            reviewer: input.fromName || input.fromEmail.split('@')[0] || 'Customer',
+            reviewerEmail: input.fromEmail,
+            rating: marker.rating || 5,
+            reviewText,
+            messageId: input.messageId,
+            emailLogId: matchedLog.id,
+            orderId: marker.orderId || null
+        });
+
+        if (!projected) {
+            await prisma.reviewIngestion.update({
+                where: { id: ingestion.id },
+                data: {
+                    status: 'failed',
+                    errorMessage: 'WooCommerce review response did not include a valid review id'
+                }
+            });
+            Logger.error('[EmailIngestion] Review created in WooCommerce but local projection failed', {
+                accountId: input.accountId,
+                emailLogId: matchedLog.id,
+                productId: marker.productId,
+                responseReview: result?.review
+            });
+            return true;
+        }
+
+        await prisma.reviewIngestion.update({
+            where: { id: ingestion.id },
+            data: {
+                status: 'completed',
+                wooReviewId: Number(result?.review?.id) || null,
+                completedAt: new Date()
+            }
+        });
+
+        if (reviewRequest) {
+            await prisma.reviewRequest.update({
+                where: { id: reviewRequest.id },
+                data: { status: 'completed', completedAt: new Date() }
+            });
+        }
+
+        Logger.info('[EmailIngestion] Created review from email reply', {
+            accountId: input.accountId,
+            emailLogId: matchedLog.id,
+            productId: marker.productId,
+            reviewId: result?.review?.id,
+            attachmentCount: input.attachments?.length || 0
+        });
+
+        const conversation = await this.resolveConversation(
+            input.accountId,
+            input.fromEmail,
+            input.fromName,
+            input.subject,
+            input.inReplyTo,
+            input.references
+        );
+        const attachmentLinks = (input.attachments || [])
+            .map((attachment) => `[Attachment: ${attachment.filename}](${attachment.url})`)
+            .join('\n');
+        await prisma.message.create({
+            data: {
+                conversationId: conversation.id,
+                content: `Subject: ${input.subject}\n\n${reviewText}${attachmentLinks ? `\n\n${attachmentLinks}` : ''}`,
+                senderType: 'CUSTOMER',
+                emailMessageId: input.messageId
+            }
+        });
+
+        return true;
+    }
+
+    private extractThreadIds(inReplyTo?: string | null, references?: string | null): string[] {
+        const ids: string[] = [];
+        if (inReplyTo) ids.push(inReplyTo.trim());
+        if (references) {
+            ids.push(...references.split(/[\s,]+/).map((value) => value.trim()).filter(Boolean));
+        }
+        return [...new Set(ids.filter(Boolean))];
+    }
+
+    private extractReviewMarker(emailPayload: unknown): { token?: string; productId: number; rating?: number; orderId?: string | number | null; email?: string; createdAt?: string } | null {
+        if (!emailPayload || typeof emailPayload !== 'object') return null;
+        const html = (emailPayload as any).html;
+        if (typeof html !== 'string') return null;
+
+        const match = html.match(/overseek-review-request:([A-Za-z0-9_-]+)/);
+        if (!match) return null;
+
+        try {
+            const decoded = Buffer.from(match[1], 'base64url').toString('utf8');
+            const parsed = JSON.parse(decoded);
+            const productId = Number(parsed.productId);
+            if (!Number.isFinite(productId) || productId <= 0) return null;
+            return {
+                token: typeof parsed.token === 'string' ? parsed.token : undefined,
+                productId,
+                rating: Number(parsed.rating) || undefined,
+                orderId: parsed.orderId || null,
+                email: typeof parsed.email === 'string' ? parsed.email : undefined,
+                createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : undefined
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    private markerSenderMatches(marker: { email?: string }, fromEmail: string): boolean {
+        if (!marker.email) return false;
+        return marker.email.trim().toLowerCase() === fromEmail.trim().toLowerCase();
+    }
+
+    private markerExpired(marker: { createdAt?: string }): boolean {
+        if (!marker.createdAt) return true;
+        const createdAt = new Date(marker.createdAt).getTime();
+        if (!Number.isFinite(createdAt)) return true;
+        return createdAt + EmailIngestion.REVIEW_REQUEST_TTL_MS < Date.now();
+    }
+
+    private async hasReviewFromEmail(accountId: string, messageId: string): Promise<boolean> {
+        const existingReview = await prisma.wooReview.findFirst({
+            where: {
+                accountId,
+                rawData: {
+                    path: ['overseekSource', 'emailMessageId'],
+                    equals: messageId
+                }
+            },
+            select: { id: true }
+        });
+
+        return !!existingReview;
+    }
+
+    private async upsertEmailReviewProjection(accountId: string, review: any, fallback: {
+        productId: number;
+        reviewer: string;
+        reviewerEmail: string;
+        rating: number;
+        reviewText: string;
+        messageId: string;
+        emailLogId: string;
+        orderId?: string | number | null;
+    }): Promise<boolean> {
+        const wooId = Number(review?.id);
+        if (!Number.isFinite(wooId) || wooId <= 0) return false;
+
+        const rawData = {
+            ...(review || {}),
+            overseekSource: {
+                ...(review?.overseekSource || {}),
+                emailMessageId: fallback.messageId,
+                emailLogId: fallback.emailLogId,
+                ...(fallback.orderId ? { orderId: String(fallback.orderId) } : {})
+            }
+        };
+
+        await prisma.wooReview.upsert({
+            where: { accountId_wooId: { accountId, wooId } },
+            create: {
+                accountId,
+                wooId,
+                productId: Number(review?.product_id) || fallback.productId,
+                productName: review?.product_name || null,
+                reviewer: review?.reviewer || fallback.reviewer,
+                reviewerEmail: review?.reviewer_email || fallback.reviewerEmail,
+                rating: Number(review?.rating) || fallback.rating,
+                content: review?.review || fallback.reviewText,
+                status: review?.status || 'hold',
+                dateCreated: review?.date_created_gmt || review?.date_created ? new Date(review.date_created_gmt || review.date_created) : new Date(),
+                rawData
+            },
+            update: { rawData }
+        });
+
+        return true;
+    }
+
+    private extractReviewText(raw: string): string {
+        const text = String(raw || '')
+            .replace(/<[^>]+>/g, '\n')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line && !/^>+/.test(line) && !/^on .+ wrote:$/i.test(line) && !/^from:/i.test(line))
+            .join('\n')
+            .trim();
+
+        return text.slice(0, EmailIngestion.MAX_REVIEW_TEXT_LENGTH);
+    }
+
+    private buildAbsoluteAttachmentUrls(attachments: Array<{ filename: string; url: string; type: string }>) {
+        const apiUrl = (process.env.API_URL || '').replace(/\/$/, '');
+        return attachments
+            .filter((attachment) => /^(image|video)\//i.test(attachment.type || ''))
+            .slice(0, EmailIngestion.MAX_REVIEW_ATTACHMENTS)
+            .map((attachment) => ({
+                ...attachment,
+                url: /^https?:\/\//i.test(attachment.url) || !apiUrl
+                    ? attachment.url
+                    : `${apiUrl}${attachment.url.startsWith('/') ? '' : '/'}${attachment.url}`
+            }));
     }
 
     /**

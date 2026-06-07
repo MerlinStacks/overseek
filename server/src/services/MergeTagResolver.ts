@@ -106,6 +106,7 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{order.itemsTable}}', renderOrderItemsTable(orderItems));
         replaceMergeTag('{{order.itemsCompact}}', renderOrderItemsCompact(orderItems));
         replaceMergeTag('{{order.itemsList}}', renderOrderItemsList(orderItems));
+        replaceMergeTag('{{order.reviewLinks}}', renderOrderReviewLinks(orderItems, storeUrl));
         result = result.replace(/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, renderOrderItemsText(orderItems));
 
         // Downloads
@@ -173,6 +174,13 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     // Review merge tags
     const reviewFallback = getReviewFallback(context, storeUrl);
     const explicitReviewUrl = getExplicitReviewUrl(context, storeUrl);
+    const reviewRequestUrl = buildReviewRequestUrl(
+        explicitReviewUrl || getReviewProductUrl(
+            context.review?.requestUrl || context.review?.request_url || context.review?.productUrl || context.review?.product_url,
+            reviewFallback.productUrl,
+            storeUrl
+        )
+    );
     if (context.review) {
         const review = context.review;
         replaceMergeTag('{{review.reviewer}}', review.reviewer || review.reviewerName || '');
@@ -181,6 +189,7 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{review.productName}}', review.productName || review.product_name || reviewFallback.productName);
         replaceMergeTag('{{review.url}}', explicitReviewUrl || getReviewProductUrl(review.reviewUrl || review.review_url, reviewFallback.productUrl, storeUrl));
         replaceMergeTag('{{review.productUrl}}', explicitReviewUrl || getReviewProductUrl(review.productUrl || review.product_url, reviewFallback.productUrl, storeUrl));
+        replaceMergeTag('{{review.requestUrl}}', reviewRequestUrl);
     } else {
         const reviewer = [
             context.customer?.firstName || context.customer?.first_name,
@@ -193,6 +202,10 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{review.productName}}', reviewFallback.productName || 'your recent purchase');
         replaceMergeTag('{{review.url}}', explicitReviewUrl || getReviewProductUrl('', reviewFallback.productUrl, storeUrl));
         replaceMergeTag('{{review.productUrl}}', explicitReviewUrl || getReviewProductUrl('', reviewFallback.productUrl, storeUrl));
+        replaceMergeTag('{{review.requestUrl}}', reviewRequestUrl);
+    }
+    for (let rating = 1; rating <= 5; rating++) {
+        replaceMergeTag(`{{review.star${rating}Url}}`, buildReviewRequestUrl(reviewRequestUrl, rating));
     }
 
     // Shipment merge tags
@@ -278,6 +291,24 @@ function withReviewAnchor(url: string): string {
     if (!trimmed) return '';
     if (/#/.test(trimmed)) return trimmed;
     return `${trimmed.replace(/\/$/, '')}#review_form`;
+}
+
+function buildReviewRequestUrl(rawUrl: string, rating?: number): string {
+    const url = String(rawUrl || '').trim();
+    if (!url) return '';
+
+    try {
+        const parsed = new URL(url);
+        parsed.searchParams.set('overseek_review_request', '1');
+        if (rating) parsed.searchParams.set('overseek_review_rating', String(rating));
+        if (!parsed.hash) parsed.hash = 'review_form';
+        return parsed.toString();
+    } catch {
+        const [withoutHash, hash = 'review_form'] = url.split('#');
+        const separator = withoutHash.includes('?') ? '&' : '?';
+        const ratingParam = rating ? `&overseek_review_rating=${encodeURIComponent(String(rating))}` : '';
+        return `${withoutHash}${separator}overseek_review_request=1${ratingParam}#${hash || 'review_form'}`;
+    }
 }
 
 function getReviewProductUrl(rawReviewUrl: unknown, fallbackUrl: string, storeUrl: string): string {
@@ -403,6 +434,27 @@ function getReviewFallback(context: MergeTagContext, storeUrl: string): { produc
 function getOrderItems(order: any): any[] {
     const items = order?.lineItems || order?.line_items || order?.items || order?.orderItems || order?.order_items || [];
     return Array.isArray(items) ? items : [];
+}
+
+function renderOrderReviewLinks(items: any[], storeUrl: string): string {
+    if (!Array.isArray(items) || items.length === 0) return '';
+
+    const rows = items
+        .map((item) => {
+            const name = escapeHtml(String(item?.name || item?.productName || item?.product_name || 'Review product'));
+            const directUrl = item?.permalink || item?.productUrl || item?.product_url || item?.url;
+            const productId = item?.product_id || item?.productId || item?.id;
+            const fallbackUrl = storeUrl && productId
+                ? `${storeUrl.replace(/\/$/, '')}/?p=${encodeURIComponent(String(productId))}#review_form`
+                : storeUrl;
+            const reviewUrl = buildReviewRequestUrl(getReviewProductUrl(directUrl, fallbackUrl, storeUrl));
+            if (!reviewUrl) return '';
+            return `<li><a href="${escapeHtml(reviewUrl)}">${name}</a></li>`;
+        })
+        .filter(Boolean)
+        .join('');
+
+    return rows ? `<ul>${rows}</ul>` : '';
 }
 
 function getInvoiceUrl(order: any, storeUrl: string): string {

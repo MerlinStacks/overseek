@@ -133,6 +133,8 @@ model Account {
   WooProduct    WooProduct[]
   WooCustomer   WooCustomer[]
   WooReview     WooReview[]
+  reviewRequests ReviewRequest[]
+  reviewIngestions ReviewIngestion[]
   WooPage       WooPage[]
   WooBlogPost   WooBlogPost[]
   Notification  Notification[]
@@ -1322,6 +1324,59 @@ model WooReview {
   @@index([accountId, status])                 // Review moderation queries
   @@index([accountId, rating])                 // Star rating filters
   @@index([accountId, dateCreated(sort: Desc)]) // Recent reviews list
+}
+
+model ReviewRequest {
+  id        String @id @default(uuid())
+  accountId String
+
+  token         String @unique
+  email         String
+  productId     Int
+  orderId       String?
+  rating        Int?
+  emailLogId    String?
+  emailMessageId String?
+  status        String @default("sent") // sent, completed, expired
+  metadata      Json? @default("{}")
+  expiresAt     DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  ingestions ReviewIngestion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  completedAt DateTime?
+
+  @@index([accountId, email])
+  @@index([accountId, productId])
+  @@index([accountId, status])
+  @@index([accountId, expiresAt])
+  @@index([accountId, emailMessageId])
+}
+
+model ReviewIngestion {
+  id        String @id @default(uuid())
+  accountId String
+
+  reviewRequestId String?
+  incomingMessageId String
+  emailLogId String?
+  wooReviewId Int?
+  status String @default("processing") // processing, completed, failed
+  errorMessage String?
+  rawData Json? @default("{}")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reviewRequest ReviewRequest? @relation(fields: [reviewRequestId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  completedAt DateTime?
+
+  @@unique([accountId, incomingMessageId])
+  @@index([accountId, status])
+  @@index([reviewRequestId])
 }
 
 model WooPage {

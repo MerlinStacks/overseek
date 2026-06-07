@@ -81,9 +81,13 @@ class OverSeek_Web_Vitals
             return;
         }
 
+		$sample_rate = max(1, min(100, (int) $this->sample_rate));
+		if ($sample_rate < 100 && wp_rand(1, 100) > $sample_rate) {
+			return;
+		}
+
         $endpoint  = esc_js($this->api_url . '/api/t/vitals');
         $account_id = esc_js($this->account_id);
-        $sample_rate = (int) $this->sample_rate;
         $page_type  = esc_js($this->get_page_type());
 
         // Detect device type server-side for segmentation
@@ -94,9 +98,6 @@ class OverSeek_Web_Vitals
         // OverSeek Web Vitals Collector v<?php echo esc_js(OVERSEEK_WC_VERSION); ?>
         // Sampling: <?php echo $sample_rate; ?>% of page loads
         (function() {
-            // Honour sampling rate — exit early for unsampled sessions
-            if (Math.random() * 100 > <?php echo $sample_rate; ?>) return;
-
             const ENDPOINT   = '<?php echo $endpoint; ?>';
             const ACCOUNT_ID = '<?php echo $account_id; ?>';
             const PAGE_TYPE  = '<?php echo $page_type; ?>';

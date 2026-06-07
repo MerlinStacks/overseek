@@ -1,0 +1,16 @@
+{
+  "apiVersion": 3,
+  "name": "overseek/review-summary",
+  "title": "OverSeek Review Summary",
+  "category": "widgets",
+  "icon": "star-half",
+  "description": "Render average rating and review count.",
+  "textdomain": "overseek-wc",
+  "editorScript": "file:../../assets/reviews-blocks.js",
+  "style": "file:../../assets/reviews.css",
+	"attributes": {
+		"product_id": { "type": "number", "default": 0 },
+		"min_rating": { "type": "number", "default": 0 },
+		"review_source": { "type": "string", "default": "product" }
+	}
+}

@@ -37,31 +37,8 @@ class OverSeek_Main
 	 */
 	private function load_dependencies(): void
 	{
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-admin.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-frontend.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-api.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crypto-utils.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-http-utils.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-config-provider.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-matching-utils.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-ecommerce-events.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-cart-recovery.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-order-invoices.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center-state.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center-request.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-request-utils.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-attribution-utils.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-guard-utils.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-transport.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-payload-utils.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-event-builder.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-server-tracking.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixels.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crawler-guard.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-fingerprint-utils.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-fingerprint.php';
-		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-web-vitals.php';
 	}
 
 	/**
@@ -73,47 +50,155 @@ class OverSeek_Main
 	{
 		$this->cleanup_legacy_options();
 
+		$is_frontend_request = ! is_admin() && ! wp_doing_ajax() && ! wp_doing_cron();
+		$is_configured       = $this->is_configured();
+		$tracking_enabled    = (bool) get_option('overseek_enable_tracking');
+
 		// Initialize Admin.
-		$admin = new OverSeek_Admin();
-		add_action('admin_menu', [$admin, 'add_menu_page']);
-		add_action('admin_init', [$admin, 'register_settings']);
-		add_action('admin_enqueue_scripts', [$admin, 'enqueue_assets']);
-		add_action('admin_post_overseek_sync_blocked_agents', [$admin, 'handle_sync_blocked_agents']);
-		add_action('admin_post_overseek_test_bot_shield', [$admin, 'handle_test_bot_shield']);
+		if (is_admin()) {
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crawler-guard.php';
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-admin.php';
+
+			$admin = new OverSeek_Admin();
+			add_action('admin_menu', [$admin, 'add_menu_page']);
+			add_action('admin_init', [$admin, 'register_settings']);
+			add_action('admin_enqueue_scripts', [$admin, 'enqueue_assets']);
+			add_action('admin_post_overseek_sync_blocked_agents', [$admin, 'handle_sync_blocked_agents']);
+			add_action('admin_post_overseek_test_bot_shield', [$admin, 'handle_test_bot_shield']);
+		}
 
 		// Initialize Frontend.
-		$frontend = new OverSeek_Frontend();
-		add_action('wp_head', [$frontend, 'print_scripts']);
+		if ($is_configured && (get_option('overseek_enable_chat') || wp_doing_cron())) {
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-frontend.php';
+
+			$frontend = new OverSeek_Frontend();
+			if (get_option('overseek_enable_chat') && $is_frontend_request) {
+				add_action('wp_head', [$frontend, 'print_scripts']);
+			}
+		}
 
 		// Initialize API.
-		$api = new OverSeek_API();
-		add_action('rest_api_init', [$api, 'register_routes']);
+		add_action('rest_api_init', function (): void {
+			$this->load_api_dependencies();
+			$api = new OverSeek_API();
+			$api->register_routes();
+		});
+		add_filter('woocommerce_rest_prepare_product_review', function ($response, $review, $request) {
+			$this->load_api_dependencies();
+			$api = new OverSeek_API();
+			return $api->append_review_rest_fields($response, $review, $request);
+		}, 10, 3);
 
-		new OverSeek_Cart_Recovery();
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-order-invoices.php';
 		new OverSeek_Order_Invoices();
-		new OverSeek_Preference_Center();
+
+		if ((! is_admin() || wp_doing_ajax()) && ! wp_doing_cron()) {
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-cart-recovery.php';
+			new OverSeek_Cart_Recovery();
+		}
+
+		$this->register_reviews();
+		$this->register_preference_center();
+		$this->register_google_product_review_feed();
 
 		// Initialize Server-Side Tracking (runs on WooCommerce hooks).
-		if (get_option('overseek_enable_tracking')) {
+		if ($is_configured && $tracking_enabled) {
+			$this->load_tracking_dependencies();
 			new OverSeek_Server_Tracking();
 		}
 
 		// Initialize Client-Side Pixel Tracking (fetches config from API).
-		if (get_option('overseek_enable_tracking')) {
+		if ($is_configured && $tracking_enabled && ($is_frontend_request || wp_doing_cron())) {
+			$this->load_pixel_dependencies();
 			new OverSeek_Pixels();
 		}
 
 		// Initialize Crawler Guard (blocks blacklisted bots at application level).
 		// Not gated by tracking toggle — admins may want bot blocking without analytics.
-		new OverSeek_Crawler_Guard();
+		if ($is_configured && ($is_frontend_request || wp_doing_cron())) {
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crawler-guard.php';
+			new OverSeek_Crawler_Guard();
+		}
 
 		// Initialize Fingerprint Bot Detection (checkout-only, behavioral scoring).
 		// Not gated by tracking toggle — bot protection is independent of analytics.
-		new OverSeek_Fingerprint();
+		if ($is_configured && ($is_frontend_request || wp_doing_ajax() || $this->is_rest_request() || wp_doing_cron())) {
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-fingerprint-utils.php';
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-fingerprint.php';
+			new OverSeek_Fingerprint();
+		}
 
 		// Initialize Web Vitals Collector.
 		// Not gated by tracking toggle — performance data is independent of behavioural analytics.
-		new OverSeek_Web_Vitals();
+		if ($is_configured && $is_frontend_request && get_option('overseek_enable_vitals', '1')) {
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-guard-utils.php';
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-web-vitals.php';
+			new OverSeek_Web_Vitals();
+		}
+	}
+
+	private function is_configured(): bool
+	{
+		return '' !== (string) get_option('overseek_api_url', '') && '' !== (string) get_option('overseek_account_id', '');
+	}
+
+	private function is_rest_request(): bool
+	{
+		return defined('REST_REQUEST') && REST_REQUEST;
+	}
+
+	private function register_reviews(): void
+	{
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-review-renderer.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-reviews.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-review-form.php';
+
+		new OverSeek_Reviews();
+		new OverSeek_Review_Form();
+	}
+
+	private function register_preference_center(): void
+	{
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center-state.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center-request.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-preference-center.php';
+
+		new OverSeek_Preference_Center();
+	}
+
+	private function register_google_product_review_feed(): void
+	{
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-google-product-review-feed.php';
+
+		new OverSeek_Google_Product_Review_Feed();
+	}
+
+	private function load_api_dependencies(): void
+	{
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-order-invoices.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-api.php';
+	}
+
+	private function load_pixel_dependencies(): void
+	{
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-config-provider.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-matching-utils.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-ecommerce-events.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-payload-utils.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixels.php';
+	}
+
+	private function load_tracking_dependencies(): void
+	{
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-config-provider.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-pixel-matching-utils.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-request-utils.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-attribution-utils.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-guard-utils.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-transport.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-payload-utils.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-event-builder.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-server-tracking.php';
 	}
 
 	private function cleanup_legacy_options(): void

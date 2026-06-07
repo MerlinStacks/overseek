@@ -9,7 +9,7 @@
         "start": "node --disable-warning=DEP0040 dist/index.js",
         "test": "vitest run",
         "test:watch": "vitest",
-        "build:plugin": "ts-node scripts/build_plugin.ts",
+        "build:plugin": "node scripts/build_plugin.js",
         "lint": "eslint .",
         "mock:account": "npx ts-node src/scripts/setupMockAccount.ts",
         "mock:seed": "npx ts-node src/scripts/seedMockData.ts",

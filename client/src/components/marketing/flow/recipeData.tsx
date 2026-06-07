@@ -34,7 +34,7 @@ const createReviewRequestEmailConfig = () => {
 
     if (introBlock.type === 'text') {
         introBlock.props = {
-            html: '<h2>How was your order?</h2><p>Thanks for shopping with us. Your feedback helps other customers choose with confidence and helps us keep improving.</p>',
+            html: '<h2>How was your order?</h2><p>Thanks for shopping with us. Tap a star below to start your review, or reply directly to this email with your review and any photos or videos you would like to share.</p><p style="font-size:28px;letter-spacing:6px;line-height:1.4;"><a href="{{review.star1Url}}" style="text-decoration:none;color:#d97706;">★</a><a href="{{review.star2Url}}" style="text-decoration:none;color:#d97706;">★</a><a href="{{review.star3Url}}" style="text-decoration:none;color:#d97706;">★</a><a href="{{review.star4Url}}" style="text-decoration:none;color:#d97706;">★</a><a href="{{review.star5Url}}" style="text-decoration:none;color:#d97706;">★</a></p>',
             align: 'center',
             size: 16,
             lineHeight: 1.65,
@@ -47,7 +47,7 @@ const createReviewRequestEmailConfig = () => {
             headline: 'Review {{review.productName}}',
             content: 'Could you take a minute to share your experience with {{review.productName}}?',
             ctaLabel: 'Leave a review',
-            ctaHref: '{{review.productUrl}}',
+            ctaHref: '{{review.requestUrl}}',
             showRating: false,
             showReviewer: false,
             showProductName: false,
