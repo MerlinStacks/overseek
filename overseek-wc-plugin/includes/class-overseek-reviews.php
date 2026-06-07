@@ -449,6 +449,7 @@ class OverSeek_Reviews {
 			. OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( $args, $summary ) )
 			. $this->render_schema_markup( $summary, $args )
 			. OverSeek_Review_Renderer::render_reviews( $reviews, $args )
+			. $this->render_pagination( $summary, $args )
 			. $review_form
 			. '</div>';
 	}
@@ -629,13 +630,6 @@ class OverSeek_Reviews {
 	 * @return array<string, mixed>
 	 */
 	private function get_product_lookup_summary( array $args ): array {
-		if ( ! function_exists( 'WC' ) ) {
-			return [
-				'total'   => 0,
-				'average' => 0,
-			];
-		}
-
 		global $wpdb;
 
 		$lookup_table = $wpdb->prefix . 'wc_product_meta_lookup';
@@ -649,6 +643,39 @@ class OverSeek_Reviews {
 
 		$row = $wpdb->get_row(
 			"SELECT SUM(lookup.rating_count) AS total, SUM(lookup.average_rating * lookup.rating_count) AS rating_total FROM {$lookup_table} lookup{$join} {$where}",
+			ARRAY_A
+		);
+
+		$total        = isset( $row['total'] ) ? (int) $row['total'] : 0;
+		$rating_total = isset( $row['rating_total'] ) ? (float) $row['rating_total'] : 0.0;
+		if ( $total <= 0 ) {
+			return $this->get_product_comment_summary( $args );
+		}
+
+		return [
+			'total'   => $total,
+			'average' => $total > 0 ? $rating_total / $total : 0,
+		];
+	}
+
+	/**
+	 * Get the aggregate product rating from approved WooCommerce review comments.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, mixed>
+	 */
+	private function get_product_comment_summary( array $args ): array {
+		global $wpdb;
+
+		$join  = "INNER JOIN {$wpdb->posts} posts ON posts.ID = comments.comment_post_ID";
+		$where = "WHERE comments.comment_approved = '1' AND posts.post_type = 'product'";
+
+		if ( ! $this->truthy( $args['inactive_products'] ?? false ) ) {
+			$where .= " AND posts.post_status = 'publish'";
+		}
+
+		$row = $wpdb->get_row(
+			"SELECT COUNT(meta.meta_value) AS total, SUM(CAST(meta.meta_value AS DECIMAL(10,2))) AS rating_total FROM {$wpdb->comments} comments {$join} INNER JOIN {$wpdb->commentmeta} meta ON meta.comment_id = comments.comment_ID AND meta.meta_key = 'rating' {$where} AND CAST(meta.meta_value AS DECIMAL(10,2)) > 0",
 			ARRAY_A
 		);
 

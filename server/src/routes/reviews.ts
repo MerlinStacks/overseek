@@ -5,6 +5,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { requireAuthFastify } from '../middleware/auth';
 import { ReviewService } from '../services/ReviewService';
+import { ReviewAIService } from '../services/ReviewAIService';
 import { Logger } from '../utils/logger';
 
 const reviewService = new ReviewService();
@@ -63,6 +64,19 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
             const status = reviewErrorStatus(error);
             if (status) return reply.code(status).send({ error: error instanceof Error ? error.message : 'Failed to reply to review' });
             return reply.code(500).send({ error: 'Failed to reply to review' });
+        }
+    });
+
+    // Generate an AI-assisted reply draft for a review.
+    fastify.post<{ Params: { id: string }; Body: { currentDraft?: string } }>('/:id/ai-reply', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const result = await ReviewAIService.generateReply(accountId, request.params.id, request.body?.currentDraft);
+            if (result.error) return reply.code(400).send({ error: result.error });
+            return { reply: result.reply };
+        } catch (error) {
+            Logger.error('Error generating review AI reply', { error });
+            return reply.code(500).send({ error: 'Failed to generate review reply' });
         }
     });
 

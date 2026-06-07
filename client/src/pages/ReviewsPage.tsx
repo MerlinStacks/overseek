@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
-import { Star, RefreshCw, Search, CheckCircle, ExternalLink, Link2, MessageSquare, Reply, Paperclip, Video } from 'lucide-react';
+import { Star, RefreshCw, Search, CheckCircle, ExternalLink, Link2, MessageSquare, Reply, Paperclip, Video, Sparkles, Loader2 } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { formatDate } from '../utils/format';
 import { useNavigate } from 'react-router-dom';
@@ -56,6 +56,7 @@ export const ReviewsPage = () => {
     const [actionReviewId, setActionReviewId] = useState<string | null>(null);
     const [replyReview, setReplyReview] = useState<ReviewRow | null>(null);
     const [replyText, setReplyText] = useState('');
+    const [isGeneratingReply, setIsGeneratingReply] = useState(false);
     const [editReview, setEditReview] = useState<ReviewRow | null>(null);
     const [editContent, setEditContent] = useState('');
     const [editRating, setEditRating] = useState(5);
@@ -194,9 +195,37 @@ export const ReviewsPage = () => {
     };
 
     const closeReplyModal = () => {
-        if (actionReviewId) return;
+        if (actionReviewId || isGeneratingReply) return;
         setReplyReview(null);
         setReplyText('');
+    };
+
+    const handleGenerateAIReply = async () => {
+        if (!currentAccount || !token || !replyReview || isGeneratingReply) return;
+
+        setIsGeneratingReply(true);
+        try {
+            const res = await fetch(`/api/reviews/${replyReview.id}/ai-reply`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({ currentDraft: replyText })
+            });
+
+            const data = await res.json().catch(() => ({})) as { reply?: string; error?: string };
+            if (!res.ok) throw new Error(data.error || 'AI reply generation failed');
+
+            setReplyText(data.reply || '');
+            toast.success('AI reply drafted');
+        } catch (error) {
+            Logger.error('Review AI reply generation failed', { error });
+            toast.error(error instanceof Error ? error.message : 'Failed to generate AI reply');
+        } finally {
+            setIsGeneratingReply(false);
+        }
     };
 
     const openEditModal = (review: ReviewRow) => {
@@ -296,7 +325,7 @@ export const ReviewsPage = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [actionReviewId, editReview, mediaViewer, replyReview]);
+    }, [actionReviewId, editReview, isGeneratingReply, mediaViewer, replyReview]);
 
     return (
         <div className="p-6 space-y-6">
@@ -534,9 +563,20 @@ export const ReviewsPage = () => {
                                 </div>
                                 <p className="line-clamp-4">{replyReview.content || 'No review text'}</p>
                             </div>
-                            <label className="block text-sm font-medium text-gray-700" htmlFor="review-reply-text">
-                                Your reply
-                            </label>
+                            <div className="flex items-center justify-between gap-3">
+                                <label className="block text-sm font-medium text-gray-700" htmlFor="review-reply-text">
+                                    Your reply
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={handleGenerateAIReply}
+                                    disabled={isGeneratingReply || actionReviewId === replyReview.id}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+                                >
+                                    {isGeneratingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                    {replyText.trim() ? 'Improve with AI' : 'Draft with AI'}
+                                </button>
+                            </div>
                             <textarea
                                 id="review-reply-text"
                                 value={replyText}
@@ -551,7 +591,7 @@ export const ReviewsPage = () => {
                             <button
                                 type="button"
                                 onClick={closeReplyModal}
-                                disabled={!!actionReviewId}
+                                disabled={!!actionReviewId || isGeneratingReply}
                                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                             >
                                 Cancel
@@ -559,7 +599,7 @@ export const ReviewsPage = () => {
                             <button
                                 type="button"
                                 onClick={handleReply}
-                                disabled={actionReviewId === replyReview.id || !replyText.trim()}
+                                disabled={actionReviewId === replyReview.id || isGeneratingReply || !replyText.trim()}
                                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                             >
                                 {actionReviewId === replyReview.id ? 'Posting...' : 'Post reply'}

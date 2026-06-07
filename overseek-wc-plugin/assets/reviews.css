@@ -45,13 +45,24 @@
 	width: 56px;
 	height: 56px;
 	border-radius: 999px;
-	background: linear-gradient(135deg, var(--os-review-accent-2), var(--os-review-accent-1));
+	background: linear-gradient(135deg, #facc15, #f59e0b);
 	color: #ffffff;
 	font-size: 22px;
 	font-weight: 900;
 	line-height: 1;
 	box-shadow: 0 10px 24px rgba(245, 158, 11, 0.25);
 	text-shadow: 0 1px 3px rgba(146, 64, 14, 0.35);
+}
+
+.os-reviews-summary__badge svg {
+	display: block;
+	width: 26px;
+	height: 26px;
+	fill: none;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 2;
 }
 
 .os-reviews-summary__brand strong {

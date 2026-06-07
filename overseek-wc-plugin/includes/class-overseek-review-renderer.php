@@ -38,7 +38,12 @@ class OverSeek_Review_Renderer {
 		?>
 		<div class="os-reviews-summary" aria-label="<?php echo esc_attr( sprintf( 'Average rating %.1f out of 5 from %d reviews', $rating, $total ) ); ?>">
 			<div class="os-reviews-summary__brand">
-				<span class="os-reviews-summary__badge" aria-hidden="true">★</span>
+				<span class="os-reviews-summary__badge" aria-hidden="true">
+					<svg viewBox="0 0 24 24" focusable="false" role="img">
+						<path d="M4 10.8 12 4l8 6.8v8.7a.5.5 0 0 1-.5.5h-5v-5.8h-5V20h-5a.5.5 0 0 1-.5-.5v-8.7Z" />
+						<path d="m12 6.6 5.5 4.7" />
+					</svg>
+				</span>
 				<div>
 					<strong><?php echo esc_html( $store_name ); ?></strong>
 					<span><?php echo esc_html( sprintf( _n( '%d review', '%d reviews', $total, 'overseek-wc' ), $total ) ); ?></span>
