@@ -649,8 +649,42 @@ class OverSeek_Reviews {
 		$total        = isset( $row['total'] ) ? (int) $row['total'] : 0;
 		$rating_total = isset( $row['rating_total'] ) ? (float) $row['rating_total'] : 0.0;
 		if ( $total <= 0 ) {
+			$postmeta_summary = $this->get_product_postmeta_summary( $args );
+			if ( ! empty( $postmeta_summary['total'] ) ) {
+				return $postmeta_summary;
+			}
+
 			return $this->get_product_comment_summary( $args );
 		}
+
+		return [
+			'total'   => $total,
+			'average' => $total > 0 ? $rating_total / $total : 0,
+		];
+	}
+
+	/**
+	 * Get the aggregate product rating from WooCommerce product rating post meta.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, mixed>
+	 */
+	private function get_product_postmeta_summary( array $args ): array {
+		global $wpdb;
+
+		$where = "WHERE posts.post_type = 'product' AND count_meta.meta_key = '_wc_review_count' AND avg_meta.meta_key = '_wc_average_rating' AND CAST(count_meta.meta_value AS UNSIGNED) > 0";
+
+		if ( ! $this->truthy( $args['inactive_products'] ?? false ) ) {
+			$where .= " AND posts.post_status = 'publish'";
+		}
+
+		$row = $wpdb->get_row(
+			"SELECT SUM(CAST(count_meta.meta_value AS UNSIGNED)) AS total, SUM(CAST(avg_meta.meta_value AS DECIMAL(10,4)) * CAST(count_meta.meta_value AS UNSIGNED)) AS rating_total FROM {$wpdb->posts} posts INNER JOIN {$wpdb->postmeta} count_meta ON count_meta.post_id = posts.ID INNER JOIN {$wpdb->postmeta} avg_meta ON avg_meta.post_id = posts.ID {$where}",
+			ARRAY_A
+		);
+
+		$total        = isset( $row['total'] ) ? (int) $row['total'] : 0;
+		$rating_total = isset( $row['rating_total'] ) ? (float) $row['rating_total'] : 0.0;
 
 		return [
 			'total'   => $total,

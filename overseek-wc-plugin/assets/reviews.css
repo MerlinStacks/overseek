@@ -56,13 +56,9 @@
 
 .os-reviews-summary__badge svg {
 	display: block;
-	width: 26px;
-	height: 26px;
+	width: 28px;
+	height: 28px;
 	fill: none;
-	stroke: currentColor;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-	stroke-width: 2;
 }
 
 .os-reviews-summary__brand strong {

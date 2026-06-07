@@ -39,9 +39,9 @@ class OverSeek_Review_Renderer {
 		<div class="os-reviews-summary" aria-label="<?php echo esc_attr( sprintf( 'Average rating %.1f out of 5 from %d reviews', $rating, $total ) ); ?>">
 			<div class="os-reviews-summary__brand">
 				<span class="os-reviews-summary__badge" aria-hidden="true">
-					<svg viewBox="0 0 24 24" focusable="false" role="img">
-						<path d="M4 10.8 12 4l8 6.8v8.7a.5.5 0 0 1-.5.5h-5v-5.8h-5V20h-5a.5.5 0 0 1-.5-.5v-8.7Z" />
-						<path d="m12 6.6 5.5 4.7" />
+					<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false">
+						<path d="M5.5 12.2 14 5.5l8.5 6.7v9.3a1 1 0 0 1-1 1h-5.1v-6.2h-4.8v6.2H6.5a1 1 0 0 1-1-1v-9.3Z" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+						<path d="M10.3 9.7v-3h3" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
 					</svg>
 				</span>
 				<div>
