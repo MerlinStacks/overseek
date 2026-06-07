@@ -42,7 +42,7 @@ class OverSeek_Review_Renderer {
 				<div>
 					<strong><?php echo esc_html( $store_name ); ?></strong>
 					<span><?php echo esc_html( sprintf( _n( '%d review', '%d reviews', $total, 'overseek-wc' ), $total ) ); ?></span>
-					<small><?php esc_html_e( 'what our clients say', 'overseek-wc' ); ?></small>
+					<small><?php esc_html_e( 'what our customers say', 'overseek-wc' ); ?></small>
 				</div>
 			</div>
 			<div class="os-reviews-summary__ratings">

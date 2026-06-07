@@ -27,6 +27,7 @@ class OverSeek_Reviews {
 		'overseek_review_rows',
 		'overseek_product_reviews',
 		'overseek_review_summary',
+		'overseek_review_stars',
 		'overseek_review_form',
 		'cusrev_all_reviews',
 		'cusrev_reviews_grid',
@@ -63,6 +64,7 @@ class OverSeek_Reviews {
 		add_shortcode( 'overseek_product_reviews', [ $this, 'render_product_reviews_shortcode' ] );
 		add_shortcode( 'overseek_review_rows', [ $this, 'render_rows_shortcode' ] );
 		add_shortcode( 'overseek_review_summary', [ $this, 'render_summary_shortcode' ] );
+		add_shortcode( 'overseek_review_stars', [ $this, 'render_review_stars_shortcode' ] );
 		add_shortcode( 'cusrev_all_reviews', [ $this, 'render_cusrev_all_reviews_shortcode' ] );
 		add_shortcode( 'cusrev_reviews_grid', [ $this, 'render_cusrev_grid_shortcode' ] );
 		add_shortcode( 'cusrev_reviews_slider', [ $this, 'render_cusrev_slider_shortcode' ] );
@@ -320,12 +322,72 @@ class OverSeek_Reviews {
 	 * @return string
 	 */
 	public function render_cusrev_rating_shortcode( array $atts = [] ): string {
-		$product_id = ! empty( $atts['product'] ) ? absint( $atts['product'] ) : $this->get_current_product_id();
-		$summary = $this->get_summary( [ 'product_id' => $product_id, 'limit' => 100, 'status' => 'approved' ] );
+		return $this->render_review_stars_shortcode( $atts );
+	}
+
+	/**
+	 * Render compact product review stars.
+	 *
+	 * @param array<string, mixed> $atts Shortcode attributes.
+	 * @return string
+	 */
+	public function render_review_stars_shortcode( array $atts = [] ): string {
+		$atts = shortcode_atts(
+			[
+				'product'     => '',
+				'product_id'  => '',
+				'color_stars' => '',
+				'show_count'  => 'true',
+				'link'        => 'true',
+			],
+			$atts,
+			'overseek_review_stars'
+		);
+
+		$product_id = ! empty( $atts['product'] ) ? absint( $atts['product'] ) : absint( $atts['product_id'] );
+		if ( ! $product_id ) {
+			$product_id = $this->get_current_product_id();
+		}
+
+		if ( ! $product_id ) {
+			return '';
+		}
+
+		$summary = $this->get_summary( [ 'product_id' => $product_id, 'status' => 'approved' ] );
+		$total   = isset( $summary['total'] ) ? (int) $summary['total'] : 0;
+		$rating  = isset( $summary['average'] ) ? (float) $summary['average'] : 0.0;
+
+		if ( $total <= 0 ) {
+			return '';
+		}
+
 		$color = ! empty( $atts['color_stars'] ) ? sanitize_hex_color( (string) $atts['color_stars'] ) : '';
 		$style = $color ? ' style="--os-review-star-color:' . esc_attr( $color ) . '"' : '';
+		$full  = (int) floor( max( 0.0, min( 5.0, $rating ) ) );
+		$stars = str_repeat( '★', $full ) . str_repeat( '☆', 5 - $full );
+		$count = '';
+		if ( $this->truthy( $atts['show_count'] ) ) {
+			$count = sprintf(
+				' <span class="os-review-stars-summary__count">%s</span>',
+				esc_html( sprintf( _n( '(%d review)', '(%d reviews)', $total, 'overseek-wc' ), $total ) )
+			);
+		}
+		$html  = '<span class="os-review-stars-summary"' . $style . '>'
+			. '<span class="os-review-stars" aria-label="'
+			. esc_attr( sprintf( 'Rated %.1f out of 5 from %d reviews', $rating, $total ) )
+			. '">'
+			. esc_html( $stars )
+			. '</span>'
+			. $count
+			. '</span>';
 
-		return '<span class="os-reviews-rating"' . $style . '>' . OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( [ 'product_id' => $product_id ], $summary ) ) . '</span>';
+		if ( $this->truthy( $atts['link'] ) ) {
+			$html = '<a class="os-review-stars-summary__link" href="' . esc_url( get_permalink( $product_id ) . '#reviews' ) . '">'
+				. $html
+				. '</a>';
+		}
+
+		return $html;
 	}
 
 	/**
@@ -541,6 +603,20 @@ class OverSeek_Reviews {
 			unset( $store_args['product_id'] );
 			$product_summary = $summary;
 			$summary         = $this->get_summary( $store_args );
+
+			$product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : null;
+			if ( $product ) {
+				$product_summary = [
+					'total'   => $product->get_review_count(),
+					'average' => (float) $product->get_average_rating(),
+				];
+			}
+		} else {
+			$product_args                    = $args;
+			$product_args['review_source']   = 'product';
+			$product_args['product_reviews'] = 'true';
+			$product_args['shop_reviews']    = 'false';
+			$product_summary                 = $this->get_summary( $product_args );
 		}
 
 		return [

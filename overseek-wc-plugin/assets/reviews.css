@@ -22,7 +22,7 @@
 	gap: clamp(18px, 4vw, 38px);
 	width: fit-content;
 	max-width: 100%;
-	margin: 0 0 26px;
+	margin: 0 auto 26px;
 	padding: 18px 22px;
 	border: 1px solid rgba(15, 23, 42, 0.08);
 	border-radius: 24px;
@@ -96,6 +96,23 @@
 	line-height: 1;
 }
 
+.os-review-stars-summary,
+.os-review-stars-summary__link {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.os-review-stars-summary__link {
+	color: inherit;
+	text-decoration: none;
+}
+
+.os-review-stars-summary__count {
+	color: currentColor;
+	font-size: 0.9em;
+}
+
 .os-reviews-list {
 	display: grid;
 	gap: 22px;
@@ -113,9 +130,15 @@
 	display: flex;
 	grid-template-columns: none;
 	overflow-x: auto;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
 	scroll-snap-type: x mandatory;
 	padding-bottom: 8px;
 	scroll-behavior: smooth;
+}
+
+.os-reviews-list--slider::-webkit-scrollbar {
+	display: none;
 }
 
 .os-reviews-list--slider .os-review-card {

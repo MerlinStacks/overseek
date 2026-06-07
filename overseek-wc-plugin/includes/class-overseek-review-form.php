@@ -28,7 +28,8 @@ class OverSeek_Review_Form {
 		add_shortcode( 'overseek_review_form', [ $this, 'render_shortcode' ] );
 		add_action( 'admin_post_overseek_submit_review', [ $this, 'handle_submission' ] );
 		add_action( 'admin_post_nopriv_overseek_submit_review', [ $this, 'handle_submission' ] );
-		add_filter( 'woocommerce_product_tabs', [ $this, 'maybe_replace_reviews_tab' ], 30 );
+		add_filter( 'woocommerce_product_tabs', [ $this, 'maybe_replace_reviews_tab' ], 999 );
+		add_filter( 'comments_template', [ $this, 'maybe_replace_product_comments_template' ], 20 );
 	}
 
 	/**
@@ -64,7 +65,7 @@ class OverSeek_Review_Form {
 	 * @return array<string, mixed>
 	 */
 	public function maybe_replace_reviews_tab( array $tabs ): array {
-		if ( ! get_option( 'overseek_reviews_replace_form', '' ) ) {
+		if ( ! $this->should_replace_product_reviews() ) {
 			return $tabs;
 		}
 
@@ -73,6 +74,21 @@ class OverSeek_Review_Form {
 		}
 
 		return $tabs;
+	}
+
+	/**
+	 * Replace product comments template when a theme renders reviews directly.
+	 *
+	 * @param string $template Current comments template path.
+	 * @return string
+	 */
+	public function maybe_replace_product_comments_template( string $template ): string {
+		if ( ! $this->should_replace_product_reviews() || ! $this->is_product_comments_template_request() ) {
+			return $template;
+		}
+
+		$overseek_template = OVERSEEK_WC_PLUGIN_DIR . 'templates/product-reviews.php';
+		return file_exists( $overseek_template ) ? $overseek_template : $template;
 	}
 
 	/**
@@ -88,8 +104,30 @@ class OverSeek_Review_Form {
 			return;
 		}
 
-		echo do_shortcode( '[overseek_product_reviews product_id="' . absint( $product_id ) . '"]' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo $this->render_form( $product_id, __( 'Write a review', 'overseek-wc' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo do_shortcode( '[overseek_product_reviews product_id="' . absint( $product_id ) . '" add_review="1"]' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	/**
+	 * Check if product review replacement is enabled.
+	 *
+	 * @return bool
+	 */
+	private function should_replace_product_reviews(): bool {
+		return (bool) get_option( 'overseek_reviews_replace_form', '' );
+	}
+
+	/**
+	 * Check if the current comments template belongs to a WooCommerce product page.
+	 *
+	 * @return bool
+	 */
+	private function is_product_comments_template_request(): bool {
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			return true;
+		}
+
+		$post_id = get_the_ID();
+		return $post_id > 0 && 'product' === get_post_type( $post_id );
 	}
 
 	/**
