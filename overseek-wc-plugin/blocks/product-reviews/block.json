@@ -23,6 +23,7 @@
     "show_country": { "type": "string", "default": "1" },
     "show_date": { "type": "string", "default": "1" },
     "show_replies": { "type": "string", "default": "1" },
+    "add_review": { "type": "string", "default": "1" },
     "max_chars": { "type": "number", "default": 0 },
     "card_style": { "type": "string", "default": "comfortable" },
     "radius": { "type": "number", "default": 28 },

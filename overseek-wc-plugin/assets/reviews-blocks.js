@@ -155,6 +155,7 @@
 				options.parts !== false && el( ToggleControl, { label: 'Show review date', checked: boolAttr( attributes.show_date !== undefined ? attributes.show_date : '1' ), onChange: function( value ) { setBoolAttr( props, 'show_date', value ); } } ),
 				options.parts !== false && el( ToggleControl, { label: 'Show merchant replies', checked: boolAttr( attributes.show_replies !== undefined ? attributes.show_replies : '1' ), onChange: function( value ) { setBoolAttr( props, 'show_replies', value ); } } ),
 				options.summary && el( ToggleControl, { label: 'Show summary bar', checked: boolAttr( attributes.show_summary_bar !== undefined ? attributes.show_summary_bar : '1' ), onChange: function( value ) { setBoolAttr( props, 'show_summary_bar', value ); } } ),
+				options.addReview && el( ToggleControl, { label: 'Show review form', checked: boolAttr( attributes.add_review !== undefined ? attributes.add_review : '1' ), onChange: function( value ) { setBoolAttr( props, 'add_review', value ); } } ),
 				options.parts !== false && el( RangeControl, { label: 'Maximum review characters', value: attributes.max_chars || 0, min: 0, max: 600, step: 25, help: 'Set to 0 to show the full review.', onChange: function( value ) { props.setAttributes( { max_chars: value || 0 } ); } } ),
 				options.parts !== false && el( SelectControl, { label: 'Card style', value: attributes.card_style || 'comfortable', options: [ { label: 'Compact', value: 'compact' }, { label: 'Comfortable', value: 'comfortable' }, { label: 'Feature card', value: 'feature' } ], onChange: function( value ) { props.setAttributes( { card_style: value } ); } } ),
 				options.parts !== false && el( RangeControl, { label: 'Border radius', value: attributes.radius || 28, min: 8, max: 40, onChange: function( value ) { props.setAttributes( { radius: value || 28 } ); } } ),
@@ -218,7 +219,7 @@
 	registerReviewBlock( 'overseek/reviews', 'OverSeek Reviews', '[overseek_reviews]', { product: true, limit: true, layout: true, pagination: true, media: true, showProduct: true, summary: true, filters: true, source: true, colors: true } );
 	registerReviewBlock( 'overseek/review-slider', 'OverSeek Review Slider', '[overseek_review_slider]', { product: true, limit: true, media: true, showProduct: true, slider: true, filters: true, source: true, colors: true } );
 	registerReviewBlock( 'overseek/review-rows', 'OverSeek Review Rows', '[overseek_review_rows]', { product: true, limit: true, showProduct: true, filters: true, source: true } );
-	registerReviewBlock( 'overseek/product-reviews', 'OverSeek Product Reviews', '[overseek_product_reviews]', { product: true, limit: true, layout: true, media: true, colors: true } );
+	registerReviewBlock( 'overseek/product-reviews', 'OverSeek Product Reviews', '[overseek_product_reviews]', { product: true, limit: true, layout: true, media: true, addReview: true, colors: true } );
 	registerReviewBlock( 'overseek/review-summary', 'OverSeek Review Summary', '[overseek_review_summary]', { product: true, limit: false, source: true } );
 	registerReviewBlock( 'overseek/review-form', 'OverSeek Review Form', '[overseek_review_form]', { product: true, limit: false, minRating: false, title: true } );
 } )(

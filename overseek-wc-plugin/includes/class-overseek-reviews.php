@@ -125,6 +125,9 @@ class OverSeek_Reviews {
 		}
 
 		if ( 'overseek/product-reviews' === $block_name ) {
+			if ( ! isset( $attributes['add_review'] ) ) {
+				$attributes['add_review'] = '1';
+			}
 			return $this->render_product_reviews_shortcode( $attributes );
 		}
 
@@ -375,11 +378,16 @@ class OverSeek_Reviews {
 			$summary = $this->get_mock_summary();
 		}
 		$shell_id             = 'os-reviews-' . ++$this->shell_counter;
+		$review_form          = $this->maybe_render_add_review_form( $args );
+		if ( $is_preview && empty( $args['product_id'] ) && $this->truthy( $args['add_review'] ?? 'false' ) ) {
+			$review_form = $this->render_mock_review_form( __( 'Write a review', 'overseek-wc' ) );
+		}
 
 		return '<div id="' . esc_attr( $shell_id ) . '" class="os-reviews-shell os-reviews-shell--product" data-os-reviews-shell>'
 			. OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( $args, $summary ) )
 			. $this->render_schema_markup( $summary, $args )
 			. OverSeek_Review_Renderer::render_reviews( $reviews, $args )
+			. $review_form
 			. '</div>';
 	}
 

@@ -1038,6 +1038,10 @@ class OverSeek_API {
 	 */
 	private function build_review_media_response( int $comment_id ): array {
 		$raw_ids = get_comment_meta( $comment_id, 'overseek_media_ids', true );
+		if ( empty( $raw_ids ) ) {
+			$raw_ids = get_comment_meta( $comment_id, 'ivole_review_image', true );
+		}
+
 		$ids = is_array( $raw_ids ) ? $raw_ids : array_filter( array_map( 'absint', explode( ',', (string) $raw_ids ) ) );
 
 		return array_values( array_filter( array_map(
