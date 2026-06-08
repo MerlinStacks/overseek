@@ -22,12 +22,20 @@ class OverSeek_Review_Form {
 	private const MAX_BYTES    = 26214400;
 
 	/**
+	 * Track forms already rendered during the request to avoid duplicate fallbacks.
+	 *
+	 * @var array<string, bool>
+	 */
+	private array $rendered_forms = [];
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function __construct() {
 		add_shortcode( 'overseek_review_form', [ $this, 'render_shortcode' ] );
 		add_action( 'admin_post_overseek_submit_review', [ $this, 'handle_submission' ] );
 		add_action( 'admin_post_nopriv_overseek_submit_review', [ $this, 'handle_submission' ] );
+		add_action( 'woocommerce_after_single_product_summary', [ $this, 'render_review_request_fallback' ], 11 );
 		add_filter( 'woocommerce_product_tabs', [ $this, 'maybe_replace_reviews_tab' ], 999 );
 		add_filter( 'comments_template', [ $this, 'maybe_replace_product_comments_template' ], 20 );
 	}
@@ -105,6 +113,30 @@ class OverSeek_Review_Form {
 		}
 
 		echo do_shortcode( '[overseek_product_reviews product_id="' . absint( $product_id ) . '" limit="12" pagination="load_more" show_media="1" add_review="1"]' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	/**
+	 * Render a direct form for email review requests when the theme does not expose one.
+	 *
+	 * @return void
+	 */
+	public function render_review_request_fallback(): void {
+		if ( ( empty( $_GET['overseek_review_request'] ) && empty( $_GET['overseek_review_rating'] ) ) || ! ( function_exists( 'is_product' ) && is_product() ) ) {
+			return;
+		}
+
+		$product_id = $this->get_current_product_id();
+		$key        = $this->get_rendered_form_key( $product_id, false );
+		if ( ! $product_id || ! empty( $this->rendered_forms[ $key ] ) ) {
+			return;
+		}
+
+		$form = $this->render_form( $product_id, __( 'Write a review', 'overseek-wc' ), false );
+		if ( '' === $form ) {
+			return;
+		}
+
+		echo '<section class="os-review-request-fallback">' . $form . '</section>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
 
 	/**
@@ -204,6 +236,8 @@ class OverSeek_Review_Form {
 			return '';
 		}
 
+		$this->rendered_forms[ $this->get_rendered_form_key( $product_id, $shop_review ) ] = true;
+
 		$prefilled_rating = isset( $_GET['overseek_review_rating'] ) ? absint( wp_unslash( $_GET['overseek_review_rating'] ) ) : 0;
 		if ( $prefilled_rating < 1 || $prefilled_rating > 5 ) {
 			$prefilled_rating = 0;
@@ -259,6 +293,17 @@ class OverSeek_Review_Form {
 		</form>
 		<?php
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Build a stable rendered-form key.
+	 *
+	 * @param int  $product_id  Product ID.
+	 * @param bool $shop_review Whether this is a shop review form.
+	 * @return string
+	 */
+	private function get_rendered_form_key( int $product_id, bool $shop_review ): string {
+		return ( $shop_review ? 'shop' : 'product' ) . ':' . absint( $product_id );
 	}
 
 	/**

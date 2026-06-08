@@ -398,7 +398,8 @@ class OverSeek_Reviews {
 	 */
 	public function render_cusrev_review_button_shortcode( array $atts = [] ): string {
 		$atts = shortcode_atts( [ 'label' => 'Review', 'bg' => '#0073aa', 'color' => '#ffffff', 'radius' => '4px' ], $atts, 'cusrev_review_button' );
-		$url = get_permalink( $this->get_current_product_id() ) ?: home_url( '/#review_form' );
+		$permalink = get_permalink( $this->get_current_product_id() );
+		$url       = $permalink ? $permalink . '#review_form' : home_url( '/#review_form' );
 		$style = sprintf( 'display:inline-block;background:%s;color:%s;border-radius:%s;padding:10px 16px;text-decoration:none;font-weight:700;', esc_attr( sanitize_hex_color( (string) $atts['bg'] ) ?: '#0073aa' ), esc_attr( sanitize_hex_color( (string) $atts['color'] ) ?: '#ffffff' ), esc_attr( sanitize_text_field( (string) $atts['radius'] ) ) );
 
 		return '<a class="os-review-button" href="' . esc_url( $url ) . '" style="' . $style . '">' . esc_html( (string) $atts['label'] ) . '</a>';
@@ -423,6 +424,9 @@ class OverSeek_Reviews {
 		$args = $this->normalize_shortcode_args( $atts, 'overseek_product_reviews' );
 		$args['product_reviews'] = 'true';
 		$args['shop_reviews']    = 'false';
+		if ( $this->is_review_request() ) {
+			$args['add_review'] = '1';
+		}
 		$is_preview = $this->is_block_editor_preview_request();
 		if ( empty( $args['product_id'] ) ) {
 			$args['product_id'] = $this->get_current_product_id();
@@ -1059,6 +1063,15 @@ class OverSeek_Reviews {
 		}
 
 		return do_shortcode( '[overseek_review_form product_id="' . absint( $product_id ) . '"]' );
+	}
+
+	/**
+	 * Determine whether the current page was opened from a review-request email.
+	 *
+	 * @return bool
+	 */
+	private function is_review_request(): bool {
+		return ! empty( $_GET['overseek_review_request'] ) || ! empty( $_GET['overseek_review_rating'] );
 	}
 
 	/**

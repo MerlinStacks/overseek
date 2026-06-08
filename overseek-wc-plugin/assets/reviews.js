@@ -37,6 +37,46 @@
 		button.classList.toggle('is-loading', loading);
 	}
 
+	function isReviewRequestUrl() {
+		var params = new URLSearchParams(window.location.search);
+		return window.location.hash === '#review_form' || params.has('overseek_review_request') || params.has('overseek_review_rating');
+	}
+
+	function findWooTabLink(panelId) {
+		var links = document.querySelectorAll('.woocommerce-tabs .tabs a, .tabs.wc-tabs a');
+		for (var index = 0; index < links.length; index++) {
+			if (links[index].hash === '#' + panelId || links[index].getAttribute('href') === '#' + panelId) {
+				return links[index];
+			}
+		}
+
+		return null;
+	}
+
+	function revealReviewFormFromUrl() {
+		if (!isReviewRequestUrl()) {
+			return;
+		}
+
+		var form = document.getElementById('review_form');
+		if (!form) {
+			return;
+		}
+
+		var panel = form.closest('.woocommerce-Tabs-panel, .woocommerce-tabs .panel');
+		if (panel && panel.id) {
+			var tabLink = findWooTabLink(panel.id);
+			if (tabLink) {
+				tabLink.click();
+			}
+		}
+
+		window.setTimeout(function () {
+			form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			form.classList.add('os-review-form--focused');
+		}, 120);
+	}
+
 	document.addEventListener('click', function (event) {
 		var sliderButton = event.target.closest('[data-os-review-slider-prev], [data-os-review-slider-next]');
 		if (sliderButton) {
@@ -128,4 +168,7 @@
 	document.addEventListener('DOMContentLoaded', initReviewSliders);
 	document.addEventListener('overseek:reviews:updated', initReviewSliders);
 	initReviewSliders();
+
+	document.addEventListener('DOMContentLoaded', revealReviewFormFromUrl);
+	revealReviewFormFromUrl();
 }());
