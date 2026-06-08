@@ -44,10 +44,18 @@ function getSafeRedirectUrl(rawUrl: string): string | null {
         if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
             return null;
         }
-        return parsed.toString();
+        return withReviewRequestMarker(parsed).toString();
     } catch {
         return null;
     }
+}
+
+function withReviewRequestMarker(url: URL): URL {
+    if (url.hash.toLowerCase() === '#review_form') {
+        url.searchParams.set('overseek_review_request', '1');
+    }
+
+    return url;
 }
 
 async function getPreferenceContext(token: string) {
