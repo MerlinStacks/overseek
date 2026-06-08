@@ -180,7 +180,7 @@ class OverSeek_Review_Form {
 		$product_type = $product_id ? get_post_type( $product_id ) : '';
 		if ( $shop_review ) {
 			$product_id = $this->get_shop_review_post_id();
-		} elseif ( ! $product || ! in_array( $product_type, [ 'product', 'product_variation' ], true ) || ! comments_open( $product_id ) ) {
+		} elseif ( ! $product || ! in_array( $product_type, [ 'product', 'product_variation' ], true ) ) {
 			$this->redirect_with_status( $redirect, 'invalid-product' );
 		}
 
@@ -232,7 +232,7 @@ class OverSeek_Review_Form {
 	 * @return string
 	 */
 	private function render_form( int $product_id, string $title, bool $shop_review = false ): string {
-		if ( ! $product_id || ( ! $shop_review && ! comments_open( $product_id ) ) ) {
+		if ( ! $product_id ) {
 			return '';
 		}
 
