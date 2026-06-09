@@ -24,7 +24,9 @@ class OverSeek_Review_Renderer {
 	 * @return string
 	 */
 	public static function render_summary( array $summary, array $context = [] ): string {
-		if ( isset( $context['store_summary'] ) && is_array( $context['store_summary'] ) ) {
+		$product_only = self::truthy( $context['product_only'] ?? false );
+
+		if ( ! $product_only && isset( $context['store_summary'] ) && is_array( $context['store_summary'] ) ) {
 			$summary = $context['store_summary'];
 		}
 
@@ -34,10 +36,14 @@ class OverSeek_Review_Renderer {
 		$product_summary = isset( $context['product_summary'] ) && is_array( $context['product_summary'] ) ? $context['product_summary'] : [];
 		$product_total   = isset( $product_summary['total'] ) ? (int) $product_summary['total'] : 0;
 		$product_rating  = $product_total > 0 && isset( $product_summary['average'] ) ? (float) $product_summary['average'] : $rating;
+		$classes         = [ 'os-reviews-summary' ];
+		if ( $product_only ) {
+			$classes[] = 'os-reviews-summary--product-only';
+		}
 
 		ob_start();
 		?>
-		<div class="os-reviews-summary" aria-label="<?php echo esc_attr( sprintf( 'Average rating %.1f out of 5 from %d reviews', $rating, $total ) ); ?>">
+		<div class="<?php echo esc_attr( implode( ' ', $classes ) ); ?>" aria-label="<?php echo esc_attr( sprintf( 'Average rating %.1f out of 5 from %d reviews', $rating, $total ) ); ?>">
 			<div class="os-reviews-summary__brand">
 				<span class="os-reviews-summary__badge" aria-hidden="true">★</span>
 				<div>
@@ -47,11 +53,13 @@ class OverSeek_Review_Renderer {
 				</div>
 			</div>
 			<div class="os-reviews-summary__ratings">
-				<div class="os-reviews-summary__rating">
-					<?php echo self::render_stars( $rating ); ?>
-					<span><?php esc_html_e( 'Store rating', 'overseek-wc' ); ?></span>
-					<strong><?php echo esc_html( number_format_i18n( $rating, 2 ) ); ?> / 5</strong>
-				</div>
+				<?php if ( ! $product_only ) : ?>
+					<div class="os-reviews-summary__rating">
+						<?php echo self::render_stars( $rating ); ?>
+						<span><?php esc_html_e( 'Store rating', 'overseek-wc' ); ?></span>
+						<strong><?php echo esc_html( number_format_i18n( $rating, 2 ) ); ?> / 5</strong>
+					</div>
+				<?php endif; ?>
 				<div class="os-reviews-summary__rating">
 					<?php echo self::render_stars( $product_rating ); ?>
 					<span><?php esc_html_e( 'Product rating', 'overseek-wc' ); ?></span>

@@ -229,7 +229,8 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_reviews_shortcode( array $atts = [] ): string {
+	public function render_reviews_shortcode( $atts = [] ): string {
+		$atts    = $this->normalize_shortcode_atts( $atts );
 		$args    = $this->normalize_shortcode_args( $atts, 'overseek_reviews' );
 		$reviews = $this->get_reviews( $args );
 		$summary = $this->get_summary( $args );
@@ -254,7 +255,8 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_cusrev_all_reviews_shortcode( array $atts = [] ): string {
+	public function render_cusrev_all_reviews_shortcode( $atts = [] ): string {
+		$atts = $this->normalize_shortcode_atts( $atts );
 		$atts = $this->map_cusrev_args( $atts, 'all' );
 		return $this->render_reviews_shortcode( $atts );
 	}
@@ -265,7 +267,8 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_cusrev_grid_shortcode( array $atts = [] ): string {
+	public function render_cusrev_grid_shortcode( $atts = [] ): string {
+		$atts = $this->normalize_shortcode_atts( $atts );
 		$atts = $this->map_cusrev_args( $atts, 'grid' );
 		return $this->render_reviews_shortcode( $atts );
 	}
@@ -276,9 +279,10 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_cusrev_slider_shortcode( array $atts = [] ): string {
+	public function render_cusrev_slider_shortcode( $atts = [] ): string {
+		$atts = $this->normalize_shortcode_atts( $atts );
 		$atts = $this->map_cusrev_args( $atts, 'slider' );
-		return $this->render_slider_shortcode( $atts, 'cusrev_reviews_slider' );
+		return $this->render_slider_shortcode( $atts, null, 'cusrev_reviews_slider' );
 	}
 
 	/**
@@ -288,7 +292,8 @@ class OverSeek_Reviews {
 	 * @param string               $tag Shortcode tag.
 	 * @return string
 	 */
-	public function render_slider_shortcode( array $atts = [], string $tag = 'overseek_review_slider' ): string {
+	public function render_slider_shortcode( $atts = [], $content = null, string $tag = 'overseek_review_slider' ): string {
+		$atts           = $this->normalize_shortcode_atts( $atts );
 		$args           = $this->normalize_shortcode_args( $atts, $tag );
 		$args['layout'] = 'slider';
 		$reviews        = $this->get_reviews( $args );
@@ -321,7 +326,7 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_cusrev_rating_shortcode( array $atts = [] ): string {
+	public function render_cusrev_rating_shortcode( $atts = [] ): string {
 		return $this->render_review_stars_shortcode( $atts );
 	}
 
@@ -331,7 +336,8 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_review_stars_shortcode( array $atts = [] ): string {
+	public function render_review_stars_shortcode( $atts = [] ): string {
+		$atts = $this->normalize_shortcode_atts( $atts );
 		$atts = shortcode_atts(
 			[
 				'product'     => '',
@@ -396,7 +402,8 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_cusrev_review_button_shortcode( array $atts = [] ): string {
+	public function render_cusrev_review_button_shortcode( $atts = [] ): string {
+		$atts = $this->normalize_shortcode_atts( $atts );
 		$atts = shortcode_atts( [ 'label' => 'Review', 'bg' => '#0073aa', 'color' => '#ffffff', 'radius' => '4px' ], $atts, 'cusrev_review_button' );
 		$permalink = get_permalink( $this->get_current_product_id() );
 		$url       = $permalink ? $permalink . '#review_form' : home_url( '/#review_form' );
@@ -420,7 +427,8 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_product_reviews_shortcode( array $atts = [] ): string {
+	public function render_product_reviews_shortcode( $atts = [] ): string {
+		$atts = $this->normalize_shortcode_atts( $atts );
 		$args = $this->normalize_shortcode_args( $atts, 'overseek_product_reviews' );
 		$args['product_reviews'] = 'true';
 		$args['shop_reviews']    = 'false';
@@ -450,7 +458,14 @@ class OverSeek_Reviews {
 		}
 
 		return '<div id="' . esc_attr( $shell_id ) . '" class="os-reviews-shell os-reviews-shell--product" data-os-reviews-shell>'
-			. OverSeek_Review_Renderer::render_summary( $summary, $this->get_summary_context( $args, $summary ) )
+			. OverSeek_Review_Renderer::render_summary(
+				$summary,
+				[
+					'product_only'    => true,
+					'product_summary' => $summary,
+					'store_name'      => get_bloginfo( 'name' ),
+				]
+			)
 			. $this->render_schema_markup( $summary, $args )
 			. OverSeek_Review_Renderer::render_reviews( $reviews, $args )
 			. $this->render_pagination( $summary, $args )
@@ -464,7 +479,8 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_rows_shortcode( array $atts = [] ): string {
+	public function render_rows_shortcode( $atts = [] ): string {
+		$atts    = $this->normalize_shortcode_atts( $atts );
 		$args    = $this->normalize_shortcode_args( $atts, 'overseek_review_rows' );
 		$reviews = $this->get_reviews( $args );
 		if ( empty( $reviews ) && $this->is_block_editor_preview_request() ) {
@@ -480,7 +496,8 @@ class OverSeek_Reviews {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_summary_shortcode( array $atts = [] ): string {
+	public function render_summary_shortcode( $atts = [] ): string {
+		$atts = $this->normalize_shortcode_atts( $atts );
 		$args = $this->normalize_shortcode_args( $atts, 'overseek_review_summary' );
 		if ( empty( $args['product_id'] ) ) {
 			$args['product_id'] = $this->get_current_product_id();
@@ -846,6 +863,16 @@ class OverSeek_Reviews {
 		</form>
 		<?php
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Normalize attributes passed by WordPress shortcode callbacks.
+	 *
+	 * @param mixed $atts Raw shortcode attributes.
+	 * @return array<string, mixed>
+	 */
+	private function normalize_shortcode_atts( $atts ): array {
+		return is_array( $atts ) ? $atts : [];
 	}
 
 	/**

@@ -86,6 +86,10 @@
 	padding-left: clamp(0px, 2vw, 16px);
 }
 
+.os-reviews-summary--product-only .os-reviews-summary__ratings {
+	padding-left: 0;
+}
+
 .os-reviews-summary__rating {
 	display: grid;
 	grid-template-columns: auto auto auto;
@@ -686,8 +690,20 @@ video.os-review-media {
 		padding: 20px;
 	}
 
+	.os-reviews-summary--product-only {
+		gap: 16px;
+	}
+
 	.os-reviews-summary__brand {
 		justify-content: center;
+	}
+
+	.os-reviews-summary--product-only .os-reviews-summary__brand {
+		justify-content: flex-start;
+	}
+
+	.os-reviews-summary--product-only .os-reviews-summary__brand strong {
+		font-size: 24px;
 	}
 
 	.os-reviews-summary__badge {
@@ -702,6 +718,10 @@ video.os-review-media {
 		padding-left: 0;
 	}
 
+	.os-reviews-summary--product-only .os-reviews-summary__ratings {
+		grid-template-columns: 1fr;
+	}
+
 	.os-reviews-summary__rating {
 		grid-template-columns: 1fr;
 		justify-items: center;
@@ -712,6 +732,13 @@ video.os-review-media {
 		background: rgba(248, 250, 252, 0.82);
 		text-align: center;
 		white-space: normal;
+	}
+
+	.os-reviews-summary--product-only .os-reviews-summary__rating {
+		grid-template-columns: auto 1fr auto;
+		justify-items: start;
+		align-items: center;
+		text-align: left;
 	}
 
 	.os-reviews-summary__rating .os-review-stars {

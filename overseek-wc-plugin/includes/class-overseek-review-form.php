@@ -46,7 +46,8 @@ class OverSeek_Review_Form {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_shortcode( array $atts = [] ): string {
+	public function render_shortcode( $atts = [] ): string {
+		$atts = is_array( $atts ) ? $atts : [];
 		$attributes = shortcode_atts(
 			[
 				'product_id' => 0,
@@ -170,7 +171,7 @@ class OverSeek_Review_Form {
 	public function handle_submission(): void {
 		$product_id  = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
 		$shop_review = ! empty( $_POST['shop_review'] );
-		$redirect    = $shop_review ? home_url( '/' ) : ( $product_id ? get_permalink( $product_id ) : home_url( '/' ) );
+		$redirect    = $shop_review ? home_url( '/' ) : $this->get_review_redirect_url( $product_id );
 
 		if ( ! isset( $_POST[ self::NONCE_NAME ] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST[ self::NONCE_NAME ] ) ), self::NONCE_ACTION ) ) {
 			$this->redirect_with_status( $redirect, 'invalid' );
@@ -421,14 +422,32 @@ class OverSeek_Review_Form {
 	/**
 	 * Redirect back to product with a status flag.
 	 *
-	 * @param string $url    Redirect URL.
+	 * @param mixed  $url    Redirect URL.
 	 * @param string $status Status slug.
 	 * @return void
 	 */
-	private function redirect_with_status( string $url, string $status ): void {
+	private function redirect_with_status( $url, string $status ): void {
+		$url      = is_string( $url ) && '' !== $url ? $url : home_url( '/' );
 		$redirect = add_query_arg( 'overseek_review_status', rawurlencode( $status ), $url );
 		wp_safe_redirect( esc_url_raw( $redirect . '#reviews' ) );
 		exit;
+	}
+
+	/**
+	 * Get a safe redirect URL for review submissions.
+	 *
+	 * @param int $product_id Product ID.
+	 * @return string
+	 */
+	private function get_review_redirect_url( int $product_id ): string {
+		if ( $product_id ) {
+			$permalink = get_permalink( $product_id );
+			if ( is_string( $permalink ) && '' !== $permalink ) {
+				return $permalink;
+			}
+		}
+
+		return home_url( '/' );
 	}
 
 	/**

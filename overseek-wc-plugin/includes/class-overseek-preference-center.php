@@ -182,7 +182,8 @@ class OverSeek_Preference_Center {
 	 * @param array<string, mixed> $atts Shortcode attributes.
 	 * @return string
 	 */
-	public function render_shortcode( array $atts = [] ): string {
+	public function render_shortcode( $atts = [] ): string {
+		$atts = is_array( $atts ) ? $atts : [];
 		$attributes = shortcode_atts(
 			[
 				'title' => 'Email Preferences',

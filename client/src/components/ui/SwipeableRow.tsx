@@ -123,7 +123,7 @@ export function SwipeableRow({
 
             {/* Content */}
             <div
-                className="relative bg-white"
+                className="relative bg-transparent"
                 style={{
                     transform: `translateX(${currentX}px)`,
                     transition: isDragging ? 'none' : 'transform 0.2s ease-out'
