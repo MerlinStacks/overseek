@@ -20,7 +20,6 @@ class OverSeek_Review_Form {
 	private const NONCE_NAME   = 'overseek_review_nonce';
 	private const MAX_FILES    = 6;
 	private const MAX_BYTES    = 26214400;
-	private const MIN_SUBMIT_SECONDS = 3;
 
 	/**
 	 * Track forms already rendered during the request to avoid duplicate fallbacks.
@@ -254,7 +253,7 @@ class OverSeek_Review_Form {
 			<input type="hidden" name="product_id" value="<?php echo esc_attr( (string) $product_id ); ?>">
 			<input type="hidden" name="redirect_to" value="<?php echo esc_url( $this->get_current_request_url() ); ?>">
 			<input type="hidden" name="rendered_at" value="<?php echo esc_attr( (string) time() ); ?>">
-			<input type="text" name="website" value="" tabindex="-1" autocomplete="off" class="os-review-form__website" aria-hidden="true">
+			<input type="text" name="overseek_review_contact_url" value="" tabindex="-1" autocomplete="new-password" class="os-review-form__website" aria-hidden="true">
 			<?php if ( $shop_review ) : ?>
 				<input type="hidden" name="shop_review" value="1">
 			<?php endif; ?>
@@ -344,16 +343,12 @@ class OverSeek_Review_Form {
 	 * @return bool
 	 */
 	private function passes_spam_checks(): bool {
-		if ( ! empty( $_POST['website'] ) ) {
+		if ( ! empty( $_POST['overseek_review_contact_url'] ) ) {
 			return false;
 		}
 
 		$rendered_at = isset( $_POST['rendered_at'] ) ? absint( $_POST['rendered_at'] ) : 0;
-		if ( ! $rendered_at ) {
-			return false;
-		}
-
-		return time() - $rendered_at >= self::MIN_SUBMIT_SECONDS;
+		return ! $rendered_at || $rendered_at <= time();
 	}
 
 	/**
