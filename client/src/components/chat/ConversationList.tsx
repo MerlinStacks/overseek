@@ -10,7 +10,7 @@ import { useAccount } from '../../context/AccountContext';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { BulkActionToolbar } from './BulkActionToolbar';
 import { ConversationItem, type Conversation } from './ConversationItem';
-
+import { htmlToPreviewText } from '../../utils/messagePreview';
 
 interface Label {
     id: string;
@@ -258,16 +258,7 @@ export function ConversationList({
         content = content.replace(/\[[^\]]+\]\(\/uploads\/[^)]+\)/gi, '');
         content = content.replace(/\*\*Attachments:\*\*\s*/gi, '');
 
-        // Strip HTML tags, then decode common entities
-        const preview = content
-            .replace(/<[^>]*>/g, '')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 80);
+        const preview = htmlToPreviewText(content).slice(0, 80);
         return { subject, preview, showPaperclip };
     }, [hasAttachments]);
 

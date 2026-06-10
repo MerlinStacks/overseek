@@ -335,6 +335,11 @@ export class NodeExecutor {
                 let sentCount = 0;
                 const skippedReasons = new Set<string>();
 
+                const configuredEmailCategory = String(config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING')).toUpperCase();
+                const emailCategory = configuredEmailCategory === 'TRANSACTIONAL'
+                    ? 'TRANSACTIONAL'
+                    : 'MARKETING';
+
                 for (const recipientEmail of recipientList) {
                     const sendResult = await this.emailService.sendEmail(
                         enrollment.automation.accountId,
@@ -346,7 +351,7 @@ export class NodeExecutor {
                         {
                             source: 'AUTOMATION',
                             sourceId: enrollment.automationId,
-                            category: config.emailCategory === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING',
+                            category: emailCategory,
                             fromName: config.overrideFrom ? config.fromName : undefined,
                             fromEmail: config.overrideFrom ? config.fromEmail : undefined,
                             replyToEmail: config.overrideFrom ? config.replyToEmail : undefined

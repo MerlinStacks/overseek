@@ -599,10 +599,11 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         });
 
         // GET /:id
-        fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+        fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/:id', async (request, reply) => {
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-            const conv = await chatService.getConversation(accountId, request.params.id);
+            const limit = Math.min(Math.max(parseInt(request.query.limit || '100', 10) || 100, 1), 200);
+            const conv = await chatService.getConversation(accountId, request.params.id, { messageLimit: limit });
             if (!conv) return reply.code(404).send({ error: 'Not found' });
             return conv;
         });

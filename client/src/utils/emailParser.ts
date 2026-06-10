@@ -13,6 +13,8 @@ interface QuotedContentInfo {
     quotedAttachmentCount: number;
 }
 
+const QUOTED_ANALYSIS_LIMIT = 20000;
+
 /**
  * Parses email content to extract subject line and body.
  */
@@ -97,7 +99,7 @@ function stripHtmlForAnalysis(html: string): string {
  * Extracts a preview snippet from quoted content (first meaningful line or two).
  */
 function extractQuotedPreview(quotedContent: string): string {
-    const text = stripHtmlForAnalysis(quotedContent);
+    const text = stripHtmlForAnalysis(quotedContent.slice(0, QUOTED_ANALYSIS_LIMIT));
     const lines = text.split('\n').filter(line => {
         const trimmed = line.trim();
         // Skip empty lines, quote markers, and metadata headers
@@ -118,7 +120,7 @@ function extractQuotedPreview(quotedContent: string): string {
  * Counts meaningful lines in quoted content.
  */
 function countQuotedLines(quotedContent: string): number {
-    const text = stripHtmlForAnalysis(quotedContent);
+    const text = stripHtmlForAnalysis(quotedContent.slice(0, QUOTED_ANALYSIS_LIMIT));
     return text.split('\n').filter(line => line.trim().length > 0).length;
 }
 
@@ -126,8 +128,9 @@ function countQuotedLines(quotedContent: string): number {
  * Counts attachments referenced in quoted content.
  */
 function countQuotedAttachments(quotedContent: string): number {
-    const imgMatches = quotedContent.match(/<img[^>]+>/gi) || [];
-    const attachmentMatches = quotedContent.match(/<\d+.*?\.pdf>|<\d+.*?\.docx?>|<\d+.*?\.xlsx?>/gi) || [];
+    const analysisContent = quotedContent.slice(0, QUOTED_ANALYSIS_LIMIT);
+    const imgMatches = analysisContent.match(/<img[^>]+>/gi) || [];
+    const attachmentMatches = analysisContent.match(/<\d+.*?\.pdf>|<\d+.*?\.docx?>|<\d+.*?\.xlsx?>/gi) || [];
     return imgMatches.length + attachmentMatches.length;
 }
 

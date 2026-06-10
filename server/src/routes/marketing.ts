@@ -524,7 +524,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
             const accountId = getAccountId(request);
 
-            const [campaignEvents, emailLogStats, recentUnsubscribes, emailLogsForTrend, unsubscribesForTrend] = await Promise.all([
+            const [campaignEvents, emailLogStats, recentUnsubscribes, emailLogsForTrend, unsubscribesForTrend, automationGoalEvents, automationPurchaseEvents] = await Promise.all([
                 prisma.campaignEvent.groupBy({
                     by: ['campaignType', 'eventType'],
                     where: {
@@ -572,6 +572,27 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                     select: {
                         createdAt: true
                     }
+                }),
+                prisma.automationGoalEvent.findMany({
+                    where: {
+                        accountId,
+                        createdAt: { gte: since },
+                        revenue: { not: null }
+                    },
+                    select: {
+                        orderId: true,
+                        revenue: true
+                    }
+                }),
+                prisma.campaignEvent.findMany({
+                    where: {
+                        accountId,
+                        campaignType: 'automation',
+                        eventType: 'purchase',
+                        createdAt: { gte: since },
+                        orderId: { not: null }
+                    },
+                    select: { orderId: true }
                 })
             ]);
 
@@ -596,6 +617,16 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 if (event.eventType === 'unsubscribe') {
                     totalUnsubscribes += event._count;
                 }
+            }
+
+            const attributedAutomationOrderIds = new Set(
+                automationPurchaseEvents
+                    .map((event) => event.orderId)
+                    .filter((orderId): orderId is string => Boolean(orderId))
+            );
+            for (const goal of automationGoalEvents) {
+                if (goal.orderId && attributedAutomationOrderIds.has(goal.orderId)) continue;
+                flowRevenue += Number(goal.revenue || 0);
             }
 
             const sentCount = emailLogStats.reduce((sum, row) => sum + row._count, 0);

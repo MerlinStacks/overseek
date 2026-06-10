@@ -19,6 +19,8 @@ import { GravatarAvatar } from './GravatarAvatar';
 import { parseEmailContent, parseQuotedContent, cleanEmailMetadata } from '../../utils/emailParser';
 import { AttachmentGallery } from './AttachmentDisplay';
 
+const MAX_RENDERED_EMAIL_CHARS = 60000;
+
 interface MessageBubbleProps {
     message: {
         id: string;
@@ -158,14 +160,20 @@ export const MessageBubble = memo(function MessageBubble({
 
         return attachmentsList;
     }, [body]);
-    const isHtmlContent = useMemo(() => /<[a-z][\s\S]*>/i.test(mainContent), [mainContent]);
+    const renderedMainContent = useMemo(() => ({
+        content: mainContent.length > MAX_RENDERED_EMAIL_CHARS
+            ? mainContent.slice(0, MAX_RENDERED_EMAIL_CHARS)
+            : mainContent,
+        isTruncated: mainContent.length > MAX_RENDERED_EMAIL_CHARS,
+    }), [mainContent]);
+    const isHtmlContent = useMemo(() => /<[a-z][\s\S]*>/i.test(renderedMainContent.content), [renderedMainContent.content]);
 
     const sanitizedContent = useMemo(() => {
         // Clean up email metadata first (raw MIME headers, charset, etc.)
         // Then strip attachment markdown links before rendering
         // Remove patterns like: [filename](/uploads/attachments/...)
         // Also remove the "**Attachments:**" header and following lines if present
-        let cleanContent = cleanEmailMetadata(mainContent);
+        let cleanContent = cleanEmailMetadata(renderedMainContent.content);
 
         // Remove "**Attachments:**" header and the markdown links that follow
         cleanContent = cleanContent.replace(/\n\n\*\*Attachments:\*\*\n[\s\S]*$/i, '');
@@ -188,19 +196,23 @@ export const MessageBubble = memo(function MessageBubble({
             ALLOW_DATA_ATTR: false,
             ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/))/i,
         });
-    }, [mainContent]);
+    }, [renderedMainContent.content]);
 
     const sanitizedQuotedContent = useMemo(() => {
-        if (!quotedContent) return null;
+        if (!quotedContent || !showQuoted) return null;
         // Clean email metadata from quoted content as well
-        const cleanedQuoted = cleanEmailMetadata(quotedContent);
+        const cleanedQuoted = cleanEmailMetadata(
+            quotedContent.length > MAX_RENDERED_EMAIL_CHARS
+                ? quotedContent.slice(0, MAX_RENDERED_EMAIL_CHARS)
+                : quotedContent
+        );
         return DOMPurify.sanitize(cleanedQuoted, {
             ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'div', 'span'],
             ALLOWED_ATTR: ['href', 'target'],
             ALLOW_DATA_ATTR: false,
             ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/))/i,
         });
-    }, [quotedContent]);
+    }, [quotedContent, showQuoted]);
 
     const handleContentClick = (e: React.MouseEvent) => {
         // Don't intercept when the user has selected text (allows highlight + copy).
@@ -294,6 +306,14 @@ export const MessageBubble = memo(function MessageBubble({
                             onClick={handleContentClick}
                             dangerouslySetInnerHTML={{ __html: sanitizedContent }}
                         />
+                        {renderedMainContent.isTruncated && (
+                            <div className={cn(
+                                "mt-2 rounded-md px-2 py-1 text-xs",
+                                isMe ? "bg-blue-500/30 text-blue-50" : "bg-gray-100 text-gray-600"
+                            )}>
+                                Message body trimmed for performance. Reply history and attachments remain below when available.
+                            </div>
+                        )}
 
                         {/* Quoted content (collapsible) */}
                         {quotedContent && (

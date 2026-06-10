@@ -132,7 +132,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
         const showReviewer = block.props.showReviewer !== false;
         const showProductName = block.props.showProductName !== false;
         const showCta = block.props.showCta !== false;
-        return <div style={{ padding: (block.props as { padding?: string }).padding || '18px', margin: '8px 0', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: theme.borderRadius, textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }}>{showHeadline && <p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
+        return <div style={{ padding: block.props.padding || '18px', margin: '8px 0', background: block.props.backgroundColor || 'transparent', border: block.props.borderColor ? `1px solid ${block.props.borderColor}` : 0, borderRadius: theme.borderRadius, textAlign: block.props.align || 'left', ...responsiveStyle }}>{showHeadline && <p contentEditable suppressContentEditableWarning dir="ltr" onFocus={(event) => normalizeEditorDirection(event.currentTarget)} onBlur={(event) => {
             normalizeEditorDirection(event.currentTarget);
             const nextHeadline = sanitizeRtlText(event.currentTarget.textContent || '');
             onUpdate((draft) => {

@@ -12,8 +12,10 @@ import { WebhookDeliveryService } from '../services/WebhookDeliveryService';
 import { EventBus, EVENTS } from '../services/events';
 import { redisClient } from '../utils/redis';
 import { isExcludedOrderStatus, normalizeOrderStatus } from '../constants/orderStatus';
+import { campaignTrackingService } from '../services/CampaignTrackingService';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
+const PAID_ATTRIBUTION_STATUSES = ['processing', 'on-hold', 'completed'];
 
 /** Verify WooCommerce HMAC signature */
 const verifySignature = (
@@ -66,6 +68,24 @@ const isFirstOrderForCustomer = async (accountId: string, order: any): Promise<b
 
     return count === 1;
 };
+
+async function attributeOrderPurchase(accountId: string, order: any): Promise<void> {
+    const rawEmail = order.billing?.email;
+    const customerEmail = typeof rawEmail === 'string' && rawEmail.trim()
+        ? rawEmail.toLowerCase().trim()
+        : '';
+    if (!customerEmail) return;
+
+    const revenue = Number(order.total || 0);
+    if (!Number.isFinite(revenue)) return;
+
+    await campaignTrackingService.trackPurchase(
+        accountId,
+        String(order.id),
+        revenue,
+        customerEmail
+    );
+}
 
 /**
  * Process a webhook payload (used for both live and replay).
@@ -180,6 +200,18 @@ export async function processWebhookPayload(
                 previousStatus,
                 newStatus: orderStatus
             });
+        }
+
+        if (previousStatus !== orderStatus && PAID_ATTRIBUTION_STATUSES.includes(orderStatus)) {
+            try {
+                await attributeOrderPurchase(accountId, body);
+            } catch (error) {
+                Logger.warn('[Webhook] Failed to attribute order purchase to email campaign', {
+                    accountId,
+                    orderId: body.id,
+                    error
+                });
+            }
         }
 
         if ((orderStatus === 'processing' || orderStatus === 'on-hold') && previousStatus !== orderStatus) {

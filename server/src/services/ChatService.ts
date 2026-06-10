@@ -247,14 +247,15 @@ export class ChatService {
         });
     }
 
-    async getConversation(accountId: string, id: string) {
+    async getConversation(accountId: string, id: string, options?: { messageLimit?: number }) {
+        const messageLimit = Math.min(Math.max(options?.messageLimit || 100, 1), 200);
         const blockedContactFilter = ChatService.buildBlockedContactFilter(
             await BlockedContactService.listBlockedEmails(accountId)
         );
         const conversation = await prisma.conversation.findFirst({
             where: { id, accountId, ...blockedContactFilter },
             include: {
-                messages: { orderBy: { createdAt: 'asc' } },
+                messages: { orderBy: { createdAt: 'desc' }, take: messageLimit + 1 },
                 wooCustomer: true,
                 assignee: true,
                 mergedFrom: {
@@ -271,6 +272,8 @@ export class ChatService {
         });
 
         if (!conversation) return null;
+        const hasMoreMessages = conversation.messages.length > messageLimit;
+        const messages = (hasMoreMessages ? conversation.messages.slice(0, messageLimit) : conversation.messages).reverse();
 
         // Fetch email tracking data for this conversation
         const emailLogs = await prisma.emailLog.findMany({
@@ -286,7 +289,7 @@ export class ChatService {
 
         // Match email logs to agent messages by creation time (within 5 seconds)
         // This allows us to associate tracking info with the correct message
-        const enrichedMessages = conversation.messages.map(msg => {
+        const enrichedMessages = messages.map(msg => {
             if (msg.senderType !== 'AGENT') return msg;
 
             // Find the closest email log sent around the same time
@@ -307,7 +310,7 @@ export class ChatService {
             return msg;
         });
 
-        return { ...conversation, messages: enrichedMessages };
+        return { ...conversation, messages: enrichedMessages, hasMoreMessages };
     }
 
     async addMessage(

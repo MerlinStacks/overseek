@@ -274,6 +274,10 @@ export interface ReviewBlock extends BaseBlock {
         showReviewer?: boolean;
         showProductName?: boolean;
         showCta?: boolean;
+        backgroundColor?: string;
+        borderColor?: string;
+        padding?: string;
+        align?: 'left' | 'center' | 'right';
     };
 }
 
@@ -809,7 +813,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
             showReviewer ? escapeHtml(block.props.reviewer || '{{review.reviewer}}') : '',
             showProductName ? `on ${escapeHtml(block.props.productName || '{{review.productName}}')}` : '',
         ].filter(Boolean).join(' ');
-        return `<div class="${joinClasses(blockClass, 'os-email-review')}" style="padding:${(block.props as { padding?: string }).padding || '18px'};margin:8px 0;background:#fffbeb;border:1px solid #fde68a;border-radius:${theme.borderRadius}px;text-align:${(block.props as { align?: string }).align || 'left'};">${showHeadline ? `<p class="os-email-heading" style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p>` : ''}${showRating ? `<p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p>` : ''}${showContent ? `<p class="os-email-review-content" style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p>` : ''}${attribution ? `<p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${attribution}</p>` : ''}${showCta ? `<a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.productUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a>` : ''}</div>`;
+        return `<div class="${joinClasses(blockClass, 'os-email-review')}" style="padding:${block.props.padding || '18px'};margin:8px 0;background:${block.props.backgroundColor || 'transparent'};border:${block.props.borderColor ? `1px solid ${block.props.borderColor}` : '0'};border-radius:${theme.borderRadius}px;text-align:${block.props.align || 'left'};">${showHeadline ? `<p class="os-email-heading" style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p>` : ''}${showRating ? `<p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p>` : ''}${showContent ? `<p class="os-email-review-content" style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p>` : ''}${attribution ? `<p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${attribution}</p>` : ''}${showCta ? `<a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.productUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a>` : ''}</div>`;
     }
 
     if (block.type === 'social') {

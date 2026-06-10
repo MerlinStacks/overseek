@@ -46,11 +46,15 @@ export class CampaignTrackingService {
      */
     async trackEvent(params: TrackEventParams): Promise<void> {
         try {
+            const campaignType = params.campaignType || (params.campaignId
+                ? await this.resolveCampaignType(params.accountId, params.campaignId)
+                : undefined);
+
             await prisma.campaignEvent.create({
                 data: {
                     accountId: params.accountId,
                     campaignId: params.campaignId,
-                    campaignType: params.campaignType,
+                    campaignType,
                     eventType: params.eventType,
                     recipientEmail: params.recipientEmail,
                     recipientPhone: params.recipientPhone,
@@ -94,9 +98,11 @@ export class CampaignTrackingService {
         campaignId: string,
         recipientEmail: string
     ): Promise<void> {
+        const campaignType = await this.resolveCampaignType(accountId, campaignId);
         await this.trackEvent({
             accountId,
             campaignId,
+            campaignType,
             eventType: 'open',
             recipientEmail
         });
@@ -111,9 +117,11 @@ export class CampaignTrackingService {
         recipientEmail: string,
         linkUrl: string
     ): Promise<void> {
+        const campaignType = await this.resolveCampaignType(accountId, campaignId);
         await this.trackEvent({
             accountId,
             campaignId,
+            campaignType,
             eventType: 'click',
             recipientEmail,
             linkUrl
@@ -130,15 +138,19 @@ export class CampaignTrackingService {
         customerEmail: string,
         utmCampaign?: string
     ): Promise<void> {
+        const normalizedEmail = customerEmail.trim().toLowerCase();
+        if (!normalizedEmail) return;
+
         // Try to find the campaign this purchase should be attributed to
         let campaignId = utmCampaign;
+        let campaignType: CampaignType | undefined;
 
         if (!campaignId) {
             // Look for recent sends to this email in the last 7 days
             const recentSend = await prisma.campaignEvent.findFirst({
                 where: {
                     accountId,
-                    recipientEmail: customerEmail,
+                    recipientEmail: { equals: normalizedEmail, mode: 'insensitive' },
                     eventType: 'send',
                     createdAt: {
                         gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
@@ -148,17 +160,69 @@ export class CampaignTrackingService {
             });
 
             campaignId = recentSend?.campaignId || undefined;
+            campaignType = (recentSend?.campaignType as CampaignType | null) || undefined;
+        } else {
+            campaignType = await this.resolveCampaignType(accountId, campaignId);
+        }
+
+        if (!campaignId) {
+            return;
+        }
+
+        const existingPurchase = await prisma.campaignEvent.findFirst({
+            where: {
+                accountId,
+                campaignId,
+                eventType: 'purchase',
+                orderId
+            },
+            select: { id: true }
+        });
+
+        if (existingPurchase) {
+            return;
         }
 
         await this.trackEvent({
             accountId,
             campaignId,
+            campaignType,
             eventType: 'purchase',
-            recipientEmail: customerEmail,
+            recipientEmail: normalizedEmail,
             orderId,
             revenue,
             utmCampaign
         });
+    }
+
+    private async resolveCampaignType(accountId: string, campaignId: string): Promise<CampaignType | undefined> {
+        const existingEvent = await prisma.campaignEvent.findFirst({
+            where: {
+                accountId,
+                campaignId,
+                campaignType: { not: null }
+            },
+            select: { campaignType: true },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (existingEvent?.campaignType) {
+            return existingEvent.campaignType as CampaignType;
+        }
+
+        const automation = await prisma.marketingAutomation.findFirst({
+            where: { accountId, id: campaignId },
+            select: { id: true }
+        });
+        if (automation) return 'automation';
+
+        const campaign = await prisma.marketingCampaign.findFirst({
+            where: { accountId, id: campaignId },
+            select: { id: true }
+        });
+        if (campaign) return 'broadcast';
+
+        return undefined;
     }
 
     /**

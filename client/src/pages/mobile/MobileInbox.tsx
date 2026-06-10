@@ -9,6 +9,7 @@ import { useHaptic } from '../../hooks/useHaptic';
 import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatTimeAgo } from '../../utils/format';
 import { getInitials } from '../../utils/string';
+import { htmlToPreviewText } from '../../utils/messagePreview';
 import { InboxSkeleton } from '../../components/mobile/MobileSkeleton';
 import { NewEmailModal } from '../../components/chat/NewEmailModal';
 
@@ -102,7 +103,9 @@ export function MobileInbox() {
                     ? `${c.wooCustomer.firstName || ''} ${c.wooCustomer.lastName || ''}`.trim() || c.wooCustomer.email
                     : c.guestName || c.guestEmail || 'Unknown';
 
-                const lastMessage = c.messages?.[0]?.content || 'No messages yet';
+                const lastMessage = c.messages?.[0]?.content
+                    ? htmlToPreviewText(c.messages[0].content)
+                    : 'No messages yet';
 
                 return {
                     id: c.id,
