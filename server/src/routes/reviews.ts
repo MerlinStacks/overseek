@@ -106,6 +106,18 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.post<{ Body: { ids?: string[]; status: string } }>('/bulk-moderate', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            return await reviewService.bulkModerateReviews(accountId, request.body?.ids || [], request.body?.status || '');
+        } catch (error) {
+            Logger.error('Error bulk moderating reviews', { error });
+            const status = reviewErrorStatus(error);
+            if (status) return reply.code(status).send({ error: error instanceof Error ? error.message : 'Failed to moderate reviews' });
+            return reply.code(500).send({ error: 'Failed to moderate reviews' });
+        }
+    });
+
     // Rematch all reviews to orders
     fastify.post('/rematch-all', async (request, reply) => {
         try {

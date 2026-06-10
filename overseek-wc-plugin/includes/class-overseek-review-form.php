@@ -20,6 +20,7 @@ class OverSeek_Review_Form {
 	private const NONCE_NAME   = 'overseek_review_nonce';
 	private const MAX_FILES    = 6;
 	private const MAX_BYTES    = 26214400;
+	private const MIN_SUBMIT_SECONDS = 3;
 
 	/**
 	 * Track forms already rendered during the request to avoid duplicate fallbacks.
@@ -171,9 +172,13 @@ class OverSeek_Review_Form {
 	public function handle_submission(): void {
 		$product_id  = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
 		$shop_review = ! empty( $_POST['shop_review'] );
-		$redirect    = $shop_review ? home_url( '/' ) : $this->get_review_redirect_url( $product_id );
+		$redirect    = $this->get_submitted_redirect_url( $shop_review ? home_url( '/' ) : $this->get_review_redirect_url( $product_id ) );
 
 		if ( ! isset( $_POST[ self::NONCE_NAME ] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST[ self::NONCE_NAME ] ) ), self::NONCE_ACTION ) ) {
+			$this->redirect_with_status( $redirect, 'invalid' );
+		}
+
+		if ( ! $this->passes_spam_checks() ) {
 			$this->redirect_with_status( $redirect, 'invalid' );
 		}
 
@@ -194,9 +199,6 @@ class OverSeek_Review_Form {
 			$this->redirect_with_status( $redirect, 'missing' );
 		}
 
-		$has_media = $this->has_uploaded_media();
-		$approved  = $has_media || get_option( 'comment_moderation' ) ? 0 : 1;
-
 		$comment_id = wp_new_comment(
 			[
 				'comment_post_ID'      => $product_id,
@@ -204,7 +206,7 @@ class OverSeek_Review_Form {
 				'comment_author_email' => $email,
 				'comment_content'      => $content,
 				'comment_type'         => 'review',
-				'comment_approved'     => $approved,
+				'comment_approved'     => 0,
 				'comment_meta'         => [
 					'rating'               => $rating,
 					'overseek_shop_review' => $shop_review ? '1' : '0',
@@ -219,7 +221,6 @@ class OverSeek_Review_Form {
 		$media_ids = $this->handle_media_uploads( $product_id );
 		if ( ! empty( $media_ids ) ) {
 			update_comment_meta( (int) $comment_id, 'overseek_media_ids', $media_ids );
-			wp_set_comment_status( (int) $comment_id, 'hold' );
 		}
 
 		$this->redirect_with_status( $redirect, 'submitted' );
@@ -251,6 +252,9 @@ class OverSeek_Review_Form {
 			<h3><?php echo esc_html( $title ); ?></h3>
 			<input type="hidden" name="action" value="overseek_submit_review">
 			<input type="hidden" name="product_id" value="<?php echo esc_attr( (string) $product_id ); ?>">
+			<input type="hidden" name="redirect_to" value="<?php echo esc_url( $this->get_current_request_url() ); ?>">
+			<input type="hidden" name="rendered_at" value="<?php echo esc_attr( (string) time() ); ?>">
+			<input type="text" name="website" value="" tabindex="-1" autocomplete="off" class="os-review-form__website" aria-hidden="true">
 			<?php if ( $shop_review ) : ?>
 				<input type="hidden" name="shop_review" value="1">
 			<?php endif; ?>
@@ -287,7 +291,7 @@ class OverSeek_Review_Form {
 				<span><?php esc_html_e( 'Photos or videos', 'overseek-wc' ); ?></span>
 				<strong><?php esc_html_e( 'Drag files here or click to upload', 'overseek-wc' ); ?></strong>
 				<input type="file" name="os_review_media[]" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm" multiple>
-				<small><?php echo esc_html( sprintf( __( 'Upload up to %1$d files, up to %2$s each. Reviews with media are held for moderation.', 'overseek-wc' ), self::MAX_FILES, size_format( $this->max_upload_bytes() ) ) ); ?></small>
+				<small><?php echo esc_html( sprintf( __( 'Upload up to %1$d files, up to %2$s each. Reviews are held for moderation.', 'overseek-wc' ), self::MAX_FILES, size_format( $this->max_upload_bytes() ) ) ); ?></small>
 			</label>
 
 			<button type="submit" class="os-review-form__submit"><?php esc_html_e( 'Submit review', 'overseek-wc' ); ?></button>
@@ -332,6 +336,24 @@ class OverSeek_Review_Form {
 	 */
 	private function has_uploaded_media(): bool {
 		return isset( $_FILES['os_review_media']['name'] ) && is_array( $_FILES['os_review_media']['name'] ) && ! empty( array_filter( $_FILES['os_review_media']['name'] ) );
+	}
+
+	/**
+	 * Apply lightweight bot checks before creating a review.
+	 *
+	 * @return bool
+	 */
+	private function passes_spam_checks(): bool {
+		if ( ! empty( $_POST['website'] ) ) {
+			return false;
+		}
+
+		$rendered_at = isset( $_POST['rendered_at'] ) ? absint( $_POST['rendered_at'] ) : 0;
+		if ( ! $rendered_at ) {
+			return false;
+		}
+
+		return time() - $rendered_at >= self::MIN_SUBMIT_SECONDS;
 	}
 
 	/**
@@ -431,6 +453,43 @@ class OverSeek_Review_Form {
 		$redirect = add_query_arg( 'overseek_review_status', rawurlencode( $status ), $url );
 		wp_safe_redirect( esc_url_raw( $redirect . '#reviews' ) );
 		exit;
+	}
+
+	/**
+	 * Get the submitted same-page redirect URL, falling back to a product URL.
+	 *
+	 * @param string $fallback Fallback redirect URL.
+	 * @return string
+	 */
+	private function get_submitted_redirect_url( string $fallback ): string {
+		$url = '';
+		if ( ! empty( $_POST['redirect_to'] ) ) {
+			$url = esc_url_raw( wp_unslash( $_POST['redirect_to'] ) );
+		}
+
+		if ( '' === $url ) {
+			$referer = wp_get_referer();
+			$url     = is_string( $referer ) ? $referer : '';
+		}
+
+		$url = wp_validate_redirect( $url, $fallback );
+
+		return remove_query_arg( 'overseek_review_status', $url );
+	}
+
+	/**
+	 * Get the current request URL for post-submit redirects.
+	 *
+	 * @return string
+	 */
+	private function get_current_request_url(): string {
+		$scheme      = is_ssl() ? 'https' : 'http';
+		$home_host   = wp_parse_url( home_url(), PHP_URL_HOST );
+		$host        = isset( $_SERVER['HTTP_HOST'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ) : ( is_string( $home_host ) ? $home_host : '' );
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '/';
+		$url         = wp_validate_redirect( esc_url_raw( $scheme . '://' . $host . $request_uri ), home_url( '/' ) );
+
+		return remove_query_arg( 'overseek_review_status', $url );
 	}
 
 	/**

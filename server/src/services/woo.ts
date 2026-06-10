@@ -309,10 +309,11 @@ export class WooService {
         return this.requestWithRetry('get', 'customers', apiParams);
     }
 
-    async getReviews(params: { after?: string; page?: number; per_page?: number } = {}) {
+    async getReviews(params: { after?: string; page?: number; per_page?: number; status?: string } = {}) {
         if (this.isDemo) return Promise.resolve({ data: MOCK_REVIEWS, total: MOCK_REVIEWS.length, totalPages: 1 });
         const { after, ...rest } = params;
         const apiParams = {
+            status: 'all',
             ...rest,
             per_page: params.per_page || 20,
             ...(after && { modified_after: after })

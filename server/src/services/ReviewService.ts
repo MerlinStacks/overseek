@@ -29,7 +29,7 @@ export class ReviewService {
             ];
         }
 
-        const [reviews, total] = await Promise.all([
+        const [reviews, total, counts] = await Promise.all([
             prisma.wooReview.findMany({
                 where,
                 orderBy: { dateCreated: 'desc' },
@@ -41,18 +41,31 @@ export class ReviewService {
                 }
             }),
             prisma.wooReview.count({ where }),
+            this.getStatusCounts(accountId, params.search),
         ]);
+
+        const productIds = Array.from(new Set(reviews.map((review) => review.productId).filter(Boolean)));
+        const products = productIds.length > 0
+            ? await prisma.wooProduct.findMany({
+                where: { accountId, wooId: { in: productIds } },
+                select: { wooId: true, permalink: true, mainImage: true }
+            })
+            : [];
+        const productsByWooId = new Map(products.map((product) => [product.wooId, product]));
 
         return {
             reviews: reviews.map((review) => {
                 const rawData = review.rawData && typeof review.rawData === 'object' && !Array.isArray(review.rawData)
                     ? review.rawData as Record<string, unknown>
                     : {};
+                const product = productsByWooId.get(review.productId);
 
                 return {
                     ...review,
                     media: Array.isArray(rawData.media) ? rawData.media : [],
                     replies: Array.isArray(rawData.replies) ? rawData.replies : [],
+                    productUrl: product?.permalink || null,
+                    productImage: product?.mainImage || null,
                 };
             }),
             pagination: {
@@ -61,6 +74,35 @@ export class ReviewService {
                 limit,
                 pages: Math.ceil(total / limit),
             },
+            statusCounts: counts,
+        };
+    }
+
+    async getStatusCounts(accountId: string, search?: string) {
+        const where: any = { accountId };
+
+        if (search) {
+            where.OR = [
+                { content: { contains: search, mode: 'insensitive' } },
+                { reviewer: { contains: search, mode: 'insensitive' } },
+                { productName: { contains: search, mode: 'insensitive' } },
+            ];
+        }
+
+        const grouped = await prisma.wooReview.groupBy({
+            by: ['status'],
+            where,
+            _count: { status: true },
+        });
+
+        const counts = grouped.reduce<Record<string, number>>((acc, item) => {
+            acc[item.status || 'unknown'] = item._count.status;
+            return acc;
+        }, {});
+
+        return {
+            total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+            counts,
         };
     }
 
@@ -124,6 +166,40 @@ export class ReviewService {
         return this.updateReview(accountId, reviewId, { status });
     }
 
+    async bulkModerateReviews(accountId: string, reviewIds: string[], status: string) {
+        const normalizedStatus = this.normalizeStatus(status);
+        const uniqueReviewIds = Array.from(new Set(reviewIds.map((id) => String(id || '').trim()).filter(Boolean)));
+        if (uniqueReviewIds.length === 0) throw new ReviewServiceError('REVIEW_IDS_REQUIRED', 'At least one review is required');
+        if (uniqueReviewIds.length > 100) throw new ReviewServiceError('REVIEW_BULK_LIMIT', 'Bulk moderation is limited to 100 reviews');
+
+        const reviews = await prisma.wooReview.findMany({
+            where: { accountId, id: { in: uniqueReviewIds } },
+            select: { id: true, wooId: true }
+        });
+
+        if (reviews.length !== uniqueReviewIds.length) {
+            throw new ReviewServiceError('REVIEW_NOT_FOUND', 'One or more reviews were not found');
+        }
+
+        const woo = await WooService.forAccount(accountId);
+        const results = await Promise.allSettled(
+            reviews.map((review) => woo.updateReview(review.wooId, { status: normalizedStatus }))
+        );
+        const failed = results.filter((result) => result.status === 'rejected').length;
+        const successfulIds = reviews
+            .filter((_, index) => results[index].status === 'fulfilled')
+            .map((review) => review.id);
+
+        if (successfulIds.length > 0) {
+            await prisma.wooReview.updateMany({
+                where: { accountId, id: { in: successfulIds } },
+                data: { status: normalizedStatus }
+            });
+        }
+
+        return { success: failed === 0, updated: successfulIds.length, failed, status: normalizedStatus };
+    }
+
     /**
      * Re-matches all reviews to orders using enhanced matching algorithm.
      * Runs in background and returns statistics.
@@ -154,6 +230,22 @@ export class ReviewService {
             if (norm) customerByEmail.set(norm, c);
         }
 
+        const reviewDates = reviews.map((review) => review.dateCreated.getTime());
+        const earliestReviewDate = reviewDates.length > 0 ? new Date(Math.min(...reviewDates)) : null;
+        const latestReviewDate = reviewDates.length > 0 ? new Date(Math.max(...reviewDates)) : null;
+        const orderLookbackDate = earliestReviewDate ? new Date(earliestReviewDate) : null;
+        if (orderLookbackDate) orderLookbackDate.setDate(orderLookbackDate.getDate() - 180);
+        const allPotentialOrders = orderLookbackDate && latestReviewDate
+            ? await prisma.wooOrder.findMany({
+                where: {
+                    accountId,
+                    dateCreated: { gte: orderLookbackDate, lte: latestReviewDate }
+                },
+                orderBy: { dateCreated: 'desc' },
+                select: { id: true, number: true, dateCreated: true, rawData: true }
+            })
+            : [];
+
         let matchedReviews = 0;
         let updatedReviews = 0;
 
@@ -180,13 +272,7 @@ export class ReviewService {
             const lookbackDate = new Date(reviewDate);
             lookbackDate.setDate(lookbackDate.getDate() - 180);
 
-            const potentialOrders = await prisma.wooOrder.findMany({
-                where: {
-                    accountId,
-                    dateCreated: { gte: lookbackDate, lte: reviewDate }
-                },
-                orderBy: { dateCreated: 'desc' }
-            });
+            const potentialOrders = allPotentialOrders.filter((order) => order.dateCreated >= lookbackDate && order.dateCreated <= reviewDate);
 
             interface OrderMatch { orderId: string; orderNumber: string; score: number; daysDiff: number; }
             const matches: OrderMatch[] = [];

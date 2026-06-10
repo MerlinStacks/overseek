@@ -321,20 +321,23 @@ export class NotificationEngine {
     private static async handleReviewLeft(data: { accountId: string; review: any }): Promise<void> {
         const { accountId, review } = data;
 
+        const isPending = review.status === 'hold' || review.status === 'pending';
+        const reviewContent = review.content || review.review || '';
+
         await this.sendNotification({
             accountId,
             eventType: 'REVIEW_LEFT',
             channels: ['in_app', 'push'],
             inApp: {
-                title: 'New Review',
-                message: `${review.reviewer} left a ${review.rating}★ review`,
-                type: review.rating >= 4 ? 'SUCCESS' : 'WARNING',
-                link: '/reviews'
+                title: isPending ? 'New Pending Review' : 'New Review',
+                message: `${review.reviewer} left a ${review.rating}★ review${isPending ? ' awaiting approval' : ''}`,
+                type: isPending ? 'WARNING' : review.rating >= 4 ? 'SUCCESS' : 'WARNING',
+                link: isPending ? '/reviews?status=hold' : '/reviews'
             },
             push: {
-                title: review.rating >= 4 ? '⭐ New Review!' : '📝 New Review',
-                body: `${review.reviewer}: ${review.rating}★ - "${(review.content || '').substring(0, 50)}${(review.content || '').length > 50 ? '...' : ''}"`,
-                data: { url: '/reviews' }
+                title: isPending ? 'Pending review awaiting approval' : review.rating >= 4 ? '⭐ New Review!' : '📝 New Review',
+                body: `${review.reviewer}: ${review.rating}★ - "${reviewContent.substring(0, 50)}${reviewContent.length > 50 ? '...' : ''}"`,
+                data: { url: isPending ? '/reviews?status=hold' : '/reviews' }
             },
             pushType: 'message', // Reviews use message preference for now
             payload: { reviewId: review.id, rating: review.rating }

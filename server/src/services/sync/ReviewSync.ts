@@ -86,7 +86,7 @@ export class ReviewSync extends BaseSync {
         const syncStartedAt = new Date();
 
         while (hasMore) {
-            const { data: rawReviews, totalPages } = await woo.getReviews({ page, after, per_page: 50 });
+            const { data: rawReviews, totalPages } = await woo.getReviews({ page, after, per_page: 50, status: 'all' });
             if (!rawReviews.length) {
                 hasMore = false;
                 break;
@@ -419,4 +419,3 @@ export class ReviewSync extends BaseSync {
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }
 }
-

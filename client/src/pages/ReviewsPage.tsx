@@ -1,16 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
 import { Star, RefreshCw, Search, CheckCircle, ExternalLink, Link2, MessageSquare, Reply, Paperclip, Video, Sparkles, Loader2 } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { formatDate } from '../utils/format';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { RelativeTime } from '../components/ui/RelativeTime';
 import { useToast } from '../context/ToastContext';
+import { getSafeHref } from '../utils/url';
 
 interface ReviewRow {
     id: string;
@@ -21,8 +22,10 @@ interface ReviewRow {
     content?: string;
     dateCreated: string;
     status: string;
+    productUrl?: string | null;
+    productImage?: string | null;
     customer?: { id: string; firstName?: string; lastName?: string };
-    order?: { number?: string };
+    order?: { wooId?: number; number?: string };
     media?: ReviewMedia[];
     replies?: ReviewReply[];
 }
@@ -41,6 +44,25 @@ interface ReviewReply {
     date?: string;
 }
 
+interface StatusCounts {
+    total: number;
+    counts: Record<string, number>;
+}
+
+const REVIEW_STATUSES = [
+    { value: 'all', label: 'All' },
+    { value: 'approved', label: 'Published' },
+    { value: 'hold', label: 'Pending' },
+    { value: 'spam', label: 'Spam' },
+    { value: 'trash', label: 'Trash' },
+];
+
+function formatReviewStatusLabel(status: string): string {
+    if (status === 'approved') return 'Published';
+    if (status === 'hold') return 'Pending';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 const isImageMedia = (media: ReviewMedia) => media.type?.startsWith('image/');
 const isVideoMedia = (media: ReviewMedia) => media.type?.startsWith('video/');
 
@@ -48,6 +70,7 @@ export const ReviewsPage = () => {
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const toast = useToast();
     const [reviews, setReviews] = useState<ReviewRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -62,10 +85,13 @@ export const ReviewsPage = () => {
     const [editRating, setEditRating] = useState(5);
     const [editStatus, setEditStatus] = useState('hold');
     const [mediaViewer, setMediaViewer] = useState<ReviewMedia | null>(null);
+    const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
+    const [bulkStatus, setBulkStatus] = useState('approved');
+    const [statusCounts, setStatusCounts] = useState<StatusCounts>({ total: 0, counts: {} });
 
     // Filters & Pagination
     const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
@@ -96,9 +122,10 @@ export const ReviewsPage = () => {
             if (!res.ok) throw new Error('Failed to fetch reviews');
 
             const data: unknown = await res.json();
-            const payload = data as { reviews?: ReviewRow[]; pagination?: { pages?: number } };
+            const payload = data as { reviews?: ReviewRow[]; pagination?: { pages?: number }; statusCounts?: StatusCounts };
             setReviews(payload.reviews || []);
             setTotalPages(payload.pagination?.pages || 1);
+            setStatusCounts(payload.statusCounts || { total: 0, counts: {} });
 
         } catch (error) {
             Logger.error('Failed to fetch reviews', { error: error });
@@ -106,6 +133,41 @@ export const ReviewsPage = () => {
             setIsLoading(false);
         }
     }, [currentAccount, token, page, limit, debouncedSearch, statusFilter]);
+
+    const statusTabs = useMemo(() => REVIEW_STATUSES.map((status) => ({
+        ...status,
+        count: status.value === 'all' ? statusCounts.total : statusCounts.counts[status.value] || 0,
+    })), [statusCounts]);
+
+    const selectedReviewSet = useMemo(() => new Set(selectedReviewIds), [selectedReviewIds]);
+    const allVisibleSelected = reviews.length > 0 && reviews.every((review) => selectedReviewSet.has(review.id));
+
+    const handleStatusFilterChange = (status: string) => {
+        setStatusFilter(status);
+        setPage(1);
+        setSelectedReviewIds([]);
+        const nextParams = new URLSearchParams(searchParams);
+        if (status === 'all') nextParams.delete('status');
+        else nextParams.set('status', status);
+        setSearchParams(nextParams, { replace: true });
+    };
+
+    const toggleReviewSelection = (reviewId: string) => {
+        setSelectedReviewIds((current) => current.includes(reviewId)
+            ? current.filter((id) => id !== reviewId)
+            : [...current, reviewId]);
+    };
+
+    const toggleAllVisibleReviews = () => {
+        setSelectedReviewIds((current) => {
+            const currentSet = new Set(current);
+            if (allVisibleSelected) {
+                return current.filter((id) => !reviews.some((review) => review.id === id));
+            }
+            reviews.forEach((review) => currentSet.add(review.id));
+            return Array.from(currentSet);
+        });
+    };
 
     const handleSync = async () => {
         if (!currentAccount || !token) return;
@@ -179,11 +241,38 @@ export const ReviewsPage = () => {
             });
 
             if (!res.ok) throw new Error('Moderation failed');
-            toast.success(`Review marked ${status}`);
+            toast.success(`Review marked ${formatReviewStatusLabel(status).toLowerCase()}`);
             fetchReviews();
         } catch (error) {
             Logger.error('Review moderation failed', { error });
             toast.error('Failed to update review');
+        } finally {
+            setActionReviewId(null);
+        }
+    };
+
+    const handleBulkModerate = async () => {
+        if (!currentAccount || !token || selectedReviewIds.length === 0) return;
+        setActionReviewId('bulk');
+        try {
+            const res = await fetch('/api/reviews/bulk-moderate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify({ ids: selectedReviewIds, status: bulkStatus })
+            });
+
+            const result = await res.json().catch(() => ({})) as { updated?: number; failed?: number; error?: string };
+            if (!res.ok) throw new Error(result.error || 'Bulk moderation failed');
+            toast.success(`${result.updated || 0} review${result.updated === 1 ? '' : 's'} marked ${formatReviewStatusLabel(bulkStatus).toLowerCase()}${result.failed ? `, ${result.failed} failed` : ''}`);
+            setSelectedReviewIds([]);
+            fetchReviews();
+        } catch (error) {
+            Logger.error('Bulk review moderation failed', { error });
+            toast.error(error instanceof Error ? error.message : 'Failed to update reviews');
         } finally {
             setActionReviewId(null);
         }
@@ -305,7 +394,13 @@ export const ReviewsPage = () => {
     // Reset page when filters change
     useEffect(() => {
         setPage(1);
+        setSelectedReviewIds([]);
     }, [debouncedSearch, statusFilter]);
+
+    useEffect(() => {
+        const status = searchParams.get('status') || 'all';
+        if (status !== statusFilter) setStatusFilter(status);
+    }, [searchParams, statusFilter]);
 
     // Fetch on changes
     useEffect(() => {
@@ -346,18 +441,6 @@ export const ReviewsPage = () => {
                         />
                     </div>
 
-                    <select
-                        className="border border-gray-300 rounded-lg px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                    >
-                        <option value="all">All Status</option>
-                        <option value="approved">Approved</option>
-                        <option value="hold">Pending</option>
-                        <option value="spam">Spam</option>
-                        <option value="trash">Trash</option>
-                    </select>
-
                     <button
                         onClick={handleRematch}
                         disabled={isRematching || isSyncing}
@@ -379,10 +462,86 @@ export const ReviewsPage = () => {
                 </div>
             </div>
 
+            <div className="bg-white/60 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm overflow-hidden">
+                <div className="flex items-center gap-1 p-1.5 overflow-x-auto" role="tablist" aria-label="Review status filters">
+                    {statusTabs.map((status) => {
+                        const isActive = statusFilter === status.value;
+                        return (
+                            <button
+                                key={status.value}
+                                type="button"
+                                role="tab"
+                                aria-selected={isActive}
+                                onClick={() => handleStatusFilterChange(status.value)}
+                                className={`group relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${isActive
+                                    ? status.value === 'hold'
+                                        ? 'bg-amber-500 text-white shadow-md shadow-amber-200/50'
+                                        : status.value === 'approved'
+                                            ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200/50'
+                                            : status.value === 'trash'
+                                                ? 'bg-red-500 text-white shadow-md shadow-red-200/50'
+                                                : status.value === 'spam'
+                                                    ? 'bg-slate-600 text-white shadow-md shadow-slate-200/50'
+                                                    : 'bg-slate-800 text-white shadow-md'
+                                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                            >
+                                <span>{status.label}</span>
+                                <span className={isActive ? 'bg-white/25 text-white/90 text-xs px-1.5 py-0.5 rounded-md font-medium tabular-nums' : 'bg-gray-200/70 text-gray-500 text-xs px-1.5 py-0.5 rounded-md font-medium tabular-nums group-hover:bg-gray-300/70'}>
+                                    {status.count}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {selectedReviewIds.length > 0 && (
+                <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <div className="font-medium text-blue-900">{selectedReviewIds.length} selected</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <select
+                            value={bulkStatus}
+                            onChange={(event) => setBulkStatus(event.target.value)}
+                            className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="approved">Publish</option>
+                            <option value="hold">Move to pending</option>
+                            <option value="spam">Mark spam</option>
+                            <option value="trash">Move to trash</option>
+                        </select>
+                        <button
+                            type="button"
+                            onClick={handleBulkModerate}
+                            disabled={actionReviewId === 'bulk'}
+                            className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                            {actionReviewId === 'bulk' ? 'Updating...' : 'Apply'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSelectedReviewIds([])}
+                            disabled={actionReviewId === 'bulk'}
+                            className="rounded-lg border border-blue-200 bg-white px-4 py-2 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                        >
+                            Clear
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <input
+                                    type="checkbox"
+                                    checked={allVisibleSelected}
+                                    onChange={toggleAllVisibleReviews}
+                                    aria-label="Select all visible reviews"
+                                    className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                            </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reviewer</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
@@ -394,9 +553,9 @@ export const ReviewsPage = () => {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {isLoading ? (
-                            <TableSkeleton rows={8} columns={7} />
+                            <TableSkeleton rows={8} columns={8} />
                         ) : reviews.length === 0 ? (
-                            <tr><td colSpan={7}>
+                            <tr><td colSpan={8}>
                                 <EmptyState
                                     icon={<MessageSquare size={48} />}
                                     title="No reviews found"
@@ -407,7 +566,32 @@ export const ReviewsPage = () => {
                         ) : (
                             reviews.map((review) => (
                                 <tr key={review.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4 text-sm text-gray-900 font-medium">{review.productName || 'Unknown Product'}</td>
+                                    <td className="px-6 py-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedReviewSet.has(review.id)}
+                                            onChange={() => toggleReviewSelection(review.id)}
+                                            aria-label={`Select review by ${review.reviewer || 'customer'}`}
+                                            className="rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                        <div className="flex items-center gap-3">
+                                            {review.productImage ? (
+                                                <img src={review.productImage} alt="" className="h-10 w-10 rounded-md object-cover ring-1 ring-gray-200" />
+                                            ) : (
+                                                <div className="h-10 w-10 rounded-md bg-gray-100 ring-1 ring-gray-200" />
+                                            )}
+                                            <div className="min-w-0">
+                                                <div className="truncate max-w-[220px]">{review.productName || 'Unknown Product'}</div>
+                                                {review.productUrl && (
+                                                    <a href={getSafeHref(review.productUrl)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-normal text-blue-600 hover:underline">
+                                                        View product <ExternalLink size={11} />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4 text-sm text-gray-900">
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2">
@@ -426,7 +610,14 @@ export const ReviewsPage = () => {
                                                 </span>
                                                 {review.order && (
                                                     <div className="group relative">
-                                                        <CheckCircle size={16} className="text-green-500 cursor-help" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => review.order?.wooId && navigate(`/orders/${review.order.wooId}`)}
+                                                            className="text-green-500 hover:text-green-700"
+                                                            title={`Open order #${review.order.number || review.order.wooId || ''}`}
+                                                        >
+                                                            <CheckCircle size={16} />
+                                                        </button>
                                                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-gray-800 text-white text-xs rounded-sm p-2 text-center whitespace-normal z-10 shadow-lg">
                                                             Verified Owner via Order #{review.order.number}
                                                         </div>
@@ -491,7 +682,7 @@ export const ReviewsPage = () => {
                                                     review.status === 'spam' ? 'bg-gray-100 text-gray-800' :
                                                         review.status === 'trash' ? 'bg-red-100 text-red-800' :
                                                             'bg-gray-100 text-gray-800'}`}>
-                                            {review.status}
+                                            {formatReviewStatusLabel(review.status)}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">

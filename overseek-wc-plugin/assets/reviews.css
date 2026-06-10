@@ -532,6 +532,16 @@ video.os-review-media {
 	color: #172033;
 }
 
+.os-review-form .os-review-form__website {
+	position: absolute !important;
+	left: -10000px !important;
+	width: 1px !important;
+	height: 1px !important;
+	overflow: hidden !important;
+	opacity: 0 !important;
+	pointer-events: none !important;
+}
+
 .os-review-form__rating {
 	margin: 0;
 	padding: 0;
