@@ -106,6 +106,7 @@ const MobileChat = lazy(() => import('./pages/mobile/MobileChat').then(m => ({ d
 const MobileAnalytics = lazy(() => import('./pages/mobile/MobileAnalytics').then(m => ({ default: m.MobileAnalytics })));
 const MobileInventory = lazy(() => import('./pages/mobile/MobileInventory').then(m => ({ default: m.MobileInventory })));
 const MobileMore = lazy(() => import('./pages/mobile/MobileMore').then(m => ({ default: m.MobileMore })));
+const MobileReviews = lazy(() => import('./pages/mobile/MobileReviews').then(m => ({ default: m.MobileReviews })));
 const MobileNotifications = lazy(() => import('./pages/mobile/MobileNotifications').then(m => ({ default: m.MobileNotifications })));
 const MobileLiveVisitors = lazy(() => import('./pages/mobile/MobileLiveVisitors').then(m => ({ default: m.MobileLiveVisitors })));
 const MobileProfile = lazy(() => import('./pages/mobile/MobileProfile').then(m => ({ default: m.MobileProfile })));
@@ -188,6 +189,7 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
         [ROUTE_PATHS.inbox]: ROUTE_PATHS.mobileInbox,
         [ROUTE_PATHS.analytics]: ROUTE_PATHS.mobileAnalytics,
         [ROUTE_PATHS.inventory]: ROUTE_PATHS.mobileInventory,
+        [ROUTE_PATHS.reviews]: ROUTE_PATHS.mobileReviews,
         [ROUTE_PATHS.settings]: ROUTE_PATHS.mobileSettings,
         [ROUTE_PATHS.profile]: ROUTE_PATHS.mobileProfile,
     };
@@ -345,6 +347,7 @@ function App() {
                                                 <Route path={ROUTE_PATTERNS.mobileInboxShare} element={<AccountGuard><MobileShareHandler /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.mobileAnalytics} element={<AccountGuard><MobileAnalytics /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.mobileInventory} element={<AccountGuard><MobileInventory /></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.mobileReviews} element={<AccountGuard><MobileReviews /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.mobileMore} element={<AccountGuard><MobileMore /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.mobileProfile} element={<AccountGuard><MobileProfile /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.mobileSettings} element={<AccountGuard><MobileSettings /></AccountGuard>} />

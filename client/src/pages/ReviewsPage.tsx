@@ -12,6 +12,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { RelativeTime } from '../components/ui/RelativeTime';
 import { useToast } from '../context/ToastContext';
 import { getSafeHref } from '../utils/url';
+import { formatReviewStatusLabel, formatReviewText } from '../utils/reviews';
 
 interface ReviewRow {
     id: string;
@@ -57,12 +58,6 @@ const REVIEW_STATUSES = [
     { value: 'trash', label: 'Trash' },
 ];
 
-function formatReviewStatusLabel(status: string): string {
-    if (status === 'approved') return 'Published';
-    if (status === 'hold') return 'Pending';
-    return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
 const isImageMedia = (media: ReviewMedia) => media.type?.startsWith('image/');
 const isVideoMedia = (media: ReviewMedia) => media.type?.startsWith('video/');
 
@@ -86,6 +81,7 @@ export const ReviewsPage = () => {
     const [editStatus, setEditStatus] = useState('hold');
     const [mediaViewer, setMediaViewer] = useState<ReviewMedia | null>(null);
     const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
+    const [expandedReviewIds, setExpandedReviewIds] = useState<string[]>([]);
     const [bulkStatus, setBulkStatus] = useState('approved');
     const [statusCounts, setStatusCounts] = useState<StatusCounts>({ total: 0, counts: {} });
 
@@ -140,6 +136,7 @@ export const ReviewsPage = () => {
     })), [statusCounts]);
 
     const selectedReviewSet = useMemo(() => new Set(selectedReviewIds), [selectedReviewIds]);
+    const expandedReviewSet = useMemo(() => new Set(expandedReviewIds), [expandedReviewIds]);
     const allVisibleSelected = reviews.length > 0 && reviews.every((review) => selectedReviewSet.has(review.id));
 
     const handleStatusFilterChange = (status: string) => {
@@ -154,6 +151,12 @@ export const ReviewsPage = () => {
 
     const toggleReviewSelection = (reviewId: string) => {
         setSelectedReviewIds((current) => current.includes(reviewId)
+            ? current.filter((id) => id !== reviewId)
+            : [...current, reviewId]);
+    };
+
+    const toggleReviewExpanded = (reviewId: string) => {
+        setExpandedReviewIds((current) => current.includes(reviewId)
             ? current.filter((id) => id !== reviewId)
             : [...current, reviewId]);
     };
@@ -565,8 +568,13 @@ export const ReviewsPage = () => {
                                 />
                             </td></tr>
                         ) : (
-                            reviews.map((review) => (
-                                <tr key={review.id} className="hover:bg-gray-50 transition-colors">
+                            reviews.map((review) => {
+                                const reviewText = formatReviewText(review.content);
+                                const isExpanded = expandedReviewSet.has(review.id);
+                                const canExpand = reviewText.length > 120 || reviewText.includes('\n');
+
+                                return (
+                                <tr key={review.id} className="hover:bg-gray-50 transition-colors align-top">
                                     <td className="px-6 py-4">
                                         <input
                                             type="checkbox"
@@ -629,15 +637,32 @@ export const ReviewsPage = () => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-400">
-                                        <div className="flex items-center cursor-default" title={review.content ? `"${review.content.slice(0, 200)}${review.content.length > 200 ? '...' : ''}"` : 'No review text'}>
+                                        <div className="flex items-center cursor-default" title={reviewText ? `"${reviewText.slice(0, 200)}${reviewText.length > 200 ? '...' : ''}"` : 'No review text'}>
                                             {Array.from({ length: 5 }).map((_, i) => (
                                                 <Star key={i} size={16} fill={i < review.rating ? "currentColor" : "none"} strokeWidth={1} />
                                             ))}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs" title={review.content}>
+                                    <td className="px-6 py-4 text-sm text-gray-500 max-w-sm" title={reviewText}>
                                         <div className="space-y-2">
-                                            <p className="truncate">{review.content || <span className="text-gray-400">No review text</span>}</p>
+                                            {reviewText ? (
+                                                <div>
+                                                    <p className={isExpanded ? 'whitespace-pre-wrap text-gray-700' : 'line-clamp-2 text-gray-700'}>
+                                                        {reviewText}
+                                                    </p>
+                                                    {canExpand && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleReviewExpanded(review.id)}
+                                                            className="mt-1 text-xs font-medium text-blue-600 hover:underline"
+                                                        >
+                                                            {isExpanded ? 'Show less' : 'Read more'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-400">No review text</span>
+                                            )}
                                             {review.media && review.media.length > 0 && (
                                                 <div className="flex flex-wrap gap-2">
                                                     {review.media.map((media, index) => (
@@ -665,7 +690,7 @@ export const ReviewsPage = () => {
                                                     {review.replies.map((reply, index) => (
                                                         <div key={reply.id || `${reply.date || 'reply'}-${index}`} className="border-t border-blue-100 pt-2 first:border-t-0 first:pt-0">
                                                             <div className="font-medium">{reply.author || 'Store'}</div>
-                                                            <div className="line-clamp-2">{reply.content}</div>
+                                                            <div className="line-clamp-2">{formatReviewText(reply.content)}</div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -686,8 +711,9 @@ export const ReviewsPage = () => {
                                             {formatReviewStatusLabel(review.status)}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                        <div className="flex flex-wrap items-center gap-2">
+                                    <td className="px-6 py-4 text-sm">
+                                        <div className="flex min-w-[170px] flex-col gap-2">
+                                            <div className="flex items-center gap-2">
                                             <button
                                                 onClick={() => openReplyModal(review)}
                                                 disabled={actionReviewId === review.id}
@@ -702,22 +728,28 @@ export const ReviewsPage = () => {
                                             >
                                                 Edit
                                             </button>
-                                            {review.status !== 'approved' && (
-                                                <button disabled={actionReviewId === review.id} onClick={() => handleModerate(review.id, 'approved')} className="rounded-md bg-green-50 px-2 py-1 text-green-700 hover:bg-green-100 disabled:opacity-50">Approve</button>
-                                            )}
-                                            {review.status !== 'hold' && (
-                                                <button disabled={actionReviewId === review.id} onClick={() => handleModerate(review.id, 'hold')} className="rounded-md bg-yellow-50 px-2 py-1 text-yellow-700 hover:bg-yellow-100 disabled:opacity-50">Hold</button>
-                                            )}
-                                            {review.status !== 'spam' && (
-                                                <button disabled={actionReviewId === review.id} onClick={() => handleModerate(review.id, 'spam')} className="rounded-md bg-gray-100 px-2 py-1 text-gray-700 hover:bg-gray-200 disabled:opacity-50">Spam</button>
-                                            )}
-                                            {review.status !== 'trash' && (
-                                                <button disabled={actionReviewId === review.id} onClick={() => handleModerate(review.id, 'trash')} className="rounded-md bg-red-50 px-2 py-1 text-red-700 hover:bg-red-100 disabled:opacity-50">Trash</button>
-                                            )}
+                                            </div>
+                                            <label className="sr-only" htmlFor={`review-status-${review.id}`}>Change review status</label>
+                                            <select
+                                                id={`review-status-${review.id}`}
+                                                value={review.status}
+                                                disabled={actionReviewId === review.id}
+                                                onChange={(event) => {
+                                                    const nextStatus = event.target.value;
+                                                    if (nextStatus !== review.status) handleModerate(review.id, nextStatus);
+                                                }}
+                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-hidden hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                                            >
+                                                <option value="approved">Published</option>
+                                                <option value="hold">Pending</option>
+                                                <option value="spam">Spam</option>
+                                                <option value="trash">Trash</option>
+                                            </select>
                                         </div>
                                     </td>
                                 </tr>
-                            ))
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
@@ -753,7 +785,7 @@ export const ReviewsPage = () => {
                                         <Star key={i} size={14} fill={i < replyReview.rating ? "currentColor" : "none"} strokeWidth={1} />
                                     ))}
                                 </div>
-                                <p className="line-clamp-4">{replyReview.content || 'No review text'}</p>
+                                <p className="line-clamp-4 whitespace-pre-wrap">{formatReviewText(replyReview.content) || 'No review text'}</p>
                             </div>
                             <div className="flex items-center justify-between gap-3">
                                 <label className="block text-sm font-medium text-gray-700" htmlFor="review-reply-text">

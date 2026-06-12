@@ -215,7 +215,16 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         if (path.includes('/m/orders')) return 'orders';
         if (path.includes('/m/inbox')) return 'inbox';
         if (path.includes('/m/analytics')) return 'analytics';
-        if (path.includes('/m/more')) return 'more';
+        if (
+            path.includes('/m/more') ||
+            path.includes('/m/inventory') ||
+            path.includes('/m/customers') ||
+            path.includes('/m/reviews') ||
+            path.includes('/m/live-visitors') ||
+            path.includes('/m/notifications') ||
+            path.includes('/m/profile') ||
+            path.includes('/m/settings')
+        ) return 'more';
         return 'dashboard';
     };
 

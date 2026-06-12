@@ -4,6 +4,7 @@ import {
     ChevronRight,
     Eye,
     LogOut,
+    MessageSquare,
     Package,
     Settings,
     User,
@@ -71,6 +72,15 @@ export function MobileMore() {
                     path: '/m/customers',
                     iconColor: 'text-sky-100',
                     iconBg: 'bg-sky-400/15',
+                },
+                {
+                    id: 'reviews',
+                    label: 'Reviews',
+                    description: 'Read and moderate customer reviews',
+                    icon: MessageSquare,
+                    path: '/m/reviews',
+                    iconColor: 'text-emerald-100',
+                    iconBg: 'bg-emerald-400/15',
                 },
                 {
                     id: 'live-visitors',
