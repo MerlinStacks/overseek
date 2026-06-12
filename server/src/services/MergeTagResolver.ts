@@ -106,7 +106,7 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{order.itemsTable}}', renderOrderItemsTable(orderItems));
         replaceMergeTag('{{order.itemsCompact}}', renderOrderItemsCompact(orderItems));
         replaceMergeTag('{{order.itemsList}}', renderOrderItemsList(orderItems));
-        replaceMergeTag('{{order.reviewLinks}}', renderOrderReviewLinks(orderItems, storeUrl));
+        replaceMergeTag('{{order.reviewLinks}}', renderOrderReviewLinks(orderItems, storeUrl, getReviewPrefill(context)));
         result = result.replace(/\{\{\s*order_items(?:\s+[^}]*)?\s*\}\}/g, renderOrderItemsText(orderItems));
 
         // Downloads
@@ -174,12 +174,15 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     // Review merge tags
     const reviewFallback = getReviewFallback(context, storeUrl);
     const explicitReviewUrl = getExplicitReviewUrl(context, storeUrl);
+    const reviewPrefill = getReviewPrefill(context);
     const reviewRequestUrl = buildReviewRequestUrl(
         explicitReviewUrl || getReviewProductUrl(
             context.review?.requestUrl || context.review?.request_url || context.review?.productUrl || context.review?.product_url,
             reviewFallback.productUrl,
             storeUrl
-        )
+        ),
+        undefined,
+        reviewPrefill
     );
     if (context.review) {
         const review = context.review;
@@ -205,7 +208,7 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{review.requestUrl}}', reviewRequestUrl);
     }
     for (let rating = 1; rating <= 5; rating++) {
-        replaceMergeTag(`{{review.star${rating}Url}}`, buildReviewRequestUrl(reviewRequestUrl, rating));
+        replaceMergeTag(`{{review.star${rating}Url}}`, buildReviewRequestUrl(reviewRequestUrl, rating, reviewPrefill));
     }
 
     // Shipment merge tags
@@ -293,7 +296,7 @@ function withReviewAnchor(url: string): string {
     return `${trimmed.replace(/\/$/, '')}#review_form`;
 }
 
-function buildReviewRequestUrl(rawUrl: string, rating?: number): string {
+function buildReviewRequestUrl(rawUrl: string, rating?: number, prefill?: { name?: string; email?: string }): string {
     const url = String(rawUrl || '').trim();
     if (!url) return '';
 
@@ -301,14 +304,74 @@ function buildReviewRequestUrl(rawUrl: string, rating?: number): string {
         const parsed = new URL(url);
         parsed.searchParams.set('overseek_review_request', '1');
         if (rating) parsed.searchParams.set('overseek_review_rating', String(rating));
+        if (prefill?.name) parsed.searchParams.set('overseek_review_name', prefill.name);
+        if (prefill?.email) parsed.searchParams.set('overseek_review_email', prefill.email);
         if (!parsed.hash) parsed.hash = 'review_form';
         return parsed.toString();
     } catch {
         const [withoutHash, hash = 'review_form'] = url.split('#');
         const separator = withoutHash.includes('?') ? '&' : '?';
         const ratingParam = rating ? `&overseek_review_rating=${encodeURIComponent(String(rating))}` : '';
-        return `${withoutHash}${separator}overseek_review_request=1${ratingParam}#${hash || 'review_form'}`;
+        const nameParam = prefill?.name ? `&overseek_review_name=${encodeURIComponent(prefill.name)}` : '';
+        const emailParam = prefill?.email ? `&overseek_review_email=${encodeURIComponent(prefill.email)}` : '';
+        return `${withoutHash}${separator}overseek_review_request=1${ratingParam}${nameParam}${emailParam}#${hash || 'review_form'}`;
     }
+}
+
+function getReviewPrefill(context: MergeTagContext): { name?: string; email?: string } {
+    const customer = context.customer || {};
+    const order = context.order || {};
+    const billing = order.billing || order.billingAddress || order.billing_address || {};
+    const review = context.review || {};
+
+    const firstName = firstString(
+        customer.firstName,
+        customer.first_name,
+        billing.first_name,
+        billing.firstName,
+        order.billingFirstName,
+        order.billing_first_name
+    );
+    const lastName = firstString(
+        customer.lastName,
+        customer.last_name,
+        billing.last_name,
+        billing.lastName,
+        order.billingLastName,
+        order.billing_last_name
+    );
+    const name = firstString(
+        review.reviewer,
+        review.reviewerName,
+        review.reviewer_name,
+        customer.name,
+        customer.fullName,
+        customer.full_name,
+        [firstName, lastName].filter(Boolean).join(' '),
+        billing.name,
+        billing.fullName,
+        billing.full_name
+    );
+    const email = firstString(
+        review.reviewerEmail,
+        review.reviewer_email,
+        customer.email,
+        billing.email,
+        order.billingEmail,
+        order.billing_email,
+        order.email
+    );
+
+    return { name, email };
+}
+
+function firstString(...values: unknown[]): string {
+    for (const value of values) {
+        const normalized = String(value || '').trim();
+        if (normalized) return normalized;
+    }
+
+    return '';
 }
 
 function getReviewProductUrl(rawReviewUrl: unknown, fallbackUrl: string, storeUrl: string): string {
@@ -436,7 +499,7 @@ function getOrderItems(order: any): any[] {
     return Array.isArray(items) ? items : [];
 }
 
-function renderOrderReviewLinks(items: any[], storeUrl: string): string {
+function renderOrderReviewLinks(items: any[], storeUrl: string, prefill?: { name?: string; email?: string }): string {
     if (!Array.isArray(items) || items.length === 0) return '';
 
     const rows = items
@@ -447,7 +510,7 @@ function renderOrderReviewLinks(items: any[], storeUrl: string): string {
             const fallbackUrl = storeUrl && productId
                 ? `${storeUrl.replace(/\/$/, '')}/?p=${encodeURIComponent(String(productId))}#review_form`
                 : storeUrl;
-            const reviewUrl = buildReviewRequestUrl(getReviewProductUrl(directUrl, fallbackUrl, storeUrl));
+            const reviewUrl = buildReviewRequestUrl(getReviewProductUrl(directUrl, fallbackUrl, storeUrl), undefined, prefill);
             if (!reviewUrl) return '';
             return `<li><a href="${escapeHtml(reviewUrl)}">${name}</a></li>`;
         })

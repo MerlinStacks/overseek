@@ -307,7 +307,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
      *
      * Why: The circuit breaker opens when a store returns persistent 500/404 errors.
      * Once the store recovers, the user needs a UI path to unblock scheduled syncs
-     * without waiting for the 90-minute window to expire naturally.
+     * without waiting for the 30-minute window to expire naturally.
      *
      * Mechanism: We write a synthetic SUCCESS log entry. This breaks the consecutive-
      * failure streak that the circuit breaker looks for, allowing the scheduler to
@@ -334,7 +334,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                     accountId: String(accountId),
                     entityType: type,
                     status: 'SUCCESS',
-                    triggerSource: 'MANUAL',
+                    triggerSource: 'SYSTEM',
                     itemsProcessed: 0,
                     completedAt: new Date(),
                     retryCount: 0

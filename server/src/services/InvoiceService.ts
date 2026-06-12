@@ -66,6 +66,51 @@ let invoiceFontRegularPath: string | null = null;
 let invoiceFontBoldPath: string | null = null;
 let emojiFontSourcePath: string | null = null;
 
+const isValidDate = (date: Date): boolean => Number.isFinite(date.getTime());
+
+const resolveWooOrderPlacedDate = (order: any, rawData: any): Date => {
+    const candidates = [
+        rawData?.date_created_gmt,
+        rawData?.dateCreatedGmt,
+        order?.dateCreated,
+        rawData?.date_created,
+        rawData?.dateCreated,
+        order?.createdAt,
+    ];
+
+    for (const value of candidates) {
+        if (!value) continue;
+
+        const rawValue = value instanceof Date ? value.toISOString() : String(value).trim();
+        if (!rawValue) continue;
+
+        const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(rawValue);
+        const parsed = new Date(hasTimezone ? rawValue : `${rawValue}Z`);
+        if (isValidDate(parsed)) return parsed;
+    }
+
+    return new Date();
+};
+
+const settingsWithTimezone = (settings: any, timezone?: string | null) => {
+    const normalizedTimezone = typeof timezone === 'string' && timezone.trim() ? timezone.trim() : null;
+    if (!normalizedTimezone) return settings;
+
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone: normalizedTimezone }).format(new Date());
+    } catch {
+        return settings;
+    }
+
+    return {
+        ...settings,
+        locale: {
+            ...settings.locale,
+            timezone: normalizedTimezone,
+        },
+    };
+};
+
 const ensureInvoiceFonts = (doc: PDFKit.PDFDocument) => {
     if (invoiceFontRegisteredDocs.has(doc)) {
         return { regular: INVOICE_FONT_REGULAR, bold: INVOICE_FONT_BOLD };
@@ -441,6 +486,11 @@ export class InvoiceService {
                     { id: orderId },
                     ...(Number.isFinite(parsedWooId) ? [{ wooId: parsedWooId }] : [])
                 ]
+            },
+            include: {
+                account: {
+                    select: { timezone: true }
+                }
             }
         });
 
@@ -464,10 +514,10 @@ export class InvoiceService {
         const shipping = rawData.shipping || {};
         const lineItems = rawData.line_items || [];
 
-        const mergedSettings = mergeInvoiceSettings(settings);
+        const mergedSettings = settingsWithTimezone(mergeInvoiceSettings(settings), order.account?.timezone);
         const nextNumber = Math.max(1, Number(mergedSettings.numbering.nextNumber ?? 1001));
         const invoiceNumber = buildInvoiceNumber(mergedSettings);
-        const issueDate = new Date();
+        const issueDate = resolveWooOrderPlacedDate(order, rawData);
         const termsDays = Number(mergedSettings.compliance.paymentTermsDays ?? 14);
         const dueDate = new Date(issueDate);
         dueDate.setDate(issueDate.getDate() + Math.max(0, termsDays));
@@ -588,7 +638,10 @@ export class InvoiceService {
 
             const grid = layoutData?.grid || [];
             const items = layoutData?.items || [];
-            const settings = mergeInvoiceSettings(layoutData?.settings || DEFAULT_INVOICE_TEMPLATE_SETTINGS);
+            const settings = settingsWithTimezone(
+                mergeInvoiceSettings(layoutData?.settings || DEFAULT_INVOICE_TEMPLATE_SETTINGS),
+                order.account?.timezone
+            );
             const localeSettings = settings.locale;
             const complianceSettings = settings.compliance;
             const paymentSettings = settings.payment;
@@ -925,10 +978,7 @@ export class InvoiceService {
                             || 'N/A';
                         const paymentMethod = rawData.payment_method_title || order.paymentMethod || 'N/A';
                         const giftWrapMeta = getOrderGiftWrappingMeta(rawData);
-                        // Use WooCommerce's date_created for consistency with client-side rendering
-                        const orderDate = rawData.date_created
-                            ? formatDate(new Date(rawData.date_created))
-                            : formatDate(order.createdAt);
+                        const orderDate = formatDate(resolveWooOrderPlacedDate(order, rawData));
 
                         const detailsData: Array<{ label: string; value: string; highlight: boolean }> = [
                             { label: 'Order Number:', value: normalizePdfText(order.number), highlight: false },

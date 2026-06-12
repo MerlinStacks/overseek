@@ -246,6 +246,8 @@ class OverSeek_Review_Form {
 		if ( $prefilled_rating < 1 || $prefilled_rating > 5 ) {
 			$prefilled_rating = 0;
 		}
+		$prefilled_name  = isset( $_GET['overseek_review_name'] ) ? sanitize_text_field( wp_unslash( $_GET['overseek_review_name'] ) ) : '';
+		$prefilled_email = isset( $_GET['overseek_review_email'] ) ? sanitize_email( wp_unslash( $_GET['overseek_review_email'] ) ) : '';
 
 		ob_start();
 		?>
@@ -256,7 +258,7 @@ class OverSeek_Review_Form {
 			<input type="hidden" name="product_id" value="<?php echo esc_attr( (string) $product_id ); ?>">
 			<input type="hidden" name="redirect_to" value="<?php echo esc_url( $this->get_current_request_url() ); ?>">
 			<input type="hidden" name="rendered_at" value="<?php echo esc_attr( (string) time() ); ?>">
-			<input type="text" name="overseek_review_contact_url" value="" tabindex="-1" autocomplete="new-password" class="os-review-form__website" aria-hidden="true">
+			<input type="text" name="overseek_review_contact_url" value="" tabindex="-1" autocomplete="off" class="os-review-form__website" aria-hidden="true" readonly>
 			<?php if ( $shop_review ) : ?>
 				<input type="hidden" name="shop_review" value="1">
 			<?php endif; ?>
@@ -280,12 +282,12 @@ class OverSeek_Review_Form {
 			<div class="os-review-form__grid">
 				<label class="os-review-form__field">
 					<span><?php esc_html_e( 'Name', 'overseek-wc' ); ?></span>
-					<input type="text" name="author" autocomplete="name" required>
+					<input type="text" name="author" value="<?php echo esc_attr( $prefilled_name ); ?>" autocomplete="name" required>
 				</label>
 
 				<label class="os-review-form__field">
 					<span><?php esc_html_e( 'Email', 'overseek-wc' ); ?></span>
-					<input type="email" name="email" autocomplete="email" required>
+					<input type="email" name="email" value="<?php echo esc_attr( $prefilled_email ); ?>" autocomplete="email" required>
 				</label>
 			</div>
 
@@ -456,7 +458,7 @@ class OverSeek_Review_Form {
 	private function redirect_with_status( $url, string $status ): void {
 		$url      = is_string( $url ) && '' !== $url ? $url : home_url( '/' );
 		$redirect = add_query_arg( 'overseek_review_status', rawurlencode( $status ), $url );
-		wp_safe_redirect( esc_url_raw( $redirect . '#reviews' ) );
+		wp_safe_redirect( esc_url_raw( $redirect . '#review_form' ) );
 		exit;
 	}
 

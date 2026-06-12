@@ -11,7 +11,6 @@ import {
     ShoppingBag,
     Truck,
     XCircle,
-    Zap,
     type LucideIcon,
 } from 'lucide-react';
 import { Logger } from '../../utils/logger';
@@ -19,10 +18,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useToast } from '../../context/ToastContext';
 import { useHaptic } from '../../hooks/useHaptic';
-import { SwipeableRow } from '../../components/ui/SwipeableRow';
 import { formatCurrency } from '../../utils/format';
 import { OrdersSkeleton } from '../../components/mobile/MobileSkeleton';
-import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
+import { subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 
 interface OrderApiResponse {
     id: string | number;
@@ -243,37 +241,6 @@ export function MobileOrders() {
         return { label: 'On track', className: 'bg-slate-400/10 text-slate-200 ring-white/10' };
     };
 
-    const advanceStatus = useCallback(async (orderId: string, currentStatus: string) => {
-        const config = getStatusConfig(currentStatus);
-        if (!config.next || !currentAccount || !token) return;
-
-        const wooOrderId = Number(orderId);
-        if (Number.isNaN(wooOrderId)) {
-            void fetchOrders(1, true);
-            return;
-        }
-
-        triggerHaptic(15);
-        setOrders(prev => prev.map(order => order.id === orderId ? { ...order, status: config.next! } : order));
-
-        try {
-            const res = await fetch('/api/orders/bulk-status', {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orderIds: [wooOrderId], status: config.next }),
-            });
-            if (!res.ok) throw new Error('Failed to update order status');
-
-            toast.success(`Moved to ${getStatusConfig(config.next).label}.`);
-            emitCrossTabEvent({ resource: 'order', type: 'status-updated', accountId: currentAccount.id, resourceId: orderId });
-            void fetchStatusCounts();
-        } catch (error) {
-            Logger.error('[MobileOrders] Status update failed:', { error });
-            toast.error('Status update failed.');
-            void fetchOrders(1, true);
-        }
-    }, [currentAccount, fetchOrders, fetchStatusCounts, getStatusConfig, toast, token, triggerHaptic]);
-
     if (loading && orders.length === 0) return <OrdersSkeleton />;
 
     return (
@@ -309,13 +276,6 @@ export function MobileOrders() {
                 })}
             </div>
 
-            {orders.length > 0 && (
-                <p className="px-1 text-center text-xs text-slate-500">
-                    <Zap size={12} className="mr-1 inline" />
-                    Swipe right to move status. Tap to view details.
-                </p>
-            )}
-
             <div className="space-y-3">
                 {orders.length === 0 ? (
                     <EmptyOrders activeView={activeView.label} />
@@ -334,7 +294,6 @@ export function MobileOrders() {
                                 triggerHaptic();
                                 navigate(`/m/orders/${order.id}`);
                             }}
-                            onAdvance={() => advanceStatus(order.id, order.status)}
                         />
                     ))
                 )}
@@ -362,52 +321,47 @@ interface OrderRowProps {
     formatDate: (date: string) => string;
     getOrderAge: (date: string) => string;
     onOpen: () => void;
-    onAdvance: () => void;
 }
 
-function OrderRow({ order, index, getStatusConfig, getOrderSignal, formatAccountCurrency, formatDate, getOrderAge, onOpen, onAdvance }: OrderRowProps) {
+function OrderRow({ order, index, getStatusConfig, getOrderSignal, formatAccountCurrency, formatDate, getOrderAge, onOpen }: OrderRowProps) {
     const config = getStatusConfig(order.status);
     const StatusIcon = config.icon;
     const signal = getOrderSignal(order);
-    const nextConfig = config.next ? getStatusConfig(config.next) : null;
-    const NextIcon = nextConfig?.icon;
 
     return (
-        <SwipeableRow leftAction={config.next && NextIcon ? { icon: <NextIcon size={24} className="text-white" />, color: 'bg-indigo-500', onAction: onAdvance } : undefined}>
-            <button
-                onClick={onOpen}
-                className="w-full rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 transition active:scale-[0.99]"
-                style={{ animationDelay: `${index * 12}ms` }}
-            >
-                <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 gap-3">
-                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${config.bg} ring-1 ${config.ring}`}>
-                            <StatusIcon size={18} className={config.color} />
-                        </div>
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                                <p className="truncate text-base font-black text-white">{order.orderNumber}</p>
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${signal.className}`}>{signal.label}</span>
-                            </div>
-                            <p className="mt-0.5 truncate text-sm text-slate-300">{order.customerName}</p>
-                            <p className="mt-1 truncate text-xs text-slate-500">{order.itemSummary}</p>
-                        </div>
+        <button
+            onClick={onOpen}
+            className="w-full rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 transition active:scale-[0.99]"
+            style={{ animationDelay: `${index * 12}ms` }}
+        >
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 gap-3">
+                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${config.bg} ring-1 ${config.ring}`}>
+                        <StatusIcon size={18} className={config.color} />
                     </div>
-                    <div className="shrink-0 text-right">
-                        <p className="text-base font-black text-white">{formatAccountCurrency(order.total)}</p>
-                        <p className="text-xs text-slate-500">{formatDate(order.createdAt)}</p>
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                            <p className="truncate text-base font-black text-white">{order.orderNumber}</p>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${signal.className}`}>{signal.label}</span>
+                        </div>
+                        <p className="mt-0.5 truncate text-sm text-slate-300">{order.customerName}</p>
+                        <p className="mt-1 truncate text-xs text-slate-500">{order.itemSummary}</p>
                     </div>
                 </div>
+                <div className="shrink-0 text-right">
+                    <p className="text-base font-black text-white">{formatAccountCurrency(order.total)}</p>
+                    <p className="text-xs text-slate-500">{formatDate(order.createdAt)}</p>
+                </div>
+            </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3">
-                    <div className="flex items-center gap-2">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${config.bg} ${config.color}`}>{config.label}</span>
-                        <span className="text-xs text-slate-500">{getOrderAge(order.createdAt)}</span>
-                    </div>
-                    <ChevronRight size={17} className="text-slate-600" />
+            <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3">
+                <div className="flex items-center gap-2">
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${config.bg} ${config.color}`}>{config.label}</span>
+                    <span className="text-xs text-slate-500">{getOrderAge(order.createdAt)}</span>
                 </div>
-            </button>
-        </SwipeableRow>
+                <ChevronRight size={17} className="text-slate-600" />
+            </div>
+        </button>
     );
 }
 

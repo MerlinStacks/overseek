@@ -168,6 +168,27 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).toContain('href="https://store.example.com/?p=123#review_form"');
     });
 
+    it('prefills review request links from customer context', () => {
+        const html = resolveMergeTags(
+            '<a href="{{review.requestUrl}}">Review</a><a href="{{review.star5Url}}">Five stars</a>{{order.reviewLinks}}',
+            {
+                customer: {
+                    firstName: 'Sam',
+                    lastName: 'Lee',
+                    email: 'sam@example.com'
+                },
+                order: {
+                    line_items: [{ product_id: 123, name: 'Custom Mug' }]
+                },
+                storeUrl: 'https://store.example.com',
+            }
+        );
+
+        expect(html).toContain('overseek_review_name=Sam+Lee');
+        expect(html).toContain('overseek_review_email=sam%40example.com');
+        expect(html).toContain('overseek_review_rating=5');
+    });
+
     it('uses the product review fallback when review context only has the store homepage', () => {
         const html = resolveMergeTags(
             '<a href="{{review.productUrl}}">Review {{review.productName}}</a>',

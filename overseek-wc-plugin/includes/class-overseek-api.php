@@ -252,13 +252,13 @@ class OverSeek_API {
 
 		$params = $this->get_request_body( $request );
 		$update = [ 'comment_ID' => $comment_id ];
+		$status = '';
 
 		if ( isset( $params['status'] ) ) {
 			$status = $this->map_review_status( sanitize_key( (string) $params['status'] ) );
 			if ( '' === $status ) {
 				return $this->integration_error( 'invalid_review_status', 'Invalid review status.', 400 );
 			}
-			$update['comment_approved'] = $status;
 		}
 
 		if ( isset( $params['content'] ) ) {
@@ -276,13 +276,19 @@ class OverSeek_API {
 			}
 		}
 
-		$result = wp_update_comment( $update, true );
-		if ( is_wp_error( $result ) ) {
-			return $this->integration_error( 'review_update_failed', $result->get_error_message(), 500 );
+		if ( count( $update ) > 1 ) {
+			$result = wp_update_comment( $update, true );
+			if ( is_wp_error( $result ) ) {
+				return $this->integration_error( 'review_update_failed', $result->get_error_message(), 500 );
+			}
 		}
 
 		if ( isset( $params['rating'] ) ) {
 			update_comment_meta( $comment_id, 'rating', $rating );
+		}
+
+		if ( '' !== $status && ! wp_set_comment_status( $comment_id, $status ) ) {
+			return $this->integration_error( 'review_update_failed', 'Failed to update review status.', 500 );
 		}
 
 		return new WP_REST_Response( [
@@ -936,10 +942,10 @@ class OverSeek_API {
 	 */
 	private function map_review_status( string $status ): string {
 		$map = [
-			'approved' => '1',
-			'approve'  => '1',
-			'hold'     => '0',
-			'pending'  => '0',
+			'approved' => 'approve',
+			'approve'  => 'approve',
+			'hold'     => 'hold',
+			'pending'  => 'hold',
 			'spam'     => 'spam',
 			'trash'    => 'trash',
 		];
