@@ -250,14 +250,15 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                     failureRate24h: total24h === 0 ? 0 : Number((failed24h / total24h).toFixed(3)),
                     activeJobs: activeJobsCount,
                     circuitBreaker: {
+                        state: await SyncScheduler.getCircuitBreakerState(String(accountId)),
                         isOpen: await SyncScheduler.isAccountCircuitBroken(String(accountId)),
                         byEntity: {
-                            orders: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'orders'),
-                            products: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'products'),
-                            customers: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'customers'),
-                            reviews: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'reviews'),
-                            pages: await SyncScheduler.isAccountCircuitBroken(String(accountId), 'pages'),
-                            'blog-posts': await SyncScheduler.isAccountCircuitBroken(String(accountId), 'blog-posts'),
+                            orders: await SyncScheduler.getCircuitBreakerState(String(accountId), 'orders'),
+                            products: await SyncScheduler.getCircuitBreakerState(String(accountId), 'products'),
+                            customers: await SyncScheduler.getCircuitBreakerState(String(accountId), 'customers'),
+                            reviews: await SyncScheduler.getCircuitBreakerState(String(accountId), 'reviews'),
+                            pages: await SyncScheduler.getCircuitBreakerState(String(accountId), 'pages'),
+                            'blog-posts': await SyncScheduler.getCircuitBreakerState(String(accountId), 'blog-posts'),
                         }
                     }
                 },

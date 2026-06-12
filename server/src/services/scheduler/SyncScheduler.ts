@@ -10,6 +10,17 @@ import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
 import { SCHEDULER_LIMITS } from '../../config/limits';
 
+type CircuitBreakerReason = 'none' | 'needs_reconnect' | 'maintenance_deferral' | 'consecutive_failures';
+
+interface CircuitBreakerState {
+    isOpen: boolean;
+    reason: CircuitBreakerReason;
+    entityType?: string;
+    retryAt?: Date;
+    recentFailures?: number;
+    threshold?: number;
+    lastError?: string | null;
+}
 
 export class SyncScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
@@ -20,8 +31,8 @@ export class SyncScheduler {
      * Used internally by the scheduler to gate dispatch.
      * See isAccountCircuitBroken for the public version.
      */
-    private static async isAccountBlocked(accountId: string): Promise<boolean> {
-        return SyncScheduler.isAccountCircuitBroken(accountId);
+    private static async getAccountBlockState(accountId: string, entityType?: string): Promise<CircuitBreakerState> {
+        return SyncScheduler.getCircuitBreakerState(accountId, entityType);
     }
 
     /**
@@ -33,6 +44,10 @@ export class SyncScheduler {
      * Manual trigger syncs are excluded from the breaker — users can always force.
      */
     static async isAccountCircuitBroken(accountId: string, entityType?: string): Promise<boolean> {
+        return (await SyncScheduler.getCircuitBreakerState(accountId, entityType)).isOpen;
+    }
+
+    static async getCircuitBreakerState(accountId: string, entityType?: string): Promise<CircuitBreakerState> {
         const CONSECUTIVE_FAILURE_THRESHOLD = 3;
         const WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -41,10 +56,20 @@ export class SyncScheduler {
                 where: { id: accountId },
                 select: { wooNeedsReconnect: true }
             });
-            if (account?.wooNeedsReconnect) return true;
+            if (account?.wooNeedsReconnect) {
+                return { isOpen: true, reason: 'needs_reconnect', entityType };
+            }
 
             const maintenanceDeferral = await this.getMaintenanceDeferral(accountId, entityType);
-            if (maintenanceDeferral.isDeferred) return true;
+            if (maintenanceDeferral.isDeferred) {
+                return {
+                    isOpen: true,
+                    reason: 'maintenance_deferral',
+                    entityType,
+                    retryAt: maintenanceDeferral.retryAt,
+                    lastError: maintenanceDeferral.lastError
+                };
+            }
 
             const since = new Date(Date.now() - WINDOW_MS);
             const recentLogs = await prisma.syncLog.findMany({
@@ -57,23 +82,38 @@ export class SyncScheduler {
                 },
                 orderBy: { startedAt: 'desc' },
                 take: CONSECUTIVE_FAILURE_THRESHOLD,
-                select: { status: true }
+                select: { status: true, errorMessage: true }
             });
 
-            if (recentLogs.length < CONSECUTIVE_FAILURE_THRESHOLD) return false;
+            if (recentLogs.length < CONSECUTIVE_FAILURE_THRESHOLD) {
+                return { isOpen: false, reason: 'none', entityType };
+            }
 
             // All N most recent non-manual logs must be FAILED (no SUCCESS mixed in)
-            return recentLogs
+            const hasConsecutiveFailures = recentLogs
                 .slice(0, CONSECUTIVE_FAILURE_THRESHOLD)
                 .every(l => l.status === 'FAILED');
+
+            if (!hasConsecutiveFailures) {
+                return { isOpen: false, reason: 'none', entityType };
+            }
+
+            return {
+                isOpen: true,
+                reason: 'consecutive_failures',
+                entityType,
+                recentFailures: CONSECUTIVE_FAILURE_THRESHOLD,
+                threshold: CONSECUTIVE_FAILURE_THRESHOLD,
+                lastError: recentLogs[0]?.errorMessage || null
+            };
         } catch (err: any) {
             // Fail open — on DB error allow dispatch to avoid deadlocking all accounts
             Logger.warn('[SyncScheduler] Circuit breaker check failed — allowing dispatch', { accountId, error: err.message });
-            return false;
+            return { isOpen: false, reason: 'none', entityType };
         }
     }
 
-    private static async getMaintenanceDeferral(accountId: string, entityType?: string): Promise<{ isDeferred: boolean; retryAt?: Date }> {
+    private static async getMaintenanceDeferral(accountId: string, entityType?: string): Promise<{ isDeferred: boolean; retryAt?: Date; lastError?: string | null }> {
         const since = new Date(Date.now() - this.MAINTENANCE_LOG_WINDOW_MS);
         const latestFailure = await prisma.syncLog.findFirst({
             where: {
@@ -92,20 +132,21 @@ export class SyncScheduler {
 
         const message = latestFailure?.errorMessage || '';
         const match = message.match(/maintenance mode(?:\.|.*)retry after (\d+)s/i);
-        if (!match) return { isDeferred: false };
+        if (!match) return { isDeferred: false, lastError: message || null };
 
         const retryAfterSeconds = Number.parseInt(match[1], 10);
         if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) {
-            return { isDeferred: false };
+            return { isDeferred: false, lastError: message || null };
         }
 
         const baseTime = latestFailure?.completedAt || latestFailure?.startedAt;
-        if (!baseTime) return { isDeferred: false };
+        if (!baseTime) return { isDeferred: false, lastError: message || null };
 
         const retryAt = new Date(baseTime.getTime() + retryAfterSeconds * 1000);
         return {
             isDeferred: retryAt.getTime() > Date.now(),
-            retryAt
+            retryAt,
+            lastError: message || null
         };
     }
 
@@ -142,8 +183,9 @@ export class SyncScheduler {
 
         for (const acc of accounts) {
             try {
-                if (await this.isAccountBlocked(acc.id)) {
-                    Logger.warn(`Orchestrator: Skipping account ${acc.id} due to circuit breaker`);
+                const breaker = await this.getAccountBlockState(acc.id);
+                if (breaker.isOpen) {
+                    Logger.warn(`Orchestrator: Skipping account ${acc.id} due to circuit breaker`, { accountId: acc.id, ...breaker });
                     continue;
                 }
                 await service.runSync(acc.id, {
@@ -168,8 +210,9 @@ export class SyncScheduler {
 
         for (const acc of accounts) {
             try {
-                if (await this.isAccountBlocked(acc.id)) {
-                    Logger.warn(`Fast Order Sync: Skipping account ${acc.id} due to circuit breaker`);
+                const breaker = await this.getAccountBlockState(acc.id, 'orders');
+                if (breaker.isOpen) {
+                    Logger.warn(`Fast Order Sync: Skipping account ${acc.id} due to circuit breaker`, { accountId: acc.id, ...breaker });
                     continue;
                 }
                 await service.runSync(acc.id, {
