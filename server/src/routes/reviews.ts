@@ -89,7 +89,7 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
             Logger.error('Error updating review', { error });
             const status = reviewErrorStatus(error);
             if (status) return reply.code(status).send({ error: error instanceof Error ? error.message : 'Failed to update review' });
-            return reply.code(500).send({ error: 'Failed to update review' });
+            return reply.code(500).send({ error: error instanceof Error ? error.message : 'Failed to update review' });
         }
     });
 
@@ -102,7 +102,7 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
             Logger.error('Error moderating review', { error });
             const status = reviewErrorStatus(error);
             if (status) return reply.code(status).send({ error: error instanceof Error ? error.message : 'Failed to moderate review' });
-            return reply.code(500).send({ error: 'Failed to moderate review' });
+            return reply.code(500).send({ error: error instanceof Error ? error.message : 'Failed to moderate review' });
         }
     });
 

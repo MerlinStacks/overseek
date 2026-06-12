@@ -10,7 +10,8 @@ import { z } from 'zod';
 import { parseFirstIssueOrReply } from '../routeHelpers';
 
 const updateSettingsSchema = z.object({
-    registrationEnabled: z.boolean().optional()
+    registrationEnabled: z.boolean().optional(),
+    accountCreationEnabled: z.boolean().optional()
 });
 
 /**
@@ -23,7 +24,7 @@ async function getOrCreateSettings() {
 
     if (!settings) {
         settings = await prisma.platformSettings.create({
-            data: { key: 'default', registrationEnabled: true }
+            data: { key: 'default', registrationEnabled: true, accountCreationEnabled: true }
         });
     }
 
@@ -40,6 +41,7 @@ export const platformSettingsRoutes: FastifyPluginAsync = async (fastify) => {
             const settings = await getOrCreateSettings();
             return {
                 registrationEnabled: settings.registrationEnabled,
+                accountCreationEnabled: settings.accountCreationEnabled,
                 updatedAt: settings.updatedAt
             };
         } catch (e: any) {
@@ -54,7 +56,7 @@ export const platformSettingsRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.put('/platform-settings', async (request, reply) => {
         try {
-            const parsed = parseFirstIssueOrReply<{ registrationEnabled?: boolean }>(
+            const parsed = parseFirstIssueOrReply<{ registrationEnabled?: boolean; accountCreationEnabled?: boolean }>(
                 reply,
                 updateSettingsSchema.safeParse(request.body),
             );
@@ -65,17 +67,20 @@ export const platformSettingsRoutes: FastifyPluginAsync = async (fastify) => {
                 update: parsed,
                 create: {
                     key: 'default',
-                    registrationEnabled: parsed.registrationEnabled ?? true
+                    registrationEnabled: parsed.registrationEnabled ?? true,
+                    accountCreationEnabled: parsed.accountCreationEnabled ?? true
                 }
             });
 
             Logger.info('[Admin] Platform settings updated', {
                 registrationEnabled: settings.registrationEnabled,
+                accountCreationEnabled: settings.accountCreationEnabled,
                 userId: request.user?.id
             });
 
             return {
                 registrationEnabled: settings.registrationEnabled,
+                accountCreationEnabled: settings.accountCreationEnabled,
                 updatedAt: settings.updatedAt
             };
         } catch (e: any) {

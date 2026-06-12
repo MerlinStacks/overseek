@@ -240,12 +240,13 @@ export const ReviewsPage = () => {
                 body: JSON.stringify({ status })
             });
 
-            if (!res.ok) throw new Error('Moderation failed');
+            const result = await res.json().catch(() => ({})) as { error?: string };
+            if (!res.ok) throw new Error(result.error || 'Moderation failed');
             toast.success(`Review marked ${formatReviewStatusLabel(status).toLowerCase()}`);
             fetchReviews();
         } catch (error) {
             Logger.error('Review moderation failed', { error });
-            toast.error('Failed to update review');
+            toast.error(error instanceof Error ? error.message : 'Failed to update review');
         } finally {
             setActionReviewId(null);
         }

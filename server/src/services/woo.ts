@@ -323,8 +323,25 @@ export class WooService {
 
     async updateReview(reviewId: number, data: { status?: string; content?: string; rating?: number }) {
         if (this.isDemo) return { success: true, review: { id: reviewId, ...data } };
-        const response = await this.requestWpWithRetry('put', `reviews/${reviewId}`, data, 'overseek/v1');
-        return response.data;
+        try {
+            const response = await this.requestWpWithRetry('put', `reviews/${reviewId}`, data, 'overseek/v1');
+            return response.data;
+        } catch (error: any) {
+            Logger.warn('[WooService] Custom review update endpoint failed, trying WooCommerce endpoint', {
+                accountId: this.accountId,
+                reviewId,
+                status: error?.response?.status || error?.status,
+                error: error?.response?.data || error?.message || error
+            });
+
+            const nativeData: { status?: string; review?: string; rating?: number } = {
+                ...(data.status ? { status: data.status } : {}),
+                ...(data.content ? { review: data.content } : {}),
+                ...(data.rating ? { rating: data.rating } : {})
+            };
+            const response = await this.requestWithRetry('put', `products/reviews/${reviewId}`, nativeData);
+            return { success: true, review: response.data };
+        }
     }
 
     async createReview(data: {

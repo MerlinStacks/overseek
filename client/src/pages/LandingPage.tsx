@@ -9,7 +9,10 @@ import {
     ShoppingCart,
     ArrowRight,
     Shield,
+    Github,
 } from 'lucide-react';
+
+const GITHUB_URL = 'https://github.com/MerlinStacks/overseek';
 
 /**
  * Feature descriptor used to render the features grid on the landing page.
@@ -71,7 +74,7 @@ const FEATURES = [
  *
  * Why: Google OAuth verification requires the homepage to be publicly
  * accessible and to explain the application's purpose. This page satisfies
- * both requirements while funnelling visitors toward login/register.
+ * both requirements while pointing visitors to the open-source project.
  */
 export function LandingPage() {
     return (
@@ -101,12 +104,14 @@ export function LandingPage() {
                         >
                             Sign In
                         </Link>
-                        <Link
-                            to="/register"
+                        <a
+                            href={GITHUB_URL}
+                            target="_blank"
+                            rel="noreferrer"
                             className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all duration-200"
                         >
-                            Get Started
-                        </Link>
+                            GitHub
+                        </a>
                     </div>
                 </div>
             </nav>
@@ -115,46 +120,52 @@ export function LandingPage() {
             <section className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-20 sm:pt-24 sm:pb-28 text-center">
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-full text-sm font-medium text-blue-700 dark:text-blue-400 mb-8 animate-fade-slide-up">
                     <Shield size={14} />
-                    Secure, self-hosted eCommerce analytics
+                    Open source and self-hosted
                 </div>
 
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight animate-fade-slide-up animation-delay-100">
-                    All-in-one eCommerce{' '}
-                    <span className="text-gradient">Operations Platform</span>
+                    Open-source eCommerce{' '}
+                    <span className="text-gradient">Operations Dashboard</span>
                 </h1>
 
                 <p className="mt-6 text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed animate-fade-slide-up animation-delay-200">
-                    OverSeek connects your WooCommerce store, advertising channels, and
-                    customer communications into a single dashboard — giving you real-time
-                    visibility over orders, inventory, marketing performance, and customer
-                    behaviour.
+                    OverSeek is an open-source project for running your own WooCommerce
+                    operations hub. Clone the code, deploy it on your infrastructure, and
+                    connect your store data, advertising channels, inventory, and customer
+                    communications in one dashboard.
                 </p>
 
                 <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-slide-up animation-delay-300">
-                    <Link
-                        to="/register"
+                    <a
+                        href={GITHUB_URL}
+                        target="_blank"
+                        rel="noreferrer"
                         className="inline-flex items-center gap-2 px-8 py-3.5 text-base font-semibold text-white bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all duration-200"
                     >
-                        Get Started Free
-                        <ArrowRight size={18} />
-                    </Link>
-                    <Link
-                        to="/login"
+                        Get OverSeek on GitHub
+                        <Github size={18} />
+                    </a>
+                    <a
+                        href={GITHUB_URL}
+                        target="_blank"
+                        rel="noreferrer"
                         className="inline-flex items-center gap-2 px-8 py-3.5 text-base font-semibold text-slate-700 dark:text-slate-300 bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl hover:border-blue-300 dark:hover:border-blue-600 hover:-translate-y-0.5 transition-all duration-200"
                     >
-                        Sign In
-                    </Link>
+                        View setup instructions
+                        <ArrowRight size={18} />
+                    </a>
                 </div>
             </section>
 
             {/* ───── Features ───── */}
             <section className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
                 <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white text-center mb-4">
-                    Everything you need to run your store
+                    What you get when you self-host OverSeek
                 </h2>
                 <p className="text-slate-600 dark:text-slate-400 text-center max-w-xl mx-auto mb-14">
-                    From analytics to inventory management, OverSeek replaces a dozen
-                    plugins and spreadsheets with one integrated platform.
+                    The GitHub project includes the frontend, backend, workers, and
+                    WooCommerce integration needed to run your own private operations
+                    dashboard.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -14,6 +14,22 @@ import { OrderTaggingService } from '../services/OrderTaggingService';
 import { AuditService, AuditActions } from '../services/AuditService';
 import { seedDefaultBlockRules } from '../services/tracking/CrawlerService';
 
+async function isSuperAdminUser(userId: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { isSuperAdmin: true }
+    });
+    return user?.isSuperAdmin === true;
+}
+
+async function isAccountCreationEnabled(): Promise<boolean> {
+    const settings = await prisma.platformSettings.findUnique({
+        where: { key: 'default' },
+        select: { accountCreationEnabled: true }
+    });
+    return settings?.accountCreationEnabled ?? true;
+}
+
 const accountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
@@ -22,6 +38,10 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const userId = request.user!.id;
             const { name, domain, sitemapUrl, wooUrl, wooConsumerKey, wooConsumerSecret } = request.body as any;
+
+            if (!(await isAccountCreationEnabled()) && !(await isSuperAdminUser(userId))) {
+                return reply.code(403).send({ error: 'New account creation is currently disabled.' });
+            }
 
             if (!name || !wooUrl || !wooConsumerKey || !wooConsumerSecret) {
                 return reply.code(400).send({ error: 'Missing required fields' });

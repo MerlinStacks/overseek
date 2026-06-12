@@ -2531,7 +2531,10 @@ model PlatformSettings {
   
   /// Whether new user registrations are allowed
   registrationEnabled Boolean @default(true)
-  
+
+  /// Whether non-super-admin users can create new accounts/workspaces
+  accountCreationEnabled Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
