@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useSyncStatus, SyncLog } from '../../context/SyncStatusContext';
+import { CircuitBreakerState, useSyncStatus, SyncLog } from '../../context/SyncStatusContext';
 import { formatRelativeTime, getStalenessLevel } from '../../utils/relativeTime';
 import {
     RefreshCw, CheckCircle, XCircle, Clock, Package,
@@ -153,6 +153,7 @@ export function SyncStatus() {
             {/* ── Circuit Breaker Banner ───────────────────── */}
             {healthSummary?.circuitBreaker?.isOpen && (
                 <CircuitBreakerBanner
+                    state={healthSummary.circuitBreaker.state}
                     byEntity={healthSummary.circuitBreaker.byEntity}
                     onReset={() => resetCircuit()}
                 />
@@ -328,18 +329,41 @@ export function SyncStatus() {
  * a single "Resume Syncing" action.
  */
 function CircuitBreakerBanner({
+    state,
     byEntity,
     onReset
 }: {
-    byEntity: Record<string, boolean>;
+    state?: CircuitBreakerState;
+    byEntity: Record<string, boolean | CircuitBreakerState>;
     onReset: () => void;
 }) {
     const [resetting, setResetting] = useState(false);
     const [done, setDone] = useState(false);
 
-    const brokenEntities = Object.entries(byEntity)
-        .filter(([, open]) => open)
-        .map(([type]) => type);
+    const entityStates = Object.entries(byEntity)
+        .map(([type, value]) => ({
+            type,
+            state: typeof value === 'boolean'
+                ? { isOpen: value, reason: value ? 'consecutive_failures' : 'none', entityType: type } satisfies CircuitBreakerState
+                : value
+        }))
+        .filter(({ state }) => state.isOpen);
+    const brokenEntities = entityStates.map(({ type }) => type);
+    const primaryState = state?.isOpen ? state : entityStates[0]?.state;
+    const reason = primaryState?.reason || 'consecutive_failures';
+    const retryLabel = primaryState?.retryAt ? new Date(primaryState.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+    const title = reason === 'needs_reconnect'
+        ? 'Scheduled syncs paused — reconnect WooCommerce'
+        : reason === 'maintenance_deferral'
+            ? 'Scheduled syncs paused — store maintenance'
+            : 'Scheduled syncs paused — repeated failures';
+    const detail = reason === 'needs_reconnect'
+        ? 'WooCommerce credentials appear invalid or revoked. Reconnect the store before scheduled syncs resume.'
+        : reason === 'maintenance_deferral'
+            ? `The store reported maintenance mode${retryLabel ? ` until around ${retryLabel}` : ''}. Scheduler is holding off temporarily.`
+            : brokenEntities.length > 0
+                ? <>Consecutive failures on: <span className="font-medium capitalize">{brokenEntities.join(', ')}</span>. Scheduler is holding off to prevent memory pressure.</>
+                : 'Too many consecutive failures. Scheduler is holding off to prevent memory pressure.';
 
     const handleReset = async () => {
         setResetting(true);
@@ -362,13 +386,10 @@ function CircuitBreakerBanner({
                 </div>
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-red-800 dark:text-red-300">
-                        Scheduled syncs paused — store unreachable
+                        {title}
                     </p>
                     <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
-                        {brokenEntities.length > 0
-                            ? <>Consecutive failures on: <span className="font-medium capitalize">{brokenEntities.join(', ')}</span>. Scheduler is holding off to prevent memory pressure.</>
-                            : 'Too many consecutive failures. Scheduler is holding off to prevent memory pressure.'
-                        }
+                        {detail}
                     </p>
                     {done && (
                         <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">

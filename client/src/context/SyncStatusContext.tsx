@@ -60,6 +60,16 @@ interface SyncState {
 }
 
 /** Summary returned by the /health endpoint */
+export interface CircuitBreakerState {
+    isOpen: boolean;
+    reason: 'none' | 'needs_reconnect' | 'maintenance_deferral' | 'consecutive_failures';
+    entityType?: string;
+    retryAt?: string;
+    recentFailures?: number;
+    threshold?: number;
+    lastError?: string | null;
+}
+
 interface SyncHealthSummary {
     lastSuccessAt: string | null;
     lastFailureAt: string | null;
@@ -67,7 +77,8 @@ interface SyncHealthSummary {
     activeJobs: number;
     circuitBreaker?: {
         isOpen: boolean;
-        byEntity: Record<string, boolean>;
+        state?: CircuitBreakerState;
+        byEntity: Record<string, boolean | CircuitBreakerState>;
     };
 }
 
