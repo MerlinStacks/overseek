@@ -49,6 +49,7 @@ export abstract class BaseSync {
 
             await this.updateLog(log.id, 'SUCCESS', undefined, result.itemsProcessed, retryCount);
             await this.updateState(accountId, this.entityType);
+            await this.clearReconnectFlag(accountId);
 
             Logger.info(`Sync Complete: ${this.entityType}`, {
                 accountId,
@@ -143,6 +144,21 @@ export abstract class BaseSync {
             });
         } catch (error: any) {
             Logger.warn('Failed to emit sync failure alert', { accountId, entityType, error: error.message });
+        }
+    }
+
+    private async clearReconnectFlag(accountId: string) {
+        try {
+            const result = await prisma.account.updateMany({
+                where: { id: accountId, wooNeedsReconnect: true },
+                data: { wooNeedsReconnect: false }
+            });
+
+            if (result.count > 0) {
+                Logger.info('[Sync] Cleared stale WooCommerce reconnect flag after successful sync', { accountId, entityType: this.entityType });
+            }
+        } catch (error: any) {
+            Logger.warn('[Sync] Failed to clear WooCommerce reconnect flag after successful sync', { accountId, entityType: this.entityType, error: error.message });
         }
     }
 
