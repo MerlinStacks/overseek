@@ -19,7 +19,7 @@ class OverSeek_Review_Form {
 	private const NONCE_ACTION = 'overseek_submit_review';
 	private const NONCE_NAME   = 'overseek_review_nonce';
 	private const MAX_FILES    = 6;
-	private const MAX_BYTES    = 26214400;
+	private const MAX_BYTES    = 10485760;
 
 	/**
 	 * Track forms already rendered during the request to avoid duplicate fallbacks.
@@ -146,7 +146,7 @@ class OverSeek_Review_Form {
 	 * @return bool
 	 */
 	private function should_replace_product_reviews(): bool {
-		return '0' !== (string) get_option( 'overseek_reviews_replace_form', '1' );
+		return '1' === (string) get_option( 'overseek_reviews_replace_form', '' );
 	}
 
 	/**
@@ -172,6 +172,11 @@ class OverSeek_Review_Form {
 		$product_id  = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
 		$shop_review = ! empty( $_POST['shop_review'] );
 		$redirect    = $this->get_submitted_redirect_url( $shop_review ? home_url( '/' ) : $this->get_review_redirect_url( $product_id ) );
+
+		$nonce = isset( $_POST[ self::NONCE_NAME ] ) ? sanitize_text_field( wp_unslash( $_POST[ self::NONCE_NAME ] ) ) : '';
+		if ( '' === $nonce || ! wp_verify_nonce( $nonce, self::NONCE_ACTION ) ) {
+			$this->redirect_with_status( $redirect, 'invalid-nonce' );
+		}
 
 		if ( ! $this->passes_spam_checks() ) {
 			$this->redirect_with_status( $redirect, 'spam-check' );
@@ -331,6 +336,7 @@ class OverSeek_Review_Form {
 		}
 
 		$messages = [
+			'invalid-nonce'   => __( 'Your review form expired. Please refresh the page and try again.', 'overseek-wc' ),
 			'invalid-product' => __( 'We could not match this review to the product. Please refresh the page and try again.', 'overseek-wc' ),
 			'missing'         => __( 'Please complete the rating, review, name, and email fields.', 'overseek-wc' ),
 			'spam-check'      => __( 'We could not submit your review. Please refresh the page and try again.', 'overseek-wc' ),

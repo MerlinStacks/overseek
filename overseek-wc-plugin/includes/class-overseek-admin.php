@@ -112,9 +112,13 @@ class OverSeek_Admin
 			'type' => 'string',
 			'sanitize_callback' => array($this, 'sanitize_checkbox'),
 		));
+		register_setting('overseek_options_group', 'overseek_enable_bot_shield', array(
+			'type' => 'string',
+			'sanitize_callback' => array($this, 'sanitize_checkbox'),
+		));
 		register_setting('overseek_options_group', 'overseek_reviews_replace_form', array(
 			'type' => 'string',
-			'default' => '1',
+			'default' => '0',
 			'sanitize_callback' => array($this, 'sanitize_reviews_replace_checkbox'),
 		));
 		register_setting('overseek_options_group', 'overseek_enable_google_product_review_feed', array(
@@ -238,9 +242,10 @@ class OverSeek_Admin
 			get_option('overseek_enable_tracking'),
 			get_option('overseek_track_pageviews', '1'),
 			get_option('overseek_enable_chat'),
+			get_option('overseek_enable_bot_shield'),
 			get_option('overseek_reviews_replace_form'),
 			get_option('overseek_enable_google_product_review_feed'),
-			get_option('overseek_enable_vitals', '1'),
+			get_option('overseek_enable_vitals'),
 			get_option('overseek_enable_processing_invoice_sync', '1'),
 		));
 		$status_label       = $is_configured ? 'Connected' : 'Needs setup';
@@ -278,8 +283,8 @@ class OverSeek_Admin
 				</div>
 				<div class="overseek-admin__stat-card">
 					<span class="overseek-admin__stat-label">Enabled features</span>
-					<strong><?php echo esc_html((string) count($enabled_features)); ?>/6</strong>
-					<p>Tracking, chat, reviews, review feed, vitals, and invoice sync can be toggled independently.</p>
+					<strong><?php echo esc_html((string) count($enabled_features)); ?>/7</strong>
+					<p>Tracking, chat, Bot Shield, reviews, review feed, vitals, and invoice sync can be toggled independently.</p>
 				</div>
 				<div class="overseek-admin__stat-card">
 					<span class="overseek-admin__stat-label">Privacy retention</span>
@@ -366,6 +371,8 @@ class OverSeek_Admin
 							<strong><?php echo esc_html($bot_shield_health['headline']); ?></strong>
 							<p><?php echo esc_html($bot_shield_health['message']); ?></p>
 						</div>
+
+						<?php $this->render_toggle_field('overseek_enable_bot_shield', 'Enable Bot Shield checkout protection', 'Block configured crawler user agents and run checkout fingerprint checks. Leave off if you see false positives at checkout.'); ?>
 						<?php if (!empty($bot_shield_health['syncError'])) : ?>
 							<div class="notice notice-warning inline"><p><strong>Last sync error:</strong> <?php echo esc_html($bot_shield_health['syncError']); ?></p></div>
 						<?php endif; ?>
@@ -432,7 +439,7 @@ class OverSeek_Admin
 						<?php $this->render_toggle_field('overseek_enable_tracking', 'Enable global tracking', 'Send storefront analytics and behavioral events to OverSeek.'); ?>
 						<?php $this->render_toggle_field('overseek_track_pageviews', 'Track general pageviews', 'Send non-commerce pageview events. Turn this off to reduce per-page tracking work while keeping cart, checkout, purchase, product, and review events.', '1'); ?>
 						<?php $this->render_toggle_field('overseek_enable_chat', 'Enable live chat widget', 'Show the OverSeek chat widget to visitors across your storefront.'); ?>
-						<?php $this->render_toggle_field('overseek_reviews_replace_form', 'Replace WooCommerce review form', 'Use the Overseek review display and media-enabled review form in the product reviews tab.', '1'); ?>
+						<?php $this->render_toggle_field('overseek_reviews_replace_form', 'Replace WooCommerce review form', 'Use the Overseek review display and media-enabled review form in the product reviews tab. Leave off to preserve theme-native reviews.'); ?>
 						<?php $this->render_toggle_field('overseek_enable_google_product_review_feed', 'Generate XML Product Review Feed for Google Shopping', 'Expose approved WooCommerce product reviews in Google Product Ratings XML format.'); ?>
 
 						<div class="overseek-admin__keyvals">
@@ -457,7 +464,7 @@ class OverSeek_Admin
 							<p>Enable the feed above, then add this URL in Google Merchant Center as a product ratings feed.</p>
 						</div>
 
-						<?php $this->render_toggle_field('overseek_enable_vitals', 'Enable Web Vitals collection', 'Collect LCP, CLS, INP, FCP, and TTFB with near-zero impact using beacon delivery.', '1', 'overseek_enable_vitals'); ?>
+						<?php $this->render_toggle_field('overseek_enable_vitals', 'Enable Web Vitals collection', 'Collect LCP, CLS, INP, FCP, and TTFB using a sampled frontend module and beacon delivery.', '', 'overseek_enable_vitals'); ?>
 
 						<label class="overseek-admin__field" for="overseek_vitals_sample_rate">
 							<span class="overseek-admin__label">Web Vitals sampling rate</span>
@@ -509,9 +516,9 @@ class OverSeek_Admin
 						</label>
 
 						<label class="overseek-admin__field" for="overseek_webhook_auth_token">
-							<span class="overseek-admin__label">Webhook auth token (optional)</span>
+							<span class="overseek-admin__label">Webhook auth token</span>
 							<input id="overseek_webhook_auth_token" type="text" name="overseek_webhook_auth_token" value="<?php echo esc_attr($webhook_auth_token); ?>" spellcheck="false" />
-							<span class="overseek-admin__hint">If set, third-party plugins can use <code>Authorization: Bearer {token}</code>. This same token is also sent when forwarding tracking events to the OverSeek API and can be reused by CK Workflow Suite for My Account email preferences.</span>
+							<span class="overseek-admin__hint">Required for tracking and artwork event webhooks. Third-party plugins should use <code>Authorization: Bearer {token}</code>. This same token is sent when forwarding events to the OverSeek API and can be reused by CK Workflow Suite for My Account email preferences.</span>
 						</label>
 
 						<div class="overseek-admin__code-block">
@@ -590,9 +597,6 @@ class OverSeek_Admin
 	{
 		$field_id = $id ?: $option_name;
 		$value    = get_option($option_name, $default);
-		if ('overseek_reviews_replace_form' === $option_name && '' === $value) {
-			$value = '1';
-		}
 		?>
 		<label class="overseek-admin__toggle" for="<?php echo esc_attr($field_id); ?>">
 			<span class="overseek-admin__toggle-input">

@@ -100,8 +100,6 @@ class OverSeek_Cart_Recovery
 			'missingVariationIds' => [],
 		];
 
-		WC()->cart->empty_cart();
-
 		foreach ($items as $item) {
 			if (!is_array($item)) {
 				continue;

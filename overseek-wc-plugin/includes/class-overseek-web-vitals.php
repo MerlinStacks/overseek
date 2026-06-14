@@ -49,7 +49,7 @@ class OverSeek_Web_Vitals
             return;
         }
 
-        if (!get_option('overseek_enable_vitals', '1')) {
+		if (!get_option('overseek_enable_vitals')) {
             return;
         }
 

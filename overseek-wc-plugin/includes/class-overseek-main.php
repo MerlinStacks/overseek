@@ -53,6 +53,7 @@ class OverSeek_Main
 		$is_frontend_request = ! is_admin() && ! wp_doing_ajax() && ! wp_doing_cron();
 		$is_configured       = $this->is_configured();
 		$tracking_enabled    = (bool) get_option('overseek_enable_tracking');
+		$bot_shield_enabled  = (bool) get_option('overseek_enable_bot_shield');
 
 		// Initialize Admin.
 		if (is_admin()) {
@@ -114,15 +115,13 @@ class OverSeek_Main
 		}
 
 		// Initialize Crawler Guard (blocks blacklisted bots at application level).
-		// Not gated by tracking toggle — admins may want bot blocking without analytics.
-		if ($is_configured && ($is_frontend_request || wp_doing_cron())) {
+		if ($is_configured && $bot_shield_enabled && ($is_frontend_request || wp_doing_cron())) {
 			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crawler-guard.php';
 			new OverSeek_Crawler_Guard();
 		}
 
 		// Initialize Fingerprint Bot Detection (checkout-only, behavioral scoring).
-		// Not gated by tracking toggle — bot protection is independent of analytics.
-		if ($is_configured && ($is_frontend_request || wp_doing_ajax() || $this->is_rest_request() || wp_doing_cron())) {
+		if ($is_configured && $bot_shield_enabled && ($is_frontend_request || wp_doing_ajax() || $this->is_rest_request() || wp_doing_cron())) {
 			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-fingerprint-utils.php';
 			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-fingerprint.php';
 			new OverSeek_Fingerprint();
@@ -130,7 +129,7 @@ class OverSeek_Main
 
 		// Initialize Web Vitals Collector.
 		// Not gated by tracking toggle — performance data is independent of behavioural analytics.
-		if ($is_configured && $is_frontend_request && get_option('overseek_enable_vitals', '1')) {
+		if ($is_configured && $is_frontend_request && get_option('overseek_enable_vitals')) {
 			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-tracking-guard-utils.php';
 			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-web-vitals.php';
 			new OverSeek_Web_Vitals();

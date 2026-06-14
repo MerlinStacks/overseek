@@ -231,21 +231,14 @@ class OverSeek_Fingerprint
         $score += $velocity['score'];
         $factors = array_merge($factors, $velocity['factors']);
 
-        // Missing token = fail-soft:
-        // low-risk requests pass with mild risk, high-risk requests are challenged/blocked.
-        if (empty($token)) {
-            $score += 10;
-            $factors[] = 'Token missing';
+		// Missing token = fail-open. Script blockers, CSP, and slow third-party
+		// responses should not stop legitimate customers from checking out.
+		if (empty($token)) {
+			$score += 5;
+			$factors[] = 'Token missing';
+			$factors[] = 'Token missing allowed (fail-open)';
 
-            if ($velocity['score'] >= 20 || OverSeek_Fingerprint_Utils::is_suspicious_user_agent()) {
-                $score += 50;
-                $factors[] = 'Token missing in risky context (challenge required)';
-            } else {
-                $score += 5;
-                $factors[] = 'Token missing in low-risk context (fail-soft)';
-            }
-
-            $this->current_score   = $score;
+			$this->current_score   = $score;
             $this->current_factors = $factors;
             return $score;
         }

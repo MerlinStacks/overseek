@@ -73,6 +73,9 @@ class OverSeek_API {
 				'enable_chat'     => [
 					'type' => 'boolean',
 				],
+				'enable_bot_shield' => [
+					'type' => 'boolean',
+				],
 			],
 		] );
 
@@ -604,7 +607,7 @@ class OverSeek_API {
 	/**
 	 * Check if request has valid token for tracking email events bridge.
 	 *
-	 * If no token is configured, requests are accepted.
+	 * A configured token is required so this store cannot be used as an open relay.
 	 *
 	 * @param WP_REST_Request $request The request object.
 	 * @return bool|WP_Error
@@ -613,7 +616,7 @@ class OverSeek_API {
 		$webhook_token = (string) get_option( 'overseek_webhook_auth_token', '' );
 
 		if ( '' === $webhook_token ) {
-			return true;
+			return new WP_Error( 'webhook_token_not_configured', 'Webhook auth token is required for event forwarding.', [ 'status' => 503 ] );
 		}
 
 		$provided_bearer = $this->extract_bearer_token( $request );
@@ -839,6 +842,9 @@ class OverSeek_API {
 		if ( isset( $params['enable_chat'] ) ) {
 			update_option( 'overseek_enable_chat', $params['enable_chat'] ? '1' : '' );
 		}
+		if ( isset( $params['enable_bot_shield'] ) ) {
+			update_option( 'overseek_enable_bot_shield', $params['enable_bot_shield'] ? '1' : '' );
+		}
 
 		return new WP_REST_Response( [ 'success' => true, 'message' => 'Settings updated successfully' ], 200 );
 	}
@@ -854,6 +860,7 @@ class OverSeek_API {
 		$api_url          = get_option( 'overseek_api_url' );
 		$tracking_enabled = get_option( 'overseek_enable_tracking' );
 		$chat_enabled     = get_option( 'overseek_enable_chat' );
+		$bot_shield_enabled = get_option( 'overseek_enable_bot_shield' );
 		$relay_endpoint   = home_url( '/wp-json/overseek/v1/email-relay' );
 		$tracking_events_endpoint = home_url( '/wp-json/overseek/v1/tracking-email-events' );
 		$artwork_events_endpoint  = home_url( '/wp-json/overseek/v1/artwork-events' );
@@ -879,6 +886,7 @@ class OverSeek_API {
 			'accountMatch'       => $show_sensitive ? $account_match : null,
 			'trackingEnabled'    => $show_sensitive ? (bool) $tracking_enabled : null,
 			'chatEnabled'        => $show_sensitive ? (bool) $chat_enabled : null,
+			'botShieldEnabled'   => $show_sensitive ? (bool) $bot_shield_enabled : null,
 			'woocommerceActive'  => $show_sensitive ? class_exists( 'WooCommerce' ) : null,
 			'woocommerceVersion' => $show_sensitive && defined( 'WC_VERSION' ) ? WC_VERSION : null,
 			'phpVersion'         => $show_sensitive ? PHP_VERSION : null,

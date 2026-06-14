@@ -57,10 +57,10 @@ class OverSeek_Tracking_Transport
             return;
         }
 
-        $is_ajax = wp_doing_ajax();
-        $is_rest = defined('REST_REQUEST') && REST_REQUEST;
-        $blocking = $is_ajax || $is_rest;
-        $timeout = $blocking ? 2 : 0.5;
+		$is_ajax = wp_doing_ajax();
+		$is_rest = defined('REST_REQUEST') && REST_REQUEST;
+		$blocking = false;
+		$timeout = 0.5;
 
         if (defined('WP_DEBUG') && WP_DEBUG && defined('OVERSEEK_DEBUG') && OVERSEEK_DEBUG) {
             error_log('OverSeek: Flushing ' . count($events) . ' events (AJAX: ' . ($is_ajax ? 'yes' : 'no') . ', REST: ' . ($is_rest ? 'yes' : 'no') . ')');
