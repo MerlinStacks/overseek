@@ -161,8 +161,12 @@ export function parseQuotedContent(body: string): { mainContent: string; quotedC
 
     for (const pattern of htmlQuotePatterns) {
         const match = body.match(pattern);
-        // Require at least 200 chars before the quote marker to avoid hiding short customer replies
-        if (match && match.index !== undefined && match.index > 200) {
+        // Split even short replies from long quoted threads, but avoid hiding emails
+        // that begin with a quote marker and have no new customer text above it.
+        const textBeforeQuote = match?.index !== undefined
+            ? stripHtmlForAnalysis(body.slice(0, match.index))
+            : '';
+        if (match && match.index !== undefined && textBeforeQuote.length > 0) {
             return buildResult(
                 body.slice(0, match.index).trim(),
                 body.slice(match.index).trim()

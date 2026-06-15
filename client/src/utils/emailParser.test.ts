@@ -81,6 +81,14 @@ describe('parseQuotedContent', () => {
             expect(result.mainContent).toContain('Thanks for the update');
             expect(result.quotedContent).toContain('order has been shipped');
         });
+
+        it('separates very short replies from quoted Gmail history', () => {
+            const body = `<div>Yes thanks</div><blockquote class="gmail_quote"><div>On Mon, Support wrote:</div><div>Previous thread</div></blockquote>`;
+            const result = parseQuotedContent(body);
+            expect(result.quotedContent).not.toBeNull();
+            expect(result.mainContent).toContain('Yes thanks');
+            expect(result.mainContent).not.toContain('Previous thread');
+        });
     });
 
     describe('Plain text email patterns', () => {

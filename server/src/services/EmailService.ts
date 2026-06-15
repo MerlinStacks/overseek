@@ -995,10 +995,15 @@ export class EmailService {
                                     const cid = attachment.contentId.replace(/^<|>$/g, '');
                                     // Only treat as inline if it's actually referenced in the HTML
                                     if (html.includes(`cid:${cid}`)) {
-                                        const base64 = attachment.content.toString('base64');
-                                        const dataUri = `data:${attachment.contentType};base64,${base64}`;
-                                        const regex = new RegExp(`cid:${cid}`, 'g');
-                                        html = html.replace(regex, dataUri);
+                                        const extensionFromName = attachment.filename?.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
+                                        const extensionFromType = attachment.contentType.split('/')[1]?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+                                        const extension = extensionFromName || extensionFromType;
+                                        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+                                        const filename = `${uniqueSuffix}-inline-${cid.replace(/[^a-zA-Z0-9_-]/g, '') || 'image'}.${extension}`;
+                                        const filePath = path.join(attachmentsDir, filename);
+                                        fs.writeFileSync(filePath, attachment.content);
+                                        const inlineUrl = `/uploads/attachments/${filename}`;
+                                        html = html.split(`cid:${cid}`).join(inlineUrl);
                                         isInline = true;
                                     }
                                 }
