@@ -71,6 +71,8 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     // Page transition effect
     useEffect(() => {
         if (location.pathname !== prevPathRef.current) {
+            const timers: ReturnType<typeof setTimeout>[] = [];
+
             // Defer initial state update to avoid cascading renders
             const initialTimer = setTimeout(() => {
                 setIsTransitioning(true);
@@ -83,14 +85,13 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     const enterTimer = setTimeout(() => {
                         setIsTransitioning(false);
                     }, 50);
-
-                    return () => clearTimeout(enterTimer);
+                    timers.push(enterTimer);
                 }, 150);
-
-                return () => clearTimeout(exitTimer);
+                timers.push(exitTimer);
             }, 0);
+            timers.push(initialTimer);
 
-            return () => clearTimeout(initialTimer);
+            return () => timers.forEach(clearTimeout);
         }
     }, [location]);
 

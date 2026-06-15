@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     AlertTriangle,
@@ -101,6 +101,10 @@ export function MobileOrders() {
     const [activeStatus, setActiveStatus] = useState('all');
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
+    const ordersAbortRef = useRef<AbortController | null>(null);
+    const countsAbortRef = useRef<AbortController | null>(null);
+    const ordersRequestIdRef = useRef(0);
+    const countsRequestIdRef = useRef(0);
 
     const activeView = VIEWS.find((view) => view.status === activeStatus) || VIEWS[0];
     const getStatusConfig = useCallback((status: string) => STATUS_CONFIG[status.toLowerCase()] || STATUS_CONFIG.pending, []);
@@ -112,13 +116,22 @@ export function MobileOrders() {
     const fetchStatusCounts = useCallback(async () => {
         if (!currentAccount || !token) return;
 
+        countsAbortRef.current?.abort();
+        const controller = new AbortController();
+        countsAbortRef.current = controller;
+        const requestId = ++countsRequestIdRef.current;
+
         try {
             const res = await fetch('/api/sync/orders/status-counts', {
                 headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+                signal: controller.signal,
             });
             if (!res.ok) throw new Error('Failed to fetch status counts');
-            setStatusCounts(await res.json() as StatusCountsResponse);
+            const counts = await res.json() as Partial<StatusCountsResponse>;
+            if (requestId !== countsRequestIdRef.current) return;
+            setStatusCounts({ total: counts.total || 0, counts: counts.counts || {} });
         } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
             Logger.warn('[MobileOrders] Failed to fetch status counts', { error });
         }
     }, [currentAccount, token]);
@@ -128,6 +141,11 @@ export function MobileOrders() {
             setLoading(false);
             return;
         }
+
+        ordersAbortRef.current?.abort();
+        const controller = new AbortController();
+        ordersAbortRef.current = controller;
+        const requestId = ++ordersRequestIdRef.current;
 
         try {
             if (reset) {
@@ -141,10 +159,12 @@ export function MobileOrders() {
 
             const res = await fetch(`/api/sync/orders/search?${params}`, {
                 headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+                signal: controller.signal,
             });
             if (!res.ok) throw new Error('Failed to fetch orders');
 
             const data = await res.json() as OrdersSearchResponse | OrderApiResponse[];
+            if (requestId !== ordersRequestIdRef.current) return;
             const rawOrders = Array.isArray(data) ? data : data.orders || [];
             const responseTotal = Array.isArray(data) ? rawOrders.length : data.total;
             const nextTotal = responseTotal ?? ((targetPage - 1) * PAGE_SIZE + rawOrders.length);
@@ -173,10 +193,13 @@ export function MobileOrders() {
             setHasMore(targetPage * PAGE_SIZE < nextTotal);
             setPage(targetPage + 1);
         } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
             Logger.error('[MobileOrders] Error fetching orders:', { error });
             toast.error('Could not load orders.');
         } finally {
-            setLoading(false);
+            if (requestId === ordersRequestIdRef.current) {
+                setLoading(false);
+            }
         }
     }, [activeStatus, currentAccount, searchQuery, toast, token]);
 
@@ -201,6 +224,13 @@ export function MobileOrders() {
         });
         return unsubscribe;
     }, [currentAccount?.id, fetchOrders, fetchStatusCounts]);
+
+    useEffect(() => {
+        return () => {
+            ordersAbortRef.current?.abort();
+            countsAbortRef.current?.abort();
+        };
+    }, []);
 
     const handleSearch = (event: FormEvent) => {
         event.preventDefault();
@@ -260,7 +290,7 @@ export function MobileOrders() {
 
             <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar">
                 {VIEWS.map((view) => {
-                    const count = view.status === 'all' ? statusCounts?.total : statusCounts?.counts[view.status];
+                    const count = view.status === 'all' ? statusCounts?.total : statusCounts?.counts?.[view.status];
                     const isActive = activeStatus === view.status;
 
                     return (
