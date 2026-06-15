@@ -51,8 +51,8 @@ const PROMPT_CONFIGS: PromptConfig[] = [
         id: 'review_reply',
         name: 'Review Reply Generator',
         description: 'Generate thoughtful replies to customer reviews',
-        placeholder: 'You are responding to a customer review on behalf of the store. Generate a professional and warm reply:\n\nReview Rating: {{rating}}/5\nReview Text: {{review_text}}\nProduct: {{product_name}}\n\nGuidelines:\n- Thank the customer\n- Address specific points mentioned\n- If negative, offer solution\n- Keep it under 100 words',
-        helpText: 'Available variables: {{rating}}, {{review_text}}, {{product_name}}, {{customer_name}}'
+        placeholder: 'You are responding to a customer review on behalf of the store. Generate a professional and warm reply:\n\nReview Rating: {{rating}}/5\nReview Text: {{review_text}}\nProduct: {{product_name}}\nCustomer: {{customer_name}}\nOrder Details:\n{{order_details}}\n\nGuidelines:\n- Thank the customer\n- Address specific points mentioned\n- Reference order details only when relevant\n- If negative, offer solution\n- Keep it under 100 words\n- Return one plain-text reply only',
+        helpText: 'Available variables: {{rating}}, {{review_text}}, {{product_name}}, {{reviewer_name}}, {{customer_name}}, {{order_details}}, {{order_number}}, {{order_status}}, {{order_items}}'
     },
     {
         id: 'seo_meta',
