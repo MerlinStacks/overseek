@@ -300,6 +300,29 @@ describe('MergeTagResolver all merge tags', () => {
         expect(html).not.toMatch(/\{\{[^}]+\}\}/);
     });
 
+    it('resolves product tags from the first order line item when product context is absent', () => {
+        const html = resolveMergeTags(
+            '{{product.name}} {{product.price}} {{product.image}}',
+            {
+                order: {
+                    currency: 'AUD',
+                    line_items: [
+                        {
+                            name: 'Printed Tee',
+                            price: '21.25',
+                            image: { src: 'https://store.example.com/uploads/printed-tee.jpg' },
+                        },
+                    ],
+                },
+            }
+        );
+
+        expect(html).toContain('Printed Tee');
+        expect(html).toContain('$21.25');
+        expect(html).toContain('https://store.example.com/uploads/printed-tee.jpg');
+        expect(html).not.toMatch(/\{\{[^}]+\}\}/);
+    });
+
     it('renders compact and list order item formats', () => {
         const html = resolveMergeTags(
             '{{order.itemsCompact}} {{order.itemsList}}',

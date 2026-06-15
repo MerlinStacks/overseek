@@ -140,13 +140,12 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     }
 
     // Product merge tags
-    if (context.product) {
-        const product = context.product;
-
+    const product = getProductMergeContext(context);
+    if (product) {
         replaceMergeTag('{{product.name}}', product.name || '');
-        replaceMergeTag('{{product.price}}', formatCurrency(product.price, 'AUD'));
-        replaceMergeTag('{{product.image}}', product.images?.[0]?.src || '');
-        replaceMergeTag('{{product.description}}', product.shortDescription || product.description || '');
+        replaceMergeTag('{{product.price}}', formatCurrency(product.price, product.currency || context.order?.currency || context.cart?.currency || 'AUD'));
+        replaceMergeTag('{{product.image}}', getProductImageUrl(product));
+        replaceMergeTag('{{product.description}}', product.shortDescription || product.short_description || product.description || '');
     }
 
     // Coupon merge tags
@@ -497,6 +496,37 @@ function getReviewFallback(context: MergeTagContext, storeUrl: string): { produc
 function getOrderItems(order: any): any[] {
     const items = order?.lineItems || order?.line_items || order?.items || order?.orderItems || order?.order_items || [];
     return Array.isArray(items) ? items : [];
+}
+
+function getProductMergeContext(context: MergeTagContext): any | null {
+    if (context.product) return context.product;
+
+    const orderItems = getOrderItems(context.order);
+    const cartItems = Array.isArray(context.cart?.items)
+        ? context.cart.items
+        : Array.isArray(context.cart?.cartItems)
+            ? context.cart.cartItems
+            : [];
+    const item = orderItems[0] || cartItems[0];
+
+    if (!item) return null;
+
+    return {
+        ...item,
+        id: item.id || item.productId || item.product_id,
+        productId: item.productId || item.product_id || item.id,
+        name: item.name || item.productName || item.product_name || '',
+        price: item.price ?? item.total ?? item.subtotal ?? item.lineTotal ?? item.line_total,
+        currency: item.currency || context.order?.currency || context.cart?.currency,
+        description: item.description || item.shortDescription || item.short_description || '',
+    };
+}
+
+function getProductImageUrl(product: any): string {
+    const image = product.image || product.images?.[0] || product.thumbnail || product.thumbnailUrl || product.thumbnail_url;
+    if (typeof image === 'string') return image;
+    if (image && typeof image === 'object') return image.src || image.url || '';
+    return '';
 }
 
 function renderOrderReviewLinks(items: any[], storeUrl: string, prefill?: { name?: string; email?: string }): string {
