@@ -73,6 +73,29 @@ const edgeTypes = {
 const INVALID_NODE_CLASS = 'overseek-node-invalid';
 const FLOW_DENSITY_KEY = 'overseek-flow-density';
 
+function branchLabel(sourceHandle?: string | null) {
+    if (sourceHandle === 'true') return 'YES';
+    if (sourceHandle === 'false') return 'NO';
+    return undefined;
+}
+
+function hasPath(edges: Edge[], fromNodeId: string, toNodeId: string) {
+    const visited = new Set<string>();
+    const stack = [fromNodeId];
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || visited.has(current)) continue;
+        if (current === toNodeId) return true;
+        visited.add(current);
+        edges
+            .filter((edge) => edge.source === current)
+            .forEach((edge) => stack.push(edge.target));
+    }
+
+    return false;
+}
+
 let id = 0;
 const getId = () => `node_${Date.now()}_${id++}`;
 
@@ -364,6 +387,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
             if (!params.source) return;
             if (!params.target) return;
             if (params.source === params.target) return;
+            if (hasPath(edges, params.target, params.source)) return;
 
             const sourceNode = nodes.find((node) => node.id === params.source);
             if (!sourceNode) return;
@@ -376,6 +400,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
             const isConditionSource = sourceNode.type === 'condition';
 
             if (isConditionSource) {
+                const incomingToTarget = edges.find((edge) => edge.target === params.target);
                 const usedHandles = new Set(existingFromSource.map((edge) => edge.sourceHandle));
                 const normalizedHandle = params.sourceHandle === 'true' || params.sourceHandle === 'false'
                     ? params.sourceHandle
@@ -387,15 +412,51 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
 
                 const handleAlreadyUsed = existingFromSource.some((edge) => edge.sourceHandle === normalizedHandle);
                 if (handleAlreadyUsed) {
+                    const occupiedBranchEdge = existingFromSource.find((edge) => edge.sourceHandle === normalizedHandle);
+                    const isBranchSwap = incomingToTarget
+                        && occupiedBranchEdge
+                        && incomingToTarget.source === params.source
+                        && incomingToTarget.sourceHandle !== normalizedHandle;
+
+                    if (isBranchSwap) {
+                        setEdges((eds) => eds.map((edge) => {
+                            if (edge.id === incomingToTarget.id) {
+                                const nextHandle = normalizedHandle;
+                                return { ...edge, sourceHandle: nextHandle, label: branchLabel(nextHandle) };
+                            }
+                            if (edge.id === occupiedBranchEdge.id) {
+                                const nextHandle = incomingToTarget.sourceHandle;
+                                return { ...edge, sourceHandle: nextHandle, label: branchLabel(nextHandle) };
+                            }
+                            return edge;
+                        }));
+                    }
                     return;
                 }
 
                 finalSourceHandle = normalizedHandle;
+
+                if (incomingToTarget) {
+                    setEdges((eds) => [
+                        ...eds.filter((edge) => edge.id !== incomingToTarget.id),
+                        {
+                            ...incomingToTarget,
+                            id: `e_${params.source}_${params.target}_${Date.now()}`,
+                            source: params.source,
+                            target: params.target,
+                            sourceHandle: finalSourceHandle,
+                            targetHandle: params.targetHandle,
+                            label: branchLabel(finalSourceHandle),
+                            ...defaultEdgeOptions,
+                        },
+                    ]);
+                    return;
+                }
             } else if (existingFromSource.length > 0) {
                 return;
             }
 
-            const conditionBranch = finalSourceHandle === 'true' ? 'YES' : finalSourceHandle === 'false' ? 'NO' : undefined;
+            const conditionBranch = branchLabel(finalSourceHandle);
             if (conditionBranch && params.source && params.target) {
                 setEdges((eds) => ([
                     ...eds,

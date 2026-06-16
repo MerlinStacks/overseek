@@ -17,6 +17,7 @@ export class AutomationContextService {
     async buildContext(input: BuildContextInput) {
         const baseContext = { ...(input.contextData || {}) };
         const requiredFields = new Set(input.requiredFields || []);
+        const needsOrder = this.needsOrderContext(baseContext, requiredFields);
         const normalizedEmail = this.normalizeEmail(
             input.email
             || baseContext.email
@@ -30,13 +31,19 @@ export class AutomationContextService {
             || normalizedEmail
             || Array.from(requiredFields).some((field) => field.startsWith('customer.') || field === 'segment.id' || field === 'inbox.customerSentEmail');
 
-        if (!needsCustomer) {
+        if (!needsCustomer && !needsOrder) {
             return baseContext;
         }
 
         if (!input.wooCustomerId && !normalizedEmail) {
+            const orderRaw = needsOrder
+                ? await this.getOrderRawData(input.accountId, baseContext)
+                : undefined;
+
             return {
                 ...baseContext,
+                order: this.mergeOrderContext(baseContext.order, orderRaw) || baseContext.order,
+                billing: baseContext.billing || orderRaw?.billing || undefined,
                 customer: {
                     ...(baseContext.customer || {}),
                     emailDomain: baseContext.customer?.emailDomain || ''
@@ -65,7 +72,9 @@ export class AutomationContextService {
             }
         });
 
-        const latestOrder = await this.getLatestOrder(input.accountId, input.wooCustomerId ?? customer?.wooId ?? null, normalizedEmail);
+        const order = needsOrder
+            ? await this.getOrder(input.accountId, baseContext, input.wooCustomerId ?? customer?.wooId ?? null, normalizedEmail)
+            : await this.getLatestOrder(input.accountId, input.wooCustomerId ?? customer?.wooId ?? null, normalizedEmail);
         const segmentIds = customer && requiredFields.has('segment.id')
             ? await this.segmentService.getMatchingSegmentIdsForCustomer(input.accountId, customer.id)
             : undefined;
@@ -76,9 +85,9 @@ export class AutomationContextService {
             ? await this.getLatestReview(input.accountId, customer?.id || null, normalizedEmail)
             : undefined;
 
-        const latestOrderRaw = await this.enrichOrderLineItemPermalinks(input.accountId, this.asRecord(latestOrder?.rawData));
+        const orderRaw = await this.enrichOrderLineItemPermalinks(input.accountId, this.asRecord(order?.rawData));
         const customerRaw = this.asRecord(customer?.rawData);
-        const lastPurchaseDate = latestOrder?.dateCreated || null;
+        const lastPurchaseDate = order?.dateCreated || null;
 
         return {
             ...baseContext,
@@ -105,8 +114,8 @@ export class AutomationContextService {
                 latestReviewRating: baseContext.customer?.latestReviewRating ?? latestReview?.rating ?? null,
                 hasInboxEmail: baseContext.customer?.hasInboxEmail ?? hasInboxEmail ?? false
             },
-            order: baseContext.order || latestOrderRaw || undefined,
-            billing: baseContext.billing || latestOrderRaw?.billing || undefined,
+            order: this.mergeOrderContext(baseContext.order, orderRaw) || baseContext.order || undefined,
+            billing: baseContext.billing || orderRaw?.billing || undefined,
             segmentIds: baseContext.segmentIds || segmentIds || [],
             inbox: {
                 ...(this.asRecord(baseContext.inbox) || {}),
@@ -154,6 +163,57 @@ export class AutomationContextService {
                 dateCreated: true
             }
         });
+    }
+
+    private async getOrder(accountId: string, contextData: Record<string, any>, wooCustomerId?: number | null, email?: string | null) {
+        const orderId = this.resolveWooOrderId(contextData);
+        if (orderId) {
+            const order = await prisma.wooOrder.findUnique({
+                where: { accountId_wooId: { accountId, wooId: orderId } },
+                select: {
+                    rawData: true,
+                    dateCreated: true
+                }
+            });
+
+            if (order) return order;
+        }
+
+        return this.getLatestOrder(accountId, wooCustomerId, email);
+    }
+
+    private async getOrderRawData(accountId: string, contextData: Record<string, any>): Promise<Record<string, any> | undefined> {
+        const order = await this.getOrder(accountId, contextData);
+        return this.enrichOrderLineItemPermalinks(accountId, this.asRecord(order?.rawData));
+    }
+
+    private needsOrderContext(contextData: Record<string, any>, requiredFields: Set<string>): boolean {
+        if (Array.from(requiredFields).some((field) => field.startsWith('order.'))) return true;
+        return Boolean(this.resolveWooOrderId(contextData));
+    }
+
+    private resolveWooOrderId(contextData: Record<string, any>): number | null {
+        const candidate = contextData.order?.wooId
+            || contextData.order?.woo_id
+            || contextData.order?.id
+            || contextData.wooOrderId
+            || contextData.woo_order_id
+            || contextData.wooId
+            || contextData.woo_id
+            || contextData.orderId
+            || contextData.order_id
+            || contextData.id;
+        const parsed = Number(candidate);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+
+    private mergeOrderContext(baseOrder: unknown, wooOrder: Record<string, any> | undefined): Record<string, any> | undefined {
+        const base = this.asRecord(baseOrder);
+        if (!base && !wooOrder) return undefined;
+        return {
+            ...(wooOrder || {}),
+            ...(base || {})
+        };
     }
 
     private async enrichOrderLineItemPermalinks(accountId: string, order: Record<string, any>): Promise<Record<string, any>> {
