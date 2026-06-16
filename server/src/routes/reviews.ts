@@ -21,7 +21,16 @@ function reviewErrorStatus(error: unknown): number | null {
     if (code === 'REVIEW_NOT_FOUND') return 404;
     if (code?.startsWith('REVIEW_')) return 400;
 
+    const message = error instanceof Error ? error.message : '';
+    if (message.includes('credentials revoked or invalid')) return 409;
+
     return null;
+}
+
+function reviewErrorPayload(error: unknown, fallback: string) {
+    const message = error instanceof Error ? error.message : fallback;
+    const code = message.includes('credentials revoked or invalid') ? 'WOO_NEEDS_RECONNECT' : undefined;
+    return { error: message, ...(code ? { code } : {}) };
 }
 
 const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
@@ -62,7 +71,7 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('Error replying to review', { error });
             const status = reviewErrorStatus(error);
-            if (status) return reply.code(status).send({ error: error instanceof Error ? error.message : 'Failed to reply to review' });
+            if (status) return reply.code(status).send(reviewErrorPayload(error, 'Failed to reply to review'));
             return reply.code(500).send({ error: 'Failed to reply to review' });
         }
     });
@@ -88,7 +97,7 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('Error updating review', { error });
             const status = reviewErrorStatus(error);
-            if (status) return reply.code(status).send({ error: error instanceof Error ? error.message : 'Failed to update review' });
+            if (status) return reply.code(status).send(reviewErrorPayload(error, 'Failed to update review'));
             return reply.code(500).send({ error: error instanceof Error ? error.message : 'Failed to update review' });
         }
     });
@@ -101,7 +110,7 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('Error moderating review', { error });
             const status = reviewErrorStatus(error);
-            if (status) return reply.code(status).send({ error: error instanceof Error ? error.message : 'Failed to moderate review' });
+            if (status) return reply.code(status).send(reviewErrorPayload(error, 'Failed to moderate review'));
             return reply.code(500).send({ error: error instanceof Error ? error.message : 'Failed to moderate review' });
         }
     });

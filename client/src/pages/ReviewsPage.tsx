@@ -61,6 +61,15 @@ const REVIEW_STATUSES = [
 const isImageMedia = (media: ReviewMedia) => media.type?.startsWith('image/');
 const isVideoMedia = (media: ReviewMedia) => media.type?.startsWith('video/');
 
+async function getApiErrorMessage(res: Response, fallback: string): Promise<string> {
+    try {
+        const data = await res.json() as { error?: string };
+        return data.error || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
 export const ReviewsPage = () => {
     const { currentAccount } = useAccount();
     const { token } = useAuth();
@@ -352,14 +361,14 @@ export const ReviewsPage = () => {
                 body: JSON.stringify({ reply: replyText.trim() })
             });
 
-            if (!res.ok) throw new Error('Reply failed');
+            if (!res.ok) throw new Error(await getApiErrorMessage(res, 'Failed to reply to review'));
             toast.success('Reply posted');
             setReplyReview(null);
             setReplyText('');
             fetchReviews();
         } catch (error) {
             Logger.error('Review reply failed', { error });
-            toast.error('Failed to reply to review');
+            toast.error(error instanceof Error ? error.message : 'Failed to reply to review');
         } finally {
             setActionReviewId(null);
         }

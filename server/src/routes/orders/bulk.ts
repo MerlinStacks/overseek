@@ -8,6 +8,19 @@ import { Logger } from '../../utils/logger';
 import { requireAuthFastify } from '../../middleware/auth';
 import { getOrderRequestAccountIdOrReply } from './helpers';
 import { isValidWooOrderStatusSlug, normalizeOrderStatus } from '../../constants/orderStatus';
+import { EventBus, EVENTS } from '../../services/events';
+
+const PAID_EVENT_STATUSES = ['processing', 'on-hold'];
+
+function buildOrderEventPayload(updatedOrder: any, previousOrder: { wooId: number; rawData: unknown } | undefined, status: string) {
+    const rawData = previousOrder?.rawData && typeof previousOrder.rawData === 'object' ? previousOrder.rawData : {};
+    return {
+        ...rawData,
+        ...updatedOrder,
+        id: updatedOrder?.id ?? previousOrder?.wooId,
+        status
+    };
+}
 
 const bulkRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -44,12 +57,22 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
             const { WooService } = await import('../../services/woo');
             const woo = await WooService.forAccount(accountId);
 
+            const previousOrders = await prisma.wooOrder.findMany({
+                where: {
+                    accountId,
+                    wooId: { in: body.orderIds }
+                },
+                select: { wooId: true, status: true, rawData: true }
+            });
+            const previousOrderByWooId = new Map(previousOrders.map(order => [order.wooId, order]));
+
             // Use WooCommerce Batch API for efficient bulk update (single API call)
             const updates = body.orderIds.map(id => ({ id, status: normalizedStatus }));
 
             let updated = 0;
             let failed = 0;
             const errors: string[] = [];
+            const successfulUpdates: Array<{ wooId: number; order: any }> = [];
 
             try {
                 // Single batch API call instead of N individual calls
@@ -63,6 +86,9 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
                             errors.push(`Order #${result.id}: ${result.error.message}`);
                         } else {
                             updated++;
+                            if (typeof result.id === 'number') {
+                                successfulUpdates.push({ wooId: result.id, order: result });
+                            }
                         }
                     }
                 }
@@ -91,17 +117,42 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
 
                 for (const orderId of body.orderIds) {
                     try {
-                        await woo.updateOrder(orderId, { status: normalizedStatus });
+                        const updatedOrder = await woo.updateOrder(orderId, { status: normalizedStatus });
                         await prisma.wooOrder.updateMany({
                             where: { accountId, wooId: orderId },
                             data: { status: normalizedStatus }
                         });
+                        successfulUpdates.push({ wooId: orderId, order: updatedOrder });
                         updated++;
                     } catch (err) {
                         failed++;
                         errors.push(`Order #${orderId}: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 }
+            }
+
+            for (const successfulUpdate of successfulUpdates) {
+                const previousOrder = previousOrderByWooId.get(successfulUpdate.wooId);
+                const previousStatus = previousOrder?.status;
+                if (!previousStatus || previousStatus === normalizedStatus) continue;
+
+                const order = buildOrderEventPayload(successfulUpdate.order, previousOrder, normalizedStatus);
+                EventBus.emit(EVENTS.ORDER.STATUS_CHANGED, {
+                    accountId,
+                    order,
+                    previousStatus,
+                    newStatus: normalizedStatus
+                });
+
+                if (PAID_EVENT_STATUSES.includes(normalizedStatus)) {
+                    EventBus.emit(EVENTS.ORDER.PAID, { accountId, order });
+                }
+
+                if (normalizedStatus === 'completed' && previousStatus !== 'completed') {
+                    EventBus.emit(EVENTS.ORDER.COMPLETED, { accountId, order });
+                }
+
+                EventBus.emit(EVENTS.ORDER.SYNCED, { accountId, order });
             }
 
             Logger.info('Bulk order status update completed', {
