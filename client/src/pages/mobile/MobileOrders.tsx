@@ -97,6 +97,7 @@ export function MobileOrders() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [statusCounts, setStatusCounts] = useState<StatusCountsResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeStatus, setActiveStatus] = useState('all');
     const [page, setPage] = useState(1);
@@ -150,6 +151,7 @@ export function MobileOrders() {
         try {
             if (reset) {
                 setLoading(true);
+                setError(null);
                 setPage(1);
             }
 
@@ -192,9 +194,11 @@ export function MobileOrders() {
             setOrders(prev => reset ? newOrders : [...prev, ...newOrders]);
             setHasMore(targetPage * PAGE_SIZE < nextTotal);
             setPage(targetPage + 1);
+            setError(null);
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             Logger.error('[MobileOrders] Error fetching orders:', { error });
+            setError('Could not load orders. Pull down or tap retry to refresh.');
             toast.error('Could not load orders.');
         } finally {
             if (requestId === ordersRequestIdRef.current) {
@@ -272,6 +276,20 @@ export function MobileOrders() {
     };
 
     if (loading && orders.length === 0) return <OrdersSkeleton />;
+
+    if (error && orders.length === 0) {
+        return (
+            <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                <p className="mb-4 text-sm font-medium">{error}</p>
+                <button
+                    onClick={() => void fetchOrders(1, true)}
+                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                >
+                    Retry
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4 pb-28 animate-fade-slide-up">

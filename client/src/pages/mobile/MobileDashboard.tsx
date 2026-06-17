@@ -81,6 +81,7 @@ export function MobileDashboard() {
     const [anomaly, setAnomaly] = useState<AnomalyData | null>(null);
     const [sparklines, setSparklines] = useState<SparklineData>({ orders: [], revenue: [] });
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const accountCurrency = currentAccount?.currency || 'USD';
 
@@ -92,6 +93,7 @@ export function MobileDashboard() {
 
         try {
             setLoading(true);
+            setError(null);
             const headers = {
                 'Authorization': `Bearer ${token}`,
                 'X-Account-ID': currentAccount.id
@@ -114,6 +116,11 @@ export function MobileDashboard() {
 
             let todayRevenue = 0, todayOrders = 0, pendingMessages = 0, lowStockItems = 0;
             let yesterdayRevenue = 0, yesterdayOrders = 0;
+            const hasPrimaryData = salesRes.ok || messagesRes.ok || inventoryRes.ok || ordersRes.ok;
+
+            if (!hasPrimaryData) {
+                throw new Error(`Dashboard requests failed: sales ${salesRes.status}, messages ${messagesRes.status}, inventory ${inventoryRes.status}, orders ${ordersRes.status}`);
+            }
 
             if (salesRes.ok) {
                 const data = await salesRes.json();
@@ -182,6 +189,7 @@ export function MobileDashboard() {
             }
         } catch (error) {
             Logger.error('[MobileDashboard] Error fetching data', { error });
+            setError('Could not load dashboard data. Pull down or tap retry to refresh.');
         } finally {
             setLoading(false);
         }
@@ -221,6 +229,20 @@ export function MobileDashboard() {
 
     if (loading) {
         return <DashboardSkeleton />;
+    }
+
+    if (error && !stats) {
+        return (
+            <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                <p className="mb-4 text-sm font-medium">{error}</p>
+                <button
+                    onClick={() => void fetchDashboardData()}
+                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                >
+                    Retry
+                </button>
+            </div>
+        );
     }
 
     return (

@@ -40,6 +40,7 @@ export function MobileInventory() {
     const { currentAccount } = useAccount();
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [filter, setFilter] = useState<'all' | 'low'>('all');
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -52,6 +53,7 @@ export function MobileInventory() {
 
         try {
             setLoading(true);
+            setError(null);
             const params = new URLSearchParams();
             params.append('limit', '50');
             if (searchQuery) params.append('q', searchQuery);
@@ -83,15 +85,21 @@ export function MobileInventory() {
             }
 
             setProducts(items);
+            setError(null);
         } catch (error) {
             Logger.error('[MobileInventory] Error:', { error: error });
+            setError('Could not load inventory. Pull down or tap retry to refresh.');
         } finally {
             setLoading(false);
         }
     }, [currentAccount, filter, searchQuery, token]);
 
     useEffect(() => {
-        fetchProducts();
+        void fetchProducts();
+
+        const handleRefresh = () => void fetchProducts();
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchProducts]);
 
     useEffect(() => {
@@ -132,6 +140,20 @@ export function MobileInventory() {
                 {[...Array(5)].map((_, i) => (
                     <div key={i} className="h-24 bg-gray-200 rounded-2xl" />
                 ))}
+            </div>
+        );
+    }
+
+    if (error && products.length === 0) {
+        return (
+            <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                <p className="mb-4 text-sm font-medium">{error}</p>
+                <button
+                    onClick={() => void fetchProducts()}
+                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                >
+                    Retry
+                </button>
             </div>
         );
     }

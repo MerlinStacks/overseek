@@ -94,6 +94,7 @@ export function MobileOrderDetail() {
     const toast = useToast();
     const [order, setOrder] = useState<OrderDetail | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [attribution, setAttribution] = useState<Attribution | null>(null);
     const [orderTags, setOrderTags] = useState<string[]>([]);
@@ -134,13 +135,18 @@ export function MobileOrderDetail() {
 
         try {
             setLoading(true);
+            setLoadError(null);
             setOrder(null);
             setAttribution(null);
             setOrderTags([]);
             const response = await fetch(`/api/orders/${id}`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
             });
-            if (!response.ok) throw new Error('Failed to fetch');
+            if (response.status === 404) {
+                setOrder(null);
+                return;
+            }
+            if (!response.ok) throw new Error(`Failed to fetch order: ${response.status}`);
             const o = await response.json();
 
             setOrder({
@@ -178,10 +184,12 @@ export function MobileOrderDetail() {
 
             // Fetch attribution data
             fetchAttribution();
+            setLoadError(null);
         } catch (error) {
             setOrder(null);
             setAttribution(null);
             setOrderTags([]);
+            setLoadError('Could not load order. Pull down or tap retry to refresh.');
             Logger.error('[MobileOrderDetail] Error:', { error: error });
         } finally {
             setLoading(false);
@@ -311,6 +319,7 @@ export function MobileOrderDetail() {
     }, []);
 
     if (loading) return <div className="space-y-4 animate-pulse"><div className="h-36 rounded-[2rem] bg-slate-900" /><div className="h-20 rounded-2xl bg-slate-900" /><div className="h-44 rounded-[1.5rem] bg-slate-900" /></div>;
+    if (loadError && !order) return <div className="rounded-[2rem] border border-rose-400/20 bg-rose-500/10 px-5 py-14 text-center text-rose-100"><Package className="mx-auto mb-4 text-rose-200" size={48} /><p className="text-sm font-medium">{loadError}</p><button onClick={() => void fetchOrder()} className="mt-4 rounded-2xl bg-white/10 px-4 py-3 text-sm font-black text-white ring-1 ring-white/15">Retry</button></div>;
     if (!order) return <div className="rounded-[2rem] border border-white/10 bg-slate-950 px-5 py-14 text-center"><Package className="mx-auto mb-4 text-slate-500" size={48} /><p className="text-lg font-black text-white">Order not found</p><button onClick={() => navigate('/m/orders')} className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950">Back to Orders</button></div>;
 
     const statusConfig = STATUS_CONFIG[order.status.toLowerCase()] || STATUS_CONFIG.pending;

@@ -28,6 +28,7 @@ const REFRESH_LOCK_KEY = 'auth:refresh-lock';
 const REFRESH_LOCK_TTL_MS = 15_000;
 const REFRESH_WAIT_TIMEOUT_MS = 20_000;
 const REFRESH_WAIT_POLL_MS = 250;
+const RESUME_REFRESH_THRESHOLD_MS = 60_000;
 
 type SilentRefreshResult = 'success' | 'retryable_failure' | 'expired';
 
@@ -46,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
     const [isLoading, setIsLoading] = useState(true);
     const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const resumeRefreshInFlightRef = useRef(false);
     const tabIdRef = useRef(
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
             ? crypto.randomUUID()
@@ -274,6 +276,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         scheduleRefresh(token);
     }, [token, scheduleRefresh]);
+
+    useEffect(() => {
+        const refreshSessionIfStale = async () => {
+            if (!token || resumeRefreshInFlightRef.current) return;
+
+            const expiry = getTokenExpiry(token);
+            if (!expiry || expiry > Date.now() + RESUME_REFRESH_THRESHOLD_MS) return;
+            if (!localStorage.getItem('refreshToken')) return;
+
+            resumeRefreshInFlightRef.current = true;
+            try {
+                const result = await silentRefresh();
+                if (result === 'retryable_failure') {
+                    scheduleRefresh(token, REFRESH_RETRY_DELAY_MS);
+                }
+            } finally {
+                resumeRefreshInFlightRef.current = false;
+            }
+        };
+
+        const handleResume = () => {
+            if (document.visibilityState === 'visible') {
+                void refreshSessionIfStale();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleResume);
+        window.addEventListener('focus', handleResume);
+        window.addEventListener('online', handleResume);
+        window.addEventListener('pageshow', handleResume);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleResume);
+            window.removeEventListener('focus', handleResume);
+            window.removeEventListener('online', handleResume);
+            window.removeEventListener('pageshow', handleResume);
+        };
+    }, [token, silentRefresh, scheduleRefresh]);
 
     useEffect(() => {
         const handleStorage = (event: StorageEvent) => {

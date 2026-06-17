@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, Globe, MapPin, Monitor, Smartphone, Tablet, Eye, RefreshCw } from 'lucide-react';
@@ -30,11 +30,13 @@ export function MobileLiveVisitors() {
     const [visitors, setVisitors] = useState<LiveVisitor[]>([]);
     const [loading, setLoading] = useState(true);
     const [liveCount, setLiveCount] = useState(0);
+    const [error, setError] = useState<string | null>(null);
 
     const fetchVisitors = useCallback(async () => {
         if (!currentAccount || !token) return;
 
         try {
+            setError(null);
             // Fetch last 50 visitors (not filtered by live status)
             const [visitorsRes, liveRes] = await Promise.all([
                 fetch('/api/analytics/visitors/log?limit=50', {
@@ -52,16 +54,18 @@ export function MobileLiveVisitors() {
                 })
             ]);
 
-            if (visitorsRes.ok) {
-                const data = await visitorsRes.json();
-                setVisitors(data.data || []);
-            }
+            if (!visitorsRes.ok) throw new Error('Failed to fetch visitors');
+
+            const data = await visitorsRes.json();
+            setVisitors(data.data || []);
             if (liveRes.ok) {
                 const liveData = await liveRes.json();
                 setLiveCount(liveData.total || 0);
             }
+            setError(null);
         } catch (error) {
             Logger.error('[MobileLiveVisitors] Error:', { error: error });
+            setError('Could not load visitors. Pull down or tap retry to refresh.');
         } finally {
             setLoading(false);
         }
@@ -69,6 +73,12 @@ export function MobileLiveVisitors() {
 
     // Visibility-aware polling: pauses when app is backgrounded/screen off
     useVisibilityPolling(fetchVisitors, 30000, [fetchVisitors]);
+
+    useEffect(() => {
+        const handleRefresh = () => void fetchVisitors();
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
+    }, [fetchVisitors]);
 
     const getDeviceIcon = (deviceType: string | null) => {
         if (deviceType === 'mobile') return <Smartphone size={14} className="text-slate-400" />;
@@ -90,6 +100,20 @@ export function MobileLiveVisitors() {
             <div className="space-y-4 animate-pulse">
                 <div className="h-8 pwa-skeleton w-1/3" />
                 {[...Array(8)].map((_, i) => <div key={i} className="h-20 pwa-card" />)}
+            </div>
+        );
+    }
+
+    if (error && visitors.length === 0) {
+        return (
+            <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                <p className="mb-4 text-sm font-medium">{error}</p>
+                <button
+                    onClick={() => void fetchVisitors()}
+                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                >
+                    Retry
+                </button>
             </div>
         );
     }

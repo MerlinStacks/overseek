@@ -196,6 +196,7 @@ export function MobileVisitorDetail() {
     const { currentAccount } = useAccount();
     const [data, setData] = useState<VisitorData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const fetchVisitorProfile = useCallback(async () => {
         if (!currentAccount || !token || !id) {
@@ -206,6 +207,7 @@ export function MobileVisitorDetail() {
 
         try {
             setLoading(true);
+            setLoadError(null);
             setData(null);
             const res = await fetch(`/api/analytics/visitors/${id}`, {
                 headers: {
@@ -214,14 +216,21 @@ export function MobileVisitorDetail() {
                 }
             });
 
+            if (res.status === 404) {
+                setData(null);
+                return;
+            }
+
             if (res.ok) {
                 const json = await res.json();
                 setData(json);
+                setLoadError(null);
             } else {
-                setData(null);
+                throw new Error(`Failed to fetch visitor: ${res.status}`);
             }
         } catch (error) {
             setData(null);
+            setLoadError('Could not load visitor. Pull down or tap retry to refresh.');
             Logger.error('[MobileVisitorDetail] Error:', { error: error });
         } finally {
             setLoading(false);
@@ -267,6 +276,20 @@ export function MobileVisitorDetail() {
     }
 
     if (!data) {
+        if (loadError) {
+            return (
+                <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                    <p className="mb-4 text-sm font-medium">{loadError}</p>
+                    <button
+                        onClick={() => void fetchVisitorProfile()}
+                        className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                    >
+                        Retry
+                    </button>
+                </div>
+            );
+        }
+
         return (
             <div className="text-center py-16">
                 <p className="text-gray-500">Visitor not found</p>

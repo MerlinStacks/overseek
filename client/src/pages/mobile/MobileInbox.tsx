@@ -75,6 +75,7 @@ export function MobileInbox() {
     const { triggerHaptic } = useHaptic();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [activeFilter, setActiveFilter] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [composeDraft, setComposeDraft] = useState<SharedComposeDraft | null>(null);
@@ -86,7 +87,10 @@ export function MobileInbox() {
         }
 
         try {
-            if (initialLoad) setLoading(true);
+            if (initialLoad) {
+                setLoading(true);
+                setError(null);
+            }
             const response = await fetch('/api/chat/conversations?status=OPEN&limit=50', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -117,8 +121,10 @@ export function MobileInbox() {
                 };
             });
             setConversations(convos);
+            setError(null);
         } catch (error) {
             Logger.error('[MobileInbox] Error:', { error: error });
+            setError('Could not load inbox. Pull down or tap retry to refresh.');
         } finally {
             if (initialLoad) setLoading(false);
         }
@@ -256,6 +262,20 @@ export function MobileInbox() {
 
     if (loading) {
         return <InboxSkeleton />;
+    }
+
+    if (error && conversations.length === 0) {
+        return (
+            <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                <p className="mb-4 text-sm font-medium">{error}</p>
+                <button
+                    onClick={() => void fetchConversations(true)}
+                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                >
+                    Retry
+                </button>
+            </div>
+        );
     }
 
     return (

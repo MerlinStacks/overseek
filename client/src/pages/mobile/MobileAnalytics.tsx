@@ -23,6 +23,7 @@ export function MobileAnalytics() {
     const { currentAccount } = useAccount();
     const [data, setData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
     const [liveCount, setLiveCount] = useState(0);
 
@@ -56,6 +57,7 @@ export function MobileAnalytics() {
 
         try {
             setLoading(true);
+            setError(null);
             const headers = {
                 'Authorization': `Bearer ${token}`,
                 'X-Account-ID': currentAccount.id
@@ -91,6 +93,11 @@ export function MobileAnalytics() {
 
             // Parse current period
             let revenue = 0, orderCount = 0, customerCount = 0, visitorCount = 0;
+            const hasPrimaryData = salesRes.ok || customerRes.ok || visitorSessionsRes.ok;
+
+            if (!hasPrimaryData) {
+                throw new Error(`Analytics requests failed: sales ${salesRes.status}, customers ${customerRes.status}, visitors ${visitorSessionsRes.status}`);
+            }
 
             if (salesRes.ok) {
                 const salesData = await salesRes.json();
@@ -156,22 +163,18 @@ export function MobileAnalytics() {
             });
         } catch (error) {
             Logger.error('[MobileAnalytics] Error:', { error: error });
-            // Set fallback data on error
-            setData({
-                revenue: { value: 0, change: 0 },
-                orders: { value: 0, change: 0 },
-                visitors: { value: 0, change: 0 },
-                customers: { value: 0, change: 0 },
-                conversionRate: { value: 0, change: 0 },
-                avgOrderValue: { value: 0, change: 0 }
-            });
+            setError('Could not load analytics. Pull down or tap retry to refresh.');
         } finally {
             setLoading(false);
         }
     }, [currentAccount, period, token]);
 
     useEffect(() => {
-        fetchAnalytics();
+        void fetchAnalytics();
+
+        const handleRefresh = () => void fetchAnalytics();
+        window.addEventListener('mobile-refresh', handleRefresh);
+        return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchAnalytics]);
 
     // Helper for account-aware currency
@@ -190,6 +193,20 @@ export function MobileAnalytics() {
                 <div className="grid grid-cols-2 gap-3">
                     {[...Array(6)].map((_, i) => <div key={i} className="h-32 bg-slate-800/50 border border-white/10 rounded-2xl" />)}
                 </div>
+            </div>
+        );
+    }
+
+    if (error && !data) {
+        return (
+            <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                <p className="mb-4 text-sm font-medium">{error}</p>
+                <button
+                    onClick={() => void fetchAnalytics()}
+                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                >
+                    Retry
+                </button>
             </div>
         );
     }

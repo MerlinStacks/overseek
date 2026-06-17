@@ -102,6 +102,7 @@ export function MobileCustomerDetail() {
     const { currentAccount } = useAccount();
     const [data, setData] = useState<CustomerDetails | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
     const fetchCustomer = useCallback(async () => {
@@ -113,6 +114,7 @@ export function MobileCustomerDetail() {
 
         try {
             setLoading(true);
+            setLoadError(null);
             setData(null);
             const res = await fetch(`/api/customers/${id}`, {
                 headers: {
@@ -120,6 +122,11 @@ export function MobileCustomerDetail() {
                     'X-Account-ID': currentAccount.id
                 }
             });
+
+            if (res.status === 404) {
+                setData(null);
+                return;
+            }
 
             if (res.ok) {
                 const json = await res.json();
@@ -148,11 +155,13 @@ export function MobileCustomerDetail() {
                     inboxConversations: json.inboxConversations || []
                 };
                 setData(mappedData);
+                setLoadError(null);
             } else {
-                setData(null);
+                throw new Error(`Failed to fetch customer: ${res.status}`);
             }
         } catch (error) {
             setData(null);
+            setLoadError('Could not load customer. Pull down or tap retry to refresh.');
             Logger.error('[MobileCustomerDetail] Error:', { error: error });
         } finally {
             setLoading(false);
@@ -231,6 +240,20 @@ export function MobileCustomerDetail() {
     }
 
     if (!data) {
+        if (loadError) {
+            return (
+                <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                    <p className="mb-4 text-sm font-medium">{loadError}</p>
+                    <button
+                        onClick={() => void fetchCustomer()}
+                        className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                    >
+                        Retry
+                    </button>
+                </div>
+            );
+        }
+
         return (
             <div className="text-center py-16">
                 <ShoppingBag className="mx-auto text-gray-300 mb-4" size={48} />

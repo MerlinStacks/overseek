@@ -58,6 +58,7 @@ export function MobileCustomers() {
     const { triggerHaptic } = useHaptic();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
@@ -66,7 +67,10 @@ export function MobileCustomers() {
         if (!currentAccount || !token) return;
 
         try {
-            if (reset) setLoading(true);
+            if (reset) {
+                setLoading(true);
+                setError(null);
+            }
 
             const params = new URLSearchParams();
             params.append('page', targetPage.toString());
@@ -101,16 +105,18 @@ export function MobileCustomers() {
                 setCustomers(prev => [...prev, ...newCustomers]);
             }
             setHasMore(newCustomers.length === 20);
+            setError(null);
         } catch (error) {
             Logger.error('[MobileCustomers] Error:', { error: error });
+            setError('Could not load customers. Pull down or tap retry to refresh.');
         } finally {
             setLoading(false);
         }
     }, [currentAccount, searchQuery, token]);
 
     useEffect(() => {
-        fetchCustomers(1, true);
-        const handleRefresh = () => fetchCustomers(1, true);
+        void fetchCustomers(1, true);
+        const handleRefresh = () => void fetchCustomers(1, true);
         window.addEventListener('mobile-refresh', handleRefresh);
         return () => window.removeEventListener('mobile-refresh', handleRefresh);
     }, [fetchCustomers]);
@@ -136,7 +142,7 @@ export function MobileCustomers() {
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         triggerHaptic();
-        fetchCustomers(1, true);
+        void fetchCustomers(1, true);
     };
 
     const loadMore = () => {
@@ -156,6 +162,20 @@ export function MobileCustomers() {
                     <div className="h-6 w-24 bg-slate-800/50 rounded-lg" />
                 </div>
                 <ListSkeleton count={6} />
+            </div>
+        );
+    }
+
+    if (error && customers.length === 0) {
+        return (
+            <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                <p className="mb-4 text-sm font-medium">{error}</p>
+                <button
+                    onClick={() => void fetchCustomers(1, true)}
+                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                >
+                    Retry
+                </button>
             </div>
         );
     }

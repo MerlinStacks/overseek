@@ -51,6 +51,7 @@ export function MobileReviews() {
     const [reviews, setReviews] = useState<ReviewRow[]>([]);
     const [statusCounts, setStatusCounts] = useState<StatusCounts>({ total: 0, counts: {} });
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [actionReviewId, setActionReviewId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeStatus, setActiveStatus] = useState('all');
@@ -66,7 +67,10 @@ export function MobileReviews() {
             return;
         }
 
-        if (reset) setIsLoading(true);
+        if (reset) {
+            setIsLoading(true);
+            setError(null);
+        }
 
         try {
             const params = new URLSearchParams({
@@ -87,8 +91,10 @@ export function MobileReviews() {
             setTotalPages(data.pagination?.pages || 1);
             setPage(targetPage);
             setStatusCounts(data.statusCounts || { total: 0, counts: {} });
+            setError(null);
         } catch (error) {
             Logger.error('[MobileReviews] Failed to fetch reviews', { error });
+            setError('Could not load reviews. Pull down or tap retry to refresh.');
             toast.error('Could not load reviews.');
         } finally {
             setIsLoading(false);
@@ -150,6 +156,20 @@ export function MobileReviews() {
     };
 
     if (isLoading && reviews.length === 0) return <ListSkeleton count={6} />;
+
+    if (error && reviews.length === 0) {
+        return (
+            <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-5 text-center text-rose-100">
+                <p className="mb-4 text-sm font-medium">{error}</p>
+                <button
+                    onClick={() => void fetchReviews(1, true)}
+                    className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/15 active:scale-[0.98]"
+                >
+                    Retry
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4 pb-28 animate-fade-slide-up">

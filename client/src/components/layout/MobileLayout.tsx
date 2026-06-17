@@ -8,6 +8,7 @@ import { PWAUpdateModal, usePWAUpdate, PWAUpdateBanner } from '../mobile/PWAUpda
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
+import { useVisibilityRefreshThrottle } from '../../hooks/useVisibilityRefreshThrottle';
 import { useHaptic } from '../../hooks/useHaptic';
 
 /**
@@ -38,6 +39,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const { triggerHaptic } = useHaptic();
+    const shouldRefreshOnResume = useVisibilityRefreshThrottle(10_000);
 
     // Page transition state
     const [isTransitioning, setIsTransitioning] = useState(false);
@@ -125,6 +127,31 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
     // Visibility-aware polling: pauses when app is backgrounded
     useVisibilityPolling(fetchBadgeCounts, 30000, [fetchBadgeCounts]);
+
+    useEffect(() => {
+        const refreshMobileData = () => {
+            if (document.visibilityState !== 'visible' || !navigator.onLine || !shouldRefreshOnResume()) {
+                return;
+            }
+
+            void fetchBadgeCounts();
+            window.dispatchEvent(new CustomEvent('mobile-refresh'));
+        };
+
+        const handleResume = () => refreshMobileData();
+
+        document.addEventListener('visibilitychange', handleResume);
+        window.addEventListener('focus', handleResume);
+        window.addEventListener('online', handleResume);
+        window.addEventListener('pageshow', handleResume);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleResume);
+            window.removeEventListener('focus', handleResume);
+            window.removeEventListener('online', handleResume);
+            window.removeEventListener('pageshow', handleResume);
+        };
+    }, [fetchBadgeCounts, shouldRefreshOnResume]);
 
     // Network status listeners
     useEffect(() => {
