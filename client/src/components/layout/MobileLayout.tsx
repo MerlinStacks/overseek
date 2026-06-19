@@ -34,6 +34,8 @@ interface BeforeInstallPromptEvent extends Event {
     userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+const AUTH_REFRESHING_KEY = 'overseek:auth-refreshing';
+
 export function MobileLayout({ children }: MobileLayoutProps) {
     const location = useLocation();
     const { token } = useAuth();
@@ -130,7 +132,11 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
     useEffect(() => {
         const refreshMobileData = () => {
-            if (document.visibilityState !== 'visible' || !navigator.onLine || !shouldRefreshOnResume()) {
+            if (document.visibilityState !== 'visible' || !navigator.onLine) {
+                return;
+            }
+
+            if (sessionStorage.getItem(AUTH_REFRESHING_KEY) === '1' || !shouldRefreshOnResume()) {
                 return;
             }
 
@@ -144,12 +150,14 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         window.addEventListener('focus', handleResume);
         window.addEventListener('online', handleResume);
         window.addEventListener('pageshow', handleResume);
+        window.addEventListener('overseek:auth-refresh-completed', handleResume);
 
         return () => {
             document.removeEventListener('visibilitychange', handleResume);
             window.removeEventListener('focus', handleResume);
             window.removeEventListener('online', handleResume);
             window.removeEventListener('pageshow', handleResume);
+            window.removeEventListener('overseek:auth-refresh-completed', handleResume);
         };
     }, [fetchBadgeCounts, shouldRefreshOnResume]);
 

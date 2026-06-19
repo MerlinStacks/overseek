@@ -58,13 +58,10 @@ const INVOICE_FONT_REGULAR = 'OverseekInvoiceSans';
 const INVOICE_FONT_BOLD = 'OverseekInvoiceSansBold';
 const FALLBACK_FONT_REGULAR = 'Helvetica';
 const FALLBACK_FONT_BOLD = 'Helvetica-Bold';
-const EMOJI_FONT_FAMILY = 'NotoEmojiFallback';
 const MAX_PDF_TEXT_LENGTH = 10_000;
 const invoiceFontRegisteredDocs = new WeakSet<PDFKit.PDFDocument>();
-const emojiFontRegisteredDocs = new WeakSet<PDFKit.PDFDocument>();
 let invoiceFontRegularPath: string | null = null;
 let invoiceFontBoldPath: string | null = null;
-let emojiFontSourcePath: string | null = null;
 
 const isValidDate = (date: Date): boolean => Number.isFinite(date.getTime());
 
@@ -133,42 +130,6 @@ const ensureInvoiceFonts = (doc: PDFKit.PDFDocument) => {
     }
 };
 
-const ensureEmojiFont = (doc: PDFKit.PDFDocument) => {
-    if (emojiFontRegisteredDocs.has(doc)) return true;
-    try {
-        if (!emojiFontSourcePath) {
-            emojiFontSourcePath = require.resolve('@fontsource/noto-emoji/files/noto-emoji-emoji-400-normal.woff');
-        }
-        doc.registerFont(EMOJI_FONT_FAMILY, emojiFontSourcePath);
-        emojiFontRegisteredDocs.add(doc);
-        return true;
-    } catch (error) {
-        Logger.warn('[InvoiceService] Emoji fallback font unavailable', { error });
-        return false;
-    }
-};
-
-const splitTextByEmoji = (text: string): Array<{ text: string; emoji: boolean }> => {
-    const chunks: Array<{ text: string; emoji: boolean }> = [];
-    const segmenter = typeof Intl !== 'undefined' && (Intl as any).Segmenter
-        ? new (Intl as any).Segmenter(undefined, { granularity: 'grapheme' })
-        : null;
-    const graphemes: string[] = segmenter
-        ? Array.from(segmenter.segment(text), (entry: any) => String(entry.segment))
-        : Array.from(text);
-
-    for (const grapheme of graphemes) {
-        const isEmoji = /\p{Extended_Pictographic}/u.test(grapheme);
-        const last = chunks[chunks.length - 1];
-        if (last && last.emoji === isEmoji) {
-            last.text += grapheme;
-            continue;
-        }
-        chunks.push({ text: grapheme, emoji: isEmoji });
-    }
-    return chunks;
-};
-
 const drawTextWithEmojiSupport = (
     doc: PDFKit.PDFDocument,
     value: string,
@@ -179,24 +140,7 @@ const drawTextWithEmojiSupport = (
 ) => {
     const text = normalizePdfText(value);
     if (!text) return;
-    const canUseEmojiFont = ensureEmojiFont(doc);
-    const chunks = splitTextByEmoji(text);
-    const hasEmojiChunk = canUseEmojiFont && chunks.some((chunk) => chunk.emoji);
-    if (!hasEmojiChunk) {
-        doc.font(baseFont).text(text, x, y, options);
-        return;
-    }
-
-    chunks.forEach((chunk, index) => {
-        const isLast = index === chunks.length - 1;
-        const fontName = chunk.emoji ? EMOJI_FONT_FAMILY : baseFont;
-        doc.font(fontName);
-        if (index === 0) {
-            doc.text(chunk.text, x, y, { ...options, continued: !isLast });
-        } else {
-            doc.text(chunk.text, { continued: !isLast });
-        }
-    });
+    doc.font(baseFont).text(text, x, y, options);
 };
 
 const normalizePdfText = (value: unknown): string => {
@@ -207,6 +151,8 @@ const normalizePdfText = (value: unknown): string => {
         .replace(/[\u201C\u201D]/g, '"')
         .replace(/[\u2013\u2014]/g, '-')
         .replace(/\u2026/g, '...')
+        // PDFKit cannot reliably embed color emoji fonts; strip them to avoid bad glyph substitutions.
+        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\uFE0F\u200D\u20E3]/gu, '')
         .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
         .replace(/[ \t\f\v]+/g, ' ')
         .replace(/\r\n/g, '\n')

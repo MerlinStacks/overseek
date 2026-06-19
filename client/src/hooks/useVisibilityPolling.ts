@@ -10,6 +10,12 @@ interface PollingDataMessage {
     timestamp: number;
 }
 
+const AUTH_REFRESHING_KEY = 'overseek:auth-refreshing';
+
+function isAuthRefreshInProgress(): boolean {
+    return sessionStorage.getItem(AUTH_REFRESHING_KEY) === '1';
+}
+
 function postMessageSafely(channel: BroadcastChannel, message: PollingDataMessage): void {
     try {
         channel.postMessage(message);
@@ -47,6 +53,7 @@ export function useVisibilityPolling(
 ): void {
     const savedCallback = useRef(callback);
     const dataChannelRef = useRef<BroadcastChannel | null>(null);
+    const deferredUntilAuthRef = useRef(false);
 
     // Only use leader election when channelName is provided
     const { isLeader } = useTabLeader(channelName ? `visibility-${channelName}` : 'unused');
@@ -94,6 +101,11 @@ export function useVisibilityPolling(
                 return;
             }
 
+            if (isAuthRefreshInProgress()) {
+                deferredUntilAuthRef.current = true;
+                return;
+            }
+
             // In coordination mode, only leader executes
             if (shouldCoordinate && !isLeader) {
                 return;
@@ -129,17 +141,26 @@ export function useVisibilityPolling(
             if (document.visibilityState === 'visible') {
                 // In coordination mode, only leader refetches on visibility change
                 if (!shouldCoordinate || isLeader) {
-                    savedCallback.current();
+                    void executeIfVisible();
                 }
             }
         };
+
+        const handleAuthRefreshCompleted = () => {
+            if (!deferredUntilAuthRef.current) return;
+            deferredUntilAuthRef.current = false;
+            void executeIfVisible();
+        };
+
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('overseek:auth-refresh-completed', handleAuthRefreshCompleted);
 
         // Cleanup
         return () => {
             clearInterval(interval);
             if (initialTimeout) clearTimeout(initialTimeout);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('overseek:auth-refresh-completed', handleAuthRefreshCompleted);
         };
     }, [intervalMs, shouldCoordinate, isLeader, channelName, deps]);
 }

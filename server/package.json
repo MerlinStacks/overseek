@@ -25,7 +25,6 @@
         "@fastify/multipart": "^9.4.0",
         "@fastify/rate-limit": "^10.3.0",
         "@fastify/static": "^9.0.0",
-        "@fontsource/noto-emoji": "^5.2.11",
         "@fontsource/noto-sans": "^5.2.10",
         "@overseek/core": "1.0.0",
         "@prisma/adapter-pg": "^7.2.0",

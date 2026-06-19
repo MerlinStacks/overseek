@@ -29,6 +29,7 @@ const REFRESH_LOCK_TTL_MS = 15_000;
 const REFRESH_WAIT_TIMEOUT_MS = 20_000;
 const REFRESH_WAIT_POLL_MS = 250;
 const RESUME_REFRESH_THRESHOLD_MS = 60_000;
+const AUTH_REFRESHING_KEY = 'overseek:auth-refreshing';
 
 type SilentRefreshResult = 'success' | 'retryable_failure' | 'expired';
 
@@ -286,12 +287,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (!localStorage.getItem('refreshToken')) return;
 
             resumeRefreshInFlightRef.current = true;
+            sessionStorage.setItem(AUTH_REFRESHING_KEY, '1');
+            window.dispatchEvent(new Event('overseek:auth-refresh-started'));
             try {
                 const result = await silentRefresh();
                 if (result === 'retryable_failure') {
                     scheduleRefresh(token, REFRESH_RETRY_DELAY_MS);
                 }
             } finally {
+                sessionStorage.removeItem(AUTH_REFRESHING_KEY);
+                window.dispatchEvent(new Event('overseek:auth-refresh-completed'));
                 resumeRefreshInFlightRef.current = false;
             }
         };
