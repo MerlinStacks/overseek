@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -36,7 +37,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
 
     if (!isOpen && !isVisible) return null;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             {/* Backdrop with stronger blur */}
             <div
@@ -68,6 +69,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
                     {children}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

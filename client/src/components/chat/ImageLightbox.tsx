@@ -3,6 +3,7 @@
  * Features: Keyboard navigation, zoom, download button.
  */
 import { useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Download, ZoomIn, ZoomOut } from 'lucide-react';
 import { useState } from 'react';
 import { openSafeUrl } from '../../utils/url';
@@ -63,7 +64,7 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
         }
     };
 
-    return (
+    return createPortal(
         <div
             className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
             onClick={handleBackdropClick}
@@ -118,6 +119,7 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
                     onClick={(e) => e.stopPropagation()}
                 />
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

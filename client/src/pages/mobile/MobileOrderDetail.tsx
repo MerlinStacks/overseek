@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag, ChevronUp, ChevronDown, RotateCcw, Sparkles, FileText } from 'lucide-react';
@@ -581,7 +582,7 @@ export function MobileOrderDetail() {
             ))}
 
             {/* Image Preview Modal */}
-            {selectedImage && (
+            {selectedImage && createPortal(
                 <div
                     className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
                     onClick={() => setSelectedImage(null)}
@@ -598,7 +599,8 @@ export function MobileOrderDetail() {
                         className="max-w-full max-h-[85vh] object-contain rounded-lg"
                         onClick={(e) => e.stopPropagation()}
                     />
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
