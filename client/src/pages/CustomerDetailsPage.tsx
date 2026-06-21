@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { formatCurrency, formatDateSafe, formatTimeSafe, formatDateTimeSafe, toValidDate } from '../utils/format';
-import { Mail, Calendar, Activity, Zap, Users } from 'lucide-react';
+import { Mail, Calendar, Activity, Zap, Users, Send } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
@@ -46,6 +46,17 @@ interface CustomerDetails {
         status: string;
         createdAt: string;
         automation?: { name?: string };
+        emailLogs?: Array<{
+            id: string;
+            to: string;
+            subject: string;
+            status: string;
+            errorMessage?: string | null;
+            firstOpenedAt?: string | null;
+            openCount: number;
+            canResend?: boolean;
+            createdAt: string;
+        }>;
     }>;
     activity: Array<{
         id: string;
@@ -171,8 +182,10 @@ export function CustomerDetailsPage() {
     const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'automations' | 'activity' | 'inbox'>('overview');
     const [showMergeModal, setShowMergeModal] = useState(false);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
     const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
     const [statusFeedback, setStatusFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [resendFeedback, setResendFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     const fetchCustomerDetails = useCallback(async () => {
         if (!id) return;
@@ -264,11 +277,43 @@ export function CustomerDetailsPage() {
         }
     }, [id, token, currentAccount?.id, data]);
 
+    const resendAutomationEmail = useCallback(async (emailLogId: string) => {
+        if (!token || !currentAccount?.id) return;
+        setResendingEmailId(emailLogId);
+        setResendFeedback(null);
+        try {
+            const res = await fetch(`/api/email/logs/${emailLogId}/resend`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                }
+            });
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Failed to resend email');
+            }
+            setResendFeedback({ type: 'success', message: 'Email resent.' });
+            void fetchCustomerDetails();
+        } catch (err) {
+            Logger.error('Failed to resend automation email', { error: err, emailLogId });
+            setResendFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to resend email.' });
+        } finally {
+            setResendingEmailId(null);
+        }
+    }, [currentAccount?.id, fetchCustomerDetails, token]);
+
     useEffect(() => {
         if (!statusFeedback) return;
         const timer = window.setTimeout(() => setStatusFeedback(null), 3000);
         return () => window.clearTimeout(timer);
     }, [statusFeedback]);
+
+    useEffect(() => {
+        if (!resendFeedback) return;
+        const timer = window.setTimeout(() => setResendFeedback(null), 4000);
+        return () => window.clearTimeout(timer);
+    }, [resendFeedback]);
 
     if (isLoading) return <CustomerDetailsSkeleton />;
     if (!data) return <div className="p-8 text-center text-red-500">Customer not found</div>;
@@ -455,6 +500,11 @@ export function CustomerDetailsPage() {
                                 <Activity size={18} />
                                 <span>Showing <strong>Marketing Automation</strong> history. Broadcast history is not currently linked to individual profiles.</span>
                             </div>
+                            {resendFeedback && (
+                                <div className={`mb-4 rounded-lg px-4 py-3 text-sm ${resendFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                                    {resendFeedback.message}
+                                </div>
+                            )}
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="text-xs uppercase text-gray-500 border-b border-gray-100">
@@ -465,10 +515,52 @@ export function CustomerDetailsPage() {
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {automations.map(auto => (
-                                        <tr key={auto.id} className="hover:bg-gray-50">
-                                            <td className="py-4 font-medium flex items-center gap-2">
-                                                <Zap size={16} className="text-amber-500" />
-                                                {auto.automation?.name || 'Unknown Automation'}
+                                        <tr key={auto.id} className="hover:bg-gray-50 align-top">
+                                            <td className="py-4">
+                                                <div className="font-medium flex items-center gap-2">
+                                                    <Zap size={16} className="text-amber-500" />
+                                                    {auto.automation?.name || 'Unknown Automation'}
+                                                </div>
+                                                <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                                        Emails sent ({auto.emailLogs?.length || 0})
+                                                    </p>
+                                                    {auto.emailLogs && auto.emailLogs.length > 0 ? (
+                                                        <div className="space-y-2">
+                                                            {auto.emailLogs.map((email) => (
+                                                                <div key={email.id} className="rounded-md bg-white p-3 text-sm shadow-xs ring-1 ring-gray-100">
+                                                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                                                                        <div className="min-w-0">
+                                                                            <p className="font-medium text-gray-900 break-words">{email.subject || '(No subject)'}</p>
+                                                                            <p className="mt-1 text-xs text-gray-500 break-all">To: {email.to}</p>
+                                                                        </div>
+                                                                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold uppercase ${email.status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' : email.status === 'FAILED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                            {email.status}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500">
+                                                                        <span>Sent {formatDateTimeSafe(email.createdAt, '-')}</span>
+                                                                        <span>Opens: {email.openCount || 0}</span>
+                                                                        {email.firstOpenedAt && <span>First opened {formatDateTimeSafe(email.firstOpenedAt, '-')}</span>}
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => resendAutomationEmail(email.id)}
+                                                                            disabled={!email.canResend || resendingEmailId === email.id}
+                                                                            title={email.canResend ? 'Resend this email' : 'Stored email body is no longer available'}
+                                                                            className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                        >
+                                                                            <Send size={12} />
+                                                                            {resendingEmailId === email.id ? 'Resending...' : 'Resend'}
+                                                                        </button>
+                                                                    </div>
+                                                                    {email.errorMessage && <p className="mt-2 text-xs text-red-600">{email.errorMessage}</p>}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-gray-500">No email sends recorded for this enrollment.</p>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="py-4">
                                                 <span className={`px-2 py-1 rounded text-xs font-semibold uppercase ${auto.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'

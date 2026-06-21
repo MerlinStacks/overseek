@@ -154,6 +154,21 @@ const emailLogRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.post('/logs/:id/resend', async (request, reply) => {
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
+        const { id } = request.params as { id: string };
+        try {
+            const result = await emailService.resendEmail(id, accountId);
+            if (!result.success) return reply.code(400).send({ success: false, error: result.error });
+            Logger.info('Email resend successful', { emailLogId: id, messageId: result.messageId });
+            return { success: true, messageId: result.messageId };
+        } catch (error: any) {
+            Logger.error('Failed to resend email', { error });
+            return reply.code(500).send({ error: 'Failed to resend email' });
+        }
+    });
+
     fastify.post('/logs/:id/delivery-event', async (request, reply) => {
         const accountId = getEmailAccountIdOrReply(request, reply);
         if (!accountId) return;

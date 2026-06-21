@@ -10,6 +10,8 @@ const mockQueryRaw = vi.fn();
 const mockEmailUnsubscribeFindFirst = vi.fn();
 const mockEmailUnsubscribeFindMany = vi.fn();
 const mockEmailUnsubscribeCount = vi.fn();
+const mockAutomationEnrollmentFindMany = vi.fn();
+const mockEmailLogFindMany = vi.fn();
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
@@ -27,7 +29,7 @@ vi.mock('../../utils/prisma', () => ({
             }),
         },
         automationEnrollment: {
-            findMany: vi.fn().mockResolvedValue([]),
+            findMany: (...args: any[]) => mockAutomationEnrollmentFindMany(...args),
         },
         analyticsSession: {
             findMany: vi.fn().mockResolvedValue([]),
@@ -39,6 +41,9 @@ vi.mock('../../utils/prisma', () => ({
         },
         conversation: {
             findMany: vi.fn().mockResolvedValue([]),
+        },
+        emailLog: {
+            findMany: (...args: any[]) => mockEmailLogFindMany(...args),
         },
         $queryRaw: (...args: any[]) => mockQueryRaw(...args)
     }
@@ -71,6 +76,8 @@ describe('CustomersService', () => {
         mockEmailUnsubscribeCount.mockResolvedValue(0);
         mockWooCustomerCount.mockResolvedValue(0);
         mockQueryRaw.mockResolvedValue([]);
+        mockAutomationEnrollmentFindMany.mockResolvedValue([]);
+        mockEmailLogFindMany.mockResolvedValue([]);
     });
 
     describe('getCustomerDetails', () => {
@@ -116,6 +123,73 @@ describe('CustomersService', () => {
             // We expect mockFindFirst to be called ONLY ONCE (the scoped lookup).
             // The second global lookup (which was the vulnerability) should not happen.
             expect(mockFindFirst).toHaveBeenCalledTimes(1);
+        });
+
+        it('includes automation email logs matched to enrollment windows', async () => {
+            const enteredAt = new Date('2026-01-01T10:00:00.000Z');
+            const mockCustomer = {
+                id: customerId,
+                accountId,
+                email: 'test@example.com',
+                wooId: 123,
+                totalSpent: 0,
+                ordersCount: 0,
+                rawData: {}
+            };
+
+            mockFindFirst.mockResolvedValueOnce(mockCustomer);
+            mockAutomationEnrollmentFindMany.mockResolvedValueOnce([{
+                id: 'enrollment-1',
+                automationId: 'automation-1',
+                accountId,
+                email: 'test@example.com',
+                status: 'COMPLETED',
+                enteredAt,
+                createdAt: enteredAt,
+                completedAt: new Date('2026-01-01T11:00:00.000Z'),
+                cancelledAt: null,
+                automation: { name: 'Welcome Flow' }
+            }]);
+            mockEmailLogFindMany.mockResolvedValueOnce([
+                {
+                    id: 'email-log-1',
+                    sourceId: 'automation-1',
+                    to: 'test@example.com',
+                    subject: 'Welcome',
+                    status: 'SUCCESS',
+                    errorMessage: null,
+                    messageId: 'message-1',
+                    firstOpenedAt: null,
+                    openCount: 0,
+                    createdAt: new Date('2026-01-01T10:30:00.000Z')
+                },
+                {
+                    id: 'email-log-outside-window',
+                    sourceId: 'automation-1',
+                    to: 'test@example.com',
+                    subject: 'Too late',
+                    status: 'SUCCESS',
+                    errorMessage: null,
+                    messageId: 'message-2',
+                    firstOpenedAt: null,
+                    openCount: 0,
+                    createdAt: new Date('2026-01-01T12:00:00.000Z')
+                }
+            ]);
+
+            const result = await CustomersService.getCustomerDetails(accountId, customerId);
+
+            expect(result?.automations[0].emailLogs).toHaveLength(1);
+            expect(result?.automations[0].emailLogs[0].subject).toBe('Welcome');
+            expect(mockEmailLogFindMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: expect.objectContaining({
+                    accountId,
+                    source: 'AUTOMATION',
+                    sourceId: { in: ['automation-1'] },
+                    to: { equals: 'test@example.com', mode: 'insensitive' },
+                    createdAt: { gte: enteredAt }
+                })
+            }));
         });
     });
 

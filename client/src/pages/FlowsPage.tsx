@@ -1625,14 +1625,28 @@ export function FlowsPage() {
                                                             {journeyLoadingId !== contact.enrollmentId && !journeyErrorByEnrollment[contact.enrollmentId] && (journeysByEnrollment[contact.enrollmentId] || []).length === 0 && (
                                                                 <div className="text-xs text-slate-500">No journey events found.</div>
                                                             )}
-                                                            {(journeysByEnrollment[contact.enrollmentId] || []).map((event, index) => (
-                                                                <div key={`${contact.id}-journey-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                                                    <span className="font-medium text-slate-900 dark:text-slate-100">
-                                                                        {event.eventType}{event.outcome ? ` · ${event.outcome}` : ''}
-                                                                    </span>
-                                                                    <span>{event.nodeId ? `Node ${event.nodeId} · ` : ''}{new Date(event.createdAt).toLocaleString()}</span>
-                                                                </div>
-                                                            ))}
+                                                            {(journeysByEnrollment[contact.enrollmentId] || []).map((event, index) => {
+                                                                const eventNodeLabel = event.nodeId ? getNodeLabel(event.nodeId) : null;
+
+                                                                return (
+                                                                    <div key={`${contact.id}-journey-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                                                        <span>
+                                                                            <span className="font-medium text-slate-900 dark:text-slate-100">
+                                                                                {eventNodeLabel || event.eventType}
+                                                                            </span>
+                                                                            {eventNodeLabel && (
+                                                                                <span className="ml-2 text-slate-500 dark:text-slate-400">
+                                                                                    {event.eventType}{event.outcome ? ` · ${event.outcome}` : ''}
+                                                                                </span>
+                                                                            )}
+                                                                            {!eventNodeLabel && event.outcome ? (
+                                                                                <span className="ml-2 text-slate-500 dark:text-slate-400">{event.outcome}</span>
+                                                                            ) : null}
+                                                                        </span>
+                                                                        <span>{new Date(event.createdAt).toLocaleString()}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
                                                         </div>
                                                     </td>
                                                 </tr>

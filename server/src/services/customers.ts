@@ -728,6 +728,59 @@ export class CustomersService {
             })
         ]);
 
+        const automationIds = [...new Set(automationEnrollments.map((enrollment) => enrollment.automationId))];
+        const firstEnrollmentAt = automationEnrollments.reduce<Date | null>((earliest, enrollment) => {
+            const enteredAt = enrollment.enteredAt || enrollment.createdAt;
+            if (!earliest || enteredAt < earliest) return enteredAt;
+            return earliest;
+        }, null);
+        const automationEmailLogs = automationIds.length > 0 && firstEnrollmentAt
+            ? await prisma.emailLog.findMany({
+                where: {
+                    accountId,
+                    source: 'AUTOMATION',
+                    sourceId: { in: automationIds },
+                    to: { equals: customer.email, mode: 'insensitive' },
+                    createdAt: { gte: firstEnrollmentAt }
+                },
+                select: {
+                    id: true,
+                    sourceId: true,
+                    to: true,
+                    subject: true,
+                    status: true,
+                    errorMessage: true,
+                    messageId: true,
+                    firstOpenedAt: true,
+                    openCount: true,
+                    canRetry: true,
+                    emailBodyExpiresAt: true,
+                    createdAt: true
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 100
+            })
+            : [];
+
+        const now = new Date();
+        const automationEmailLogsByEnrollment = new Map<string, Array<(typeof automationEmailLogs)[number] & { canResend: boolean }>>();
+        for (const enrollment of automationEnrollments) {
+            const startedAt = enrollment.enteredAt || enrollment.createdAt;
+            const endedAt = enrollment.completedAt || enrollment.cancelledAt || null;
+            const matchingLogs = automationEmailLogs.filter((log) => {
+                if (log.sourceId !== enrollment.automationId) return false;
+                if (log.createdAt < startedAt) return false;
+                if (endedAt && log.createdAt > endedAt) return false;
+                return true;
+            }).map((log) => ({
+                ...log,
+                canResend: log.status === 'FAILED'
+                    ? log.canRetry
+                    : Boolean(log.emailBodyExpiresAt && log.emailBodyExpiresAt > now)
+            }));
+            automationEmailLogsByEnrollment.set(enrollment.id, matchingLogs);
+        }
+
         // Compute stats from all local orders as fallback when WooCommerce reports 0
         const dbTotalSpent = Number(customer.totalSpent);
         const computedTotalSpent = Number(orderStats._sum.total || 0);
@@ -749,7 +802,10 @@ export class CustomersService {
                 contactStatus
             },
             orders,
-            automations: automationEnrollments,
+            automations: automationEnrollments.map((enrollment) => ({
+                ...enrollment,
+                emailLogs: automationEmailLogsByEnrollment.get(enrollment.id) || []
+            })),
             activity: activitySessions,
             sendingMethods: CONTACT_STATUS_METHODS[contactStatus],
             inboxConversations: inboxConversations.map((conversation) => ({

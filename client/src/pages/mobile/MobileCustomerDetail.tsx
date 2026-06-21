@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag, Calendar, RefreshCw, Package, ChevronRight, DollarSign } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag, Calendar, RefreshCw, Package, ChevronRight, DollarSign, Send } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { formatCurrency, formatDate } from '../../utils/format';
@@ -52,6 +52,23 @@ interface CustomerDetails {
         contactStatus?: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
     };
     orders: CustomerOrder[];
+    automations: Array<{
+        id: string;
+        status: string;
+        createdAt: string;
+        automation?: { name?: string };
+        emailLogs?: Array<{
+            id: string;
+            to: string;
+            subject: string;
+            status: string;
+            errorMessage?: string | null;
+            firstOpenedAt?: string | null;
+            openCount: number;
+            canResend?: boolean;
+            createdAt: string;
+        }>;
+    }>;
     activity: { id: string; type: string; message: string; timestamp: string }[];
     sendingMethods?: { marketing: boolean; transactional: boolean };
     inboxConversations?: Array<{
@@ -104,6 +121,8 @@ export function MobileCustomerDetail() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
+    const [resendFeedback, setResendFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     const fetchCustomer = useCallback(async () => {
         if (!currentAccount || !token || !id) {
@@ -150,6 +169,7 @@ export function MobileCustomerDetail() {
                         total: Number(order.rawData?.total || order.total) || 0,
                         dateCreated: order.rawData?.date_created || order.dateCreated || ''
                     })),
+                    automations: json.automations || [],
                     activity: json.activity || [],
                     sendingMethods: json.sendingMethods,
                     inboxConversations: json.inboxConversations || []
@@ -197,6 +217,40 @@ export function MobileCustomerDetail() {
             setIsUpdatingStatus(false);
         }
     }, [id, token, currentAccount?.id, data]);
+
+    const resendAutomationEmail = useCallback(async (emailLogId: string) => {
+        if (!currentAccount || !token) return;
+        setResendingEmailId(emailLogId);
+        setResendFeedback(null);
+        try {
+            const res = await fetch(`/api/email/logs/${emailLogId}/resend`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                }
+            });
+
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Failed to resend email');
+            }
+
+            setResendFeedback({ type: 'success', message: 'Email resent.' });
+            await fetchCustomer();
+        } catch (error) {
+            Logger.error('[MobileCustomerDetail] Failed to resend automation email', { error, emailLogId });
+            setResendFeedback({ type: 'error', message: error instanceof Error ? error.message : 'Failed to resend email.' });
+        } finally {
+            setResendingEmailId(null);
+        }
+    }, [currentAccount, fetchCustomer, token]);
+
+    useEffect(() => {
+        if (!resendFeedback) return;
+        const timer = window.setTimeout(() => setResendFeedback(null), 4000);
+        return () => window.clearTimeout(timer);
+    }, [resendFeedback]);
 
     useEffect(() => {
         fetchCustomer();
@@ -265,7 +319,7 @@ export function MobileCustomerDetail() {
         );
     }
 
-    const { customer, orders, sendingMethods, inboxConversations = [] } = data;
+    const { customer, orders, automations, sendingMethods, inboxConversations = [] } = data;
     const statusBadge = getContactStatusBadge(customer.contactStatus);
     const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Unknown';
     const initials = (customer.firstName?.[0] || '') + (customer.lastName?.[0] || '');
@@ -388,6 +442,61 @@ export function MobileCustomerDetail() {
                         ))
                     ) : (
                         <div className="p-6 text-center text-gray-400 text-sm">No inbox emails found for this customer yet.</div>
+                    )}
+                </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <h2 className="font-semibold text-gray-900 p-4 border-b border-gray-100">Automation Emails</h2>
+                {resendFeedback && (
+                    <div className={`mx-4 mt-4 rounded-lg px-3 py-2 text-sm ${resendFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                        {resendFeedback.message}
+                    </div>
+                )}
+                <div className="divide-y divide-gray-100">
+                    {automations.length > 0 ? (
+                        automations.map((automation) => (
+                            <div key={automation.id} className="p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="font-medium text-gray-900 truncate">{automation.automation?.name || 'Unknown Automation'}</p>
+                                        <p className="mt-1 text-xs text-gray-500">Enrolled {formatDate(automation.createdAt)} • {automation.status}</p>
+                                    </div>
+                                    <span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
+                                        {automation.emailLogs?.length || 0} sent
+                                    </span>
+                                </div>
+                                <div className="mt-3 space-y-2">
+                                    {automation.emailLogs && automation.emailLogs.length > 0 ? (
+                                        automation.emailLogs.map((email) => (
+                                            <div key={email.id} className="rounded-lg bg-gray-50 p-3">
+                                                <div className="flex items-start gap-2">
+                                                    <Mail size={14} className="mt-0.5 shrink-0 text-gray-400" />
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-medium text-gray-900 line-clamp-2">{email.subject || '(No subject)'}</p>
+                                                        <p className="mt-1 text-xs text-gray-500">{formatDate(email.createdAt)} • {email.status} • Opens: {email.openCount || 0}</p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => resendAutomationEmail(email.id)}
+                                                            disabled={!email.canResend || resendingEmailId === email.id}
+                                                            className="mt-2 inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 disabled:opacity-60"
+                                                        >
+                                                            <Send size={12} />
+                                                            {resendingEmailId === email.id ? 'Resending...' : 'Resend'}
+                                                        </button>
+                                                        {email.errorMessage && <p className="mt-1 text-xs text-red-600 line-clamp-2">{email.errorMessage}</p>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-500">No email sends recorded for this enrollment.</p>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="p-6 text-center text-gray-400 text-sm">No automation history</div>
                     )}
                 </div>
             </div>

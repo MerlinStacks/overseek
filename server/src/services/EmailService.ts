@@ -158,6 +158,18 @@ export class EmailService {
         });
     }
 
+    private prepareStoredHtmlForResend(html: string): string {
+        return html
+            .replace(/<img\b[^>]*src=("|')[^"']*\/api\/email\/track\/[^"']+\.png[^"']*\1[^>]*>/gi, '')
+            .replace(/href=("|')https?:\/\/[^"']*\/api\/email\/click\/[^"']+\?url=([^"']+)\1/gi, (_match, quote, encodedUrl) => {
+                try {
+                    return `href=${quote}${decodeURIComponent(encodedUrl)}${quote}`;
+                } catch {
+                    return _match;
+                }
+            });
+    }
+
     private buildUnsubscribeHeaderUrl(trackingId: string): string {
         return `${this.buildApiBaseUrl()}/api/email/unsubscribe/${trackingId}`;
     }
@@ -604,7 +616,7 @@ export class EmailService {
                 emailLog.emailAccountId,
                 emailLog.to,
                 emailLog.subject,
-                payload.html,
+                this.prepareStoredHtmlForResend(payload.html),
                 payload.attachments,
                 {
                     source: emailLog.source || undefined,
@@ -643,6 +655,57 @@ export class EmailService {
                 }
             });
 
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Resend a logged email using its stored body preview.
+     *
+     * Creates a new EmailLog entry for the resend; the original log is left intact.
+     */
+    async resendEmail(emailLogId: string, accountId: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+        const emailLog = await prisma.emailLog.findFirst({
+            where: { id: emailLogId, accountId },
+            include: { emailAccount: true }
+        });
+
+        if (!emailLog) {
+            return { success: false, error: 'Email log not found' };
+        }
+
+        const payload = emailLog.emailPayload as { html?: string; attachments?: any[]; options?: any; category?: 'MARKETING' | 'TRANSACTIONAL'; truncated?: boolean } | null;
+        if (!payload || typeof payload.html !== 'string') {
+            return { success: false, error: 'Stored email body is not available for resend' };
+        }
+
+        if (payload.truncated === true) {
+            return { success: false, error: 'Stored email body is truncated and cannot be resent safely' };
+        }
+
+        try {
+            const result = await this.sendEmail(
+                accountId,
+                emailLog.emailAccountId,
+                emailLog.to,
+                emailLog.subject,
+                payload.html,
+                Array.isArray(payload.attachments) ? payload.attachments : [],
+                {
+                    ...payload.options,
+                    source: emailLog.source || undefined,
+                    sourceId: emailLog.sourceId || undefined,
+                    category: payload.category || payload.options?.category || 'MARKETING'
+                }
+            );
+
+            if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
+                const reason = 'reason' in result ? result.reason : 'email skipped';
+                return { success: false, error: String(reason) };
+            }
+
+            return { success: true, messageId: result.messageId };
+        } catch (error: any) {
             return { success: false, error: error.message };
         }
     }
