@@ -201,6 +201,16 @@ export function extractGrpcErrorMessage(error: any): string {
     return 'Unknown gRPC error (no message/details/code)';
 }
 
+export function isGoogleAdsTransportError(message: string): boolean {
+    return message.includes('Premature close')
+        || message.includes('ERR_STREAM_PREMATURE_CLOSE')
+        || message.includes('socket hang up')
+        || message.includes('ECONNRESET')
+        || message.includes('fetch failed')
+        || message.includes('terminated')
+        || message.includes('aborted');
+}
+
 /**
  * Pre-flight OAuth token refresh.
  *
@@ -377,7 +387,7 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
 /**
  * Parse Google Ads API errors into user-friendly messages.
  */
-export function parseGoogleAdsError(error: any, customerId: string): string {
+export function parseGoogleAdsError(error: any, customerId: string, adAccountId?: string): string {
     const errorMessage = error.message || error.details || '';
     const errorCode = error.code;
 
@@ -395,7 +405,7 @@ export function parseGoogleAdsError(error: any, customerId: string): string {
     // GRPC error code 16 = UNAUTHENTICATED
     if (errorCode === 16 || errorMessage.includes('UNAUTHENTICATED') || errorMessage.includes('invalid_grant')) {
         // Trip circuit-breaker so scheduled jobs skip this account for 60 min
-        tripAuthBreaker(customerId);
+        if (adAccountId) tripAuthBreaker(adAccountId);
         return 'Authentication expired. Please disconnect and reconnect your Google Ads account to refresh the OAuth tokens.';
     }
     // Invalid customer ID format

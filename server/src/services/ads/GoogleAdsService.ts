@@ -8,7 +8,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight, formatDateISO, formatDateGAQL } from './types';
-import { createGoogleAdsClient, parseGoogleAdsError, recordGrpcFailure, extractGrpcErrorMessage } from './GoogleAdsClient';
+import { createGoogleAdsClient, parseGoogleAdsError, recordGrpcFailure, extractGrpcErrorMessage, isGoogleAdsTransportError } from './GoogleAdsClient';
 import { GoogleAdsAuth } from './GoogleAdsAuth';
 
 function requireGoogleAdsNumericId(value: string, label: string): string {
@@ -64,12 +64,12 @@ export class GoogleAdsService {
         } catch (error: any) {
             const msg = extractGrpcErrorMessage(error);
             const adAccount = await prisma.adAccount.findUnique({ where: { id: adAccountId } });
-            const userMessage = parseGoogleAdsError(error, adAccount?.externalId || '');
+            const userMessage = parseGoogleAdsError(error, adAccount?.externalId || '', adAccountId);
 
             // Transient gRPC/network errors — return null to let scheduler continue
-            if (!error.message && error.details) {
+            if ((!error.message && error.details) || isGoogleAdsTransportError(msg)) {
                 recordGrpcFailure(adAccountId);
-                Logger.warn('Failed to fetch Google Ads Insights (gRPC)', { error: msg, adAccountId });
+                Logger.warn('Failed to fetch Google Ads Insights (transient transport)', { error: msg, code: error.code, adAccountId });
                 return null;
             }
 
