@@ -300,30 +300,30 @@ async function ensureFreshAccessToken(
     adAccount: { id: string; accessToken?: string | null; refreshToken: string | null; updatedAt?: Date },
     clientId: string,
     clientSecret: string,
-): Promise<void> {
+): Promise<string> {
     if (!adAccount.refreshToken) throw new Error('Invalid Google Ad Account');
 
     const now = Date.now();
     const freshUntil = accessTokenFreshUntil.get(adAccount.id) || 0;
-    if (freshUntil > now) return;
+    if (freshUntil > now && adAccount.accessToken) return adAccount.accessToken;
 
     if (adAccount.accessToken && adAccount.updatedAt && now - adAccount.updatedAt.getTime() < ACCESS_TOKEN_REUSE_MS) {
         accessTokenFreshUntil.set(adAccount.id, adAccount.updatedAt.getTime() + ACCESS_TOKEN_REUSE_MS);
-        return;
+        return adAccount.accessToken;
     }
 
     const existing = tokenRefreshPromises.get(adAccount.id);
     if (existing) {
-        await existing;
-        return;
+        return existing;
     }
 
     const promise = refreshAccessToken(adAccount.id, adAccount.refreshToken, clientId, clientSecret);
     tokenRefreshPromises.set(adAccount.id, promise);
 
     try {
-        await promise;
+        const accessToken = await promise;
         accessTokenFreshUntil.set(adAccount.id, Date.now() + ACCESS_TOKEN_REUSE_MS);
+        return accessToken;
     } finally {
         tokenRefreshPromises.delete(adAccount.id);
     }
@@ -391,12 +391,13 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
     // ── Pre-flight token refresh via REST ──────────────────────────────
     // Validates the refresh token before gRPC touches it. On failure
     // the auth breaker is tripped with a clear error message.
-    await ensureFreshAccessToken(adAccount, clientId, clientSecret);
+    const accessToken = await ensureFreshAccessToken(adAccount, clientId, clientSecret);
 
     const loginCustomerId = creds.loginCustomerId;
     const customerConfig: any = {
         customer_id: adAccount.externalId.replace(/-/g, ''),
         refresh_token: adAccount.refreshToken,
+        access_token: accessToken,
     };
 
     if (loginCustomerId) {
