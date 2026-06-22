@@ -292,7 +292,6 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
                 },
                 reply,
             );
-            if (!insights) return;
 
             return insights || { spend: 0, impressions: 0, clicks: 0, roas: 0 };
         } catch (error: any) {

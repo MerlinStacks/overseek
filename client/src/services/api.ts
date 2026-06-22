@@ -82,6 +82,12 @@ function parseRetryAfter(response: Response): number | null {
     return null;
 }
 
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+    const text = await response.text();
+    if (!text) return undefined as unknown as T;
+    return JSON.parse(text) as T;
+}
+
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { token, accountId, headers, body, ...customConfig } = options;
 
@@ -115,10 +121,10 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             let isRecoverable = false;
 
             try {
-                const errorData = await response.json();
-                errorMessage = errorData.message || errorData.error || errorMessage;
-                errorCode = errorData.code || errorCode;
-                isRecoverable = errorData.isRecoverable || false;
+                const errorData = await parseJsonResponse<{ message?: string; error?: string; code?: string; isRecoverable?: boolean } | undefined>(response);
+                errorMessage = errorData?.message || errorData?.error || errorMessage;
+                errorCode = errorData?.code || errorCode;
+                isRecoverable = errorData?.isRecoverable || false;
             } catch {
                 // Only use status text if JSON parsing fails
                 errorMessage = response.statusText;
@@ -138,7 +144,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             return undefined as unknown as T;
         }
 
-        return response.json();
+        return parseJsonResponse<T>(response);
     }
 
     // Unreachable in practice — the loop always returns or throws
