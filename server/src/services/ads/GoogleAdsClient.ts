@@ -156,6 +156,14 @@ export interface GoogleAdsClientConfig {
     currency: string;
 }
 
+export interface GoogleAdsRestConfig {
+    customerId: string;
+    loginCustomerId?: string;
+    developerToken: string;
+    accessToken: string;
+    currency: string;
+}
+
 /**
  * Extract a usable error message from gRPC error objects.
  *
@@ -329,6 +337,17 @@ async function ensureFreshAccessToken(
     }
 }
 
+export async function ensureGoogleAdsAccessToken(
+    adAccount: { id: string; accessToken?: string | null; refreshToken: string | null; updatedAt?: Date },
+): Promise<string> {
+    const creds = await getCredentials('GOOGLE_ADS');
+    if (!creds?.clientId || !creds?.clientSecret) {
+        throw new Error('Google Ads OAuth credentials not configured');
+    }
+
+    return ensureFreshAccessToken(adAccount, creds.clientId, creds.clientSecret);
+}
+
 /**
  * Create (or return cached) Google Ads API customer client for an ad account.
  */
@@ -391,7 +410,7 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
     // ── Pre-flight token refresh via REST ──────────────────────────────
     // Validates the refresh token before gRPC touches it. On failure
     // the auth breaker is tripped with a clear error message.
-    const accessToken = await ensureFreshAccessToken(adAccount, clientId, clientSecret);
+    const accessToken = await ensureGoogleAdsAccessToken(adAccount);
 
     const loginCustomerId = creds.loginCustomerId;
     const customerConfig: any = {
@@ -415,6 +434,44 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
     customerCache.set(adAccountId, { customer, currency, createdAt: now });
 
     return { customer, currency };
+}
+
+export async function createGoogleAdsRestConfig(adAccountId: string): Promise<GoogleAdsRestConfig> {
+    const now = Date.now();
+
+    const breakerTs = authBreakerMap.get(adAccountId);
+    if (breakerTs && now - breakerTs < AUTH_BREAKER_TTL_MS) {
+        throw new Error('Auth circuit-breaker active — invalid_grant within last 60 min. Re-authenticate to restore.');
+    }
+
+    const grpcState = grpcBreakerMap.get(adAccountId);
+    if (grpcState && grpcState.cooldownUntil > now) {
+        throw new Error('gRPC circuit-breaker active — too many failures, cooling down for 10 min.');
+    }
+
+    const adAccount = await prisma.adAccount.findUnique({
+        where: { id: adAccountId }
+    });
+
+    if (!adAccount || adAccount.platform !== 'GOOGLE' || !adAccount.refreshToken || !adAccount.externalId) {
+        throw new Error('Invalid Google Ad Account');
+    }
+
+    const creds = await getCredentials('GOOGLE_ADS');
+    if (!creds?.clientId || !creds?.clientSecret || !creds?.developerToken) {
+        Logger.warn('Google Ads credentials not configured.');
+        throw new Error('Google Ads credentials not configured');
+    }
+
+    const accessToken = await ensureFreshAccessToken(adAccount, creds.clientId, creds.clientSecret);
+
+    return {
+        customerId: adAccount.externalId.replace(/-/g, ''),
+        loginCustomerId: creds.loginCustomerId?.replace(/-/g, ''),
+        developerToken: creds.developerToken,
+        accessToken,
+        currency: adAccount.currency || 'USD',
+    };
 }
 
 /**

@@ -20,6 +20,7 @@ import { Logger } from '../../utils/logger';
 import { redisClient } from '../../utils/redis';
 import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
 import { getCredentials } from '../ads/types';
+import { ensureGoogleAdsAccessToken } from '../ads/GoogleAdsClient';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
@@ -92,7 +93,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         const normalizedCustomerId = customerId.replace(/-/g, '');
         const adAccount = await prisma.adAccount.findFirst({
             where: { accountId, platform: 'GOOGLE', externalId: normalizedCustomerId },
-            select: { id: true, accessToken: true, refreshToken: true },
+            select: { id: true, accessToken: true, refreshToken: true, updatedAt: true },
         });
 
         if (!adAccount?.refreshToken) {
@@ -383,7 +384,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         // Need the ad account to get the tokens and externalId (customer ID)
         const adAccount = await prisma.adAccount.findFirst({
             where: { accountId, platform: 'GOOGLE', refreshToken: { not: null } },
-            select: { id: true, accessToken: true, refreshToken: true, externalId: true },
+            select: { id: true, accessToken: true, refreshToken: true, externalId: true, updatedAt: true },
         });
 
         if (!adAccount || !adAccount.externalId) {
@@ -448,7 +449,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
      */
     private async sendWithRetry(
         customerId: string,
-        adAccount: { id: string; accessToken: string; refreshToken: string | null },
+        adAccount: { id: string; accessToken: string; refreshToken: string | null; updatedAt?: Date },
         payload: Record<string, any>,
         deliveryId: string,
         isPurchase: boolean = true,
@@ -462,9 +463,8 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         const developerToken = creds?.developerToken || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '';
         const loginCustomerId = creds?.loginCustomerId || process.env.GOOGLE_ADS_MANAGER_ACCOUNT_ID || '';
 
-        // Refresh the access token before sending to avoid stale-token 400/401s.
-        // GoogleAdsClient's createGoogleAdsClient does this for gRPC calls,
-        // but Enhanced Conversions uses REST directly and needs its own refresh.
+        // Use the shared Google Ads token manager so conversion uploads do not
+        // create their own OAuth refresh storm during retries.
         const accessToken = await this.refreshToken(adAccount);
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -570,50 +570,13 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
     }
 
     /**
-     * Refresh the OAuth access token via Google's token endpoint.
-     * Falls back to the stored token if refresh fails or no refresh token exists.
+     * Refresh the OAuth access token via the shared Google Ads token manager.
      */
     private async refreshToken(
-        adAccount: { id: string; accessToken: string; refreshToken: string | null },
+        adAccount: { id: string; accessToken: string; refreshToken: string | null; updatedAt?: Date },
     ): Promise<string> {
         if (!adAccount.refreshToken) return adAccount.accessToken;
-
-        try {
-            const creds = await getCredentials('GOOGLE_ADS');
-            if (!creds?.clientId || !creds?.clientSecret) return adAccount.accessToken;
-
-            const params = new URLSearchParams({
-                grant_type: 'refresh_token',
-                refresh_token: adAccount.refreshToken,
-                client_id: creds.clientId,
-                client_secret: creds.clientSecret,
-            });
-
-            const resp = await fetch('https://oauth2.googleapis.com/token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: params.toString(),
-            });
-
-            const data = await resp.json();
-            if (data.access_token) {
-                // Persist so other callers get the fresh token too
-                await prisma.adAccount.update({
-                    where: { id: adAccount.id },
-                    data: { accessToken: data.access_token },
-                }).catch(() => { /* best-effort */ });
-                return data.access_token;
-            }
-
-            Logger.warn('[GoogleEnhanced] Token refresh returned no access_token', {
-                error: data.error,
-                description: data.error_description,
-            });
-            return adAccount.accessToken;
-        } catch (err: any) {
-            Logger.warn('[GoogleEnhanced] Token refresh failed, using stored token', { error: err.message });
-            return adAccount.accessToken;
-        }
+        return ensureGoogleAdsAccessToken(adAccount);
     }
 
     private backoff(attempt: number): Promise<void> {

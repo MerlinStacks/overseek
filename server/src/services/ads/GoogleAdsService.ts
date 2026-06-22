@@ -8,7 +8,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight, formatDateISO, formatDateGAQL } from './types';
-import { createGoogleAdsClient, parseGoogleAdsError, recordGrpcFailure, extractGrpcErrorMessage, isGoogleAdsTransportError } from './GoogleAdsClient';
+import { createGoogleAdsClient, createGoogleAdsRestConfig, parseGoogleAdsError, recordGrpcFailure, extractGrpcErrorMessage, isGoogleAdsTransportError } from './GoogleAdsClient';
 import { GoogleAdsAuth } from './GoogleAdsAuth';
 
 function requireGoogleAdsNumericId(value: string, label: string): string {
@@ -25,7 +25,7 @@ export class GoogleAdsService {
      */
     static async getInsights(adAccountId: string): Promise<AdMetric | null> {
         try {
-            const { customer, currency } = await createGoogleAdsClient(adAccountId);
+            const { customerId, loginCustomerId, developerToken, accessToken, currency } = await createGoogleAdsRestConfig(adAccountId);
 
             const endDate = new Date();
             const startDate = new Date();
@@ -42,21 +42,45 @@ export class GoogleAdsService {
                 WHERE segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
             `;
 
-            const rows = await customer.query(query);
-            const response = rows[0];
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessToken}`,
+                'developer-token': developerToken,
+            };
+            if (loginCustomerId) headers['login-customer-id'] = loginCustomerId;
 
-            if (!response?.metrics) return null;
+            const response = await fetch(`https://googleads.googleapis.com/v24/customers/${customerId}/googleAds:search`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ query }),
+            });
 
-            const spend = (response.metrics.cost_micros || 0) / 1_000_000;
-            const conversionsValue = response.metrics.conversions_value || 0;
+            const bodyText = await response.text();
+            let body: any = null;
+            try { body = bodyText ? JSON.parse(bodyText) : null; } catch { /* handled below */ }
+
+            if (!response.ok) {
+                const message = body?.error?.message || bodyText || `Google Ads REST request failed (${response.status})`;
+                const err: any = new Error(message);
+                err.code = response.status;
+                throw err;
+            }
+
+            const rows = Array.isArray(body?.results) ? body.results : [];
+            const row = rows[0];
+
+            if (!row?.metrics) return null;
+
+            const spend = Number(row.metrics.costMicros || row.metrics.cost_micros || 0) / 1_000_000;
+            const conversionsValue = Number(row.metrics.conversionsValue || row.metrics.conversions_value || 0);
 
             return {
                 accountId: adAccountId,
                 spend,
-                impressions: response.metrics.impressions || 0,
-                clicks: response.metrics.clicks || 0,
+                impressions: Number(row.metrics.impressions || 0),
+                clicks: Number(row.metrics.clicks || 0),
                 roas: spend > 0 ? conversionsValue / spend : 0,
-                currency: response.customer?.currency_code || currency,
+                currency: row.customer?.currencyCode || row.customer?.currency_code || currency,
                 date_start: formatDateISO(startDate),
                 date_stop: formatDateISO(endDate)
             };
