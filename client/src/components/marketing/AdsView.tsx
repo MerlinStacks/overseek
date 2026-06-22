@@ -21,6 +21,12 @@ interface AdInsights {
     currency: string;
 }
 
+interface AdInsightError {
+    message: string;
+    code?: string;
+    isRecoverable?: boolean;
+}
+
 interface AdsViewProps {
     onSelectAccount?: (account: AdAccount) => void;
 }
@@ -36,7 +42,7 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
     const [accounts, setAccounts] = useState<AdAccount[]>([]);
     const [insights, setInsights] = useState<Record<string, AdInsights>>({});
     const [loadingInsights, setLoadingInsights] = useState<Record<string, boolean>>({});
-    const [insightErrors, setInsightErrors] = useState<Record<string, string>>({});
+    const [insightErrors, setInsightErrors] = useState<Record<string, AdInsightError | undefined>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [showConnect, setShowConnect] = useState(false);
 
@@ -78,22 +84,29 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
 
     const fetchInsights = useCallback(async (adAccountId: string) => {
         setLoadingInsights(prev => ({ ...prev, [adAccountId]: true }));
-        setInsightErrors(prev => ({ ...prev, [adAccountId]: '' })); // Clear previous error
+        setInsightErrors(prev => ({ ...prev, [adAccountId]: undefined })); // Clear previous error
         try {
             const res = await fetch(`/api/ads/${adAccountId}/insights`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId || '' }
             });
-            const data = await res.json();
-            if (!data.error) {
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && !data.error) {
                 setInsights(prev => ({ ...prev, [adAccountId]: data }));
             } else {
                 Logger.error(`Insights fetch error for ${adAccountId}`, { error: data.error });
-                setInsightErrors(prev => ({ ...prev, [adAccountId]: data.error }));
+                setInsightErrors(prev => ({
+                    ...prev,
+                    [adAccountId]: {
+                        message: data.error || 'Failed to load insights',
+                        code: data.code,
+                        isRecoverable: data.isRecoverable,
+                    }
+                }));
             }
         } catch (err: unknown) {
             Logger.error('Failed to fetch insights', { error: err });
             const message = err instanceof Error ? err.message : 'Connection error';
-            setInsightErrors(prev => ({ ...prev, [adAccountId]: message }));
+            setInsightErrors(prev => ({ ...prev, [adAccountId]: { message } }));
         } finally {
             setLoadingInsights(prev => ({ ...prev, [adAccountId]: false }));
         }
@@ -500,10 +513,12 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                         ) : (
                             accounts.map(acc => {
                                 const ins = insights[acc.id];
+                                const insightError = insightErrors[acc.id];
                                 const isPending = acc.externalId === 'PENDING_SETUP';
-                                const hasError = !!insightErrors[acc.id];
+                                const hasError = !!insightError;
+                                const isTemporarilyUnavailable = insightError?.code === 'AD_INSIGHTS_UNAVAILABLE' || insightError?.isRecoverable;
                                 return (
-                                    <div key={acc.id} className={`bg-white rounded-xl shadow-xs border p-6 space-y-4 ${isPending ? 'border-amber-300' : hasError ? 'border-red-200' : 'border-gray-200'}`}>
+                                    <div key={acc.id} className={`bg-white rounded-xl shadow-xs border p-6 space-y-4 ${isPending ? 'border-amber-300' : hasError ? isTemporarilyUnavailable ? 'border-amber-200' : 'border-red-200' : 'border-gray-200'}`}>
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
                                                 <div className={`p-2 rounded-lg ${acc.platform === 'META' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
@@ -533,13 +548,16 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
                                                     </>
                                                 ) : hasError ? (
                                                     <>
-                                                        <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">Error</span>
+                                                        <span className={`${isTemporarilyUnavailable ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'} text-xs px-2 py-1 rounded-full`}>
+                                                            {isTemporarilyUnavailable ? 'Unavailable' : 'Error'}
+                                                        </span>
                                                         <button
-                                                            onClick={() => handleReconnect(acc)}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
+                                                            onClick={() => isTemporarilyUnavailable ? fetchInsights(acc.id) : handleReconnect(acc)}
+                                                            disabled={loadingInsights[acc.id]}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg disabled:opacity-50 ${isTemporarilyUnavailable ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                                                         >
-                                                            <RefreshCw size={14} />
-                                                            Reconnect
+                                                            <RefreshCw size={14} className={loadingInsights[acc.id] ? 'animate-spin' : ''} />
+                                                            {isTemporarilyUnavailable ? 'Retry' : 'Reconnect'}
                                                         </button>
                                                     </>
                                                 ) : (
@@ -603,12 +621,13 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
 
                                         {/* Error Detail */}
                                         {hasError && (
-                                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                            <div className={`p-3 border rounded-lg ${isTemporarilyUnavailable ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
                                                 <div className="flex items-start gap-2">
-                                                    <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
-                                                    <div className="text-sm text-red-700">
-                                                        <p className="font-medium">Failed to load data</p>
-                                                        <p className="text-xs mt-1 text-red-600">{insightErrors[acc.id]}</p>
+                                                    <AlertCircle className={`${isTemporarilyUnavailable ? 'text-amber-500' : 'text-red-500'} shrink-0 mt-0.5`} size={16} />
+                                                    <div className={`text-sm ${isTemporarilyUnavailable ? 'text-amber-800' : 'text-red-700'}`}>
+                                                        <p className="font-medium">{isTemporarilyUnavailable ? 'Insights temporarily unavailable' : 'Failed to load data'}</p>
+                                                        <p className={`text-xs mt-1 ${isTemporarilyUnavailable ? 'text-amber-700' : 'text-red-600'}`}>{insightError?.message}</p>
+                                                        {ins && isTemporarilyUnavailable && <p className="text-xs mt-1 text-amber-700">Showing the last loaded metrics.</p>}
                                                     </div>
                                                 </div>
                                             </div>

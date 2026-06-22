@@ -199,8 +199,9 @@ export async function getCredentials(platform: AdsPlatform): Promise<Record<stri
         const clientId = process.env.GOOGLE_ADS_CLIENT_ID;
         const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
         const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        const loginCustomerId = process.env.GOOGLE_ADS_MANAGER_ACCOUNT_ID;
         if (clientId && clientSecret && developerToken) {
-            return { clientId, clientSecret, developerToken };
+            return { clientId, clientSecret, developerToken, ...(loginCustomerId ? { loginCustomerId } : {}) };
         }
     } else if (platform === 'META_ADS' || platform === 'META' || platform === 'META_MESSAGING') {
         const appId = process.env.META_APP_ID;
@@ -276,4 +277,3 @@ export interface ShoppingProductRef {
 export interface ShoppingAnalysisData {
     top_products?: ShoppingProductRef[];
 }
-

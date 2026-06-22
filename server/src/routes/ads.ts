@@ -293,7 +293,15 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
                 reply,
             );
 
-            return insights || { spend: 0, impressions: 0, clicks: 0, roas: 0 };
+            if (!insights) {
+                return reply.code(503).send({
+                    error: 'Ad insights are temporarily unavailable. Try again shortly.',
+                    code: 'AD_INSIGHTS_UNAVAILABLE',
+                    isRecoverable: true,
+                });
+            }
+
+            return insights;
         } catch (error: any) {
             Logger.error('Failed to fetch ad insights', { error });
             return reply.code(500).send({ error: error.message });

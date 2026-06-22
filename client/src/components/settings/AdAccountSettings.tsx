@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useAccountFeature } from '../../hooks/useAccountFeature';
 import { Plus, Loader2 } from 'lucide-react';
-import { AdAccountCard, AdAccount, AdInsights } from './AdAccountCard';
+import { AdAccountCard, AdAccount, AdInsightError, AdInsights } from './AdAccountCard';
 import { EditAdAccountModal, PendingSetupModal } from './AdAccountModals';
 import { AdConnectForm } from './AdConnectForm';
 import { Toast, ToastType } from '../ui/Toast';
@@ -25,7 +25,7 @@ export function AdAccountSettings() {
     const [accounts, setAccounts] = useState<AdAccount[]>([]);
     const [insights, setInsights] = useState<Record<string, AdInsights>>({});
     const [loadingInsights, setLoadingInsights] = useState<Record<string, boolean>>({});
-    const [insightErrors, setInsightErrors] = useState<Record<string, string>>({});
+    const [insightErrors, setInsightErrors] = useState<Record<string, AdInsightError | undefined>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [showConnect, setShowConnect] = useState(false);
     const [formPlatform, setFormPlatform] = useState('META');
@@ -45,19 +45,24 @@ export function AdAccountSettings() {
 
     const fetchInsights = useCallback(async (adAccountId: string) => {
         setLoadingInsights(prev => ({ ...prev, [adAccountId]: true }));
-        setInsightErrors(prev => ({ ...prev, [adAccountId]: '' }));
+        setInsightErrors(prev => ({ ...prev, [adAccountId]: undefined }));
         try {
             const res = await fetch(`/api/ads/${adAccountId}/insights`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }
             });
-            if (!res.ok) throw new Error(`Failed to load insights (${res.status})`);
-            const data = await res.json();
-            if (!data.error) setInsights(prev => ({ ...prev, [adAccountId]: data }));
-            else setInsightErrors(prev => ({ ...prev, [adAccountId]: data.error }));
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && !data.error) setInsights(prev => ({ ...prev, [adAccountId]: data }));
+            else setInsightErrors(prev => ({
+                ...prev,
+                [adAccountId]: {
+                    message: data.error || `Failed to load insights (${res.status})`,
+                    code: data.code,
+                    isRecoverable: data.isRecoverable,
+                }
+            }));
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Connection error';
-            setInsightErrors(prev => ({ ...prev, [adAccountId]: message }));
-            setInsights(prev => { const n = { ...prev }; delete n[adAccountId]; return n; });
+            setInsightErrors(prev => ({ ...prev, [adAccountId]: { message } }));
         } finally {
             setLoadingInsights(prev => ({ ...prev, [adAccountId]: false }));
         }

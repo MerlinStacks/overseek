@@ -21,11 +21,17 @@ interface AdInsights {
     currency: string;
 }
 
+export interface AdInsightError {
+    message: string;
+    code?: string;
+    isRecoverable?: boolean;
+}
+
 interface AdAccountCardProps {
     account: AdAccount;
     insights?: AdInsights;
     isLoadingInsights: boolean;
-    error?: string;
+    error?: AdInsightError;
     onRefresh: () => void;
     onEdit: () => void;
     onDisconnect: () => void;
@@ -59,9 +65,10 @@ export function AdAccountCard({
     onReconnect
 }: AdAccountCardProps) {
     const isPending = account.externalId === 'PENDING_SETUP';
+    const isTemporarilyUnavailable = error?.code === 'AD_INSIGHTS_UNAVAILABLE' || error?.isRecoverable;
 
     return (
-        <div className={`bg-white rounded-xl shadow-xs border p-4 ${isPending ? 'border-amber-300' : error ? 'border-red-200' : 'border-gray-200'}`}>
+        <div className={`bg-white rounded-xl shadow-xs border p-4 ${isPending ? 'border-amber-300' : error ? isTemporarilyUnavailable ? 'border-amber-200' : 'border-red-200' : 'border-gray-200'}`}>
             <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-lg ${account.platform === 'META' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
@@ -80,7 +87,11 @@ export function AdAccountCard({
                         >Complete Setup</button>
                     ) : (
                         <>
-                            {error && <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">Error</span>}
+                            {error && (
+                                <span className={`${isTemporarilyUnavailable ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'} text-xs px-2 py-1 rounded-full`}>
+                                    {isTemporarilyUnavailable ? 'Unavailable' : 'Error'}
+                                </span>
+                            )}
                             {!error && <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>}
                             <button
                                 onClick={onRefresh}
@@ -125,21 +136,22 @@ export function AdAccountCard({
 
             {/* Error Display */}
             {error && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className={`mt-4 p-3 border rounded-lg ${isTemporarilyUnavailable ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex items-start gap-2">
-                            <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
-                            <div className="text-sm text-red-700">
-                                <p className="font-medium">Failed to load data</p>
-                                <p className="text-xs mt-1 text-red-600">{error}</p>
+                            <AlertCircle className={`${isTemporarilyUnavailable ? 'text-amber-500' : 'text-red-500'} shrink-0 mt-0.5`} size={16} />
+                            <div className={`text-sm ${isTemporarilyUnavailable ? 'text-amber-800' : 'text-red-700'}`}>
+                                <p className="font-medium">{isTemporarilyUnavailable ? 'Insights temporarily unavailable' : 'Failed to load data'}</p>
+                                <p className={`text-xs mt-1 ${isTemporarilyUnavailable ? 'text-amber-700' : 'text-red-600'}`}>{error.message}</p>
+                                {insights && isTemporarilyUnavailable && <p className="text-xs mt-1 text-amber-700">Showing the last loaded metrics.</p>}
                             </div>
                         </div>
                         <button
-                            onClick={onReconnect}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 shrink-0"
+                            onClick={isTemporarilyUnavailable ? onRefresh : onReconnect}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg shrink-0 ${isTemporarilyUnavailable ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                         >
                             <RefreshCw size={14} />
-                            Reconnect
+                            {isTemporarilyUnavailable ? 'Retry' : 'Reconnect'}
                         </button>
                     </div>
                 </div>

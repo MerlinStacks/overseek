@@ -30,6 +30,7 @@ let cachedApiFingerprint = '';
 // from accumulating and inflating the heap (each Customer holds ~2–5 MB).
 const CUSTOMER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_CUSTOMER_CACHE_SIZE = 20;
+const ACCESS_TOKEN_REUSE_MS = 45 * 60 * 1000;
 const TOKEN_REFRESH_TIMEOUT_MS = 10_000;
 const TOKEN_REFRESH_MAX_ATTEMPTS = 3;
 interface CachedCustomer {
@@ -38,6 +39,8 @@ interface CachedCustomer {
     createdAt: number;
 }
 const customerCache = new Map<string, CachedCustomer>();
+const accessTokenFreshUntil = new Map<string, number>();
+const tokenRefreshPromises = new Map<string, Promise<string>>();
 
 // ─── Circuit-breakers ───────────────────────────────────────────────────────
 
@@ -293,6 +296,39 @@ async function refreshAccessToken(
     return data.access_token;
 }
 
+async function ensureFreshAccessToken(
+    adAccount: { id: string; accessToken?: string | null; refreshToken: string | null; updatedAt?: Date },
+    clientId: string,
+    clientSecret: string,
+): Promise<void> {
+    if (!adAccount.refreshToken) throw new Error('Invalid Google Ad Account');
+
+    const now = Date.now();
+    const freshUntil = accessTokenFreshUntil.get(adAccount.id) || 0;
+    if (freshUntil > now) return;
+
+    if (adAccount.accessToken && adAccount.updatedAt && now - adAccount.updatedAt.getTime() < ACCESS_TOKEN_REUSE_MS) {
+        accessTokenFreshUntil.set(adAccount.id, adAccount.updatedAt.getTime() + ACCESS_TOKEN_REUSE_MS);
+        return;
+    }
+
+    const existing = tokenRefreshPromises.get(adAccount.id);
+    if (existing) {
+        await existing;
+        return;
+    }
+
+    const promise = refreshAccessToken(adAccount.id, adAccount.refreshToken, clientId, clientSecret);
+    tokenRefreshPromises.set(adAccount.id, promise);
+
+    try {
+        await promise;
+        accessTokenFreshUntil.set(adAccount.id, Date.now() + ACCESS_TOKEN_REUSE_MS);
+    } finally {
+        tokenRefreshPromises.delete(adAccount.id);
+    }
+}
+
 /**
  * Create (or return cached) Google Ads API customer client for an ad account.
  */
@@ -355,12 +391,7 @@ export async function createGoogleAdsClient(adAccountId: string): Promise<Google
     // ── Pre-flight token refresh via REST ──────────────────────────────
     // Validates the refresh token before gRPC touches it. On failure
     // the auth breaker is tripped with a clear error message.
-    await refreshAccessToken(
-        adAccountId,
-        adAccount.refreshToken,
-        clientId,
-        clientSecret,
-    );
+    await ensureFreshAccessToken(adAccount, clientId, clientSecret);
 
     const loginCustomerId = creds.loginCustomerId;
     const customerConfig: any = {
