@@ -35,7 +35,7 @@ export const pinoLogger = pinoInstance;
 // disable fastify's built-in logger — we use our own wrapper
 export const fastifyLoggerConfig = false;
 
-/** Error props are non-enumerable so pino logs them as {}. This extracts message/stack. */
+/** Error props are non-enumerable so pino logs them as {}. Keep this intentionally small. */
 const serializeMeta = (meta?: Record<string, any>): Record<string, any> | undefined => {
     if (!meta) return undefined;
 
@@ -47,8 +47,6 @@ const serializeMeta = (meta?: Record<string, any>): Record<string, any> | undefi
             message: result.error.message,
             stack: result.error.stack,
             name: result.error.name,
-
-            ...(result.error as any)
         };
     }
 
@@ -58,7 +56,6 @@ const serializeMeta = (meta?: Record<string, any>): Record<string, any> | undefi
             message: result.err.message,
             stack: result.err.stack,
             name: result.err.name,
-            ...(result.err as any)
         };
     }
 

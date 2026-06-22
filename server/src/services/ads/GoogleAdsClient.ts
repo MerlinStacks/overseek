@@ -30,6 +30,8 @@ let cachedApiFingerprint = '';
 // from accumulating and inflating the heap (each Customer holds ~2–5 MB).
 const CUSTOMER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_CUSTOMER_CACHE_SIZE = 20;
+const TOKEN_REFRESH_TIMEOUT_MS = 10_000;
+const TOKEN_REFRESH_MAX_ATTEMPTS = 3;
 interface CachedCustomer {
     customer: any;
     currency: string;
@@ -221,13 +223,39 @@ async function refreshAccessToken(
         client_secret: clientSecret,
     });
 
-    const resp = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-    });
+    let resp: Response | null = null;
+    let data: any = null;
+    let lastError: unknown = null;
 
-    const data = await resp.json();
+    for (let attempt = 1; attempt <= TOKEN_REFRESH_MAX_ATTEMPTS; attempt++) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), TOKEN_REFRESH_TIMEOUT_MS);
+
+        try {
+            resp = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString(),
+                signal: controller.signal,
+            });
+
+            data = await resp.json();
+            lastError = null;
+            break;
+        } catch (error) {
+            lastError = error;
+            if (attempt < TOKEN_REFRESH_MAX_ATTEMPTS) {
+                await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+            }
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
+    if (lastError || !resp || !data) {
+        const message = lastError instanceof Error ? lastError.message : String(lastError || 'No response');
+        throw new Error(`Google token refresh request failed: ${message}`);
+    }
 
     if (data.error) {
         // Trip auth breaker so scheduled jobs stop hammering Google

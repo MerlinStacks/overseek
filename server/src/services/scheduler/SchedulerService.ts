@@ -17,7 +17,9 @@ import { ShippingTrackingScheduler } from './ShippingTrackingScheduler';
 export class SchedulerService {
     private static readonly DEPRECATED_JOB_NAMES = new Set([
         'execute-pending-actions',
-        'audience-refresh'
+        'audience-refresh',
+        'budget-rebalancer',
+        'experiment-metrics-refresh'
     ]);
 
     /**
@@ -155,6 +157,11 @@ export class SchedulerService {
                 // in Redis. No-op until the job is removed.
                 case 'execute-pending-actions':
                     Logger.debug('[Scheduler] execute-pending-actions is deprecated, skipping');
+                    break;
+
+                case 'budget-rebalancer':
+                case 'experiment-metrics-refresh':
+                    Logger.debug(`[Scheduler] ${job.name} is deprecated, skipping`);
                     break;
 
                 default:
