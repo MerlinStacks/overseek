@@ -208,7 +208,8 @@ export function isGoogleAdsTransportError(message: string): boolean {
         || message.includes('ECONNRESET')
         || message.includes('fetch failed')
         || message.includes('terminated')
-        || message.includes('aborted');
+        || message.includes('aborted')
+        || message.includes('circuit-breaker active');
 }
 
 /**

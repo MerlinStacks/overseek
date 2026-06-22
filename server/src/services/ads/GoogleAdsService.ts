@@ -68,7 +68,9 @@ export class GoogleAdsService {
 
             // Transient gRPC/network errors — return null to let scheduler continue
             if ((!error.message && error.details) || isGoogleAdsTransportError(msg)) {
-                recordGrpcFailure(adAccountId);
+                if (!msg.includes('circuit-breaker active')) {
+                    recordGrpcFailure(adAccountId);
+                }
                 Logger.warn('Failed to fetch Google Ads Insights (transient transport)', { error: msg, code: error.code, adAccountId });
                 return null;
             }

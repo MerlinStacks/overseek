@@ -547,7 +547,11 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                     }
                 }
 
-                await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, responseBody);
+                const lastError = this.isNonRetryableRestError(response.status, responseBody)
+                    ? `${NON_RETRYABLE_PREFIX} ${responseBody}`
+                    : responseBody;
+
+                await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, lastError);
                 Logger.error('[GoogleEnhanced] Upload failed', {
                     status: response.status,
                     customerId,
@@ -619,11 +623,20 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
     private normalizeGoogleErrorMessage(error: any): string {
         const rawMessage = error?.message || JSON.stringify(error);
         const serialized = JSON.stringify(error);
-        const isInvalidConversionActionType = serialized.includes('INVALID_CONVERSION_ACTION_TYPE');
-        if (isInvalidConversionActionType) {
+        if (this.isNonRetryableGoogleError(serialized)) {
             return `${NON_RETRYABLE_PREFIX} ${rawMessage}`;
         }
         return rawMessage;
+    }
+
+    private isNonRetryableRestError(status: number, responseBody: string): boolean {
+        return status === 403 && this.isNonRetryableGoogleError(responseBody);
+    }
+
+    private isNonRetryableGoogleError(serialized: string): boolean {
+        return serialized.includes('INVALID_CONVERSION_ACTION_TYPE')
+            || serialized.includes('USER_PERMISSION_DENIED')
+            || serialized.includes('PERMISSION_DENIED');
     }
 
     private extractRetryAfterMs(response: Response, responseBody: string): number {
