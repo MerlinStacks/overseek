@@ -337,7 +337,10 @@ export class NotificationEngine {
             push: {
                 title: isPending ? 'Pending review awaiting approval' : review.rating >= 4 ? '⭐ New Review!' : '📝 New Review',
                 body: `${review.reviewer}: ${review.rating}★ - "${reviewContent.substring(0, 50)}${reviewContent.length > 50 ? '...' : ''}"`,
-                data: { url: isPending ? '/reviews?status=hold' : '/reviews' }
+                data: {
+                    url: isPending ? '/reviews?status=hold' : '/reviews',
+                    mobileUrl: isPending ? '/m/reviews?status=hold' : '/m/reviews'
+                }
             },
             pushType: 'message', // Reviews use message preference for now
             payload: { reviewId: review.id, rating: review.rating }

@@ -200,15 +200,15 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
 
         // Check for direct route mapping
         if (mobileRouteMap[currentPath]) {
-            return <Navigate to={mobileRouteMap[currentPath]} replace />;
+            return <Navigate to={`${mobileRouteMap[currentPath]}${location.search}`} replace />;
         }
 
         // Handle dynamic routes like /orders/:id -> /m/orders/:id
         if (currentPath.startsWith(ROUTE_PREFIXES.orderDetails)) {
-            return <Navigate to={`/m${currentPath}`} replace />;
+            return <Navigate to={`/m${currentPath}${location.search}`} replace />;
         }
         if (currentPath.startsWith(ROUTE_PREFIXES.inboxDetail)) {
-            return <Navigate to={`/m${currentPath}`} replace />;
+            return <Navigate to={`/m${currentPath}${location.search}`} replace />;
         }
     }
 

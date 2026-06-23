@@ -21,6 +21,15 @@ if (!defined('ABSPATH')) {
  */
 class OverSeek_Main
 {
+	private const HIDDEN_ORDER_ITEM_META_KEYS = [
+		'estimate_details',
+		'pi_item_estimate_msg',
+		'pi_item_max_date',
+		'pi_item_max_days',
+		'pi_item_min_date',
+		'pi_item_min_days',
+	];
+
 	/**
 	 * Initialize the plugin classes.
 	 */
@@ -49,6 +58,8 @@ class OverSeek_Main
 	private function init_hooks(): void
 	{
 		$this->cleanup_legacy_options();
+		add_filter('woocommerce_order_item_get_formatted_meta_data', [$this, 'filter_formatted_order_item_meta'], 20, 2);
+		add_filter('woocommerce_hidden_order_itemmeta', [$this, 'filter_hidden_order_item_meta_keys']);
 
 		$is_frontend_request = ! is_admin() && ! wp_doing_ajax() && ! wp_doing_cron();
 		$is_configured       = $this->is_configured();
@@ -139,6 +150,61 @@ class OverSeek_Main
 	private function is_configured(): bool
 	{
 		return '' !== (string) get_option('overseek_api_url', '') && '' !== (string) get_option('overseek_account_id', '');
+	}
+
+	/**
+	 * Hide delivery-estimate plugin internals from order emails and invoices.
+	 *
+	 * @param array<int|string, object> $formatted_meta Formatted order item meta.
+	 * @return array<int|string, object>
+	 */
+	public function filter_formatted_order_item_meta(array $formatted_meta): array
+	{
+		foreach ($formatted_meta as $index => $meta) {
+			if ($this->should_hide_order_item_meta($meta)) {
+				unset($formatted_meta[$index]);
+			}
+		}
+
+		return $formatted_meta;
+	}
+
+	/**
+	 * Hide known technical order item meta keys in admin/order meta displays.
+	 *
+	 * @param array<int, string> $hidden_meta_keys Existing hidden meta keys.
+	 * @return array<int, string>
+	 */
+	public function filter_hidden_order_item_meta_keys(array $hidden_meta_keys): array
+	{
+		return array_values(array_unique(array_merge($hidden_meta_keys, self::HIDDEN_ORDER_ITEM_META_KEYS)));
+	}
+
+	private function should_hide_order_item_meta(object $meta): bool
+	{
+		$key = isset($meta->key) ? $this->normalize_meta_key((string) $meta->key) : '';
+		$display_key = isset($meta->display_key) ? $this->normalize_meta_key(wp_strip_all_tags((string) $meta->display_key)) : '';
+
+		foreach ([$key, $display_key] as $candidate) {
+			if ($candidate === '') {
+				continue;
+			}
+
+			if (in_array($candidate, self::HIDDEN_ORDER_ITEM_META_KEYS, true)) {
+				return true;
+			}
+
+			if (str_starts_with($candidate, 'pi_item_')) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function normalize_meta_key(string $key): string
+	{
+		return str_replace(' ', '_', strtolower(trim($key)));
 	}
 
 	private function is_rest_request(): bool

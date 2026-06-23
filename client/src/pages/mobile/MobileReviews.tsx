@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { CheckCircle, MessageSquare, RefreshCw, Search, Star } from 'lucide-react';
 import { Logger } from '../../utils/logger';
 import { formatDate } from '../../utils/format';
@@ -44,6 +45,7 @@ const STATUS_CLASSES: Record<string, string> = {
 };
 
 export function MobileReviews() {
+    const [searchParams] = useSearchParams();
     const { currentAccount } = useAccount();
     const { token } = useAuth();
     const toast = useToast();
@@ -54,7 +56,8 @@ export function MobileReviews() {
     const [error, setError] = useState<string | null>(null);
     const [actionReviewId, setActionReviewId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeStatus, setActiveStatus] = useState('all');
+    const initialStatus = searchParams.get('status') || 'all';
+    const [activeStatus, setActiveStatus] = useState(STATUS_TABS.some((tab) => tab.value === initialStatus) ? initialStatus : 'all');
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [expandedReviewIds, setExpandedReviewIds] = useState<string[]>([]);

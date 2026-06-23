@@ -342,7 +342,7 @@ self.addEventListener('notificationclick', (event) => {
 
     // Handle action buttons
     const action = event.action;
-    let url = event.notification.data?.url || '/m/dashboard';
+    let url = event.notification.data?.mobileUrl || event.notification.data?.url || '/m/dashboard';
 
     if (action === 'view_order' && event.notification.data?.orderId) {
         url = `/m/orders/${event.notification.data.orderId}`;
