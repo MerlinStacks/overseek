@@ -28,7 +28,7 @@ class OverSeek_Order_Invoices
     private const META_INVOICE_DIAGNOSTIC_REASON = '_overseek_invoice_diagnostic_reason';
     private const META_INVOICE_RETRY_COUNT = '_overseek_invoice_retry_count';
     private const META_INVOICE_RENDERER_VERSION = '_overseek_invoice_renderer_version';
-    private const CURRENT_RENDERER_VERSION = 'operational-a4-v3';
+    private const CURRENT_RENDERER_VERSION = 'operational-a4-v4';
     private const INVOICE_ALLOWED_ORDER_STATUSES = ['processing'];
 
     private string $api_url;

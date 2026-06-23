@@ -143,6 +143,8 @@ const EXCLUDED_KEY_PATTERNS = [
   /^pa_/,
   /wcpa/i,
   /meta_data/i,
+  /^estimate_details$/i,
+  /^pi_item_/i,
   /^reduced_stock/i,
   /label_map/i,
   /droppable/i,
@@ -152,6 +154,13 @@ const EXCLUDED_KEY_PATTERNS = [
 
 const isExcludedInvoiceMetaKey = (key: string) =>
   EXCLUDED_KEY_PATTERNS.some((pattern) => pattern.test(key));
+
+const normalizeInvoiceMetaKey = (key: string) => key.toLowerCase().trim().replace(/[\s-]+/g, '_');
+
+const isHiddenDeliveryEstimateMetaKey = (key: string) => {
+  const normalized = normalizeInvoiceMetaKey(key);
+  return normalized === 'estimate_details' || normalized.startsWith('pi_item_');
+};
 
 interface InvoiceMetaEntry {
   key?: string;
@@ -258,6 +267,8 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
     item.meta_data?.filter((entry) => {
       const key = String(entry.key || entry.name || '');
       const displayLabel = String(entry.display_key || '').trim();
+
+      if (isHiddenDeliveryEstimateMetaKey(key) || isHiddenDeliveryEstimateMetaKey(displayLabel)) return false;
 
       if (key && isExcludedInvoiceMetaKey(key)) {
         const labelLooksInternal = !displayLabel

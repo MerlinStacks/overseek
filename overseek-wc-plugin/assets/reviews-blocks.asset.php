@@ -14,5 +14,5 @@ return [
 		'wp-element',
 		'wp-server-side-render',
 	],
-	'version'      => defined( 'OVERSEEK_WC_VERSION' ) ? OVERSEEK_WC_VERSION : '2.18.1',
+	'version'      => defined( 'OVERSEEK_WC_VERSION' ) ? OVERSEEK_WC_VERSION : '2.18.2',
 ];
