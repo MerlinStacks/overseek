@@ -18,15 +18,50 @@ function requireGoogleAdsNumericId(value: string, label: string): string {
     return value;
 }
 
+function metricNumber(metrics: any, camelKey: string, snakeKey: string = camelKey): number {
+    return Number(metrics?.[camelKey] ?? metrics?.[snakeKey] ?? 0);
+}
+
+function resourceValue(resource: any, camelKey: string, snakeKey: string = camelKey): any {
+    return resource?.[camelKey] ?? resource?.[snakeKey];
+}
+
 export class GoogleAdsService {
+
+    private static async searchRows(adAccountId: string, query: string): Promise<{ rows: any[]; currency: string }> {
+        const { customerId, loginCustomerId, developerToken, accessToken, currency } = await createGoogleAdsRestConfig(adAccountId);
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+            'developer-token': developerToken,
+        };
+        if (loginCustomerId) headers['login-customer-id'] = loginCustomerId;
+
+        const response = await fetch(`https://googleads.googleapis.com/v24/customers/${customerId}/googleAds:search`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ query }),
+        });
+
+        const bodyText = await response.text();
+        let body: any = null;
+        try { body = bodyText ? JSON.parse(bodyText) : null; } catch { /* handled below */ }
+
+        if (!response.ok) {
+            const message = body?.error?.message || bodyText || `Google Ads REST request failed (${response.status})`;
+            const err: any = new Error(message);
+            err.code = response.status;
+            throw err;
+        }
+
+        return { rows: Array.isArray(body?.results) ? body.results : [], currency };
+    }
 
     /**
      * Fetch Google Ads insights for the last 30 days.
      */
     static async getInsights(adAccountId: string): Promise<AdMetric | null> {
         try {
-            const { customerId, loginCustomerId, developerToken, accessToken, currency } = await createGoogleAdsRestConfig(adAccountId);
-
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - 30);
@@ -42,31 +77,7 @@ export class GoogleAdsService {
                 WHERE segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
             `;
 
-            const headers: Record<string, string> = {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${accessToken}`,
-                'developer-token': developerToken,
-            };
-            if (loginCustomerId) headers['login-customer-id'] = loginCustomerId;
-
-            const response = await fetch(`https://googleads.googleapis.com/v24/customers/${customerId}/googleAds:search`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ query }),
-            });
-
-            const bodyText = await response.text();
-            let body: any = null;
-            try { body = bodyText ? JSON.parse(bodyText) : null; } catch { /* handled below */ }
-
-            if (!response.ok) {
-                const message = body?.error?.message || bodyText || `Google Ads REST request failed (${response.status})`;
-                const err: any = new Error(message);
-                err.code = response.status;
-                throw err;
-            }
-
-            const rows = Array.isArray(body?.results) ? body.results : [];
+            const { rows, currency } = await this.searchRows(adAccountId, query);
             const row = rows[0];
 
             if (!row?.metrics) return null;
@@ -119,8 +130,6 @@ export class GoogleAdsService {
      */
     static async getCampaignInsights(adAccountId: string, days: number = 30): Promise<CampaignInsight[]> {
         try {
-            const { customer, currency } = await createGoogleAdsClient(adAccountId);
-
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - days);
@@ -136,19 +145,19 @@ export class GoogleAdsService {
                 ORDER BY metrics.cost_micros DESC
             `;
 
-            const results = await customer.query(query);
+            const { rows: results, currency } = await this.searchRows(adAccountId, query);
 
             return results.map((row: any) => {
-                const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
-                const impressions = row.metrics?.impressions || 0;
-                const clicks = row.metrics?.clicks || 0;
-                const conversions = row.metrics?.conversions || 0;
-                const conversionsValue = row.metrics?.conversions_value || 0;
+                const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
+                const impressions = metricNumber(row.metrics, 'impressions');
+                const clicks = metricNumber(row.metrics, 'clicks');
+                const conversions = metricNumber(row.metrics, 'conversions');
+                const conversionsValue = metricNumber(row.metrics, 'conversionsValue', 'conversions_value');
 
                 return {
-                    campaignId: row.campaign?.id?.toString() || '',
-                    campaignName: row.campaign?.name || 'Unknown',
-                    status: row.campaign?.status || 'UNKNOWN',
+                    campaignId: resourceValue(row.campaign, 'id')?.toString() || '',
+                    campaignName: resourceValue(row.campaign, 'name') || 'Unknown',
+                    status: resourceValue(row.campaign, 'status') || 'UNKNOWN',
                     spend, impressions, clicks, conversions, conversionsValue,
                     roas: spend > 0 ? conversionsValue / spend : 0,
                     ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
@@ -175,8 +184,6 @@ export class GoogleAdsService {
      */
     static async getDailyTrends(adAccountId: string, days: number = 30): Promise<DailyTrend[]> {
         try {
-            const { customer } = await createGoogleAdsClient(adAccountId);
-
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - days);
@@ -191,15 +198,15 @@ export class GoogleAdsService {
                 ORDER BY segments.date ASC
             `;
 
-            const results = await customer.query(query);
+            const { rows: results } = await this.searchRows(adAccountId, query);
 
             return results.map((row: any) => ({
-                date: row.segments?.date || '',
-                spend: (row.metrics?.cost_micros || 0) / 1_000_000,
-                impressions: row.metrics?.impressions || 0,
-                clicks: row.metrics?.clicks || 0,
-                conversions: row.metrics?.conversions || 0,
-                conversionsValue: row.metrics?.conversions_value || 0
+                date: resourceValue(row.segments, 'date') || '',
+                spend: metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000,
+                impressions: metricNumber(row.metrics, 'impressions'),
+                clicks: metricNumber(row.metrics, 'clicks'),
+                conversions: metricNumber(row.metrics, 'conversions'),
+                conversionsValue: metricNumber(row.metrics, 'conversionsValue', 'conversions_value')
             }));
 
         } catch (error: any) {
@@ -217,8 +224,6 @@ export class GoogleAdsService {
      */
     static async getShoppingProducts(adAccountId: string, days: number = 30, limit: number = 200): Promise<ShoppingProductInsight[]> {
         try {
-            const { customer, currency } = await createGoogleAdsClient(adAccountId);
-
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - days);
@@ -238,22 +243,22 @@ export class GoogleAdsService {
                 LIMIT ${limit}
             `;
 
-            const results = await customer.query(query);
+            const { rows: results, currency } = await this.searchRows(adAccountId, query);
 
             return results.map((row: any) => {
-                const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
-                const impressions = row.metrics?.impressions || 0;
-                const clicks = row.metrics?.clicks || 0;
-                const conversions = row.metrics?.conversions || 0;
-                const conversionsValue = row.metrics?.conversions_value || 0;
+                const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
+                const impressions = metricNumber(row.metrics, 'impressions');
+                const clicks = metricNumber(row.metrics, 'clicks');
+                const conversions = metricNumber(row.metrics, 'conversions');
+                const conversionsValue = metricNumber(row.metrics, 'conversionsValue', 'conversions_value');
 
                 return {
-                    campaignId: row.campaign?.id?.toString() || '',
-                    campaignName: row.campaign?.name || 'Unknown',
-                    productId: row.segments?.product_item_id || '',
-                    productTitle: row.segments?.product_title || 'Unknown Product',
-                    productBrand: row.segments?.product_brand || '',
-                    productCategory: row.segments?.product_type_l1 || '',
+                    campaignId: resourceValue(row.campaign, 'id')?.toString() || '',
+                    campaignName: resourceValue(row.campaign, 'name') || 'Unknown',
+                    productId: resourceValue(row.segments, 'productItemId', 'product_item_id') || '',
+                    productTitle: resourceValue(row.segments, 'productTitle', 'product_title') || 'Unknown Product',
+                    productBrand: resourceValue(row.segments, 'productBrand', 'product_brand') || '',
+                    productCategory: resourceValue(row.segments, 'productTypeL1', 'product_type_l1') || '',
                     spend, impressions, clicks, conversions, conversionsValue,
                     roas: spend > 0 ? conversionsValue / spend : 0,
                     ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
@@ -288,7 +293,6 @@ export class GoogleAdsService {
      */
     static async getCampaignProducts(adAccountId: string, campaignId: string, days: number = 30): Promise<ShoppingProductInsight[]> {
         try {
-            const { customer, currency } = await createGoogleAdsClient(adAccountId);
             const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
             const endDate = new Date();
@@ -311,22 +315,22 @@ export class GoogleAdsService {
                 LIMIT 500
             `;
 
-            const results = await customer.query(query);
+            const { rows: results, currency } = await this.searchRows(adAccountId, query);
 
             return results.map((row: any) => {
-                const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
-                const impressions = row.metrics?.impressions || 0;
-                const clicks = row.metrics?.clicks || 0;
-                const conversions = row.metrics?.conversions || 0;
-                const conversionsValue = row.metrics?.conversions_value || 0;
+                const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
+                const impressions = metricNumber(row.metrics, 'impressions');
+                const clicks = metricNumber(row.metrics, 'clicks');
+                const conversions = metricNumber(row.metrics, 'conversions');
+                const conversionsValue = metricNumber(row.metrics, 'conversionsValue', 'conversions_value');
 
                 return {
-                    campaignId: row.campaign?.id?.toString() || '',
-                    campaignName: row.campaign?.name || 'Unknown',
-                    productId: row.segments?.product_item_id || '',
-                    productTitle: row.segments?.product_title || 'Unknown Product',
-                    productBrand: row.segments?.product_brand || '',
-                    productCategory: row.segments?.product_type_l1 || '',
+                    campaignId: resourceValue(row.campaign, 'id')?.toString() || '',
+                    campaignName: resourceValue(row.campaign, 'name') || 'Unknown',
+                    productId: resourceValue(row.segments, 'productItemId', 'product_item_id') || '',
+                    productTitle: resourceValue(row.segments, 'productTitle', 'product_title') || 'Unknown Product',
+                    productBrand: resourceValue(row.segments, 'productBrand', 'product_brand') || '',
+                    productCategory: resourceValue(row.segments, 'productTypeL1', 'product_type_l1') || '',
                     spend, impressions, clicks, conversions, conversionsValue,
                     roas: spend > 0 ? conversionsValue / spend : 0,
                     ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
@@ -361,8 +365,6 @@ export class GoogleAdsService {
      */
     static async getSearchKeywords(adAccountId: string, days: number = 30, limit: number = 500): Promise<SearchKeywordInsight[]> {
         try {
-            const { customer, currency } = await createGoogleAdsClient(adAccountId);
-
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - days);
@@ -387,24 +389,26 @@ export class GoogleAdsService {
                 LIMIT ${limit}
             `;
 
-            const results = await customer.query(query);
+            const { rows: results, currency } = await this.searchRows(adAccountId, query);
 
             return results.map((row: any) => {
-                const spend = (row.metrics?.cost_micros || 0) / 1_000_000;
-                const impressions = (row.metrics?.impressions || 0);
-                const clicks = (row.metrics?.clicks || 0);
-                const conversions = (row.metrics?.conversions || 0);
-                const conversionsValue = (row.metrics?.conversions_value || 0);
+                const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
+                const impressions = metricNumber(row.metrics, 'impressions');
+                const clicks = metricNumber(row.metrics, 'clicks');
+                const conversions = metricNumber(row.metrics, 'conversions');
+                const conversionsValue = metricNumber(row.metrics, 'conversionsValue', 'conversions_value');
+                const criterion = row.adGroupCriterion ?? row.ad_group_criterion;
+                const keyword = criterion?.keyword;
 
                 return {
-                    campaignId: row.campaign?.id?.toString() || '',
-                    campaignName: row.campaign?.name || 'Unknown',
-                    adGroupId: row.ad_group?.id?.toString() || '',
-                    adGroupName: row.ad_group?.name || 'Unknown',
-                    keywordId: row.ad_group_criterion?.criterion_id?.toString() || '',
-                    keywordText: row.ad_group_criterion?.keyword?.text || '',
-                    matchType: row.ad_group_criterion?.keyword?.match_type || 'UNKNOWN',
-                    status: row.ad_group_criterion?.status || 'UNKNOWN',
+                    campaignId: resourceValue(row.campaign, 'id')?.toString() || '',
+                    campaignName: resourceValue(row.campaign, 'name') || 'Unknown',
+                    adGroupId: resourceValue(row.adGroup ?? row.ad_group, 'id')?.toString() || '',
+                    adGroupName: resourceValue(row.adGroup ?? row.ad_group, 'name') || 'Unknown',
+                    keywordId: resourceValue(criterion, 'criterionId', 'criterion_id')?.toString() || '',
+                    keywordText: resourceValue(keyword, 'text') || '',
+                    matchType: resourceValue(keyword, 'matchType', 'match_type') || 'UNKNOWN',
+                    status: resourceValue(criterion, 'status') || 'UNKNOWN',
                     spend, impressions, clicks, conversions, conversionsValue,
                     roas: spend > 0 ? conversionsValue / spend : 0,
                     ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
@@ -507,7 +511,6 @@ export class GoogleAdsService {
      */
     static async getCampaignAdGroups(adAccountId: string, campaignId: string): Promise<any[]> {
         try {
-            const { customer } = await createGoogleAdsClient(adAccountId);
             const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
             const query = `
@@ -521,13 +524,13 @@ export class GoogleAdsService {
                     AND ad_group.status = 'ENABLED'
             `;
 
-            const results = await customer.query(query);
+            const { rows: results } = await this.searchRows(adAccountId, query);
 
             return results.map((row: any) => ({
-                id: row.ad_group?.id?.toString() || '',
-                name: row.ad_group?.name || 'Unknown',
-                status: row.ad_group?.status || 'UNKNOWN',
-                type: row.ad_group?.type || 'UNKNOWN',
+                id: resourceValue(row.adGroup ?? row.ad_group, 'id')?.toString() || '',
+                name: resourceValue(row.adGroup ?? row.ad_group, 'name') || 'Unknown',
+                status: resourceValue(row.adGroup ?? row.ad_group, 'status') || 'UNKNOWN',
+                type: resourceValue(row.adGroup ?? row.ad_group, 'type') || 'UNKNOWN',
                 campaignId: safeCampaignId
             }));
 
@@ -586,7 +589,6 @@ export class GoogleAdsService {
      */
     static async getNegativeKeywords(adAccountId: string, campaignId: string): Promise<string[]> {
         try {
-            const { customer } = await createGoogleAdsClient(adAccountId);
             const safeCampaignId = requireGoogleAdsNumericId(campaignId, 'campaign ID');
 
             const query = `
@@ -598,8 +600,10 @@ export class GoogleAdsService {
                     AND campaign_criterion.type = 'KEYWORD'
             `;
 
-            const results = await customer.query(query);
-            return results.map((row: any) => row.campaign_criterion?.keyword?.text || '').filter(Boolean);
+            const { rows: results } = await this.searchRows(adAccountId, query);
+            return results
+                .map((row: any) => (row.campaignCriterion ?? row.campaign_criterion)?.keyword?.text || '')
+                .filter(Boolean);
         } catch (error: any) {
             Logger.warn('Failed to fetch negative keywords', { error: error.message, campaignId });
             return [];
@@ -669,7 +673,6 @@ export class GoogleAdsService {
         revenue: number;
     } | null> {
         try {
-            const { customer } = await createGoogleAdsClient(adAccountId);
             const safeAdId = requireGoogleAdsNumericId(adId, 'ad ID');
 
             // adId in Google Ads is usually the ad_group_ad.ad.id
@@ -694,10 +697,7 @@ export class GoogleAdsService {
                   AND segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
             `;
 
-            const results: any[] = [];
-            for await (const row of customer.queryStream(query)) {
-                results.push(row);
-            }
+            const { rows: results } = await this.searchRows(adAccountId, query);
 
             if (!results || results.length === 0) return null;
 
@@ -717,11 +717,11 @@ export class GoogleAdsService {
             let totalRevenue = 0;
 
             results.forEach((row: any) => {
-                totalSpend += (row.metrics?.cost_micros || 0) / 1_000_000;
-                totalImpressions += row.metrics?.impressions || 0;
-                totalClicks += row.metrics?.clicks || 0;
-                totalConversions += row.metrics?.conversions || 0;
-                totalRevenue += row.metrics?.conversions_value || 0;
+                totalSpend += metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
+                totalImpressions += metricNumber(row.metrics, 'impressions');
+                totalClicks += metricNumber(row.metrics, 'clicks');
+                totalConversions += metricNumber(row.metrics, 'conversions');
+                totalRevenue += metricNumber(row.metrics, 'conversionsValue', 'conversions_value');
             });
 
             return {

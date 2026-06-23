@@ -37,7 +37,7 @@ interface Attribution {
 
 interface OrderMetaData {
     key: string;
-    value: string;
+    value: unknown;
 }
 
 interface OrderLineItem {
@@ -493,13 +493,15 @@ export function MobileOrderDetail() {
                             {item.meta_data && item.meta_data.length > 0 && (
                                 <div className="ml-[76px] mt-3 space-y-1.5">
                                     {item.meta_data
-                                        .filter((meta) => !meta.key.startsWith('_'))
+                                        .filter((meta) => !String(meta.key || '').startsWith('_'))
                                         .map((meta, idx) => {
-                                            const imageUrls = extractAllImageUrls(meta.value);
+                                            const metaKey = String(meta.key || 'Detail');
+                                            const metaValue = stringifyMetaValue(meta.value);
+                                            const imageUrls = extractAllImageUrls(metaValue);
                                             return (
                                                 <div key={idx} className="text-xs">
                                                     <span className="rounded bg-white/[0.08] px-1.5 py-0.5 font-bold text-slate-400">
-                                                        {fixMojibake(meta.key)}:
+                                                        {fixMojibake(metaKey)}:
                                                     </span>
                                                     {imageUrls.length > 0 ? (
                                                         <div className="flex flex-wrap gap-2 mt-1">
@@ -511,14 +513,14 @@ export function MobileOrderDetail() {
                                                                 >
                                                                     <img
                                                                         src={imgUrl}
-                                                                        alt={`${meta.key} ${imgIdx + 1}`}
+                                                                        alt={`${metaKey} ${imgIdx + 1}`}
                                                                         className="h-12 w-auto rounded-lg border border-white/10"
                                                                     />
                                                                 </button>
                                                             ))}
                                                         </div>
                                                     ) : (
-                                                        <span className="ml-1 whitespace-pre-line text-slate-300">{normalizeMetaValue(fixMojibake(meta.value))}</span>
+                                                        <span className="ml-1 whitespace-pre-line text-slate-300">{normalizeMetaValue(fixMojibake(metaValue))}</span>
                                                     )}
                                                 </div>
                                             );
@@ -611,9 +613,20 @@ export function MobileOrderDetail() {
  * WooCommerce can store multiple images per meta entry (newline or pipe separated).
  * Returns an array of all found image URLs.
  */
-const extractAllImageUrls = (value: string): string[] => {
-    if (typeof value !== 'string') return [];
+const stringifyMetaValue = (value: unknown): string => {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) return value.map(stringifyMetaValue).filter(Boolean).join('\n');
 
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+};
+
+const extractAllImageUrls = (value: string): string[] => {
     const imagePattern = /\.(jpg|jpeg|png|gif|webp|svg|bmp)/i;
     const urls: string[] = [];
 
