@@ -320,7 +320,7 @@ class OverSeek_API {
 		}
 
 		$user = wp_get_current_user();
-		$name = $user && $user->exists() ? $user->display_name : get_bloginfo( 'name' );
+		$name = array_key_exists( 'author', $params ) ? sanitize_text_field( (string) $params['author'] ) : ( $user && $user->exists() ? $user->display_name : get_bloginfo( 'name' ) );
 		$email = $user && $user->exists() ? $user->user_email : get_option( 'admin_email' );
 
 		$reply_id = wp_new_comment(

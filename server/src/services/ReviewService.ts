@@ -10,6 +10,43 @@ export class ReviewServiceError extends Error {
 
 export class ReviewService {
 
+    private getRawData(value: unknown): Record<string, unknown> {
+        return value && typeof value === 'object' && !Array.isArray(value)
+            ? value as Record<string, unknown>
+            : {};
+    }
+
+    private getReviewReplies(rawData: Record<string, unknown>): unknown[] {
+        return Array.isArray(rawData.replies) ? rawData.replies : [];
+    }
+
+    private mergePostedReply(rawData: Record<string, unknown>, result: any, replyText: string, author: string) {
+        const responseReview = this.getRawData(result?.review);
+        if (Array.isArray(responseReview.replies)) {
+            return { ...rawData, ...responseReview };
+        }
+
+        const replies = this.getReviewReplies(rawData);
+        const replyId = result?.replyId;
+        const alreadyStored = replyId !== undefined && replies.some((reply) => (
+            reply && typeof reply === 'object' && !Array.isArray(reply) && (reply as { id?: unknown }).id === replyId
+        ));
+
+        return {
+            ...rawData,
+            ...responseReview,
+            replies: alreadyStored ? replies : [
+                ...replies,
+                {
+                    ...(replyId !== undefined ? { id: replyId } : {}),
+                    author: author || 'Store',
+                    content: replyText,
+                    date: new Date().toISOString(),
+                }
+            ]
+        };
+    }
+
     async getReviews(accountId: string, params: { page?: number; limit?: number; status?: string; search?: string }) {
         const page = params.page || 1;
         const limit = params.limit || 20;
@@ -55,15 +92,13 @@ export class ReviewService {
 
         return {
             reviews: reviews.map((review) => {
-                const rawData = review.rawData && typeof review.rawData === 'object' && !Array.isArray(review.rawData)
-                    ? review.rawData as Record<string, unknown>
-                    : {};
+                const rawData = this.getRawData(review.rawData);
                 const product = productsByWooId.get(review.productId);
 
                 return {
                     ...review,
                     media: Array.isArray(rawData.media) ? rawData.media : [],
-                    replies: Array.isArray(rawData.replies) ? rawData.replies : [],
+                    replies: this.getReviewReplies(rawData),
                     productUrl: product?.permalink || null,
                     productImage: product?.mainImage || null,
                 };
@@ -113,9 +148,26 @@ export class ReviewService {
         const replyText = String(reply || '').trim();
         if (!replyText) throw new ReviewServiceError('REVIEW_REPLY_REQUIRED', 'Reply is required');
 
+        const account = await prisma.account.findUnique({
+            where: { id: accountId },
+            select: { name: true }
+        });
         const woo = await WooService.forAccount(accountId);
-        const result = await woo.replyToReview(review.wooId, replyText);
-        await this.mergeRawReviewData(review.id, result?.review);
+        const author = account?.name || '';
+        const result = await woo.replyToReview(review.wooId, replyText, author);
+
+        if (review.status !== 'approved') {
+            const approvalResult = await woo.updateReview(review.wooId, { status: 'approved' });
+            result.review = approvalResult?.review || result?.review;
+        }
+
+        await prisma.wooReview.update({
+            where: { id: review.id },
+            data: {
+                status: 'approved',
+                rawData: this.mergePostedReply(this.getRawData(review.rawData), result, replyText, author) as any
+            }
+        });
 
         return result;
     }

@@ -374,9 +374,9 @@ export class WooService {
         return response.data;
     }
 
-    async replyToReview(reviewId: number, reply: string) {
+    async replyToReview(reviewId: number, reply: string, author?: string) {
         if (this.isDemo) return { success: true, replyId: Math.floor(Math.random() * 100000), review: { id: reviewId } };
-        const response = await this.requestWpWithRetry('post', `reviews/${reviewId}/reply`, { reply }, 'overseek/v1');
+        const response = await this.requestWpWithRetry('post', `reviews/${reviewId}/reply`, { reply, ...(author !== undefined ? { author } : {}) }, 'overseek/v1');
         return response.data;
     }
 

@@ -20,6 +20,14 @@ interface ReviewRow {
     dateCreated: string;
     status: string;
     order?: { wooId?: number; number?: string };
+    replies?: ReviewReply[];
+}
+
+interface ReviewReply {
+    id?: number;
+    author?: string;
+    content?: string;
+    date?: string;
 }
 
 interface StatusCounts {
@@ -260,6 +268,7 @@ interface ReviewCardProps {
 
 function ReviewCard({ review, index, isExpanded, isUpdating, onToggleExpanded, onModerate }: ReviewCardProps) {
     const reviewText = formatReviewText(review.content);
+    const replies = review.replies || [];
     const canExpand = reviewText.length > 160 || reviewText.includes('\n');
     const statusClass = STATUS_CLASSES[review.status] || STATUS_CLASSES.hold;
 
@@ -297,6 +306,27 @@ function ReviewCard({ review, index, isExpanded, isUpdating, onToggleExpanded, o
                     <p className="text-slate-500">No review text</p>
                 )}
             </div>
+
+            {replies.length > 0 && (
+                <div className="mt-4 space-y-3 rounded-2xl border border-indigo-300/10 bg-indigo-400/10 p-3">
+                    <p className="text-xs font-black uppercase tracking-wide text-indigo-200">
+                        {replies.length === 1 ? 'Merchant reply' : `${replies.length} merchant replies`}
+                    </p>
+                    {replies.map((reply, replyIndex) => {
+                        const replyText = formatReviewText(reply.content);
+
+                        return (
+                            <div key={reply.id || `${reply.date || 'reply'}-${replyIndex}`} className="border-t border-white/10 pt-3 first:border-t-0 first:pt-0">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="truncate text-sm font-black text-white">{reply.author || 'Store'}</p>
+                                    {reply.date && <p className="shrink-0 text-[11px] text-slate-500">{formatDate(reply.date)}</p>}
+                                </div>
+                                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-300">{replyText || 'No reply text'}</p>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
 
             <div className="mt-4 border-t border-white/5 pt-3">
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500" htmlFor={`mobile-review-status-${review.id}`}>Moderation</label>

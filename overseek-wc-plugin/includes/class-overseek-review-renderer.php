@@ -227,7 +227,7 @@ class OverSeek_Review_Renderer {
 					<?php foreach ( $replies as $reply ) : ?>
 						<?php if ( is_array( $reply ) && ! empty( $reply['content'] ) ) : ?>
 							<div class="os-review-card__reply">
-								<strong><?php echo esc_html( ! empty( $reply['author'] ) ? (string) $reply['author'] : __( 'Store reply', 'overseek-wc' ) ); ?></strong>
+								<strong><?php echo esc_html( array_key_exists( 'author', $reply ) ? (string) $reply['author'] : __( 'Store reply', 'overseek-wc' ) ); ?></strong>
 								<?php echo wp_kses_post( wpautop( (string) $reply['content'] ) ); ?>
 							</div>
 						<?php endif; ?>
