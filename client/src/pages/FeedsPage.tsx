@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { Cog } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -44,6 +45,11 @@ interface FeedMapping {
 
 interface FeedExportUrlsResponse {
     urls: Record<FeedChannel, string>;
+}
+
+interface GoogleProductCategoryOption {
+    id: string;
+    path: string;
 }
 
 const CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
@@ -117,6 +123,16 @@ export function FeedsPage() {
         queryFn: async () => {
             const res = await fetch('/api/feeds/refresh-modes/options', { headers });
             if (!res.ok) throw new Error('Failed to fetch refresh options');
+            return res.json();
+        },
+    });
+
+    const { data: googleProductCategoryData, isLoading: googleProductCategoriesLoading } = useApiQuery<{ options: GoogleProductCategoryOption[] }>({
+        queryKey: ['google-product-categories', currentAccount?.id],
+        enabled: !!token && !!currentAccount?.id,
+        queryFn: async () => {
+            const res = await fetch('/api/feeds/google-product-categories/options', { headers });
+            if (!res.ok) throw new Error('Failed to fetch Google product categories');
             return res.json();
         },
     });
@@ -294,6 +310,8 @@ export function FeedsPage() {
     const maxBulkOptimizeRows = bulkLimitData?.maxBulkOptimizeRows || 5000;
     const rows = useMemo(() => rowsData?.rows || [], [rowsData?.rows]);
     const mappings = useMemo(() => rowsData?.mappings || [], [rowsData?.mappings]);
+    const googleProductCategories = useMemo(() => googleProductCategoryData?.options || [], [googleProductCategoryData?.options]);
+    const googleProductCategoryIds = useMemo(() => new Set(googleProductCategories.map((option) => option.id)), [googleProductCategories]);
     const total = rowsData?.total || 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -395,6 +413,18 @@ export function FeedsPage() {
     const canAiOptimizeField = (field: string) => field === 'title' || field === 'description';
     const isLockedFeedField = (field: string) => LOCKED_FEED_FIELDS.has(field);
 
+    const getGoogleProductCategoryValue = (value: string) => {
+        const trimmed = value.trim();
+        if (!trimmed) return '';
+        if (googleProductCategoryIds.has(trimmed)) return trimmed;
+
+        const idMatch = trimmed.match(/^(\d+)\s+-\s+/);
+        if (idMatch && googleProductCategoryIds.has(idMatch[1])) return idMatch[1];
+
+        const pathMatch = googleProductCategories.find((option) => option.path === trimmed);
+        return pathMatch?.id || trimmed;
+    };
+
     const updateMappingDraft = (targetField: string, patch: Partial<FeedMapping>) => {
         setMappingDraft((current) => current.map((mapping) => (
             mapping.targetField === targetField ? { ...mapping, ...patch } : mapping
@@ -404,7 +434,7 @@ export function FeedsPage() {
     const startEditing = (row: FeedRow, field: string, value: string | null) => {
         if (isLockedFeedField(field)) return;
         setEditingCell({ channel: activeChannel, rowId: row.rowId, field });
-        setEditingValue(value || '');
+        setEditingValue(field === 'google_product_category' ? getGoogleProductCategoryValue(value || '') : value || '');
     };
 
     const cancelEditing = () => {
@@ -415,7 +445,11 @@ export function FeedsPage() {
 
     const saveEditing = async (row: FeedRow, field: string) => {
         if (isLockedFeedField(field)) return;
-        await saveCellValue({ row, field, value: editingValue });
+        const value = field === 'google_product_category' ? getGoogleProductCategoryValue(editingValue) : editingValue;
+        if (field === 'google_product_category' && value && !googleProductCategoryIds.has(value)) {
+            throw new Error('Please select an official Google product category.');
+        }
+        await saveCellValue({ row, field, value });
         cancelEditing();
         await refetchRows();
     };
@@ -479,38 +513,27 @@ export function FeedsPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Feeds</h1>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    Configure feed channel settings and refresh behavior.
-                </p>
-            </div>
-
-            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-2">
-                <div className="flex flex-wrap gap-2">
-                    <button
-                        type="button"
-                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            activeTab === 'spreadsheet'
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
-                        }`}
-                        onClick={() => setActiveTab('spreadsheet')}
-                    >
-                        Spreadsheet
-                    </button>
-                    <button
-                        type="button"
-                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            activeTab === 'settings'
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
-                        }`}
-                        onClick={() => setActiveTab('settings')}
-                    >
-                        Feed Settings
-                    </button>
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Feeds</h1>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                        Configure feed channel settings and refresh behavior.
+                    </p>
                 </div>
+                <button
+                    type="button"
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${
+                        activeTab === 'settings'
+                            ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+                            : 'border-slate-200 bg-white/80 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                    onClick={() => setActiveTab((tab) => (tab === 'settings' ? 'spreadsheet' : 'settings'))}
+                    title={activeTab === 'settings' ? 'Back to spreadsheet' : 'Feed settings'}
+                    aria-label={activeTab === 'settings' ? 'Back to spreadsheet' : 'Feed settings'}
+                    aria-pressed={activeTab === 'settings'}
+                >
+                    <Cog size={18} />
+                </button>
             </div>
 
             {activeTab === 'settings' && (
@@ -783,7 +806,7 @@ export function FeedsPage() {
                         );
                     })}
                 </div>
-                <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-white/95 dark:bg-slate-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:supports-[backdrop-filter]:bg-slate-800/80 border-b border-slate-200/70 dark:border-slate-700/70 flex flex-wrap items-center gap-2 text-xs">
+                <div className="-mx-1 px-1 py-2 border-b border-slate-200/70 dark:border-slate-700/70 flex flex-wrap items-center gap-2 text-xs">
                     <span className="px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
                         Platform: {activeChannel.charAt(0).toUpperCase() + activeChannel.slice(1)}
                     </span>
@@ -958,7 +981,7 @@ export function FeedsPage() {
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead>
+                            <thead className="sticky top-0 z-10 bg-white shadow-sm dark:bg-slate-800">
                                 <tr className="border-b border-slate-200 dark:border-slate-700">
                                     <th className="text-left py-2 pr-2">
                                         <input
@@ -1018,7 +1041,29 @@ export function FeedsPage() {
                                                     <td key={`${row.rowId}-${field}`} className="py-2 pr-3 align-top min-w-[220px] max-w-[460px]">
                                                         {isEditing ? (
                                                             <div className="space-y-1">
-                                                                {field === 'description' || value.length > 90 ? (
+                                                                {field === 'google_product_category' ? (
+                                                                    <>
+                                                                        <input
+                                                                            className="w-full px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                                                                            value={editingValue}
+                                                                            list={`google-product-categories-${row.rowId}`}
+                                                                            placeholder={googleProductCategoriesLoading ? 'Loading Google categories...' : 'Search Google category ID or name'}
+                                                                            disabled={googleProductCategoriesLoading || googleProductCategories.length === 0}
+                                                                            onChange={(e) => setEditingValue(e.target.value)}
+                                                                            onKeyDown={(e) => {
+                                                                                void handleEditorKeyDown(e, row, field, false);
+                                                                            }}
+                                                                        />
+                                                                        <datalist id={`google-product-categories-${row.rowId}`}>
+                                                                            {googleProductCategories.map((option) => (
+                                                                                <option key={option.id} value={`${option.id} - ${option.path}`} />
+                                                                            ))}
+                                                                        </datalist>
+                                                                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                                                            Type to search official Google categories, then choose a result.
+                                                                        </p>
+                                                                    </>
+                                                                ) : field === 'description' || value.length > 90 ? (
                                                                     <textarea
                                                                         className="w-full min-h-20 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                                                                         value={editingValue}

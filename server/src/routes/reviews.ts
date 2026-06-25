@@ -23,13 +23,18 @@ function reviewErrorStatus(error: unknown): number | null {
 
     const message = error instanceof Error ? error.message : '';
     if (message.includes('credentials revoked or invalid')) return 409;
+    if (message.includes('plugin authorization failed')) return 403;
 
     return null;
 }
 
 function reviewErrorPayload(error: unknown, fallback: string) {
     const message = error instanceof Error ? error.message : fallback;
-    const code = message.includes('credentials revoked or invalid') ? 'WOO_NEEDS_RECONNECT' : undefined;
+    const code = message.includes('credentials revoked or invalid')
+        ? 'WOO_NEEDS_RECONNECT'
+        : message.includes('plugin authorization failed')
+            ? 'WP_PLUGIN_AUTH_FAILED'
+            : undefined;
     return { error: message, ...(code ? { code } : {}) };
 }
 

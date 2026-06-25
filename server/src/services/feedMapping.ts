@@ -24,6 +24,11 @@ export interface FeedFieldMapping {
     required?: boolean;
 }
 
+export interface GoogleProductCategoryOption {
+    id: string;
+    path: string;
+}
+
 interface FeedFeatureConfig {
     mappings?: Partial<Record<FeedChannel, FeedFieldMapping[]>>;
     refreshModes?: Partial<Record<FeedChannel, FeedRefreshMode>>;
@@ -39,6 +44,11 @@ const DEFAULT_REFRESH_MODE: FeedRefreshMode = 'manual';
 const ALLOWED_REFRESH_MODES: FeedRefreshMode[] = ['manual', 'auto_on_sync', '1h', '3h', '12h', '24h'];
 const DEFAULT_MAX_BULK_OPTIMIZE_ROWS = 5000;
 const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
+const GOOGLE_PRODUCT_TAXONOMY_URL = 'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt';
+const GOOGLE_PRODUCT_TAXONOMY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+let googleProductCategoryCache: { fetchedAt: number; options: GoogleProductCategoryOption[] } | null = null;
+let googleProductCategoryRequest: Promise<GoogleProductCategoryOption[]> | null = null;
 
 const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
     google: [
@@ -204,6 +214,19 @@ function getBaseTargetField(field: string): string {
     return parts[parts.length - 1] || field;
 }
 
+function parseGoogleProductTaxonomy(text: string): GoogleProductCategoryOption[] {
+    return text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'))
+        .map((line) => {
+            const match = line.match(/^(\d+)\s+-\s+(.+)$/);
+            if (!match) return null;
+            return { id: match[1], path: match[2] };
+        })
+        .filter((option): option is GoogleProductCategoryOption => !!option);
+}
+
 function normalizeChannel(channel: string): FeedChannel {
     const value = channel.toLowerCase();
     if (value === 'google' || value === 'meta' || value === 'pinterest' || value === 'similar') {
@@ -318,6 +341,38 @@ export class FeedMappingService {
     static parseRefreshMode(mode: string): FeedRefreshMode {
         if ((ALLOWED_REFRESH_MODES as string[]).includes(mode)) return mode as FeedRefreshMode;
         throw new Error('Unsupported feed refresh mode');
+    }
+
+    static async getGoogleProductCategoryOptions(): Promise<GoogleProductCategoryOption[]> {
+        const now = Date.now();
+        if (googleProductCategoryCache && now - googleProductCategoryCache.fetchedAt < GOOGLE_PRODUCT_TAXONOMY_CACHE_TTL_MS) {
+            return googleProductCategoryCache.options;
+        }
+
+        if (!googleProductCategoryRequest) {
+            googleProductCategoryRequest = (async () => {
+                const response = await fetch(GOOGLE_PRODUCT_TAXONOMY_URL, {
+                    signal: AbortSignal.timeout(10000),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch Google product taxonomy: ${response.status}`);
+                }
+
+                const text = await response.text();
+                const options = parseGoogleProductTaxonomy(text);
+                if (options.length === 0) {
+                    throw new Error('Google product taxonomy returned no categories');
+                }
+
+                googleProductCategoryCache = { fetchedAt: Date.now(), options };
+                return options;
+            })().finally(() => {
+                googleProductCategoryRequest = null;
+            });
+        }
+
+        return googleProductCategoryRequest;
     }
 
     static buildFeedExportToken(secret: string, accountId: string, channelInput: string): string {

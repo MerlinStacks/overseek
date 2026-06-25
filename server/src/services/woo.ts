@@ -209,6 +209,20 @@ export class WooService {
         }
     }
 
+    private async wooCredentialsAreValid(): Promise<boolean> {
+        try {
+            await this.api.get('system_status');
+            return true;
+        } catch (error) {
+            Logger.warn('[WooService] WooCommerce credential validation failed after WordPress auth error', {
+                accountId: this.accountId,
+                status: (error as any)?.response?.status || (error as any)?.status,
+                error: (error as any)?.response?.data || (error as any)?.message || error
+            });
+            return false;
+        }
+    }
+
     /**
      * Execute a WooCommerce API request with automatic retry on transient failures.
      * Uses exponential backoff with jitter for rate limits and network errors.
@@ -410,6 +424,15 @@ export class WooService {
             }
 
             if (isCredentialError(error)) {
+                if (version === 'overseek/v1' && await this.wooCredentialsAreValid()) {
+                    Logger.warn('[WooService] Overseek WordPress plugin route rejected valid WooCommerce credentials', {
+                        accountId: this.accountId,
+                        endpoint,
+                        status: error?.response?.status || error?.status,
+                        error: error?.response?.data || error?.message || error
+                    });
+                    throw new Error('Overseek WordPress plugin authorization failed. Please verify the plugin route permissions and that the stored WooCommerce API key belongs to a user with store management access.');
+                }
                 await this.markNeedsReconnection();
                 throw new Error('WordPress credentials revoked or invalid. Please reconnect your store.');
             }

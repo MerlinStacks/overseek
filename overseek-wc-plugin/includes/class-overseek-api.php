@@ -814,8 +814,20 @@ class OverSeek_API {
 	 *
 	 * @return bool
 	 */
-	public function check_admin_permission(): bool {
-		return current_user_can( 'manage_woocommerce' ) || current_user_can( 'manage_options' );
+	public function check_admin_permission( ?WP_REST_Request $request = null ): bool {
+		if ( current_user_can( 'manage_woocommerce' ) || current_user_can( 'manage_options' ) ) {
+			return true;
+		}
+
+		if ( $request instanceof WP_REST_Request ) {
+			$user_id = $this->authenticate_wc_rest_key( $request );
+			if ( $user_id > 0 ) {
+				wp_set_current_user( $user_id );
+				return current_user_can( 'manage_woocommerce' ) || current_user_can( 'manage_options' );
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -917,6 +929,60 @@ class OverSeek_API {
 		}
 
 		return '';
+	}
+
+	/**
+	 * Authenticate WooCommerce REST API query credentials for custom Overseek routes.
+	 *
+	 * WooCommerce may not set the current user for custom REST namespaces, so we
+	 * validate the same consumer key/secret pair here and then apply the normal
+	 * WordPress capability checks to the key owner.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return int Authenticated user ID, or 0 on failure.
+	 */
+	private function authenticate_wc_rest_key( WP_REST_Request $request ): int {
+		if ( ! function_exists( 'wc_api_hash' ) ) {
+			return 0;
+		}
+
+		$consumer_key    = (string) $request->get_param( 'consumer_key' );
+		$consumer_secret = (string) $request->get_param( 'consumer_secret' );
+
+		if ( '' === $consumer_key || '' === $consumer_secret ) {
+			return 0;
+		}
+
+		global $wpdb;
+		$table = $wpdb->prefix . 'woocommerce_api_keys';
+		$key   = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT key_id, user_id, permissions, consumer_secret FROM {$table} WHERE consumer_key = %s LIMIT 1",
+				wc_api_hash( $consumer_key )
+			)
+		);
+
+		if ( ! $key || ! isset( $key->consumer_secret, $key->permissions, $key->user_id ) ) {
+			return 0;
+		}
+
+		if ( ! hash_equals( (string) $key->consumer_secret, $consumer_secret ) ) {
+			return 0;
+		}
+
+		if ( ! in_array( (string) $key->permissions, [ 'write', 'read_write' ], true ) ) {
+			return 0;
+		}
+
+		$wpdb->update(
+			$table,
+			[ 'last_access' => current_time( 'mysql' ) ],
+			[ 'key_id' => (int) $key->key_id ],
+			[ '%s' ],
+			[ '%d' ]
+		);
+
+		return absint( (int) $key->user_id );
 	}
 
 	/**

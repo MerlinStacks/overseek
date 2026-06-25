@@ -107,6 +107,16 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         return { options: FeedMappingService.getRefreshModeOptions() };
     });
 
+    fastify.get('/google-product-categories/options', async (_request, reply) => {
+        try {
+            const options = await FeedMappingService.getGoogleProductCategoryOptions();
+            return { options };
+        } catch (error: any) {
+            Logger.error('Failed to fetch Google product categories', { error: error?.message || error });
+            return reply.code(502).send({ error: 'Failed to fetch Google product categories' });
+        }
+    });
+
     fastify.get<{ Params: { channel: string } }>('/refresh-mode/:channel', async (request, reply) => {
         try {
             const accountId = request.accountId!;
