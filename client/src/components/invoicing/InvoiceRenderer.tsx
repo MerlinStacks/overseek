@@ -6,6 +6,11 @@ import {
     resolveInvoiceTemplateString
 } from '../../../../packages/overseek-core/src/invoiceRenderModel';
 import { getInvoiceItemMeta } from '../../../../packages/overseek-core/src/invoiceItemUtils';
+import {
+    getInvoiceLineDisplayTotal,
+    getInvoiceLineDisplayUnitPrice,
+    shouldDisplayInvoicePricesIncludingTax,
+} from '../../../../packages/overseek-core/src/invoiceTaxUtils';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -115,6 +120,14 @@ interface InvoiceOrderData {
     shipping_total?: string | number;
     discount_total?: string | number;
     currency?: string;
+    prices_include_tax?: boolean;
+    pricesIncludeTax?: boolean;
+    tax_display_cart?: string;
+    taxDisplayCart?: string;
+    tax_display_shop?: string;
+    taxDisplayShop?: string;
+    display_prices_including_tax?: boolean;
+    displayPricesIncludingTax?: boolean;
     [key: string]: unknown;
 }
 
@@ -395,6 +408,7 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                 const lineItems = data?.line_items || [];
                 const hasItems = lineItems.length > 0;
                 const hasOrderData = data?.total !== undefined;
+                const pricesIncludeTax = shouldDisplayInvoicePricesIncludingTax(data);
 
                 // Helper to format currency using order's actual currency
                 const formatMoney = (val: unknown) => {
@@ -424,10 +438,8 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                                     {lineItems.map((item, i: number) => {
                                         const itemMeta = dedupeMetaEntries(item);
                                         const quantity = toNumber(item.quantity);
-                                        const lineTotal = toNumber(item.total);
-                                        const unitPrice = quantity > 0
-                                            ? (lineTotal / quantity).toFixed(2)
-                                            : '0.00';
+                                        const lineTotal = getInvoiceLineDisplayTotal(item, pricesIncludeTax);
+                                        const unitPrice = getInvoiceLineDisplayUnitPrice(item, pricesIncludeTax);
 
                                         return (
                                             <tr
@@ -448,8 +460,8 @@ export function InvoiceRenderer({ layout, items, data, settings, readOnly = true
                                                     )}
                                                 </td>
                                                 <td className="py-3 text-center text-black">{quantity}</td>
-                                                <td className="py-3 text-right text-black">${unitPrice}</td>
-                                                <td className="py-3 text-right font-semibold text-black">${lineTotal.toFixed(2)}</td>
+                                                <td className="py-3 text-right text-black">{formatMoney(unitPrice)}</td>
+                                                <td className="py-3 text-right font-semibold text-black">{formatMoney(lineTotal)}</td>
                                             </tr>
                                         );
                                     })}

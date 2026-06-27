@@ -23,6 +23,7 @@ import { InboxAIService } from '../services/InboxAIService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
+import { syncStorefrontConfigToWoo } from '../services/StorefrontConfigSync';
 import path from 'path';
 import fs from 'fs';
 import { pipeline } from 'stream/promises';
@@ -595,6 +596,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 update: { config, isEnabled: true },
                 create: { accountId, featureKey: 'CHAT_SETTINGS', isEnabled: true, config }
             });
+            void syncStorefrontConfigToWoo(accountId, ['chat']);
             return { success: true };
         });
 

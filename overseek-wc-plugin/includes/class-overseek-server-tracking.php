@@ -128,6 +128,9 @@ class OverSeek_Server_Tracking
         add_action('wp_login', array($this, 'track_identify'), 10, 2);
         add_action('woocommerce_created_customer', array($this, 'track_new_customer'), 10, 3);
 
+        // Cart/checkout views - template_redirect covers block themes, Woo hooks cover classic templates.
+        add_action('template_redirect', array($this, 'track_cart_checkout_view'), 20);
+
         // Cart View - track when cart page is viewed
         add_action('woocommerce_before_cart', array($this, 'track_cart_view'));
 
@@ -219,36 +222,9 @@ class OverSeek_Server_Tracking
      */
     public function configure_cache_exclusions()
     {
-        // LiteSpeed Cache: vary by our tracking cookie so each visitor
-        // gets their own cached version
-        if (defined('LSCWP_V')) {
-            add_action('litespeed_vary_add', function () {
-                if (function_exists('do_action')) {
-                    do_action('litespeed_vary_append', '_os_vid');
-                }
-            });
-        }
-
-        // WP Rocket: add cookie to "Don't cache pages with these cookies"
-        add_filter('rocket_cache_reject_cookies', function ($cookies) {
-            $cookies[] = '_os_vid';
-            $cookies[] = '_os_utm';
-            $cookies[] = '_os_click';
-            return $cookies;
-        });
-
-        // W3 Total Cache: add cookie to rejected cookies list
-        add_filter('w3tc_rejected_cookies', function ($cookies) {
-            if (!is_array($cookies)) {
-                $cookies = array();
-            }
-            $cookies[] = '_os_vid';
-            return $cookies;
-        });
-
-        // Intentionally avoid sending a global Vary-by-cookie header.
-        // Cache plugin cookie exclusions above are enough, and a global Vary
-        // can explode cache variants on high-traffic stores.
+        // Do not reject or vary full-page cache by tracking cookies. Cart and checkout
+        // views set no-cache headers in their own handlers; applying this globally can
+        // bypass page cache for every visitor on high-traffic stores.
     }
 
     /**
@@ -880,6 +856,21 @@ class OverSeek_Server_Tracking
         $payload = OverSeek_Tracking_Event_Builder::build_product_view_payload($product, $categories, $this->get_visitor_id(), $meta_config);
 
         $this->queue_event('product_view', $payload);
+    }
+
+    /**
+     * Track cart/checkout views for block-based pages where classic Woo hooks may not run.
+     */
+    public function track_cart_checkout_view()
+    {
+        if (function_exists('is_cart') && is_cart()) {
+            $this->track_cart_view();
+            return;
+        }
+
+        if (function_exists('is_checkout') && is_checkout() && !is_order_received_page()) {
+            $this->track_checkout_view();
+        }
     }
 
     /**

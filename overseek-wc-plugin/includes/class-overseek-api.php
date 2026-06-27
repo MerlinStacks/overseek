@@ -47,6 +47,12 @@ class OverSeek_API {
 	 * @var int
 	 */
 	private const MAX_REVIEW_ATTACHMENTS = 6;
+	private const MAX_STOREFRONT_CONFIG_DEPTH = 6;
+	private const MAX_STOREFRONT_CONFIG_KEYS = 200;
+	private const MAX_STOREFRONT_CONFIG_STRING_LENGTH = 2000;
+	private const MAX_BOT_PATTERNS = 1000;
+	private const MAX_BOT_PATTERN_LENGTH = 200;
+	private const MAX_BOT_BLOCK_HTML_LENGTH = 100000;
 
 	/**
 	 * Register REST API routes.
@@ -77,6 +83,12 @@ class OverSeek_API {
 					'type' => 'boolean',
 				],
 			],
+		] );
+
+		register_rest_route( 'overseek/v1', '/storefront-config', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'update_storefront_config_callback' ],
+			'permission_callback' => [ $this, 'check_admin_permission' ],
 		] );
 
 		register_rest_route( 'overseek/v1', '/health', [
@@ -180,8 +192,17 @@ class OverSeek_API {
 			return $this->integration_error( 'invalid_product_id', 'Product not found.', 404 );
 		}
 
+		if ( 'product_variation' === get_post_type( $product_id ) && method_exists( $product, 'get_parent_id' ) ) {
+			$product_id = absint( (int) $product->get_parent_id() );
+			$product = $product_id ? wc_get_product( $product_id ) : null;
+		}
+
+		if ( ! $product || 'product' !== get_post_type( $product_id ) ) {
+			return $this->integration_error( 'invalid_product_id', 'Product reviews must be attached to a product.', 400 );
+		}
+
 		$review = isset( $params['review'] ) ? trim( wp_kses_post( (string) $params['review'] ) ) : '';
-		$review = mb_substr( $review, 0, self::MAX_REVIEW_TEXT_LENGTH );
+		$review = function_exists( 'mb_substr' ) ? mb_substr( $review, 0, self::MAX_REVIEW_TEXT_LENGTH ) : substr( $review, 0, self::MAX_REVIEW_TEXT_LENGTH );
 		$reviewer = isset( $params['reviewer'] ) ? sanitize_text_field( (string) $params['reviewer'] ) : '';
 		$email = isset( $params['reviewer_email'] ) ? sanitize_email( (string) $params['reviewer_email'] ) : '';
 		$rating = isset( $params['rating'] ) ? absint( (int) $params['rating'] ) : 5;
@@ -409,9 +430,9 @@ class OverSeek_API {
 			return $authorization;
 		}
 
-		$user_id = get_current_user_id();
-
-		$payload = $service->get_invoice_for_order( $order_id, $user_id );
+		$payload = method_exists( $service, 'get_invoice_for_authorized_order' )
+			? $service->get_invoice_for_authorized_order( $order_id )
+			: $service->get_invoice_for_order( $order_id, get_current_user_id() );
 		if ( ! is_array( $payload ) ) {
 			return $this->integration_error( 'invoice_not_found', 'Invoice not found for this order.', 404 );
 		}
@@ -495,7 +516,9 @@ class OverSeek_API {
 		}
 
 		if ( $status === 'failed' ) {
-			$payload = $service->get_invoice_for_order( $order_id, get_current_user_id() );
+			$payload = method_exists( $service, 'get_invoice_for_authorized_order' )
+				? $service->get_invoice_for_authorized_order( $order_id )
+				: $service->get_invoice_for_order( $order_id, get_current_user_id() );
 			$failure_message = is_array( $payload ) && isset( $payload['error_message'] ) && is_string( $payload['error_message'] ) && $payload['error_message'] !== ''
 				? $payload['error_message']
 				: 'Invoice generation failed.';
@@ -859,6 +882,106 @@ class OverSeek_API {
 		}
 
 		return new WP_REST_Response( [ 'success' => true, 'message' => 'Settings updated successfully' ], 200 );
+	}
+
+	/**
+	 * Store storefront-safe config locally so page render does not depend on OverSeek.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function update_storefront_config_callback( WP_REST_Request $request ): WP_REST_Response {
+		$params = $this->get_request_body( $request );
+
+		$stored_account_id = (string) get_option( 'overseek_account_id', '' );
+		$provided_account_id = isset( $params['account_id'] ) ? sanitize_text_field( (string) $params['account_id'] ) : '';
+		if ( '' !== $stored_account_id && '' !== $provided_account_id && ! hash_equals( $stored_account_id, $provided_account_id ) ) {
+			return new WP_REST_Response( [ 'success' => false, 'error' => 'Account ID does not match linked account.' ], 403 );
+		}
+
+		$updated = [];
+		if ( isset( $params['chat'] ) && is_array( $params['chat'] ) ) {
+			update_option( 'overseek_storefront_chat_config', $this->sanitize_storefront_config_array( $params['chat'] ), false );
+			delete_transient( 'overseek_chat_config_' . md5( $stored_account_id ) );
+			delete_transient( 'overseek_chat_config_stale_' . md5( $stored_account_id ) );
+			$updated[] = 'chat';
+		}
+
+		if ( isset( $params['pixels'] ) && is_array( $params['pixels'] ) ) {
+			update_option( 'overseek_storefront_pixel_config', $this->sanitize_storefront_config_array( $params['pixels'] ), false );
+			$updated[] = 'pixels';
+		}
+
+		if ( isset( $params['botShield'] ) && is_array( $params['botShield'] ) ) {
+			update_option( 'overseek_storefront_bot_shield_config', $this->sanitize_bot_shield_config( $params['botShield'] ), false );
+			$updated[] = 'botShield';
+		}
+
+		update_option( 'overseek_storefront_config_updated_at', gmdate( 'c' ), false );
+
+		return new WP_REST_Response( [ 'success' => true, 'updated' => $updated ], 200 );
+	}
+
+	/**
+	 * @param array<string, mixed> $config Raw storefront config.
+	 * @return array<string, mixed>
+	 */
+	private function sanitize_storefront_config_array( array $config, int $depth = 0 ): array {
+		if ( $depth >= self::MAX_STOREFRONT_CONFIG_DEPTH ) {
+			return [];
+		}
+
+		$clean = [];
+		$count = 0;
+		foreach ( $config as $key => $value ) {
+			$count++;
+			if ( $count > self::MAX_STOREFRONT_CONFIG_KEYS ) {
+				break;
+			}
+
+			$clean_key = preg_replace( '/[^A-Za-z0-9_\-]/', '', (string) $key );
+			if ( '' === $clean_key ) {
+				continue;
+			}
+
+			if ( is_array( $value ) ) {
+				$clean[ $clean_key ] = $this->sanitize_storefront_config_array( $value, $depth + 1 );
+			} elseif ( is_bool( $value ) || is_int( $value ) || is_float( $value ) ) {
+				$clean[ $clean_key ] = $value;
+			} elseif ( null === $value ) {
+				$clean[ $clean_key ] = null;
+			} else {
+				$clean[ $clean_key ] = sanitize_text_field( substr( (string) $value, 0, self::MAX_STOREFRONT_CONFIG_STRING_LENGTH ) );
+			}
+		}
+
+		return $clean;
+	}
+
+	/**
+	 * @param array<string, mixed> $config Raw bot shield config.
+	 * @return array<string, mixed>
+	 */
+	private function sanitize_bot_shield_config( array $config ): array {
+		$patterns = [];
+		if ( isset( $config['patterns'] ) && is_array( $config['patterns'] ) ) {
+			foreach ( $config['patterns'] as $pattern ) {
+				if ( count( $patterns ) >= self::MAX_BOT_PATTERNS ) {
+					break;
+				}
+
+				$pattern = strtolower( trim( sanitize_text_field( substr( (string) $pattern, 0, self::MAX_BOT_PATTERN_LENGTH ) ) ) );
+				if ( '' !== $pattern ) {
+					$patterns[ $pattern ] = true;
+				}
+			}
+		}
+
+		return [
+			'patterns'      => array_keys( $patterns ),
+			'blockPageHtml' => isset( $config['blockPageHtml'] ) ? substr( (string) $config['blockPageHtml'], 0, self::MAX_BOT_BLOCK_HTML_LENGTH ) : '',
+			'fetchedAt'     => time(),
+		];
 	}
 
 	/**

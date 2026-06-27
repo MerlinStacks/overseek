@@ -54,6 +54,12 @@ vi.mock('../ai_tools', () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+const jsonResponse = (body: unknown) => ({
+    ok: true,
+    headers: { get: (name: string) => name.toLowerCase() === 'content-type' ? 'application/json' : null },
+    json: () => Promise.resolve(body),
+});
+
 describe('AIService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -134,17 +140,14 @@ describe('AIService', () => {
                 aiModel: 'openai/gpt-4o'
             });
 
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
+            mockFetch.mockResolvedValueOnce(jsonResponse({
                     choices: [{
                         message: {
                             content: 'Hello! How can I help you today?',
                             tool_calls: null
                         }
                     }]
-                })
-            });
+            }));
 
             const result = await AIService.generateResponse('Hi', 'acc_123');
 
@@ -158,9 +161,7 @@ describe('AIService', () => {
             });
 
             // First call: AI requests a tool
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
+            mockFetch.mockResolvedValueOnce(jsonResponse({
                     choices: [{
                         message: {
                             content: null,
@@ -173,21 +174,17 @@ describe('AIService', () => {
                             }]
                         }
                     }]
-                })
-            });
+            }));
 
             // Second call: AI provides final answer
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
+            mockFetch.mockResolvedValueOnce(jsonResponse({
                     choices: [{
                         message: {
                             content: 'Your store has 100 products and 50 customers.',
                             tool_calls: null
                         }
                     }]
-                })
-            });
+            }));
 
             // Mock tool execution
             (AIToolsService.executeTool as any).mockResolvedValueOnce({
@@ -209,9 +206,7 @@ describe('AIService', () => {
             });
 
             // Always return tool calls (infinite loop scenario)
-            mockFetch.mockResolvedValue({
-                ok: true,
-                json: () => Promise.resolve({
+            mockFetch.mockResolvedValue(jsonResponse({
                     choices: [{
                         message: {
                             content: null,
@@ -224,8 +219,7 @@ describe('AIService', () => {
                             }]
                         }
                     }]
-                })
-            });
+            }));
 
             (AIToolsService.executeTool as any).mockResolvedValue({ data: 'test' });
 
@@ -268,17 +262,14 @@ describe('AIService', () => {
                 }
             });
 
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
+            mockFetch.mockResolvedValueOnce(jsonResponse({
                     choices: [{
                         message: {
                             content: 'This order is completed.',
                             tool_calls: null
                         }
                     }]
-                })
-            });
+            }));
 
             const result = await AIService.generateResponse(
                 'Is this profitable?',

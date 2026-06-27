@@ -114,16 +114,17 @@ describe('AusPostShippingTrackingAdapter', () => {
                     weight: 1.25,
                     contains_dangerous_goods: false,
                     authority_to_leave: true,
-                    product_id: '7E55',
                     length: 22,
                     width: 15,
                     height: 8,
                 }],
             }],
         });
+        const [, targetedInit] = (fetch as any).mock.calls[1];
+        expect(JSON.parse(targetedInit.body).shipments[0].items[0]).toEqual(expect.objectContaining({ product_id: '7E55' }));
         expect(result).toEqual(expect.objectContaining({
             status: 'ok',
-            rates: [{ productId: '7E55', totalCost: '12.34', shippingCost: '11.22', totalGst: '1.12', status: 'Priced', raw: expect.any(Object) }],
+            rates: [expect.objectContaining({ productId: '7E55', totalCost: '12.34', shippingCost: '11.22', totalGst: '1.12', status: 'Priced', raw: expect.any(Object) })],
         }));
     });
 

@@ -6,6 +6,11 @@ import {
     resolveInvoiceTemplateString,
 } from '../../../packages/overseek-core/src/invoiceRenderModel';
 import { getInvoiceItemMeta, getOrderGiftWrappingMeta } from '../../../packages/overseek-core/src/invoiceItemUtils';
+import {
+    getInvoiceLineDisplayTotal,
+    getInvoiceLineDisplayUnitPrice,
+    shouldDisplayInvoicePricesIncludingTax,
+} from '../../../packages/overseek-core/src/invoiceTaxUtils';
 
 /**
  * Legacy fallback invoice renderer.
@@ -55,6 +60,14 @@ interface InvoiceOrderData {
     shipping_total?: string | number;
     discount_total?: string | number;
     currency?: string;
+    prices_include_tax?: boolean;
+    pricesIncludeTax?: boolean;
+    tax_display_cart?: string;
+    taxDisplayCart?: string;
+    tax_display_shop?: string;
+    taxDisplayShop?: string;
+    display_prices_including_tax?: boolean;
+    displayPricesIncludingTax?: boolean;
 }
 
 interface InvoiceItemStyle {
@@ -261,10 +274,11 @@ export async function generateVectorInvoicePDF(
     };
 
     const lineItems = order.line_items || [];
+    const pricesIncludeTax = shouldDisplayInvoicePricesIncludingTax(order);
     const itemRows = lineItems.map((item) => {
         const quantity = toNumber(item.quantity);
-        const lineTotal = toNumber(item.total);
-        const unitPrice = quantity > 0 ? lineTotal / quantity : 0;
+        const lineTotal = getInvoiceLineDisplayTotal(item, pricesIncludeTax);
+        const unitPrice = getInvoiceLineDisplayUnitPrice(item, pricesIncludeTax);
         const meta = getInvoiceItemMeta(item)
             .map((entry) => {
                 const normalizedValue = String(entry.value || '').replace(/\s\|\s/g, '\n');

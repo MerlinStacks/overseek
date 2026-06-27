@@ -142,6 +142,11 @@ class OverSeek_Frontend
 	 */
 	private function get_chat_config(string $api_url, string $account_id): array
 	{
+		$local = get_option('overseek_storefront_chat_config', false);
+		if (is_array($local)) {
+			return $local;
+		}
+
 		$fresh_key = 'overseek_chat_config_' . md5($account_id);
 		$stale_key = 'overseek_chat_config_stale_' . md5($account_id);
 
@@ -157,7 +162,8 @@ class OverSeek_Frontend
 			return $stale;
 		}
 
-		return $this->refresh_chat_config($api_url, $account_id);
+		$this->schedule_background_refresh($account_id);
+		return [];
 	}
 
 	private function schedule_background_refresh(string $account_id): void
@@ -208,9 +214,9 @@ class OverSeek_Frontend
 
 		set_transient($fresh_key, $data, self::CHAT_CONFIG_TTL);
 		set_transient($stale_key, $data, self::CHAT_CONFIG_STALE_TTL);
+		update_option('overseek_storefront_chat_config', $data, false);
 
 		return $data;
 	}
 
 }
-

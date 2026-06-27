@@ -12,6 +12,7 @@ import * as CrawlerService from '../services/tracking/CrawlerService';
 import { CRAWLER_REGISTRY, CATEGORY_META } from '../services/tracking/CrawlerRegistry';
 import { cacheDelete } from '../utils/cache';
 import { getBotShieldMetrics, incrementBotShieldMetric } from '../services/tracking/BotShieldMetrics';
+import { syncStorefrontConfigToWoo } from '../services/StorefrontConfigSync';
 
 // =============================================================================
 // VALIDATION SCHEMAS
@@ -304,6 +305,7 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
                 });
 
                 await CrawlerService.invalidateBlockedPatternsCache(accountId);
+                void syncStorefrontConfigToWoo(accountId, ['botShield']);
 
                 Logger.info('[CrawlerRoutes] Rule created/updated', {
                     accountId, crawlerName: rule.crawlerName, action: rule.action
@@ -341,6 +343,7 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
                 });
 
                 await CrawlerService.invalidateBlockedPatternsCache(accountId);
+                void syncStorefrontConfigToWoo(accountId, ['botShield']);
 
                 Logger.info('[CrawlerRoutes] Rule updated', {
                     accountId, crawlerName: updated.crawlerName, action: updated.action
@@ -368,6 +371,7 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
 
                 await prisma.crawlerRule.delete({ where: { id: request.params.id } });
                 await CrawlerService.invalidateBlockedPatternsCache(accountId);
+                void syncStorefrontConfigToWoo(accountId, ['botShield']);
 
                 return { success: true };
             } catch (error) {
@@ -414,6 +418,7 @@ const crawlerRoutes: FastifyPluginAsync = async (fastify) => {
 
                 // Invalidate cached block page
                 await cacheDelete(`block-page:${accountId}`, { namespace: 'crawlers' });
+                void syncStorefrontConfigToWoo(accountId, ['botShield']);
 
                 Logger.info('[CrawlerRoutes] Block page updated', { accountId });
                 return { success: true };

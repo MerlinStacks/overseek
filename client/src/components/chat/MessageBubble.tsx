@@ -20,6 +20,16 @@ import { parseEmailContent, parseQuotedContent, cleanEmailMetadata } from '../..
 import { AttachmentGallery } from './AttachmentDisplay';
 
 const MAX_RENDERED_EMAIL_CHARS = 60000;
+const EMAIL_ALLOWED_TAGS = [
+    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'ul', 'ol', 'li', 'blockquote',
+    'div', 'span', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'tfoot', 'colgroup',
+    'col', 'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'font', 'center', 'hr', 'pre'
+];
+const EMAIL_ALLOWED_ATTR = [
+    'href', 'target', 'rel', 'src', 'alt', 'width', 'height', 'title', 'style',
+    'align', 'valign', 'bgcolor', 'background', 'border', 'cellpadding', 'cellspacing',
+    'colspan', 'rowspan', 'face', 'color', 'size'
+];
 
 interface MessageBubbleProps {
     message: {
@@ -191,8 +201,10 @@ export const MessageBubble = memo(function MessageBubble({
         cleanContent = cleanContent.trim();
 
         return DOMPurify.sanitize(cleanContent, {
-            ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'ul', 'ol', 'li', 'blockquote', 'div', 'span', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-            ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
+            ALLOWED_TAGS: EMAIL_ALLOWED_TAGS,
+            ALLOWED_ATTR: EMAIL_ALLOWED_ATTR,
+            FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+            FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onmouseenter'],
             ALLOW_DATA_ATTR: false,
             ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/))/i,
         });
@@ -207,8 +219,10 @@ export const MessageBubble = memo(function MessageBubble({
                 : quotedContent
         );
         return DOMPurify.sanitize(cleanedQuoted, {
-            ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'div', 'span'],
-            ALLOWED_ATTR: ['href', 'target'],
+            ALLOWED_TAGS: EMAIL_ALLOWED_TAGS,
+            ALLOWED_ATTR: EMAIL_ALLOWED_ATTR,
+            FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+            FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onmouseenter'],
             ALLOW_DATA_ATTR: false,
             ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/))/i,
         });

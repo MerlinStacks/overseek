@@ -7,6 +7,7 @@ import { WooService } from '../services/woo';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { getAdsAccountIdOrReply } from './ads/routeHelpers';
+import { syncStorefrontConfigToWoo } from '../services/StorefrontConfigSync';
 
 const wooRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -151,6 +152,7 @@ const wooRoutes: FastifyPluginAsync = async (fastify) => {
                     account_id: accountId,
                     api_url: cleanOrigin
                 });
+                void syncStorefrontConfigToWoo(accountId);
                 return { success: true, plugin_response: result };
             } catch (pluginError: any) {
                 Logger.error('Plugin Settings Update Failed', { error: pluginError.message });

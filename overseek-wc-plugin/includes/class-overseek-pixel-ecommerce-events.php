@@ -282,7 +282,7 @@ class OverSeek_Pixel_Ecommerce_Events {
 		if ( ! empty( $config['microsoft']['tagId'] ) ) {
 			$js .= "window.uetq=window.uetq||[];window.uetq.push('event','begin_checkout',{revenue_value:" . $value . ",currency:'" . esc_js( $currency ) . "'});";
 		}
-		$js .= "(function(){function setOverseekEventId(){var f=jQuery('form.checkout').first();if(!f.length)return;var i=f.find('input[name=\"overseek_event_id\"]');if(!i.length){i=jQuery('<input/>',{type:'hidden',name:'overseek_event_id'});f.append(i);}i.val('{$event_id}');}setOverseekEventId();jQuery(document.body).on('updated_checkout',setOverseekEventId);})();";
+		$js .= "(function(){if(!window.jQuery)return;var jQuery=window.jQuery;function setOverseekEventId(){var f=jQuery('form.checkout').first();if(!f.length)return;var i=f.find('input[name=\"overseek_event_id\"]');if(!i.length){i=jQuery('<input/>',{type:'hidden',name:'overseek_event_id'});f.append(i);}i.val('{$event_id}');}setOverseekEventId();jQuery(document.body).on('updated_checkout',setOverseekEventId);})();";
 
 		return $js;
 	}
@@ -302,6 +302,16 @@ class OverSeek_Pixel_Ecommerce_Events {
 
 		$order = wc_get_order( $order_id );
 		if ( ! $order ) {
+			return '';
+		}
+
+		$order_key = isset( $_GET['key'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['key'] ) ) : '';
+		$can_view_order = '' !== $order_key && hash_equals( (string) $order->get_order_key(), $order_key );
+		if ( ! $can_view_order ) {
+			$user_id = get_current_user_id();
+			$can_view_order = $user_id > 0 && ( (int) $order->get_user_id() === $user_id || current_user_can( 'manage_woocommerce' ) );
+		}
+		if ( ! $can_view_order ) {
 			return '';
 		}
 

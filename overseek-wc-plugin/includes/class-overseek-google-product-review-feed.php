@@ -17,6 +17,9 @@ if (!defined('ABSPATH')) {
 class OverSeek_Google_Product_Review_Feed
 {
 	private const QUERY_VAR = 'overseek_google_product_reviews';
+	private const CACHE_KEY = 'overseek_google_product_review_feed_xml';
+	private const CACHE_TTL = 6 * HOUR_IN_SECONDS;
+	private const MAX_REVIEWS = 5000;
 
 	/**
 	 * Register feed hooks.
@@ -69,8 +72,21 @@ class OverSeek_Google_Product_Review_Feed
 
 		header('Content-Type: application/xml; charset=' . get_option('blog_charset'));
 		nocache_headers();
-		echo $this->build_feed_xml(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo $this->get_feed_xml(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		exit;
+	}
+
+	private function get_feed_xml(): string
+	{
+		$cached = get_transient(self::CACHE_KEY);
+		if (is_string($cached) && '' !== $cached) {
+			return $cached;
+		}
+
+		$xml = $this->build_feed_xml();
+		set_transient(self::CACHE_KEY, $xml, self::CACHE_TTL);
+
+		return $xml;
 	}
 
 	/**
@@ -90,6 +106,10 @@ class OverSeek_Google_Product_Review_Feed
 	 */
 	private function build_feed_xml(): string
 	{
+		if (!class_exists('DOMDocument')) {
+			return '<?xml version="1.0" encoding="UTF-8"?><feed><version>2.3</version><reviews></reviews></feed>';
+		}
+
 		$dom = new DOMDocument('1.0', 'UTF-8');
 		$dom->formatOutput = true;
 
@@ -126,11 +146,12 @@ class OverSeek_Google_Product_Review_Feed
 	{
 		$comments = get_comments([
 			'post_type' => 'product',
+			'post_status' => 'publish',
 			'type'      => 'review',
 			'status'    => 'approve',
 			'orderby'   => 'comment_date_gmt',
 			'order'     => 'DESC',
-			'number'    => 0,
+			'number'    => self::MAX_REVIEWS,
 			'meta_query' => [
 				[
 					'key'     => 'rating',

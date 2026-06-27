@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Logger } from '../utils/logger';
 import { authenticateRelayEmailAccount } from './email/helpers';
 import { MissingInvoiceTemplateError, canonicalInvoiceService } from '../services/CanonicalInvoiceService';
+import { prisma } from '../utils/prisma';
 
 function isCanonicalRenderer(renderer: string | null | undefined): boolean {
     return renderer === 'pdfkit-primary'
@@ -79,7 +80,43 @@ const InvoiceRelayBodySchema = z.object({
     order_number: z.string().optional(),
     store_url: z.string().optional(),
     force_regenerate: z.boolean().optional(),
+    prices_include_tax: z.boolean().optional(),
+    tax_display_cart: z.string().optional(),
+    tax_display_shop: z.string().optional(),
 });
+
+async function mergeWooTaxDisplaySettings(accountId: string, orderId: string, settings: {
+    prices_include_tax?: boolean;
+    tax_display_cart?: string;
+    tax_display_shop?: string;
+}) {
+    const incomingSettings = Object.fromEntries(
+        Object.entries(settings).filter(([, value]) => value !== undefined && value !== null && value !== '')
+    );
+    if (Object.keys(incomingSettings).length === 0) return;
+
+    const parsedWooId = Number(orderId);
+    const order = await prisma.wooOrder.findFirst({
+        where: {
+            accountId,
+            OR: [
+                { id: orderId },
+                ...(Number.isFinite(parsedWooId) ? [{ wooId: parsedWooId }] : []),
+            ],
+        },
+        select: { id: true, rawData: true },
+    });
+    if (!order) return;
+
+    const rawData = order.rawData && typeof order.rawData === 'object' && !Array.isArray(order.rawData)
+        ? order.rawData as Record<string, unknown>
+        : {};
+
+    await prisma.wooOrder.update({
+        where: { id: order.id },
+        data: { rawData: { ...rawData, ...incomingSettings } as any },
+    });
+}
 
 const ArtifactParamsSchema = z.object({
     artifactId: z.string().min(1),
@@ -144,6 +181,12 @@ const invoiceRelayRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
+            await mergeWooTaxDisplaySettings(accountId, orderId, {
+                prices_include_tax: parsed.data.prices_include_tax,
+                tax_display_cart: parsed.data.tax_display_cart,
+                tax_display_shop: parsed.data.tax_display_shop,
+            });
+
             const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
                 forceRegenerate: forceRegenerate === true,
             });

@@ -10,10 +10,13 @@ import {
     decodeInvoiceEntities,
     formatInvoiceCurrency,
     formatInvoiceDate,
+    getInvoiceLineDisplayTotal,
+    getInvoiceLineDisplayUnitPrice,
     getInvoiceItemMeta,
     getOrderGiftWrappingMeta,
     mergeInvoiceSettings,
     resolveInvoiceTemplateString,
+    shouldDisplayInvoicePricesIncludingTax,
 } from '@overseek/core';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
@@ -607,6 +610,7 @@ export class InvoiceService {
             const formatDate = (d: Date) => formatInvoiceDate(d, settings);
 
             const rawData = order.rawData as any || {};
+            const pricesIncludeTax = shouldDisplayInvoicePricesIncludingTax(rawData);
 
             // Page + grid metrics (aligned with designer canvas/react-grid-layout spacing)
             const pageWidth = doc.page.width;
@@ -1030,7 +1034,8 @@ export class InvoiceService {
                         lineItems.forEach((item: any) => {
                             const itemName = normalizePdfText(item.name || 'Product');
                             const qty = item.quantity || 1;
-                            const unitPrice = qty > 0 ? (parseFloat(item.total || 0) / qty) : 0;
+                            const unitPrice = getInvoiceLineDisplayUnitPrice(item, pricesIncludeTax);
+                            const lineTotal = getInvoiceLineDisplayTotal(item, pricesIncludeTax);
                             const itemMeta = getInvoiceItemMeta(item)
                                 .filter((meta) => {
                                     const value = String(meta?.value || '').trim();
@@ -1059,7 +1064,7 @@ export class InvoiceService {
                             drawTextWithEmojiSupport(doc, itemName, tableX, tableY, { width: descWidth - 10 }, regularFont);
                             doc.text(String(qty), tableX + descWidth, tableY, { width: qtyWidth, align: 'center' });
                             doc.text(formatCurrency(unitPrice), tableX + descWidth + qtyWidth, tableY, { width: priceWidth, align: 'right' });
-                            doc.text(formatCurrency(item.total), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
+                            doc.text(formatCurrency(lineTotal), tableX + descWidth + qtyWidth + priceWidth, tableY, { width: totalWidth, align: 'right' });
 
                             const consumedTitleHeight = Math.max(12, titleHeight);
                             tableY += consumedTitleHeight;

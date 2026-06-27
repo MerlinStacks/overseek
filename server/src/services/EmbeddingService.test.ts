@@ -29,6 +29,14 @@ vi.mock('../utils/logger', () => ({
 const fetchMock = vi.fn();
 global.fetch = fetchMock;
 
+const jsonResponse = (body: unknown) => ({
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => name.toLowerCase() === 'content-type' ? 'application/json' : null },
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+});
+
 describe('EmbeddingService Benchmark', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -45,15 +53,12 @@ describe('EmbeddingService Benchmark', () => {
             const input = body.input;
             const count = Array.isArray(input) ? input.length : 1;
 
-            return {
-                ok: true,
-                json: async () => ({
+            return jsonResponse({
                     data: Array.from({ length: count }, (_, i) => ({
                         embedding: Array(1536).fill(0.1),
                         index: i
                     }))
-                })
-            };
+            });
         });
     });
 

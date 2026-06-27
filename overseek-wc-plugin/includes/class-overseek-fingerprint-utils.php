@@ -57,7 +57,17 @@ class OverSeek_Fingerprint_Utils
 
     public static function get_visitor_id(): ?string
     {
-        return isset($_COOKIE['_os_vid']) ? sanitize_text_field((string) $_COOKIE['_os_vid']) : null;
+        if (isset($_COOKIE['_os_vid']) && $_COOKIE['_os_vid'] !== '') {
+            return sanitize_text_field((string) $_COOKIE['_os_vid']);
+        }
+
+        $ip = self::get_client_ip();
+        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field((string) $_SERVER['HTTP_USER_AGENT']) : '';
+        if ($ip === 'unknown' && $ua === '') {
+            return null;
+        }
+
+        return 'fp_' . OverSeek_Crypto_Utils::hash_key_fragment($ip . '|' . $ua, 32);
     }
 
     public static function nonce_transient_key(string $account_id, string $visitor_id, int $length): string

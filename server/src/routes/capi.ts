@@ -11,6 +11,7 @@ import { Logger } from '../utils/logger';
 import { ConversionForwarder } from '../services/tracking/ConversionForwarder';
 import { requireAuthFastify } from '../middleware/auth';
 import { getRouteAccountIdOrReply } from './routeHelpers';
+import { syncStorefrontConfigToWoo } from '../services/StorefrontConfigSync';
 
 /** Maps URL platform param → AccountFeature.featureKey */
 const PLATFORM_FEATURE_KEY: Record<string, string> = {
@@ -109,6 +110,7 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Invalidate cached config so ConversionForwarder picks up changes immediately
         ConversionForwarder.invalidateCache(accountId);
+        void syncStorefrontConfigToWoo(accountId, ['pixels']);
 
         Logger.info('[CAPI] Platform config updated', { accountId, platform, enabled });
         return { success: true };
@@ -131,6 +133,7 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         ConversionForwarder.invalidateCache(accountId);
+        void syncStorefrontConfigToWoo(accountId, ['pixels']);
 
         Logger.info('[CAPI] Platform disabled', { accountId, platform });
         return { success: true };

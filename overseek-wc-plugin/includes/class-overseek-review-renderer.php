@@ -134,7 +134,7 @@ class OverSeek_Review_Renderer {
 				$reviewer = isset( $review['reviewer'] ) ? (string) $review['reviewer'] : __( 'Customer', 'overseek-wc' );
 				$country  = isset( $review['country'] ) ? (string) $review['country'] : '';
 				if ( $max_chars > 0 && strlen( wp_strip_all_tags( $content ) ) > $max_chars ) {
-					$content = mb_substr( $content, 0, $max_chars ) . '…';
+					$content = self::truncate_text( $content, $max_chars ) . '…';
 				}
 				?>
 				<article class="os-review-row">
@@ -188,7 +188,7 @@ class OverSeek_Review_Renderer {
 		$card_style    = isset( $args['card_style'] ) ? sanitize_key( (string) $args['card_style'] ) : 'comfortable';
 		$product_class = 'os-review-card__product' . ( ! $show_product_image || '' === $product_image ? ' os-review-card__product--no-image' : '' );
 		if ( $max_chars > 0 && strlen( wp_strip_all_tags( $content ) ) > $max_chars ) {
-			$content = mb_substr( $content, 0, $max_chars ) . '…';
+			$content = self::truncate_text( $content, $max_chars ) . '…';
 		}
 		$verified = ! empty( $review['verified'] );
 		$media    = isset( $review['media'] ) && is_array( $review['media'] ) ? $review['media'] : [];
@@ -344,6 +344,14 @@ class OverSeek_Review_Renderer {
 		}
 
 		return $out;
+	}
+
+	private static function truncate_text( string $text, int $max_chars ): string {
+		if ( function_exists( 'mb_substr' ) ) {
+			return mb_substr( $text, 0, $max_chars );
+		}
+
+		return substr( $text, 0, $max_chars );
 	}
 
 	/**

@@ -58,6 +58,8 @@ const BULK_HIGH_WARN_THRESHOLD = 10000;
 const FEEDS_UI_STATE_KEY = 'overseek:feeds:ui-state:v1';
 const FEEDS_EDIT_DRAFT_KEY = 'overseek:feeds:edit-draft:v1';
 const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
+const MIN_FEED_COLUMN_WIDTH = 120;
+const MAX_FEED_COLUMN_WIDTH = 720;
 const SOURCE_FIELD_OPTIONS = [
     { value: 'wooId', label: 'Product ID' },
     { value: 'name', label: 'Product name' },
@@ -110,6 +112,7 @@ export function FeedsPage() {
     const [isSelectingAllMatching, setIsSelectingAllMatching] = useState(false);
     const [allMatchingSelected, setAllMatchingSelected] = useState(false);
     const [mappingDraft, setMappingDraft] = useState<FeedMapping[]>([]);
+    const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
     const headers = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
@@ -315,6 +318,50 @@ export function FeedsPage() {
     const total = rowsData?.total || 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
+    const getDefaultColumnWidth = (field: string) => {
+        if (field === 'select') return 44;
+        if (field === 'sku') return 160;
+        if (field === 'description') return 420;
+        if (field === 'title') return 280;
+        return 220;
+    };
+
+    const getColumnWidth = (field: string) => columnWidths[field] || getDefaultColumnWidth(field);
+
+    const startColumnResize = (field: string, startX: number) => {
+        const startWidth = getColumnWidth(field);
+        const originalCursor = document.body.style.cursor;
+        const originalUserSelect = document.body.style.userSelect;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        const handlePointerMove = (event: PointerEvent) => {
+            const nextWidth = Math.min(
+                MAX_FEED_COLUMN_WIDTH,
+                Math.max(MIN_FEED_COLUMN_WIDTH, startWidth + event.clientX - startX),
+            );
+            setColumnWidths((prev) => ({ ...prev, [field]: nextWidth }));
+        };
+
+        const handlePointerUp = () => {
+            document.body.style.cursor = originalCursor;
+            document.body.style.userSelect = originalUserSelect;
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
+        };
+
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp);
+    };
+
+    const resetColumnWidth = (field: string) => {
+        setColumnWidths((prev) => {
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
+    };
+
     useEffect(() => {
         try {
             const raw = localStorage.getItem(FEEDS_UI_STATE_KEY);
@@ -326,12 +373,22 @@ export function FeedsPage() {
                 query: string;
                 page: number;
                 limit: number;
+                columnWidths: Record<string, number>;
             }>;
             if (saved.activeTab === 'spreadsheet' || saved.activeTab === 'settings') setActiveTab(saved.activeTab);
             if (saved.activeChannel && CHANNELS.includes(saved.activeChannel)) setActiveChannel(saved.activeChannel);
             if (saved.variationMode && VARIATION_MODES.some((m) => m.value === saved.variationMode)) setVariationMode(saved.variationMode);
             if (typeof saved.query === 'string') setQuery(saved.query);
             if (typeof saved.limit === 'number' && [25, 50, 100, 200].includes(saved.limit)) setLimit(saved.limit);
+            if (saved.columnWidths && typeof saved.columnWidths === 'object') {
+                const nextWidths: Record<string, number> = {};
+                Object.entries(saved.columnWidths).forEach(([field, width]) => {
+                    if (typeof width === 'number' && Number.isFinite(width)) {
+                        nextWidths[field] = Math.min(MAX_FEED_COLUMN_WIDTH, Math.max(MIN_FEED_COLUMN_WIDTH, width));
+                    }
+                });
+                setColumnWidths(nextWidths);
+            }
             if (typeof saved.page === 'number' && Number.isFinite(saved.page) && saved.page >= 1) {
                 setPage(Math.floor(saved.page));
                 setPageInput(String(Math.floor(saved.page)));
@@ -349,9 +406,10 @@ export function FeedsPage() {
             query,
             page,
             limit,
+            columnWidths,
         };
         localStorage.setItem(FEEDS_UI_STATE_KEY, JSON.stringify(state));
-    }, [activeTab, activeChannel, variationMode, query, page, limit]);
+    }, [activeTab, activeChannel, variationMode, query, page, limit, columnWidths]);
 
     useEffect(() => {
         if (!editingCell) {
@@ -512,7 +570,7 @@ export function FeedsPage() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 lg:h-[calc(100vh-7rem)] lg:min-h-0">
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Feeds</h1>
@@ -520,20 +578,18 @@ export function FeedsPage() {
                         Configure feed channel settings and refresh behavior.
                     </p>
                 </div>
-                <button
-                    type="button"
-                    className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${
-                        activeTab === 'settings'
-                            ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
-                            : 'border-slate-200 bg-white/80 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                    onClick={() => setActiveTab((tab) => (tab === 'settings' ? 'spreadsheet' : 'settings'))}
-                    title={activeTab === 'settings' ? 'Back to spreadsheet' : 'Feed settings'}
-                    aria-label={activeTab === 'settings' ? 'Back to spreadsheet' : 'Feed settings'}
-                    aria-pressed={activeTab === 'settings'}
-                >
-                    <Cog size={18} />
-                </button>
+                {activeTab === 'settings' && (
+                    <button
+                        type="button"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-indigo-600 bg-indigo-600 text-white shadow-sm transition-colors"
+                        onClick={() => setActiveTab('spreadsheet')}
+                        title="Back to spreadsheet"
+                        aria-label="Back to spreadsheet"
+                        aria-pressed
+                    >
+                        <Cog size={18} />
+                    </button>
+                )}
             </div>
 
             {activeTab === 'settings' && (
@@ -786,8 +842,8 @@ export function FeedsPage() {
             )}
 
             {activeTab === 'spreadsheet' && (
-            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-4 space-y-4">
-                <div className="flex flex-wrap gap-2">
+            <div className="flex min-h-0 flex-col space-y-3 rounded-xl border border-slate-200/50 bg-white/80 p-3 shadow-lg backdrop-blur-lg dark:border-slate-700/50 dark:bg-slate-800/80 lg:h-[calc(100%-4.75rem)]">
+                <div className="-mx-1 flex flex-wrap items-center gap-2 border-b border-slate-200/70 px-1 pb-2 dark:border-slate-700/70">
                     {CHANNELS.map((channel) => {
                         const active = activeChannel === channel;
                         return (
@@ -805,16 +861,11 @@ export function FeedsPage() {
                             </button>
                         );
                     })}
-                </div>
-                <div className="-mx-1 px-1 py-2 border-b border-slate-200/70 dark:border-slate-700/70 flex flex-wrap items-center gap-2 text-xs">
-                    <span className="px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
-                        Platform: {activeChannel.charAt(0).toUpperCase() + activeChannel.slice(1)}
-                    </span>
-                    <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                         Variation Mode: {VARIATION_MODES.find((mode) => mode.value === variationMode)?.label || variationMode}
                     </span>
                 </div>
-                <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-center gap-2">
                         <label className="text-sm text-slate-600 dark:text-slate-300">Page size</label>
                         <select
@@ -832,7 +883,17 @@ export function FeedsPage() {
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white/80 text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700"
+                            onClick={() => setActiveTab('settings')}
+                            title="Feed settings"
+                            aria-label="Feed settings"
+                            aria-pressed={false}
+                        >
+                            <Cog size={18} />
+                        </button>
                         <input
                             className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
                             value={query}
@@ -877,7 +938,7 @@ export function FeedsPage() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <button
                         type="button"
                         disabled={selectedCount === 0 || isOptimizingBulk}
@@ -979,11 +1040,18 @@ export function FeedsPage() {
                 {rowsLoading ? (
                     <p className="text-sm text-slate-600 dark:text-slate-300">Loading feed rows...</p>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
+                    <div className="min-h-0 flex-1 overflow-auto">
+                        <table className="min-w-full table-fixed text-sm">
+                            <colgroup>
+                                <col style={{ width: getColumnWidth('select') }} />
+                                <col style={{ width: getColumnWidth('sku') }} />
+                                {mappings.map((mapping) => (
+                                    <col key={mapping.targetField} style={{ width: getColumnWidth(mapping.targetField) }} />
+                                ))}
+                            </colgroup>
                             <thead className="sticky top-0 z-10 bg-white shadow-sm dark:bg-slate-800">
                                 <tr className="border-b border-slate-200 dark:border-slate-700">
-                                    <th className="text-left py-2 pr-2">
+                                    <th className="py-2 pr-2 text-left">
                                         <input
                                             type="checkbox"
                                             checked={allRowsSelected}
@@ -1001,11 +1069,33 @@ export function FeedsPage() {
                                             }}
                                         />
                                     </th>
-                                    <th className="text-left py-2 pr-3">SKU</th>
+                                    <th className="relative py-2 pr-5 text-left select-none">
+                                        SKU
+                                        <button
+                                            type="button"
+                                            className="absolute right-0 top-0 h-full w-3 cursor-col-resize touch-none border-r border-transparent hover:border-indigo-400 focus:border-indigo-500 focus:outline-hidden"
+                                            aria-label="Resize SKU column"
+                                            onPointerDown={(event) => {
+                                                event.preventDefault();
+                                                startColumnResize('sku', event.clientX);
+                                            }}
+                                            onDoubleClick={() => resetColumnWidth('sku')}
+                                        />
+                                    </th>
                                     {mappings.map((mapping) => (
-                                        <th key={mapping.targetField} className="text-left py-2 pr-3 whitespace-nowrap">
+                                        <th key={mapping.targetField} className="relative py-2 pr-5 text-left select-none whitespace-nowrap">
                                             {mapping.targetField}
                                             {mapping.required ? <span className="text-rose-500 ml-1">*</span> : null}
+                                            <button
+                                                type="button"
+                                                className="absolute right-0 top-0 h-full w-3 cursor-col-resize touch-none border-r border-transparent hover:border-indigo-400 focus:border-indigo-500 focus:outline-hidden"
+                                                aria-label={`Resize ${mapping.targetField} column`}
+                                                onPointerDown={(event) => {
+                                                    event.preventDefault();
+                                                    startColumnResize(mapping.targetField, event.clientX);
+                                                }}
+                                                onDoubleClick={() => resetColumnWidth(mapping.targetField)}
+                                            />
                                         </th>
                                     ))}
                                 </tr>
@@ -1024,7 +1114,7 @@ export function FeedsPage() {
                                                     }}
                                                 />
                                             </td>
-                                            <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">{row.sku || '-'}</td>
+                                            <td className="truncate py-2 pr-3 text-slate-600 dark:text-slate-300" title={row.sku || '-'}>{row.sku || '-'}</td>
                                             {mappings.map((mapping) => {
                                                 const field = mapping.targetField;
                                                 const column = getColumn(row, field);
@@ -1038,7 +1128,7 @@ export function FeedsPage() {
                                                 const displayValue = value || '-';
 
                                                 return (
-                                                    <td key={`${row.rowId}-${field}`} className="py-2 pr-3 align-top min-w-[220px] max-w-[460px]">
+                                                    <td key={`${row.rowId}-${field}`} className="py-2 pr-3 align-top">
                                                         {isEditing ? (
                                                             <div className="space-y-1">
                                                                 {field === 'google_product_category' ? (
@@ -1132,7 +1222,7 @@ export function FeedsPage() {
                     </div>
                 )}
 
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-t border-slate-200 dark:border-slate-700 pt-3">
+                <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 dark:border-slate-700 md:flex-row md:items-center md:justify-between">
                     <div className="text-xs text-slate-500 dark:text-slate-400">
                         Showing page {page} of {totalPages} ({total} rows)
                     </div>

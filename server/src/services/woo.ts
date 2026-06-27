@@ -904,6 +904,16 @@ export class WooService {
         return response.data;
     }
 
+    async updateStorefrontConfig(config: Record<string, any>) {
+        if (this.isDemo) {
+            Logger.debug('[Demo] Mocking storefront config update', { config });
+            return { success: true, message: "Storefront config updated (Demo)" };
+        }
+
+        const response = await this.requestWpWithRetry('post', 'storefront-config', config, 'overseek/v1');
+        return response.data;
+    }
+
 }
 
 registerRuntimeMetricsProvider('wooService', () => WooService.getAgentMetrics());

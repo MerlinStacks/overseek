@@ -20,6 +20,14 @@ vi.mock('../../utils/prisma', () => ({
 // Mock Gold API fetch
 global.fetch = vi.fn();
 
+const jsonResponse = (body: unknown) => ({
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => name.toLowerCase() === 'content-type' ? 'application/json' : null },
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+});
+
 describe('GoldPrice Feature Verification', () => {
     const accountId = 'test-account-id';
 
@@ -36,12 +44,9 @@ describe('GoldPrice Feature Verification', () => {
         });
 
         // Mock Fetch response for Gold API (Fallback structure since no API Key)
-        (global.fetch as any).mockResolvedValue({
-            ok: true,
-            json: async () => ({
+        (global.fetch as any).mockResolvedValue(jsonResponse({
                 items: [{ xauPrice: 2000 }] // USD per Ounce
-            })
-        });
+        }));
 
         // 2000 USD/oz ~ 64.30 USD/g
         // Margin 10% => 70.73

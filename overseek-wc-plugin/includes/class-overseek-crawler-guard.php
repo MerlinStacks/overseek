@@ -24,6 +24,8 @@ class OverSeek_Crawler_Guard
 {
     /** @var int Length used for hashed key fragments. */
     private const HASH_LENGTH = 16;
+    private const MAX_PATTERNS = 1000;
+    private const MAX_PATTERN_LENGTH = 200;
 
     /** @var string OverSeek API base URL. */
     private string $api_url;
@@ -83,7 +85,8 @@ class OverSeek_Crawler_Guard
         // with an empty block list. Schedule async cron instead of inline HTTP
         // so customer requests do not block on remote network calls.
         $backoff_key = $this->transient_key . '_backoff';
-        if (false === get_transient($this->transient_key) && false === get_transient($backoff_key)) {
+        $local_config = $this->get_local_block_config();
+        if (false === $local_config && false === get_transient($this->transient_key) && false === get_transient($backoff_key)) {
             // Set backoff BEFORE scheduling so concurrent requests don't all schedule.
             set_transient($backoff_key, 1, 5 * MINUTE_IN_SECONDS);
             wp_schedule_single_event(time() + 5, self::CRON_HOOK);
@@ -127,7 +130,7 @@ class OverSeek_Crawler_Guard
             return;
         }
 
-        $cached = get_transient($this->transient_key);
+        $cached = $this->get_block_config();
         if (empty($cached) || !is_array($cached)) {
             // Fail-open: no cache = no blocking, but still report unknown bots
             $this->maybe_schedule_recovery_sync();
@@ -191,7 +194,7 @@ class OverSeek_Crawler_Guard
             return $result;
         }
 
-        $cached = get_transient($this->transient_key);
+        $cached = $this->get_block_config();
         if (empty($cached) || !is_array($cached)) {
             $this->maybe_schedule_recovery_sync();
             return $result;
@@ -401,7 +404,38 @@ HTML;
         );
 
         set_transient($this->transient_key, $cache_data, self::TRANSIENT_TTL);
+        update_option('overseek_storefront_bot_shield_config', $cache_data, false);
         delete_transient($this->transient_key . self::ERROR_SUFFIX);
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function get_block_config()
+    {
+        $local = $this->get_local_block_config();
+        if (false !== $local) {
+            return $local;
+        }
+
+        return get_transient($this->transient_key);
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function get_local_block_config()
+    {
+        $local = get_option('overseek_storefront_bot_shield_config', false);
+        if (!is_array($local)) {
+            return false;
+        }
+
+        if (!array_key_exists('patterns', $local) && !array_key_exists('blockPageHtml', $local)) {
+            return false;
+        }
+
+        return $local;
     }
 
     /**
@@ -415,10 +449,14 @@ HTML;
         $normalized = array();
 
         foreach ($raw_patterns as $pattern) {
+            if (count($normalized) >= self::MAX_PATTERNS) {
+                break;
+            }
+
             if (!is_string($pattern)) {
                 continue;
             }
-            $value = strtolower(trim($pattern));
+            $value = strtolower(trim(substr($pattern, 0, self::MAX_PATTERN_LENGTH)));
             if ($value === '') {
                 continue;
             }

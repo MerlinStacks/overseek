@@ -7,7 +7,7 @@ import { Logger } from '../utils/logger';
 import { InvoiceService } from './InvoiceService';
 
 const invoiceService = new InvoiceService();
-const OPERATIONAL_A4_RENDERER_VERSION = 'operational-a4-v4';
+const OPERATIONAL_A4_RENDERER_VERSION = 'operational-a4-v5';
 
 export class MissingInvoiceTemplateError extends Error {
     constructor() {

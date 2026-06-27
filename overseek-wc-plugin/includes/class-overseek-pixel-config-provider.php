@@ -23,6 +23,11 @@ class OverSeek_Pixel_Config_Provider
      */
     public static function get_config(string $api_url, string $account_id): array
     {
+        $local = get_option('overseek_storefront_pixel_config', false);
+        if (is_array($local)) {
+            return $local;
+        }
+
         $fresh_key = self::get_fresh_key($account_id);
         $stale_key = self::get_stale_key($account_id);
 
@@ -71,6 +76,7 @@ class OverSeek_Pixel_Config_Provider
 
         set_transient(self::get_fresh_key($account_id), $data, self::FRESH_TTL);
         set_transient(self::get_stale_key($account_id), $data, self::STALE_TTL);
+        update_option('overseek_storefront_pixel_config', $data, false);
 
         return $data;
     }

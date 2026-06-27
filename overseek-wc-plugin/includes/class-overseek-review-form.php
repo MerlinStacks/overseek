@@ -20,6 +20,8 @@ class OverSeek_Review_Form {
 	private const NONCE_NAME   = 'overseek_review_nonce';
 	private const MAX_FILES    = 6;
 	private const MAX_BYTES    = 10485760;
+	private const RATE_LIMIT_MAX = 5;
+	private const RATE_LIMIT_WINDOW = HOUR_IN_SECONDS;
 
 	/**
 	 * Track forms already rendered during the request to avoid duplicate fallbacks.
@@ -186,11 +188,15 @@ class OverSeek_Review_Form {
 			$product_id = $this->resolve_product_id( $product_id, $redirect );
 		}
 
+		if ( ! $shop_review ) {
+			$product_id = $this->normalize_product_review_id( $product_id );
+		}
+
 		$product      = ! $shop_review && $product_id ? wc_get_product( $product_id ) : null;
 		$product_type = $product_id ? get_post_type( $product_id ) : '';
 		if ( $shop_review ) {
 			$product_id = $this->get_shop_review_post_id();
-		} elseif ( ! $product || ! in_array( $product_type, [ 'product', 'product_variation' ], true ) ) {
+		} elseif ( ! $product || 'product' !== $product_type ) {
 			$this->redirect_with_status( $redirect, 'invalid-product' );
 		}
 
@@ -201,6 +207,14 @@ class OverSeek_Review_Form {
 
 		if ( $rating < 1 || $rating > 5 || '' === $content || '' === $name || ! is_email( $email ) ) {
 			$this->redirect_with_status( $redirect, 'missing' );
+		}
+
+		if ( ! $this->passes_rate_limit( $email ) ) {
+			$this->redirect_with_status( $redirect, 'rate-limited' );
+		}
+
+		if ( ! $shop_review && ! $this->product_review_submission_allowed( $product_id, $email ) ) {
+			$this->redirect_with_status( $redirect, 'not-allowed' );
 		}
 
 		$comment_id = wp_insert_comment(
@@ -243,6 +257,13 @@ class OverSeek_Review_Form {
 	private function render_form( int $product_id, string $title, bool $shop_review = false ): string {
 		if ( ! $product_id ) {
 			return '';
+		}
+
+		if ( ! $shop_review ) {
+			$product_id = $this->normalize_product_review_id( $product_id );
+			if ( ! $product_id || ! $this->product_review_form_allowed( $product_id ) ) {
+				return '';
+			}
 		}
 
 		$this->rendered_forms[ $this->get_rendered_form_key( $product_id, $shop_review ) ] = true;
@@ -339,6 +360,8 @@ class OverSeek_Review_Form {
 			'invalid-nonce'   => __( 'Your review form expired. Please refresh the page and try again.', 'overseek-wc' ),
 			'invalid-product' => __( 'We could not match this review to the product. Please refresh the page and try again.', 'overseek-wc' ),
 			'missing'         => __( 'Please complete the rating, review, name, and email fields.', 'overseek-wc' ),
+			'not-allowed'     => __( 'Reviews are not available for this product right now.', 'overseek-wc' ),
+			'rate-limited'    => __( 'Please wait before submitting another review.', 'overseek-wc' ),
 			'spam-check'      => __( 'We could not submit your review. Please refresh the page and try again.', 'overseek-wc' ),
 			'failed'          => __( 'WordPress could not save this review. Please try again.', 'overseek-wc' ),
 		];
@@ -367,6 +390,39 @@ class OverSeek_Review_Form {
 
 		$rendered_at = isset( $_POST['rendered_at'] ) ? absint( $_POST['rendered_at'] ) : 0;
 		return ! $rendered_at || $rendered_at <= time();
+	}
+
+	private function passes_rate_limit( string $email ): bool {
+		$ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$key = 'os_review_rate_' . substr( hash( 'sha256', strtolower( $email ) . '|' . $ip ), 0, 20 );
+		$count = (int) get_transient( $key );
+
+		if ( $count >= self::RATE_LIMIT_MAX ) {
+			return false;
+		}
+
+		set_transient( $key, $count + 1, self::RATE_LIMIT_WINDOW );
+		return true;
+	}
+
+	private function product_review_form_allowed( int $product_id ): bool {
+		if ( 'yes' !== (string) get_option( 'woocommerce_enable_reviews', 'yes' ) ) {
+			return false;
+		}
+
+		return comments_open( $product_id );
+	}
+
+	private function product_review_submission_allowed( int $product_id, string $email ): bool {
+		if ( ! $this->product_review_form_allowed( $product_id ) ) {
+			return false;
+		}
+
+		if ( 'yes' !== (string) get_option( 'woocommerce_review_rating_verification_required', 'no' ) ) {
+			return true;
+		}
+
+		return function_exists( 'wc_customer_bought_product' ) && wc_customer_bought_product( $email, get_current_user_id(), $product_id );
 	}
 
 	/**
@@ -477,7 +533,7 @@ class OverSeek_Review_Form {
 	 */
 	private function resolve_product_id( int $product_id, string $redirect ): int {
 		if ( $product_id && wc_get_product( $product_id ) && in_array( get_post_type( $product_id ), [ 'product', 'product_variation' ], true ) ) {
-			return $product_id;
+			return $this->normalize_product_review_id( $product_id );
 		}
 
 		$path = wp_parse_url( $redirect, PHP_URL_PATH );
@@ -491,10 +547,24 @@ class OverSeek_Review_Form {
 		$post_id = url_to_postid( $url );
 
 		if ( $post_id && wc_get_product( $post_id ) && in_array( get_post_type( $post_id ), [ 'product', 'product_variation' ], true ) ) {
-			return (int) $post_id;
+			return $this->normalize_product_review_id( (int) $post_id );
 		}
 
 		return $product_id;
+	}
+
+	private function normalize_product_review_id( int $product_id ): int {
+		$product = $product_id > 0 ? wc_get_product( $product_id ) : null;
+		if ( ! $product ) {
+			return 0;
+		}
+
+		if ( 'product_variation' === get_post_type( $product_id ) && method_exists( $product, 'get_parent_id' ) ) {
+			$parent_id = (int) $product->get_parent_id();
+			return $parent_id > 0 ? $parent_id : 0;
+		}
+
+		return 'product' === get_post_type( $product_id ) ? $product_id : 0;
 	}
 
 	/**

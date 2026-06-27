@@ -1075,8 +1075,7 @@ export class EmailService {
                                 // - marked as "related" by mailparser (embedded in HTML context)
                                 // - inline disposition + small size (logos, social icons)
                                 // - inline disposition + generic name (image001.png, etc.)
-                                // - orphaned CID: has a content-id but is NOT referenced in the HTML
-                                //   (common for signature images that clients embed but don't render)
+                                // - signature-like orphaned CID: has a content-id but is NOT referenced in the HTML
                                 // - tiny images < 1.5 KB (tracking pixels, 1x1 spacers)
                                 // - known signature/logo filename patterns
                                 if (!isInline && attachment.contentType?.startsWith('image/')) {
@@ -1088,25 +1087,34 @@ export class EmailService {
                                     const hasGenericName = !attachment.filename ||
                                         /^image\d{0,3}\.\w+$/i.test(attachment.filename);
 
-                                    // Orphaned CID: content-id exists but is not referenced anywhere in HTML
+                                    // Orphaned CID: content-id exists but is not referenced anywhere in HTML.
+                                    // Some clients add CIDs to real image attachments, so only treat this
+                                    // as a signature signal when the part is related/inline.
                                     const rawCid = attachment.contentId?.replace(/^<|>$/g, '') ?? '';
-                                    const hasOrphanedCid = !!(rawCid && html && !html.includes(`cid:${rawCid}`));
+                                    const hasOrphanedCid = !!(
+                                        rawCid &&
+                                        html &&
+                                        !html.includes(`cid:${rawCid}`) &&
+                                        (isRelated || isInlineDisposition)
+                                    );
 
                                     // Common signature / branding filenames
                                     const hasSignatureFilename = !!attachment.filename &&
                                         /^(logo|signature|sig|banner|brand|header|footer|icon|avatar|divider|spacer|separator|bullet|pixel|tracker|tracking|beacon|dot|arrow)\d*[-_]?\w*\.(png|jpe?g|gif|webp|bmp)$/i.test(attachment.filename);
 
+                                    const isOrphanedSignatureImage = hasOrphanedCid && (isRelated || isSmall || hasGenericName || hasSignatureFilename);
+
                                     const reason =
                                         isRelated ? 'related' :
                                         isTinyPixel ? 'tinyPixel' :
-                                        hasOrphanedCid ? 'orphanedCid' :
+                                        isOrphanedSignatureImage ? 'orphanedCid' :
                                         hasSignatureFilename ? 'signatureFilename' :
                                         'inlineSmall';
 
                                     if (
                                         isRelated ||
                                         isTinyPixel ||
-                                        hasOrphanedCid ||
+                                        isOrphanedSignatureImage ||
                                         hasSignatureFilename ||
                                         (isInlineDisposition && (isSmall || hasGenericName))
                                     ) {

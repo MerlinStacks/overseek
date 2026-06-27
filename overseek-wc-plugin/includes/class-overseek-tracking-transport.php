@@ -15,6 +15,7 @@ if (!defined('ABSPATH')) {
 class OverSeek_Tracking_Transport
 {
     private const FAILED_EVENTS_TRANSIENT = '_overseek_failed_events';
+    private const BLOCKING_EVENT_TYPES = array('purchase');
 
     /**
      * @return array<int, array<string, mixed>>
@@ -59,8 +60,6 @@ class OverSeek_Tracking_Transport
 
 		$is_ajax = wp_doing_ajax();
 		$is_rest = defined('REST_REQUEST') && REST_REQUEST;
-		$blocking = false;
-		$timeout = 0.5;
 
         if (defined('WP_DEBUG') && WP_DEBUG && defined('OVERSEEK_DEBUG') && OVERSEEK_DEBUG) {
             error_log('OverSeek: Flushing ' . count($events) . ' events (AJAX: ' . ($is_ajax ? 'yes' : 'no') . ', REST: ' . ($is_rest ? 'yes' : 'no') . ')');
@@ -70,6 +69,8 @@ class OverSeek_Tracking_Transport
             $visitor_ip = $data['visitorIp'] ?? '';
             $retry_count = $data['_retry_count'] ?? 0;
             $event_type = $data['type'] ?? 'unknown';
+            $blocking = self::should_block_for_event((string) $event_type);
+            $timeout = $blocking ? 2 : 0.5;
             unset($data['visitorIp'], $data['_retry_count'], $data['_retry_after']);
 
             $visitor_ua = $data['userAgent'] ?? '';
@@ -97,16 +98,34 @@ class OverSeek_Tracking_Transport
                 }
             }
 
-            if ($blocking && is_wp_error($response)) {
+            if ($blocking && (is_wp_error($response) || self::is_retryable_response($response))) {
                 $data['visitorIp'] = $visitor_ip;
                 $data['_retry_count'] = $retry_count;
                 self::store_failed_event($data);
 
-                if (defined('WP_DEBUG') && WP_DEBUG) {
+                if (defined('WP_DEBUG') && WP_DEBUG && is_wp_error($response)) {
                     error_log('OverSeek Tracking Error: ' . $response->get_error_message() . ' | Event: ' . $event_type . ' | Retry: ' . ($retry_count + 1));
                 }
             }
         }
+    }
+
+    private static function should_block_for_event(string $event_type): bool
+    {
+        return in_array($event_type, self::BLOCKING_EVENT_TYPES, true);
+    }
+
+    /**
+     * @param array<string, mixed>|WP_Error $response
+     */
+    private static function is_retryable_response($response): bool
+    {
+        if (is_wp_error($response)) {
+            return true;
+        }
+
+        $status = (int) wp_remote_retrieve_response_code($response);
+        return 429 === $status || $status >= 500;
     }
 
     /**

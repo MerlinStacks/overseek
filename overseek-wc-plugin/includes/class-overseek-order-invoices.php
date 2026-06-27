@@ -28,8 +28,11 @@ class OverSeek_Order_Invoices
     private const META_INVOICE_DIAGNOSTIC_REASON = '_overseek_invoice_diagnostic_reason';
     private const META_INVOICE_RETRY_COUNT = '_overseek_invoice_retry_count';
     private const META_INVOICE_RENDERER_VERSION = '_overseek_invoice_renderer_version';
-    private const CURRENT_RENDERER_VERSION = 'operational-a4-v4';
+    private const CURRENT_RENDERER_VERSION = 'operational-a4-v5';
     private const INVOICE_ALLOWED_ORDER_STATUSES = ['processing'];
+    private const MAX_INVOICE_RETRY_ATTEMPTS = 6;
+    private const MAX_INVOICE_PDF_BYTES = 10485760;
+    private const MAX_INVOICE_RESPONSE_BYTES = 15728640;
 
     private string $api_url;
     private string $account_id;
@@ -163,6 +166,11 @@ class OverSeek_Order_Invoices
 
         if ($delay_seconds <= 0) {
             $attempt = (int) $order->get_meta(self::META_INVOICE_RETRY_COUNT);
+            if ($attempt >= self::MAX_INVOICE_RETRY_ATTEMPTS) {
+                $this->set_invoice_status($order, 'failed', 'Invoice generation retry limit reached.');
+                return;
+            }
+
             $delays = [5, 10, 20, 40, 60];
             $index = min(max(0, $attempt), count($delays) - 1);
             $delay = $delays[$index];
@@ -249,6 +257,9 @@ class OverSeek_Order_Invoices
             'order_number' => (string) $order->get_order_number(),
             'store_url' => home_url(),
             'force_regenerate' => $force_regenerate,
+            'prices_include_tax' => wc_prices_include_tax(),
+            'tax_display_cart' => (string) get_option('woocommerce_tax_display_cart', 'excl'),
+            'tax_display_shop' => (string) get_option('woocommerce_tax_display_shop', 'excl'),
         ];
 
         $request_timeout = max(2, $timeout_seconds);
@@ -264,6 +275,7 @@ class OverSeek_Order_Invoices
                 'X-Relay-Key' => $this->relay_api_key,
             ],
             'body' => wp_json_encode($payload),
+            'limit_response_size' => self::MAX_INVOICE_RESPONSE_BYTES,
         ]);
 
         if (is_wp_error($response)) {
@@ -332,6 +344,7 @@ class OverSeek_Order_Invoices
         if ($artifact_download_url !== '') {
             $artifact_response = wp_remote_get($artifact_download_url, [
                 'timeout' => max(5, $request_timeout),
+                'limit_response_size' => self::MAX_INVOICE_PDF_BYTES + 1,
                 'headers' => [
                     'Accept' => 'application/pdf',
                 ],
@@ -342,6 +355,10 @@ class OverSeek_Order_Invoices
                 if ($artifact_code >= 200 && $artifact_code < 300) {
                     $artifact_body = wp_remote_retrieve_body($artifact_response);
                     if (is_string($artifact_body) && $artifact_body !== '') {
+                        if (strlen($artifact_body) > self::MAX_INVOICE_PDF_BYTES) {
+                            $this->set_invoice_status($order, 'failed', 'Invoice PDF payload exceeded the allowed size.');
+                            return false;
+                        }
                         $decoded = $artifact_body;
                     }
                 }
@@ -370,11 +387,21 @@ class OverSeek_Order_Invoices
         $file_path = trailingslashit($private_dir) . $file_name;
 
         if ($decoded === false) {
+            if (strlen($base64_pdf) > self::MAX_INVOICE_RESPONSE_BYTES) {
+                $this->set_invoice_status($order, 'failed', 'Invoice PDF payload exceeded the allowed size.');
+                return false;
+            }
+
             $decoded = base64_decode($base64_pdf, true);
             if ($decoded === false) {
                 $this->set_invoice_status($order, 'failed', 'Received invalid invoice PDF payload.');
                 return false;
             }
+        }
+
+        if (strlen($decoded) > self::MAX_INVOICE_PDF_BYTES) {
+            $this->set_invoice_status($order, 'failed', 'Invoice PDF payload exceeded the allowed size.');
+            return false;
         }
 
         $written = file_put_contents($file_path, $decoded, LOCK_EX);
@@ -508,6 +535,26 @@ class OverSeek_Order_Invoices
         if (!$this->user_can_access_invoice($order, $user_id)) {
             return null;
         }
+
+        return $this->build_invoice_payload($order);
+    }
+
+    public function get_invoice_for_authorized_order(int $order_id): ?array
+    {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return null;
+        }
+
+        return $this->build_invoice_payload($order);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function build_invoice_payload(WC_Order $order): array
+    {
+        $order_id = (int) $order->get_id();
 
         $status = (string) $order->get_meta(self::META_INVOICE_STATUS);
         if ($status === '') {

@@ -44,6 +44,9 @@ class OverSeek_Reviews {
 	 */
 	private int $shell_counter = 0;
 
+	private const MAX_FILTERED_PRODUCT_IDS = 5000;
+	private const MAX_PAGINATION_LINKS     = 100;
+
 	/**
 	 * Initialize hooks.
 	 */
@@ -568,6 +571,14 @@ class OverSeek_Reviews {
 			return $cached;
 		}
 
+		if ( ! $this->truthy( $args['only_media'] ?? false ) && ! $this->truthy( $args['verified_only'] ?? false ) ) {
+			$aggregate_summary = $this->get_aggregate_summary( $args );
+			if ( is_array( $aggregate_summary ) ) {
+				wp_cache_set( $cache_key, $aggregate_summary, 'overseek_reviews', 10 * MINUTE_IN_SECONDS );
+				return $aggregate_summary;
+			}
+		}
+
 		$summary_args           = $this->build_comment_query_args( $args );
 		$summary_args['number'] = 0;
 		$summary_args['offset'] = 0;
@@ -607,6 +618,92 @@ class OverSeek_Reviews {
 		wp_cache_set( $cache_key, $summary, 'overseek_reviews', 10 * MINUTE_IN_SECONDS );
 
 		return $summary;
+	}
+
+	/**
+	 * Aggregate review totals in SQL so summary blocks do not hydrate every comment.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, mixed>|null
+	 */
+	private function get_aggregate_summary( array $args ): ?array {
+		global $wpdb;
+
+		$query_args = $this->build_comment_query_args( $args );
+		if ( isset( $query_args['post__in'] ) && empty( $query_args['post__in'] ) ) {
+			return [ 'total' => 0, 'average' => 0 ];
+		}
+
+		$joins  = [ "INNER JOIN {$wpdb->commentmeta} rating_meta ON rating_meta.comment_id = comments.comment_ID AND rating_meta.meta_key = 'rating'" ];
+		$where  = [ "comments.comment_type = 'review'" ];
+		$params = [];
+
+		$min_rating = ! empty( $args['min_rating'] ) ? max( 1, min( 5, (int) $args['min_rating'] ) ) : 1;
+		$where[]    = 'CAST(rating_meta.meta_value AS DECIMAL(10,2)) >= %d';
+		$params[]   = $min_rating;
+
+		$status = isset( $query_args['status'] ) ? (string) $query_args['status'] : 'approve';
+		if ( 'all' !== $status ) {
+			$status_map = [ 'approve' => '1', 'hold' => '0', 'spam' => 'spam', 'trash' => 'trash' ];
+			if ( ! isset( $status_map[ $status ] ) ) {
+				return null;
+			}
+			$where[]  = 'comments.comment_approved = %s';
+			$params[] = $status_map[ $status ];
+		}
+
+		$needs_posts_join = ! empty( $query_args['post_type'] ) || ! empty( $query_args['post_status'] );
+		if ( $needs_posts_join ) {
+			$joins[] = "INNER JOIN {$wpdb->posts} posts ON posts.ID = comments.comment_post_ID";
+		}
+
+		if ( ! empty( $query_args['post_type'] ) ) {
+			$post_types = array_values( array_filter( array_map( 'sanitize_key', (array) $query_args['post_type'] ) ) );
+			if ( empty( $post_types ) ) {
+				return null;
+			}
+			$where[] = 'posts.post_type IN (' . implode( ',', array_fill( 0, count( $post_types ), '%s' ) ) . ')';
+			$params  = array_merge( $params, $post_types );
+		}
+
+		if ( ! empty( $query_args['post_status'] ) ) {
+			$where[]  = 'posts.post_status = %s';
+			$params[] = sanitize_key( (string) $query_args['post_status'] );
+		}
+
+		if ( ! empty( $query_args['post_id'] ) ) {
+			$where[]  = 'comments.comment_post_ID = %d';
+			$params[] = (int) $query_args['post_id'];
+		} elseif ( isset( $query_args['post__in'] ) ) {
+			$post_ids = array_values( array_filter( array_map( 'absint', (array) $query_args['post__in'] ) ) );
+			if ( empty( $post_ids ) ) {
+				return [ 'total' => 0, 'average' => 0 ];
+			}
+			$where[] = 'comments.comment_post_ID IN (' . implode( ',', array_fill( 0, count( $post_ids ), '%d' ) ) . ')';
+			$params  = array_merge( $params, $post_ids );
+		}
+
+		$sql = 'SELECT COUNT(rating_meta.meta_value) AS total, SUM(CAST(rating_meta.meta_value AS DECIMAL(10,2))) AS rating_total '
+			. "FROM {$wpdb->comments} comments "
+			. implode( ' ', $joins )
+			. ' WHERE ' . implode( ' AND ', $where );
+
+		if ( ! empty( $params ) ) {
+			$sql = $wpdb->prepare( $sql, ...$params );
+		}
+
+		$row = $wpdb->get_row( $sql, ARRAY_A );
+		if ( ! is_array( $row ) ) {
+			return null;
+		}
+
+		$total        = isset( $row['total'] ) ? (int) $row['total'] : 0;
+		$rating_total = isset( $row['rating_total'] ) ? (float) $row['rating_total'] : 0.0;
+
+		return [
+			'total'   => $total,
+			'average' => $total > 0 ? $rating_total / $total : 0,
+		];
 	}
 
 	/**
@@ -1279,7 +1376,24 @@ class OverSeek_Reviews {
 			return [];
 		}
 
-		$ids = get_posts( [ 'post_type' => 'product', 'fields' => 'ids', 'posts_per_page' => -1, 'tax_query' => $tax_query ] );
+		$ids = get_posts(
+			[
+				'post_type'              => 'product',
+				'fields'                 => 'ids',
+				'posts_per_page'         => self::MAX_FILTERED_PRODUCT_IDS + 1,
+				'orderby'                => 'ID',
+				'order'                  => 'ASC',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'tax_query'              => $tax_query,
+			]
+		);
+
+		if ( count( $ids ) > self::MAX_FILTERED_PRODUCT_IDS ) {
+			$ids = array_slice( $ids, 0, self::MAX_FILTERED_PRODUCT_IDS );
+		}
+
 		return array_map( 'absint', $ids );
 	}
 
@@ -1362,11 +1476,37 @@ class OverSeek_Reviews {
 			return '<div class="os-reviews-pagination os-reviews-pagination--' . esc_attr( $mode ) . '"><a class="os-reviews-pagination__button" href="' . $url . '">' . esc_html( $label ) . '</a></div>';
 		}
 
-		$out = '<nav class="os-reviews-pagination" aria-label="' . esc_attr__( 'Review pages', 'overseek-wc' ) . '">';
-		for ( $i = 1; $i <= $pages; $i++ ) {
+		$out      = '<nav class="os-reviews-pagination" aria-label="' . esc_attr__( 'Review pages', 'overseek-wc' ) . '">';
+		$previous = 0;
+		foreach ( $this->get_pagination_page_numbers( $page, $pages ) as $i ) {
+			if ( $previous > 0 && $i > ( $previous + 1 ) ) {
+				$out .= '<span class="os-reviews-pagination__ellipsis" aria-hidden="true">…</span>';
+			}
 			$out .= '<a class="os-reviews-pagination__page' . ( $i === $page ? ' is-active' : '' ) . '" href="' . esc_url( add_query_arg( 'os_reviews_page', $i ) ) . '">' . esc_html( (string) $i ) . '</a>';
+			$previous = $i;
 		}
 		return $out . '</nav>';
+	}
+
+	/**
+	 * Return a bounded page list to avoid rendering thousands of pagination links.
+	 *
+	 * @return array<int, int>
+	 */
+	private function get_pagination_page_numbers( int $page, int $pages ): array {
+		if ( $pages <= self::MAX_PAGINATION_LINKS ) {
+			return range( 1, $pages );
+		}
+
+		$numbers = [ 1, 2, $pages - 1, $pages ];
+		for ( $i = max( 1, $page - 2 ); $i <= min( $pages, $page + 2 ); $i++ ) {
+			$numbers[] = $i;
+		}
+
+		$numbers = array_values( array_unique( array_filter( $numbers, static fn( int $value ): bool => $value >= 1 && $value <= $pages ) ) );
+		sort( $numbers );
+
+		return $numbers;
 	}
 
 	/**

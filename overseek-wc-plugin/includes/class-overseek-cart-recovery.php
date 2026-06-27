@@ -18,6 +18,8 @@ class OverSeek_Cart_Recovery
 {
 	private string $api_url;
 	private const RECOVERY_RESULT_SESSION_KEY = 'overseek_recovery_restore_result';
+	private const MAX_RECOVERY_ITEMS = 50;
+	private const MAX_RECOVERY_QUANTITY = 100;
 
 	public function __construct()
 	{
@@ -100,7 +102,7 @@ class OverSeek_Cart_Recovery
 			'missingVariationIds' => [],
 		];
 
-		foreach ($items as $item) {
+		foreach (array_slice($items, 0, self::MAX_RECOVERY_ITEMS) as $item) {
 			if (!is_array($item)) {
 				continue;
 			}
@@ -109,7 +111,7 @@ class OverSeek_Cart_Recovery
 
 			$product_id = isset($item['productId']) ? absint($item['productId']) : absint($item['product_id'] ?? 0);
 			$variation_id = isset($item['variationId']) ? absint($item['variationId']) : absint($item['variation_id'] ?? 0);
-			$quantity = max(1, absint($item['quantity'] ?? 1));
+			$quantity = min(self::MAX_RECOVERY_QUANTITY, max(1, absint($item['quantity'] ?? 1)));
 
 			if ($product_id <= 0) {
 				$result['failedCount']++;

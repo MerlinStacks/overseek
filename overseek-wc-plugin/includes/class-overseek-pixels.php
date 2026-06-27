@@ -329,8 +329,10 @@ class OverSeek_Pixels {
 		return <<<JS
 (function(){
     var p={$platforms};
+    if(!window.jQuery){return;}
+    var jQuery=window.jQuery;
     function makeEid(){
-        return (crypto.randomUUID?crypto.randomUUID():'os_'+Date.now().toString(36)+Math.random().toString(36).slice(2,10));
+        return (window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():'os_'+Date.now().toString(36)+Math.random().toString(36).slice(2,10));
     }
     function ensureButtonEid(btn){
         var b=jQuery(btn);
@@ -349,12 +351,12 @@ class OverSeek_Pixels {
     }
     function fireATC(productName,productId,value,currency,eid){
         eid=eid||makeEid();
-        if(p.meta) fbq('track','AddToCart',{content_ids:[productId],content_type:'product',content_name:productName,value:value,currency:currency},{eventID:eid});
-        if(p.tiktok) ttq.track('AddToCart',{content_id:productId,content_type:'product',value:value,currency:currency},{event_id:eid});
-        if(p.pinterest) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency,event_id:eid});
-        if(p.snapchat) snaptr('track','ADD_CART',{item_ids:[productId],price:value,currency:currency,event_tag:eid});
-        if(p.ga4) gtag('event','add_to_cart',{items:[{item_id:productId,item_name:productName,price:value}],value:value,currency:currency});
-        if(p.googleAdsAtc) gtag('event','conversion',{send_to:p.googleAdsAtc,value:value,currency:currency});
+        if(p.meta&&window.fbq) fbq('track','AddToCart',{content_ids:[productId],content_type:'product',content_name:productName,value:value,currency:currency},{eventID:eid});
+        if(p.tiktok&&window.ttq) ttq.track('AddToCart',{content_id:productId,content_type:'product',value:value,currency:currency},{event_id:eid});
+        if(p.pinterest&&window.pintrk) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency,event_id:eid});
+        if(p.snapchat&&window.snaptr) snaptr('track','ADD_CART',{item_ids:[productId],price:value,currency:currency,event_tag:eid});
+        if(p.ga4&&window.gtag) gtag('event','add_to_cart',{items:[{item_id:productId,item_name:productName,price:value}],value:value,currency:currency});
+        if(p.googleAdsAtc&&window.gtag) gtag('event','conversion',{send_to:p.googleAdsAtc,value:value,currency:currency});
         if(p.bing){window.uetq=window.uetq||[];window.uetq.push('event','add_to_cart',{ecomm_prodid:productId,revenue_value:value,currency:currency,event_id:eid});}
         if(p.twitter&&window.twq) twq('event','tw-atc-event',{value:value,currency:currency,num_items:1,event_id:eid});
     }
@@ -395,11 +397,15 @@ JS;
 		}
 
 		return <<<'JS'
+(function(){
+if(!window.jQuery||!window.gtag){return;}
+var jQuery=window.jQuery;
 jQuery(document.body).on('removed_from_cart',function(e,fragments,hash,btn){
     var name=btn&&btn.data('product_name')||'';
     var id=btn&&btn.data('product_id')||'';
     gtag('event','remove_from_cart',{items:[{item_id:String(id),item_name:name}]});
 });
+})();
 JS;
 	}
 
@@ -425,6 +431,8 @@ JS;
 
 		return <<<JS
 (function(){
+    if(!window.jQuery||!window.gtag){return;}
+    var jQuery=window.jQuery;
     var shippingFired=false,paymentFired=false;
     jQuery(document.body).on('updated_checkout',function(){
         if(!shippingFired&&jQuery('[name="shipping_method[0]"]:checked').length){
