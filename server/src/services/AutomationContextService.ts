@@ -236,25 +236,46 @@ export class AutomationContextService {
             },
             select: {
                 wooId: true,
-                permalink: true
+                permalink: true,
+                rawData: true
             }
         });
         const permalinkByWooId = new Map(products
             .filter((product) => product.permalink)
             .map((product) => [product.wooId, product.permalink as string]));
+        const categoryIdsByWooId = new Map(products
+            .map((product) => {
+                const rawData = this.asRecord(product.rawData);
+                const categories = Array.isArray(rawData?.categories) ? rawData.categories : [];
+                const categoryIds = categories
+                    .map((category: any) => category?.id ?? category?.term_id)
+                    .filter((id: unknown) => id !== undefined && id !== null && id !== '')
+                    .map(String);
 
-        if (permalinkByWooId.size === 0) return order;
+                return [product.wooId, categoryIds] as const;
+            })
+            .filter(([, categoryIds]) => categoryIds.length > 0));
+
+        if (permalinkByWooId.size === 0 && categoryIdsByWooId.size === 0) return order;
 
         const enrichedLineItems = lineItems.map((item) => {
             const productId = Number(item?.product_id || item?.productId);
             const permalink = permalinkByWooId.get(productId);
-            if (!permalink || item.permalink || item.product_permalink || item.productUrl || item.product_url) return item;
+            const categoryIds = categoryIdsByWooId.get(productId) || [];
+            const hasPermalink = item.permalink || item.product_permalink || item.productUrl || item.product_url;
+            const hasCategoryIds = Array.isArray(item.categoryIds) && item.categoryIds.length > 0;
+
+            if ((!permalink || hasPermalink) && (categoryIds.length === 0 || hasCategoryIds)) return item;
+
             return {
                 ...item,
-                permalink,
-                product_permalink: permalink,
-                productUrl: permalink,
-                product_url: permalink
+                ...(!hasPermalink && permalink ? {
+                    permalink,
+                    product_permalink: permalink,
+                    productUrl: permalink,
+                    product_url: permalink
+                } : {}),
+                ...(!hasCategoryIds && categoryIds.length > 0 ? { categoryIds } : {})
             };
         });
 

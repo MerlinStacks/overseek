@@ -119,6 +119,28 @@ export class AutomationConditionService {
             : '';
     }
 
+    private resolveLineItemCategoryIds(item: any): string[] {
+        const ids = new Set<string>();
+        const add = (value: unknown) => {
+            if (value !== undefined && value !== null && value !== '') ids.add(String(value));
+        };
+
+        if (Array.isArray(item?.categoryIds)) item.categoryIds.forEach(add);
+        if (Array.isArray(item?.category_ids)) item.category_ids.forEach(add);
+
+        if (Array.isArray(item?.categories)) {
+            item.categories.forEach((category: any) => {
+                if (category && typeof category === 'object') {
+                    add(category.id ?? category.term_id);
+                } else {
+                    add(category);
+                }
+            });
+        }
+
+        return Array.from(ids);
+    }
+
     private resolveFieldValue(fieldPath: string, context: any): unknown {
         if (!fieldPath) return undefined;
 
@@ -138,7 +160,7 @@ export class AutomationConditionService {
             case 'order.categoryId': {
                 const items = context.order?.line_items || context.order?.lineItems || context.line_items || [];
                 return Array.isArray(items)
-                    ? items.flatMap((item: any) => Array.isArray(item.categoryIds) ? item.categoryIds.map(String) : [])
+                    ? items.flatMap((item: any) => this.resolveLineItemCategoryIds(item))
                     : [];
             }
             case 'customer.tags':

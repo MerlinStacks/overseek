@@ -64,4 +64,43 @@ describe('AutomationContextService', () => {
             conditions: [{ field: 'order.shippingType', operator: 'eq', value: 'click_and_collect' }]
         }, context)).toBe(true);
     });
+
+    it('enriches order line items with product category IDs for category conditions', async () => {
+        vi.mocked(prisma.wooOrder.findUnique).mockResolvedValue({
+            dateCreated: new Date('2026-01-01T00:00:00.000Z'),
+            rawData: {
+                id: 123,
+                line_items: [{ product_id: 42, quantity: 1 }]
+            }
+        } as any);
+        vi.mocked(prisma.wooProduct.findMany).mockResolvedValue([
+            {
+                wooId: 42,
+                permalink: null,
+                rawData: { categories: [{ id: 25, name: 'Rings' }] }
+            }
+        ] as any);
+
+        const context = await automationContextService.buildContext({
+            accountId: 'account-1',
+            contextData: { orderId: 123 },
+            requiredFields: ['order.categoryId']
+        });
+
+        expect(prisma.wooProduct.findMany).toHaveBeenCalledWith({
+            where: {
+                accountId: 'account-1',
+                wooId: { in: [42] }
+            },
+            select: {
+                wooId: true,
+                permalink: true,
+                rawData: true
+            }
+        });
+        expect(context.order?.line_items?.[0]?.categoryIds).toEqual(['25']);
+        expect(automationConditionService.evaluate({
+            conditions: [{ field: 'order.categoryId', operator: 'eq', value: '25' }]
+        }, context)).toBe(true);
+    });
 });

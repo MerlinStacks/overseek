@@ -59,6 +59,21 @@ describe('AutomationConditionService', () => {
         expect(result).toBe(true);
     });
 
+    it('evaluates order category conditions from Woo category objects', () => {
+        const result = automationConditionService.evaluate({
+            matchType: 'all',
+            conditions: [
+                { field: 'order.categoryId', operator: 'eq', value: '25' }
+            ]
+        }, {
+            order: {
+                line_items: [{ product_id: 42, categories: [{ id: 25, name: 'Rings' }] }]
+            }
+        });
+
+        expect(result).toBe(true);
+    });
+
     it('evaluates click and collect shipping type conditions', () => {
         const result = automationConditionService.evaluate({
             matchType: 'all',
