@@ -99,6 +99,12 @@ export class MaintenanceScheduler {
             jobId: 'notification-cleanup-daily'
         });
         Logger.info('Scheduled Notification Cleanup (Daily at 03:35 UTC)');
+
+        await this.queue.add('review-delete-cleanup', {}, {
+            repeat: { pattern: '45 3 * * *' },
+            jobId: 'review-delete-cleanup-daily'
+        });
+        Logger.info('Scheduled Review Delete Cleanup (Daily at 03:45 UTC)');
     }
 
     /**
@@ -118,6 +124,7 @@ export class MaintenanceScheduler {
 
         this.dispatchEmailBodyCleanup().catch(e => Logger.error('Email Body Cleanup Error', { error: e }));
         this.dispatchNotificationCleanup().catch(e => Logger.error('Notification Cleanup Error', { error: e }));
+        this.dispatchReviewDeleteCleanup().catch(e => Logger.error('Review Delete Cleanup Error', { error: e }));
 
         // Run queue depth check on startup then every 5 minutes
         this.dispatchQueueDepthCheck().catch(e => Logger.error('Queue Depth Check Error', { error: e }));
@@ -529,6 +536,12 @@ export class MaintenanceScheduler {
         } catch (error) {
             Logger.error('[Scheduler] Notification cleanup failed', { error });
         }
+    }
+
+    static async dispatchReviewDeleteCleanup() {
+        const { ReviewService } = await import('../ReviewService');
+        const result = await new ReviewService().deleteExpiredModeratedReviews();
+        Logger.info('[Scheduler] Review delete cleanup complete', result);
     }
 
     private static getRetentionDays(envName: string, fallbackDays: number): number {

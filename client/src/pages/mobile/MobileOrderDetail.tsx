@@ -12,6 +12,9 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { OrderCOGSPanel } from '../../components/orders/OrderCOGSPanel';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 import { getSafeHref } from '../../utils/url';
+import { InvoiceGenerationIssueModal } from '../../components/invoicing/InvoiceGenerationIssueModal';
+import { generateCanonicalInvoice, InvoiceGenerationError } from '../../utils/invoiceGeneration';
+import type { InvoiceGenerationIssue } from '../../utils/invoiceGeneration';
 
 interface OrderApiLineItem {
     id: string;
@@ -100,9 +103,19 @@ export function MobileOrderDetail() {
     const [attribution, setAttribution] = useState<Attribution | null>(null);
     const [orderTags, setOrderTags] = useState<string[]>([]);
     const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+    const [invoiceIssue, setInvoiceIssue] = useState<InvoiceGenerationIssue | null>(null);
+    const [invoiceCooldownSeconds, setInvoiceCooldownSeconds] = useState(0);
     const [mobilePanelOrder, setMobilePanelOrder] = useState<MobilePanelId[]>(DEFAULT_MOBILE_PANEL_ORDER);
     const { hasPermission } = usePermissions();
     const canViewCogs = hasPermission('view_cogs');
+
+    useEffect(() => {
+        if (invoiceCooldownSeconds <= 0) return;
+        const timer = window.setInterval(() => {
+            setInvoiceCooldownSeconds((seconds) => Math.max(0, seconds - 1));
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, [invoiceCooldownSeconds]);
 
     const fetchAttribution = useCallback(async () => {
         if (!currentAccount || !token || !id) {
@@ -255,7 +268,7 @@ export function MobileOrderDetail() {
     const formatDate = (date: string) => formatDateTime(date);
     const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); if ('vibrate' in navigator) navigator.vibrate(10); };
 
-    const generateInvoice = async () => {
+    const generateInvoice = async (regenerateAttempt = false) => {
         if (!currentAccount || !token || !order) return;
         const orderId = Number(order.id);
         if (!Number.isFinite(orderId)) {
@@ -265,16 +278,23 @@ export function MobileOrderDetail() {
 
         setIsGeneratingInvoice(true);
         try {
-            const res = await fetch(`/api/invoices/orders/${encodeURIComponent(String(orderId))}/generate`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ forceRegenerate: true })
+            const { downloadUrl } = await generateCanonicalInvoice({
+                orderId,
+                token,
+                accountId: currentAccount.id,
+                forceRegenerate: true,
+                regenerateAttempt,
             });
-            const payload = await res.json().catch(() => null) as { artifact_download_url?: string; error?: string } | null;
-            if (!res.ok) throw new Error(payload?.error || 'Failed to generate invoice');
-            if (payload?.artifact_download_url) window.open(payload.artifact_download_url, '_blank', 'noopener,noreferrer');
+            window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+            setInvoiceIssue(null);
+            setInvoiceCooldownSeconds(0);
             toast.success('Invoice generated.');
         } catch (error) {
+            if (error instanceof InvoiceGenerationError && (error.issue.statusCode === 409 || error.issue.statusCode === 429)) {
+                setInvoiceIssue(error.issue);
+                setInvoiceCooldownSeconds(error.issue.retryAfterSeconds || (error.issue.statusCode === 429 ? 45 : 0));
+                return;
+            }
             const message = error instanceof Error ? error.message : 'Invoice generation failed';
             Logger.error('[MobileOrderDetail] Invoice generation failed', { error: message });
             toast.error(message);
@@ -464,7 +484,7 @@ export function MobileOrderDetail() {
                 {order.customer.email && <a href={`mailto:${order.customer.email}`} className="rounded-2xl bg-white px-3 py-3 text-center text-xs font-black text-slate-950 active:scale-95"><Mail size={15} className="mx-auto mb-1" />Email</a>}
                 {order.trackingItems[0]?.trackingUrl && <a href={getSafeHref(order.trackingItems[0].trackingUrl)} target="_blank" rel="noopener noreferrer" className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white active:scale-95"><Truck size={15} className="mx-auto mb-1" />Track</a>}
                 {order.trackingItems[0]?.trackingNumber && <button onClick={() => copyToClipboard(order.trackingItems[0].trackingNumber)} className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white active:scale-95"><Copy size={15} className="mx-auto mb-1" />Copy</button>}
-                <button onClick={generateInvoice} disabled={isGeneratingInvoice} className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white disabled:opacity-50 active:scale-95"><FileText size={15} className="mx-auto mb-1" />{isGeneratingInvoice ? 'Wait' : 'Invoice'}</button>
+                <button onClick={() => void generateInvoice()} disabled={isGeneratingInvoice} className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white disabled:opacity-50 active:scale-95"><FileText size={15} className="mx-auto mb-1" />{isGeneratingInvoice ? 'Wait' : 'Invoice'}</button>
             </div>
 
             <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950 shadow-lg shadow-black/20">
@@ -604,6 +624,13 @@ export function MobileOrderDetail() {
                 </div>,
                 document.body
             )}
+            <InvoiceGenerationIssueModal
+                issue={invoiceIssue}
+                isRegenerating={isGeneratingInvoice}
+                cooldownSeconds={invoiceCooldownSeconds}
+                onClose={() => setInvoiceIssue(null)}
+                onRegenerate={() => void generateInvoice(true)}
+            />
         </div>
     );
 }

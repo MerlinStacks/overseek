@@ -5,7 +5,7 @@
  * State management delegated to useOrders hook.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, RefreshCw, Search, Tag, TrendingUp, X, Eye, ShoppingBag, CheckCircle2, FileText } from 'lucide-react';
 import { formatDate, formatTime, formatCurrency } from '../utils/format';
@@ -21,6 +21,9 @@ import { RelativeTime } from '../components/ui/RelativeTime';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Logger } from '../utils/logger';
+import { InvoiceGenerationIssueModal } from '../components/invoicing/InvoiceGenerationIssueModal';
+import { generateCanonicalInvoice, InvoiceGenerationError } from '../utils/invoiceGeneration';
+import type { InvoiceGenerationIssue } from '../utils/invoiceGeneration';
 
 export function OrdersPage() {
     const { token } = useAuth();
@@ -37,6 +40,16 @@ export function OrdersPage() {
         handleSync, handleGeneratePicklist, removeTag, handleMarkOrderCompleted
     } = useOrders();
     const [busyActionOrderIds, setBusyActionOrderIds] = useState<Record<number, { completing?: boolean; invoicing?: boolean }>>({});
+    const [invoiceIssue, setInvoiceIssue] = useState<InvoiceGenerationIssue | null>(null);
+    const [invoiceCooldownSeconds, setInvoiceCooldownSeconds] = useState(0);
+
+    useEffect(() => {
+        if (invoiceCooldownSeconds <= 0) return;
+        const timer = window.setInterval(() => {
+            setInvoiceCooldownSeconds((seconds) => Math.max(0, seconds - 1));
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, [invoiceCooldownSeconds]);
 
     const setOrderActionState = useCallback((orderId: number, key: 'completing' | 'invoicing', value: boolean) => {
         setBusyActionOrderIds(prev => ({
@@ -53,30 +66,27 @@ export function OrdersPage() {
         setOrderActionState(orderId, 'completing', false);
     }, [handleMarkOrderCompleted, setOrderActionState, toast]);
 
-    const handleQuickInvoice = useCallback(async (orderId: number) => {
+    const handleQuickInvoice = useCallback(async (orderId: number, regenerateAttempt = false) => {
         if (!token || !currentAccount?.id) return;
         setOrderActionState(orderId, 'invoicing', true);
         try {
-            const res = await fetch(`/api/invoices/orders/${encodeURIComponent(String(orderId))}/generate`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ forceRegenerate: true })
+            const { downloadUrl } = await generateCanonicalInvoice({
+                orderId,
+                token,
+                accountId: currentAccount.id,
+                forceRegenerate: true,
+                regenerateAttempt,
             });
-
-            const payload = await res.json();
-            if (!res.ok) {
-                throw new Error(payload?.error || 'Failed to generate canonical invoice');
-            }
-
-            const downloadUrl = String(payload?.artifact_download_url || '');
-            if (!downloadUrl) throw new Error('Canonical invoice download URL missing');
             if (!openSafeUrl(downloadUrl)) throw new Error('Invalid canonical invoice download URL');
+            setInvoiceIssue(null);
+            setInvoiceCooldownSeconds(0);
             toast.success(`Invoice generated for order #${orderId}`);
         } catch (error) {
+            if (error instanceof InvoiceGenerationError && (error.issue.statusCode === 409 || error.issue.statusCode === 429)) {
+                setInvoiceIssue(error.issue);
+                setInvoiceCooldownSeconds(error.issue.retryAfterSeconds || (error.issue.statusCode === 429 ? 45 : 0));
+                return;
+            }
             const message = error instanceof Error ? error.message : String(error);
             Logger.error('Quick invoice generation failed', { error: message, orderId });
             toast.error(`Failed to generate invoice for #${orderId}`);
@@ -91,6 +101,13 @@ export function OrdersPage() {
                 orderId={selectedOrderId}
                 isOpen={!!selectedOrderId}
                 onClose={() => setSelectedOrderId(null)}
+            />
+            <InvoiceGenerationIssueModal
+                issue={invoiceIssue}
+                isRegenerating={invoiceIssue ? busyActionOrderIds[invoiceIssue.orderId]?.invoicing === true : false}
+                cooldownSeconds={invoiceCooldownSeconds}
+                onClose={() => setInvoiceIssue(null)}
+                onRegenerate={() => invoiceIssue && void handleQuickInvoice(invoiceIssue.orderId, true)}
             />
 
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">

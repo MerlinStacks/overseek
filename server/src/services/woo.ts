@@ -358,6 +358,12 @@ export class WooService {
         }
     }
 
+    async deleteReview(reviewId: number) {
+        if (this.isDemo) return { success: true, deleted: true, review: { id: reviewId } };
+        const response = await this.requestWithRetry('delete', `products/reviews/${reviewId}`, { force: true });
+        return { success: true, review: response.data };
+    }
+
     async createReview(data: {
         product_id: number;
         review: string;

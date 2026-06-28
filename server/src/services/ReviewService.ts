@@ -1,5 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { WooService } from './woo';
+import { Logger } from '../utils/logger';
 
 export class ReviewServiceError extends Error {
     constructor(public code: string, message: string) {
@@ -9,6 +10,9 @@ export class ReviewServiceError extends Error {
 }
 
 export class ReviewService {
+    private static readonly DELETE_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+    private static readonly DELETE_STATUSES = new Set(['spam', 'trash']);
+    private static readonly DELETE_MARKED_AT_KEY = 'overseekDeletionMarkedAt';
 
     private getRawData(value: unknown): Record<string, unknown> {
         return value && typeof value === 'object' && !Array.isArray(value)
@@ -18,6 +22,24 @@ export class ReviewService {
 
     private getReviewReplies(rawData: Record<string, unknown>): unknown[] {
         return Array.isArray(rawData.replies) ? rawData.replies : [];
+    }
+
+    private withDeletionMarker(rawData: Record<string, unknown>, status: string | undefined, previousStatus?: string): Record<string, unknown> {
+        if (!status) return rawData;
+
+        if (!ReviewService.DELETE_STATUSES.has(status)) {
+            const { [ReviewService.DELETE_MARKED_AT_KEY]: _removed, ...rest } = rawData;
+            return rest;
+        }
+
+        const existing = typeof rawData[ReviewService.DELETE_MARKED_AT_KEY] === 'string'
+            ? rawData[ReviewService.DELETE_MARKED_AT_KEY]
+            : undefined;
+
+        return {
+            ...rawData,
+            [ReviewService.DELETE_MARKED_AT_KEY]: previousStatus === status && existing ? existing : new Date().toISOString()
+        };
     }
 
     private mergePostedReply(rawData: Record<string, unknown>, result: any, replyText: string, author: string) {
@@ -207,7 +229,11 @@ export class ReviewService {
                 ...(updateData.status ? { status: updateData.status } : {}),
                 ...(updateData.content ? { content: updateData.content } : {}),
                 ...(updateData.rating ? { rating: updateData.rating } : {}),
-                ...(result?.review ? { rawData: { ...(review.rawData as any), ...result.review } } : {})
+                rawData: this.withDeletionMarker(
+                    { ...this.getRawData(review.rawData), ...(result?.review || {}) },
+                    updateData.status,
+                    review.status
+                ) as any
             }
         });
 
@@ -226,7 +252,7 @@ export class ReviewService {
 
         const reviews = await prisma.wooReview.findMany({
             where: { accountId, id: { in: uniqueReviewIds } },
-            select: { id: true, wooId: true }
+            select: { id: true, wooId: true, rawData: true }
         });
 
         if (reviews.length !== uniqueReviewIds.length) {
@@ -247,9 +273,86 @@ export class ReviewService {
                 where: { accountId, id: { in: successfulIds } },
                 data: { status: normalizedStatus }
             });
+
+            await Promise.all(reviews
+                .filter((review) => successfulIds.includes(review.id))
+                .map((review) => prisma.wooReview.update({
+                    where: { id: review.id },
+                    data: {
+                        rawData: this.withDeletionMarker(
+                            this.getRawData((review as { rawData?: unknown }).rawData),
+                            normalizedStatus
+                        ) as any
+                    }
+                }))
+            );
         }
 
         return { success: failed === 0, updated: successfulIds.length, failed, status: normalizedStatus };
+    }
+
+    async deleteExpiredModeratedReviews() {
+        const cutoff = new Date(Date.now() - ReviewService.DELETE_AFTER_MS);
+        const reviews = await prisma.wooReview.findMany({
+            where: {
+                status: { in: ['spam', 'trash'] }
+            },
+            select: { id: true, accountId: true, wooId: true, status: true, updatedAt: true, rawData: true },
+            orderBy: { updatedAt: 'asc' },
+            take: 500
+        });
+
+        let deleted = 0;
+        let failed = 0;
+        const wooByAccount = new Map<string, WooService>();
+
+        for (const review of reviews) {
+            const rawData = this.getRawData(review.rawData);
+            const markedAtValue = rawData[ReviewService.DELETE_MARKED_AT_KEY];
+            const markedAt = typeof markedAtValue === 'string' ? new Date(markedAtValue) : review.updatedAt;
+            if (Number.isNaN(markedAt.getTime()) || markedAt > cutoff) {
+                continue;
+            }
+
+            try {
+                let woo = wooByAccount.get(review.accountId);
+                if (!woo) {
+                    woo = await WooService.forAccount(review.accountId);
+                    wooByAccount.set(review.accountId, woo);
+                }
+
+                await woo.deleteReview(review.wooId);
+                await prisma.wooReview.delete({ where: { id: review.id } });
+                deleted++;
+            } catch (error: any) {
+                const status = error?.response?.status || error?.status;
+                if (status === 404) {
+                    await prisma.wooReview.delete({ where: { id: review.id } });
+                    deleted++;
+                    continue;
+                }
+
+                failed++;
+                Logger.warn('[ReviewService] Failed to delete expired moderated review', {
+                    reviewId: review.id,
+                    wooId: review.wooId,
+                    accountId: review.accountId,
+                    status: review.status,
+                    error: error?.message || error
+                });
+            }
+        }
+
+        if (reviews.length > 0) {
+            Logger.info('[ReviewService] Expired moderated review cleanup complete', {
+                checked: reviews.length,
+                deleted,
+                failed,
+                cutoff: cutoff.toISOString()
+            });
+        }
+
+        return { checked: reviews.length, deleted, failed };
     }
 
     /**

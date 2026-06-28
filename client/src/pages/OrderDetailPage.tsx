@@ -21,6 +21,9 @@ import { useToast } from '../context/ToastContext';
 import { openSafeUrl } from '../utils/url';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 import { ShipmentMonitoringPanel } from '../components/shipping/ShipmentMonitoringPanel';
+import { InvoiceGenerationIssueModal } from '../components/invoicing/InvoiceGenerationIssueModal';
+import { generateCanonicalInvoice, InvoiceGenerationError } from '../utils/invoiceGeneration';
+import type { InvoiceGenerationIssue } from '../utils/invoiceGeneration';
 
 interface Attribution {
     firstTouchSource: string;
@@ -97,6 +100,8 @@ export function OrderDetailPage() {
     const [error, setError] = useState('');
     const [showRaw, setShowRaw] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [invoiceIssue, setInvoiceIssue] = useState<InvoiceGenerationIssue | null>(null);
+    const [invoiceCooldownSeconds, setInvoiceCooldownSeconds] = useState(0);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [attribution, setAttribution] = useState<Attribution | null>(null);
     const [sidebarPanelOrder, setSidebarPanelOrder] = useState<SidebarPanelId[]>(DEFAULT_SIDEBAR_PANEL_ORDER);
@@ -108,6 +113,14 @@ export function OrderDetailPage() {
     const [statusToApply, setStatusToApply] = useState('');
     const [orderStatusOptions, setOrderStatusOptions] = useState<string[]>([]);
     const panelRefs = useRef<Partial<Record<SidebarPanelId, HTMLDivElement | null>>>({});
+
+    useEffect(() => {
+        if (invoiceCooldownSeconds <= 0) return;
+        const timer = window.setInterval(() => {
+            setInvoiceCooldownSeconds((seconds) => Math.max(0, seconds - 1));
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, [invoiceCooldownSeconds]);
 
 
 
@@ -230,29 +243,30 @@ export function OrderDetailPage() {
             typeof (entry as { value?: unknown }).value === 'string'
         ));
 
-    const handleGenerateInvoice = async () => {
+    const handleGenerateInvoice = async (regenerateAttempt = false) => {
         if (!order || !token || !currentAccount?.id) return;
         setIsGenerating(true);
         try {
             const orderId = Number(order.id || order.wooId);
             if (!Number.isFinite(orderId)) throw new Error('Invalid order ID');
 
-            const res = await fetch(`/api/invoices/orders/${encodeURIComponent(String(orderId))}/generate`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ forceRegenerate: true })
+            const { downloadUrl } = await generateCanonicalInvoice({
+                orderId,
+                token,
+                accountId: currentAccount.id,
+                forceRegenerate: true,
+                regenerateAttempt,
             });
-            const payload = await res.json();
-            if (!res.ok) throw new Error(payload?.error || 'Failed to generate canonical invoice');
-            const downloadUrl = String(payload?.artifact_download_url || '');
-            if (!downloadUrl) throw new Error('Canonical invoice download URL missing');
             if (!openSafeUrl(downloadUrl)) throw new Error('Invalid canonical invoice download URL');
+            setInvoiceIssue(null);
+            setInvoiceCooldownSeconds(0);
 
         } catch (e: unknown) {
+            if (e instanceof InvoiceGenerationError && (e.issue.statusCode === 409 || e.issue.statusCode === 429)) {
+                setInvoiceIssue(e.issue);
+                setInvoiceCooldownSeconds(e.issue.retryAfterSeconds || (e.issue.statusCode === 429 ? 45 : 0));
+                return;
+            }
             const msg = e instanceof Error ? e.message : String(e);
             Logger.error('Invoice generation error', { error: msg });
             toast.error(`Failed to generate invoice: ${msg}`);
@@ -649,7 +663,7 @@ export function OrderDetailPage() {
                         ))}
                     </select>
                     <button
-                        onClick={handleGenerateInvoice}
+                        onClick={() => void handleGenerateInvoice()}
                         disabled={isGenerating}
                         className="btn-white flex items-center gap-2"
                     >
@@ -850,6 +864,13 @@ export function OrderDetailPage() {
                     <img src={selectedImage || ''} alt="Preview" className="max-w-full max-h-[80vh] object-contain" />
                 </div>
             </Modal>
+            <InvoiceGenerationIssueModal
+                issue={invoiceIssue}
+                isRegenerating={isGenerating}
+                cooldownSeconds={invoiceCooldownSeconds}
+                onClose={() => setInvoiceIssue(null)}
+                onRegenerate={() => void handleGenerateInvoice(true)}
+            />
         </div>
     );
 }

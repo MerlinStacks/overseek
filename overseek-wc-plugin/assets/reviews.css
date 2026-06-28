@@ -105,11 +105,27 @@
 }
 
 .os-review-stars {
+	position: relative;
 	display: inline-block;
-	color: var(--os-review-star-color, #f59e0b);
+	color: #cbd5e1;
 	font-size: 18px;
 	letter-spacing: 0.06em;
 	line-height: 1;
+}
+
+.os-review-stars__base,
+.os-review-stars__fill {
+	display: block;
+}
+
+.os-review-stars__fill {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: var(--os-review-stars-fill, 0%);
+	overflow: hidden;
+	color: var(--os-review-star-color, #f59e0b);
+	white-space: nowrap;
 }
 
 .os-review-stars-summary,
@@ -144,6 +160,7 @@
 
 .os-reviews-list--slider {
 	display: flex;
+	align-items: flex-start;
 	grid-template-columns: none;
 	overflow-x: auto;
 	scrollbar-width: none;
@@ -759,8 +776,18 @@ video.os-review-media {
 		grid-template-columns: 1fr;
 	}
 
+	.os-reviews-list--slider {
+		gap: 14px;
+	}
+
+	.os-reviews-list--slider .os-review-card {
+		flex-basis: min(86%, 340px);
+		padding: 18px;
+	}
+
 	.os-review-card__header {
 		flex-direction: column;
+		gap: 10px;
 	}
 
 	.os-review-row {

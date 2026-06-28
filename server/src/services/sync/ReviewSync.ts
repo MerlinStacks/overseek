@@ -201,9 +201,10 @@ export class ReviewSync extends BaseSync {
             const batchWooIds = reviews.map(r => r.id);
             const existingReviews = await prisma.wooReview.findMany({
                 where: { wooId: { in: batchWooIds }, accountId },
-                select: { wooId: true }
+                select: { wooId: true, status: true, rawData: true }
             });
             const existingWooIds = new Set(existingReviews.map(r => r.wooId));
+            const existingReviewByWooId = new Map(existingReviews.map(r => [r.wooId, r]));
 
             for (let reviewIndex = 0; reviewIndex < reviews.length; reviewIndex++) {
                 const r = reviews[reviewIndex];
@@ -303,6 +304,16 @@ export class ReviewSync extends BaseSync {
                 // EDGE CASE: Track unmatched reviews for manual review
                 // This helps identify reviews that couldn't be linked to customers/orders
                 const matchStatus = wooOrderId ? 'matched' : 'unmatched';
+                const existingReview = existingReviewByWooId.get(r.id);
+                const existingRawData = existingReview?.rawData && typeof existingReview.rawData === 'object' && !Array.isArray(existingReview.rawData)
+                    ? existingReview.rawData as Record<string, unknown>
+                    : {};
+                const deletionMarkedAt = typeof existingRawData.overseekDeletionMarkedAt === 'string'
+                    ? existingRawData.overseekDeletionMarkedAt
+                    : undefined;
+                const rawData = ['spam', 'trash'].includes(r.status) && existingReview?.status === r.status && deletionMarkedAt
+                    ? { ...(r as any), overseekDeletionMarkedAt: deletionMarkedAt }
+                    : r as any;
                 if (!wooCustomerId && reviewerEmail) {
                     Logger.debug('[ReviewSync] Orphaned review - no customer match', {
                         accountId,
@@ -321,7 +332,7 @@ export class ReviewSync extends BaseSync {
                         status: r.status,
                         content: r.review,
                         rating: r.rating,
-                        rawData: r as any,
+                        rawData,
                         reviewerEmail: reviewerEmail || null,
                         wooCustomerId,
                         wooOrderId,
@@ -338,7 +349,7 @@ export class ReviewSync extends BaseSync {
                         status: r.status,
                         // Use date_created_gmt for accurate UTC timestamp
                         dateCreated: new Date((r as any).date_created_gmt || r.date_created),
-                        rawData: r as any,
+                        rawData,
                         reviewerEmail: reviewerEmail || null,
                         wooCustomerId,
                         wooOrderId,

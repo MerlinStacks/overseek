@@ -48,6 +48,22 @@ function buildArtifactDownloadUrl(request: FastifyRequest, artifactId: string): 
 }
 
 const invoiceService = new InvoiceService();
+const REGENERATE_COOLDOWN_SECONDS = 45;
+const regenerateAttempts = new Map<string, number>();
+
+function getRegenerateRetryAfterSeconds(accountId: string, orderId: string): number {
+    const key = `${accountId}:${orderId}`;
+    const lastAttemptAt = regenerateAttempts.get(key) || 0;
+    const elapsedMs = Date.now() - lastAttemptAt;
+    const cooldownMs = REGENERATE_COOLDOWN_SECONDS * 1000;
+
+    if (elapsedMs < cooldownMs) {
+        return Math.ceil((cooldownMs - elapsedMs) / 1000);
+    }
+
+    regenerateAttempts.set(key, Date.now());
+    return 0;
+}
 
 // Ensure invoice images directory exists
 const invoiceImagesDir = path.join(__dirname, '../../uploads/invoices');
@@ -197,12 +213,27 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.post<{ Params: { orderId: string }; Body: { forceRegenerate?: boolean } }>('/orders/:orderId/generate', async (request, reply) => {
+    fastify.post<{ Params: { orderId: string }; Body: { forceRegenerate?: boolean; regenerateAttempt?: boolean } }>('/orders/:orderId/generate', async (request, reply) => {
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
         const orderId = String(request.params.orderId || '').trim();
         if (!orderId) return reply.code(400).send({ error: 'Order ID required' });
+
+        if (request.body?.regenerateAttempt === true) {
+            const retryAfterSeconds = getRegenerateRetryAfterSeconds(accountId, orderId);
+            if (retryAfterSeconds > 0) {
+                return reply
+                    .header('Retry-After', String(retryAfterSeconds))
+                    .code(429)
+                    .send({
+                        success: false,
+                        status: 'rate_limited',
+                        error: `Please wait ${retryAfterSeconds} seconds before regenerating this invoice again.`,
+                        retry_after_seconds: retryAfterSeconds,
+                    });
+            }
+        }
 
         try {
             const artifact = await canonicalInvoiceService.getOrQueue(accountId, orderId, {
@@ -223,11 +254,16 @@ const invoicesRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             if (settled?.status === 'failed') {
+                const retryAfterSeconds = request.body?.regenerateAttempt === true ? REGENERATE_COOLDOWN_SECONDS : undefined;
+                if (retryAfterSeconds) {
+                    reply.header('Retry-After', String(retryAfterSeconds));
+                }
                 return reply.code(409).send({
                     success: false,
                     status: 'failed',
                     invoice_ref: settled.id,
                     error: settled.errorMessage || 'Invoice generation failed',
+                    ...(retryAfterSeconds ? { retry_after_seconds: retryAfterSeconds } : {}),
                 });
             }
 

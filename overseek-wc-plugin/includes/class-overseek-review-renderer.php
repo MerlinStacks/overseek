@@ -362,13 +362,12 @@ class OverSeek_Review_Renderer {
 	 */
 	private static function render_stars( float $rating ): string {
 		$rating = max( 0.0, min( 5.0, $rating ) );
-		$full   = (int) floor( $rating );
-		$stars  = str_repeat( '★', $full ) . str_repeat( '☆', 5 - $full );
+		$fill   = round( ( $rating / 5 ) * 100, 1 );
 
 		return sprintf(
-			'<span class="os-review-stars" aria-label="%s">%s</span>',
+			'<span class="os-review-stars" aria-label="%s" style="--os-review-stars-fill:%s%%"><span class="os-review-stars__base" aria-hidden="true">★★★★★</span><span class="os-review-stars__fill" aria-hidden="true">★★★★★</span></span>',
 			esc_attr( sprintf( 'Rated %.1f out of 5', $rating ) ),
-			esc_html( $stars )
+			esc_attr( (string) $fill )
 		);
 	}
 

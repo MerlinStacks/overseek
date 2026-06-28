@@ -53,6 +53,7 @@ class OverSeek_API {
 	private const MAX_BOT_PATTERNS = 1000;
 	private const MAX_BOT_PATTERN_LENGTH = 200;
 	private const MAX_BOT_BLOCK_HTML_LENGTH = 100000;
+	private const INVOICE_CUSTOMER_REGENERATE_COOLDOWN = 45;
 
 	/**
 	 * Register REST API routes.
@@ -496,13 +497,26 @@ class OverSeek_API {
 			}
 		}
 
+		$customer_retry_after = 0;
 		if ( method_exists( $service, 'try_generate_invoice_now' ) ) {
-			$force_regenerate = (string) $request->get_param( 'force_regenerate' ) === '1'
+			$customer_regenerate = (string) $request->get_param( 'regenerate_invoice' ) === '1';
+			$admin_regenerate    = (string) $request->get_param( 'force_regenerate' ) === '1'
 				&& get_current_user_id() > 0
 				&& current_user_can( 'manage_woocommerce' );
+			$force_regenerate    = $admin_regenerate || $customer_regenerate;
 
 			if ( $force_regenerate ) {
+				if ( $customer_regenerate && ! $admin_regenerate ) {
+					$retry_after = $this->get_invoice_customer_regenerate_retry_after( $order_id );
+					if ( $retry_after > 0 ) {
+						$this->render_invoice_recovery_page( $order, 'rate_limited', 'Please wait a moment before regenerating this invoice again.', $retry_after, 429 );
+				}
+				}
+
 				$service->try_generate_invoice_now( $order_id, 30, true, true );
+				if ( $customer_regenerate && ! $admin_regenerate ) {
+					$customer_retry_after = self::INVOICE_CUSTOMER_REGENERATE_COOLDOWN;
+				}
 				$available = $service->invoice_is_available( $order_id );
 				$status = (string) $order->get_meta( '_overseek_invoice_status' );
 				if ( $status === '' ) {
@@ -512,7 +526,7 @@ class OverSeek_API {
 		}
 
 		if ( $status === 'pending' ) {
-			return $this->integration_error( 'invoice_pending', 'Invoice is not ready yet.', 409 );
+			$this->render_invoice_recovery_page( $order, 'pending', 'Invoice is still being prepared. You can try generating it again now.', $customer_retry_after, 409 );
 		}
 
 		if ( $status === 'failed' ) {
@@ -522,7 +536,7 @@ class OverSeek_API {
 			$failure_message = is_array( $payload ) && isset( $payload['error_message'] ) && is_string( $payload['error_message'] ) && $payload['error_message'] !== ''
 				? $payload['error_message']
 				: 'Invoice generation failed.';
-			return $this->integration_error( 'invoice_failed', $failure_message, 409 );
+			$this->render_invoice_recovery_page( $order, 'failed', $failure_message, $customer_retry_after, 409 );
 		}
 
 		if ( ! $available ) {
@@ -542,6 +556,92 @@ class OverSeek_API {
 		header( 'Pragma: no-cache' );
 		header( 'Expires: 0' );
 		readfile( $file_path );
+		exit;
+	}
+
+	/**
+	 * Return customer regenerate cooldown, or reserve a new regenerate slot.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return int Seconds remaining before retry is allowed.
+	 */
+	private function get_invoice_customer_regenerate_retry_after( int $order_id ): int {
+		$key     = 'overseek_invoice_customer_regenerate_' . $order_id;
+		$expires = (int) get_transient( $key );
+		$now     = time();
+
+		if ( $expires > $now ) {
+			return $expires - $now;
+		}
+
+		set_transient( $key, $now + self::INVOICE_CUSTOMER_REGENERATE_COOLDOWN, self::INVOICE_CUSTOMER_REGENERATE_COOLDOWN );
+		return 0;
+	}
+
+	/**
+	 * Render a friendly invoice recovery page for storefront invoice links.
+	 *
+	 * @param WC_Order $order Order object.
+	 * @param string   $state Recovery state.
+	 * @param string   $message Customer-facing message.
+	 * @param int      $retry_after Seconds remaining for retry.
+	 * @param int      $status_code HTTP status code.
+	 * @return void
+	 */
+	private function render_invoice_recovery_page( WC_Order $order, string $state, string $message, int $retry_after = 0, int $status_code = 409 ): void {
+		$order_id       = (int) $order->get_id();
+		$order_number   = (string) $order->get_order_number();
+		$retry_url      = add_query_arg( 'regenerate_invoice', '1', rest_url( 'overseek/v1/invoices/download' ) );
+		$invoice_token  = isset( $_GET['invoice_token'] ) ? sanitize_text_field( wp_unslash( $_GET['invoice_token'] ) ) : '';
+		$order_key      = isset( $_GET['order_key'] ) ? sanitize_text_field( wp_unslash( $_GET['order_key'] ) ) : '';
+		$retry_url      = add_query_arg( 'order_id', $order_id, $retry_url );
+
+		if ( $invoice_token !== '' ) {
+			$retry_url = add_query_arg( 'invoice_token', $invoice_token, $retry_url );
+		}
+
+		if ( $order_key !== '' ) {
+			$retry_url = add_query_arg( 'order_key', $order_key, $retry_url );
+		}
+
+		$title       = $state === 'pending' ? __( 'Your invoice is almost ready', 'overseek' ) : __( 'We could not open this invoice yet', 'overseek' );
+		$button_text = $retry_after > 0
+			? sprintf( /* translators: %d: seconds remaining. */ __( 'Try again in %ds', 'overseek' ), $retry_after )
+			: __( 'Regenerate invoice', 'overseek' );
+
+		status_header( $status_code );
+		nocache_headers();
+		header( 'Content-Type: text/html; charset=' . get_option( 'blog_charset' ) );
+		?>
+		<!doctype html>
+		<html <?php language_attributes(); ?>>
+		<head>
+			<meta charset="<?php bloginfo( 'charset' ); ?>">
+			<meta name="viewport" content="width=device-width, initial-scale=1">
+			<title><?php echo esc_html( $title ); ?></title>
+			<style>
+				body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top right,#fde68a,transparent 30%),linear-gradient(135deg,#fff7ed,#ffffff 45%,#f8fafc);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#0f172a;padding:24px;box-sizing:border-box}.os-card{width:min(640px,100%);border:1px solid rgba(251,191,36,.45);border-radius:28px;background:rgba(255,255,255,.86);box-shadow:0 30px 80px rgba(15,23,42,.14);backdrop-filter:blur(18px);overflow:hidden}.os-inner{padding:34px}.os-kicker{display:inline-flex;align-items:center;border-radius:999px;background:#fffbeb;color:#92400e;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:8px 12px}.os-icon{width:60px;height:60px;border-radius:20px;background:#fef3c7;color:#b45309;display:grid;place-items:center;font-size:30px;margin:22px 0 16px}.os-title{font-size:clamp(28px,5vw,42px);line-height:1.02;margin:0 0 14px;font-weight:900;letter-spacing:-.04em}.os-message{font-size:16px;line-height:1.65;color:#475569;margin:0}.os-detail{margin:22px 0 0;padding:16px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;color:#334155;font-size:14px}.os-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}.os-button{appearance:none;border:0;border-radius:14px;background:#f59e0b;color:#fff;text-decoration:none;font-weight:900;padding:14px 18px;box-shadow:0 12px 28px rgba(245,158,11,.24)}.os-button[aria-disabled="true"]{opacity:.62;pointer-events:none}.os-secondary{color:#475569;text-decoration:none;font-weight:700;padding:14px 4px}@media(max-width:520px){.os-inner{padding:24px}.os-actions{display:grid}.os-secondary{text-align:center}}
+			</style>
+		</head>
+		<body>
+			<main class="os-card">
+				<div class="os-inner">
+					<span class="os-kicker"><?php esc_html_e( 'Invoice recovery', 'overseek' ); ?></span>
+					<div class="os-icon" aria-hidden="true">!</div>
+					<h1 class="os-title"><?php echo esc_html( $title ); ?></h1>
+					<p class="os-message"><?php echo esc_html( $message ); ?></p>
+					<div class="os-detail">
+						<?php echo esc_html( sprintf( /* translators: %s: order number. */ __( 'Order #%s is safe. We just need to rebuild the PDF before it can be downloaded.', 'overseek' ), $order_number ) ); ?>
+					</div>
+					<div class="os-actions">
+						<a class="os-button" href="<?php echo esc_url( $retry_url ); ?>" <?php echo $retry_after > 0 ? 'aria-disabled="true"' : ''; ?>><?php echo esc_html( $button_text ); ?></a>
+						<a class="os-secondary" href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) ); ?>"><?php esc_html_e( 'Back to my account', 'overseek' ); ?></a>
+					</div>
+				</div>
+			</main>
+		</body>
+		</html>
+		<?php
 		exit;
 	}
 
