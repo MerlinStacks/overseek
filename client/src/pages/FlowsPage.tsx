@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import { AutomationsList } from '../components/marketing/AutomationsList';
 import { FlowBuilder } from '../components/marketing/FlowBuilder';
 import { getActionLabel, getTriggerLabel } from '../components/marketing/flowNodeUtils';
+import { validateFlow } from '../components/marketing/flowValidation';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 import { Modal } from '../components/ui/Modal';
 import { Toast, ToastType } from '../components/ui/Toast';
@@ -142,6 +143,10 @@ function getDelayNodeError(config: Record<string, unknown>): string | null {
         return 'has an invalid time unit';
     }
 
+    if (config.delayUntilTimeEnabled || config.delayUntilDaysEnabled || config.useContactTimezone || config.jumpIfPassed) {
+        return 'uses advanced delay constraints that are not supported yet';
+    }
+
     return null;
 }
 
@@ -149,6 +154,10 @@ function getInvalidNodeIds(flow: FlowDefinition): string[] {
     const nodes = flow.nodes || [];
     const edges = flow.edges || [];
     const invalid = new Set<string>();
+    const blockingIssues = validateFlow(nodes, edges).filter((issue) => issue.severity === 'blocking');
+    blockingIssues.forEach((issue) => {
+        if (issue.nodeId) invalid.add(issue.nodeId);
+    });
     const nodeIds = new Set(nodes.map((node) => node.id));
     const triggerNodes = nodes.filter((node) => String(node.type).toLowerCase() === 'trigger');
 
@@ -1220,6 +1229,19 @@ export function FlowsPage() {
         if (!editingItem || !currentAccount || !editingFlowData || typeof editingFlowData.isActive !== 'boolean') return;
 
         const nextIsActive = !editingFlowData.isActive;
+
+        if (nextIsActive) {
+            const currentFlow = latestFlowRef.current || editingFlowData.flowDefinition || { nodes: [], edges: [] };
+            const blockingIssues = validateFlow(currentFlow.nodes || [], currentFlow.edges || []).filter((issue) => issue.severity === 'blocking');
+            if (blockingIssues.length > 0) {
+                setInvalidNodeIds(getInvalidNodeIds(currentFlow));
+                setToastMessage(blockingIssues[0]?.message || 'Fix blocking flow issues before enabling.');
+                setToastType('error');
+                setToastVisible(true);
+                return;
+            }
+        }
+
         setIsUpdatingStatus(true);
 
         try {
@@ -1234,7 +1256,8 @@ export function FlowsPage() {
             });
 
             if (!res.ok) {
-                throw new Error('Failed to update flow status');
+                const errorData = await res.json().catch(() => null);
+                throw new Error(errorData?.error || 'Failed to update flow status');
             }
 
             setEditingFlowData((prev) => prev ? { ...prev, isActive: nextIsActive } : prev);
@@ -1243,7 +1266,7 @@ export function FlowsPage() {
             setToastVisible(true);
         } catch (error) {
             Logger.error('Failed to update flow status', { error });
-            setToastMessage('Failed to update flow status');
+            setToastMessage(error instanceof Error ? error.message : 'Failed to update flow status');
             setToastType('error');
             setToastVisible(true);
         } finally {

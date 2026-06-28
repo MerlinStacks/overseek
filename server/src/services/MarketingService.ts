@@ -15,6 +15,7 @@ import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { campaignTrackingService } from './CampaignTrackingService';
 import { automationAnalyticsService } from './AutomationAnalyticsService';
 import { QueueFactory, QUEUES } from './queue/QueueFactory';
+import { assertAutomationFlowCanRun } from './automation/FlowValidation';
 
 export class MarketingService {
     private segmentService: SegmentService;
@@ -723,6 +724,10 @@ export class MarketingService {
                     ? isActive
                     : existing.isActive;
 
+            if (nextIsActive) {
+                assertAutomationFlowCanRun(flowDefinition || existing.flowDefinition as any);
+            }
+
             return prisma.marketingAutomation.update({
                 where: { id },
                 data: {
@@ -737,6 +742,10 @@ export class MarketingService {
         }
 
         const nextIsActive = Boolean(isActive);
+        if (nextIsActive) {
+            assertAutomationFlowCanRun(flowDefinition || { nodes: [], edges: [] });
+        }
+
         return prisma.marketingAutomation.create({
             data: {
                 accountId,
@@ -757,11 +766,15 @@ export class MarketingService {
     async setAutomationEnabled(id: string, accountId: string, isActive: boolean) {
         const automation = await prisma.marketingAutomation.findFirst({
             where: { id, accountId },
-            select: { id: true }
+            select: { id: true, flowDefinition: true }
         });
 
         if (!automation) {
             throw new Error('Automation not found');
+        }
+
+        if (isActive) {
+            assertAutomationFlowCanRun(automation.flowDefinition as any);
         }
 
         return prisma.marketingAutomation.update({

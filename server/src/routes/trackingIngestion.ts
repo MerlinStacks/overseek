@@ -6,8 +6,8 @@
 import { FastifyPluginAsync } from 'fastify';
 import { TrackingService } from '../services/TrackingService';
 import { Logger } from '../utils/logger';
-import { isValidAccount, isRateLimited } from '../middleware/trackingMiddleware';
-import { z } from 'zod';
+import { hasValidTrackingAuth, isValidAccount, isRateLimited } from '../middleware/trackingMiddleware';
+import * as z from 'zod';
 import { incrementBotShieldMetric } from '../services/tracking/BotShieldMetrics';
 
 // Transparent 1x1 GIF for pixel tracking
@@ -20,10 +20,58 @@ const botHitPayloadSchema = z.object({
     ip: z.string().max(128).optional(),
 });
 
+const trackingEventPayloadSchema = z.object({
+    accountId: z.string().uuid(),
+    visitorId: z.string().min(1).max(128),
+    type: z.string().min(1).max(100),
+    url: z.string().max(2000).default(''),
+    payload: z.unknown().optional().default({}),
+    pageTitle: z.string().max(500).optional(),
+    referrer: z.string().max(2000).optional(),
+    referrerDomain: z.string().max(255).optional(),
+    referrerType: z.string().max(50).optional(),
+    utmSource: z.string().max(255).optional(),
+    utmMedium: z.string().max(255).optional(),
+    utmCampaign: z.string().max(255).optional(),
+    userAgent: z.string().max(1000).optional(),
+    is404: z.boolean().optional(),
+    clickId: z.string().max(500).optional(),
+    clickPlatform: z.string().max(100).optional(),
+    landingReferrer: z.string().max(2000).optional(),
+    eventId: z.string().max(150).optional(),
+    visitorIp: z.string().max(128).optional(),
+    consentState: z.enum(['granted', 'denied']).optional(),
+});
+
+const customEventPayloadSchema = z.object({
+    accountId: z.string().uuid(),
+    visitorId: z.string().min(1).max(128),
+    eventName: z.string().min(1).max(100).regex(/^[a-zA-Z0-9_.:-]+$/),
+    properties: z.unknown().optional().default({}),
+    url: z.string().max(2000).optional().default(''),
+});
+
+const vitalsPayloadSchema = z.object({
+    accountId: z.string().uuid(),
+    samples: z.array(z.object({
+        metric: z.string().max(20),
+        value: z.number().finite().min(0).max(120000),
+        rating: z.string().max(32),
+        url: z.string().max(2000).optional().default('/'),
+        pageType: z.string().max(50).optional().default('other'),
+        device: z.string().max(50).optional().default('desktop'),
+        effectiveType: z.string().max(50).optional(),
+    })).min(1).max(10),
+});
+
 const BOT_HIT_IP_WINDOW_MS = 60 * 1000;
 const BOT_HIT_IP_MAX_REQUESTS = 180;
 const BOT_HIT_IP_MAX_KEYS = 5000;
 const botHitIpHits = new Map<string, { count: number; startedAt: number }>();
+
+const VITALS_IP_WINDOW_MS = 60 * 1000;
+const VITALS_IP_MAX_REQUESTS = 300;
+const vitalsIpHits = new Map<string, { count: number; startedAt: number }>();
 
 function pruneBotHitIpHits(now: number): void {
     for (const [key, value] of botHitIpHits) {
@@ -47,6 +95,53 @@ function isBotHitIpRateLimited(ip: string): boolean {
     return existing.count > BOT_HIT_IP_MAX_REQUESTS;
 }
 
+function isVitalsIpRateLimited(ip: string): boolean {
+    const now = Date.now();
+    for (const [key, value] of vitalsIpHits) {
+        if (now - value.startedAt > VITALS_IP_WINDOW_MS || vitalsIpHits.size > BOT_HIT_IP_MAX_KEYS) {
+            vitalsIpHits.delete(key);
+        }
+    }
+
+    const existing = vitalsIpHits.get(ip);
+    if (!existing || now - existing.startedAt > VITALS_IP_WINDOW_MS) {
+        vitalsIpHits.set(ip, { count: 1, startedAt: now });
+        return false;
+    }
+
+    existing.count += 1;
+    return existing.count > VITALS_IP_MAX_REQUESTS;
+}
+
+function getRequestSourceIp(request: any): string {
+    return request.raw?.socket?.remoteAddress || request.ip || 'unknown';
+}
+
+function normalizeIpHeader(ip: string | string[] | undefined): string | undefined {
+    if (Array.isArray(ip)) ip = ip[0];
+    if (typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
+    return typeof ip === 'string' && ip.trim() ? ip.trim() : undefined;
+}
+
+async function requireSignedTrackingRequest(accountId: string, request: any, reply: any): Promise<boolean> {
+    if (!(await isValidAccount(accountId))) {
+        reply.code(400).send({ error: 'Invalid account' });
+        return false;
+    }
+
+    if (!(await hasValidTrackingAuth(accountId, request.headers.authorization))) {
+        reply.code(401).send({ error: 'Tracking auth required' });
+        return false;
+    }
+
+    if (isRateLimited(accountId)) {
+        reply.code(429).send({ error: 'Rate limit exceeded' });
+        return false;
+    }
+
+    return true;
+}
+
 const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * DEPRECATED: Returns no-op script (server-side tracking only).
@@ -63,27 +158,20 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/events', async (request, reply) => {
         try {
-            const body = request.body as any;
+            const parsed = trackingEventPayloadSchema.safeParse(request.body);
+            if (!parsed.success) {
+                return reply.code(400).send({ error: parsed.error.issues[0]?.message || 'Invalid payload' });
+            }
+
+            const body = parsed.data as any;
             const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
 
-            if (!accountId || !visitorId || !type) {
-                return reply.code(400).send({ error: 'Missing required fields' });
-            }
-
-            if (!(await isValidAccount(accountId))) {
-                return reply.code(400).send({ error: 'Invalid account' });
-            }
-
-            if (isRateLimited(accountId)) {
-                return reply.code(429).send({ error: 'Rate limit exceeded' });
-            }
+            if (!(await requireSignedTrackingRequest(accountId, request, reply))) return;
 
             Logger.debug('Tracking event received', { type, accountId });
 
             // Prefer visitorIp from body (WC plugin sends real visitor IP for server-side events)
-            let ip: string | string[] | undefined = visitorIp || request.headers['x-forwarded-for'] || request.ip;
-            if (Array.isArray(ip)) ip = ip[0];
-            if (typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
+            const ip = normalizeIpHeader(visitorIp || request.headers['x-forwarded-for'] || request.ip);
 
             // Fall back to payload.eventId when top-level is missing (WC plugin nests it)
             const resolvedEventId = eventId || payload?.eventId;
@@ -115,25 +203,18 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/e', async (request, reply) => {
         try {
-            const body = request.body as any;
+            const parsed = trackingEventPayloadSchema.safeParse(request.body);
+            if (!parsed.success) {
+                return reply.code(400).send({ error: parsed.error.issues[0]?.message || 'Invalid payload' });
+            }
+
+            const body = parsed.data as any;
             const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
 
-            if (!accountId || !visitorId || !type) {
-                return reply.code(400).send({ error: 'Missing required fields' });
-            }
-
-            if (!(await isValidAccount(accountId))) {
-                return reply.code(400).send({ error: 'Invalid account' });
-            }
-
-            if (isRateLimited(accountId)) {
-                return reply.code(429).send({ error: 'Rate limit exceeded' });
-            }
+            if (!(await requireSignedTrackingRequest(accountId, request, reply))) return;
 
             // Prefer visitorIp from body (WC plugin sends real visitor IP for server-side events)
-            let ip: string | string[] | undefined = visitorIp || request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip;
-            if (Array.isArray(ip)) ip = ip[0];
-            if (typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
+            const ip = normalizeIpHeader(visitorIp || request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip);
 
             // Fall back to payload.eventId when top-level is missing (WC plugin nests it)
             const resolvedEventId = eventId || payload?.eventId;
@@ -185,14 +266,18 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             const query = request.query as { a?: string; v?: string; t?: string; u?: string; p?: string };
             const { a: accountId, v: visitorId, t: type, u: url, p: payloadStr } = query;
 
-            if (!accountId || !visitorId || !type || !(await isValidAccount(accountId)) || isRateLimited(accountId)) {
+            const canProcessPixel = Boolean(accountId && visitorId && type)
+                && await isValidAccount(accountId || '')
+                && await hasValidTrackingAuth(accountId || '', request.headers.authorization)
+                && !isRateLimited(accountId || '');
+
+            if (!canProcessPixel) {
                 reply.header('Content-Type', 'image/gif');
                 reply.header('Cache-Control', 'no-store');
                 return reply.send(TRANSPARENT_GIF);
             }
 
-            let ip = request.headers['x-forwarded-for'] || request.ip;
-            if (Array.isArray(ip)) ip = ip[0];
+            const ip = normalizeIpHeader(request.headers['x-forwarded-for'] || request.ip);
 
             let payload = {};
             if (payloadStr) {
@@ -223,20 +308,15 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/custom', async (request, reply) => {
         try {
-            const body = request.body as { accountId?: string; visitorId?: string; eventName?: string; properties?: any; url?: string };
+            const parsed = customEventPayloadSchema.safeParse(request.body);
+            if (!parsed.success) {
+                return reply.code(400).send({ error: parsed.error.issues[0]?.message || 'Invalid payload' });
+            }
+
+            const body = parsed.data as { accountId: string; visitorId: string; eventName: string; properties?: any; url?: string };
             const { accountId, visitorId, eventName, properties } = body;
 
-            if (!accountId || !visitorId || !eventName) {
-                return reply.code(400).send({ error: 'Missing required fields' });
-            }
-
-            if (!(await isValidAccount(accountId))) {
-                return reply.code(400).send({ error: 'Invalid account' });
-            }
-
-            if (isRateLimited(accountId)) {
-                return reply.code(429).send({ error: 'Rate limit exceeded' });
-            }
+            if (!(await requireSignedTrackingRequest(accountId, request, reply))) return;
 
             await TrackingService.processEvent({
                 accountId, visitorId,
@@ -259,11 +339,17 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/vitals', async (request, reply) => {
         try {
-            const body = request.body as { accountId?: string; samples?: any[] };
-
-            if (!body.accountId || !Array.isArray(body.samples) || !body.samples.length) {
-                return reply.code(400).send({ error: 'accountId and samples required' });
+            const sourceIp = getRequestSourceIp(request);
+            if (isVitalsIpRateLimited(sourceIp)) {
+                return reply.code(429).send({ error: 'Rate limit exceeded' });
             }
+
+            const parsed = vitalsPayloadSchema.safeParse(request.body);
+            if (!parsed.success) {
+                return reply.code(400).send({ error: parsed.error.issues[0]?.message || 'Invalid payload' });
+            }
+
+            const body = parsed.data;
 
             if (!(await isValidAccount(body.accountId))) {
                 return reply.code(400).send({ error: 'Invalid account' });
@@ -300,7 +386,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
         reply.code(202).send({ ok: true });
 
         try {
-            const sourceIp = request.ip || 'unknown';
+            const sourceIp = getRequestSourceIp(request);
             if (isBotHitIpRateLimited(sourceIp)) {
                 incrementBotShieldMetric('botHitRateLimited');
                 Logger.warn('[BotHit] Source IP rate limited', { ip: sourceIp });
@@ -321,6 +407,10 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!(await isValidAccount(body.accountId))) {
                 incrementBotShieldMetric('botHitInvalidAccount');
+                return;
+            }
+            if (!(await hasValidTrackingAuth(body.accountId, request.headers.authorization))) {
+                incrementBotShieldMetric('botHitInvalidPayload');
                 return;
             }
             if (isRateLimited(body.accountId)) {

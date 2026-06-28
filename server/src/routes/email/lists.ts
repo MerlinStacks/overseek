@@ -77,7 +77,7 @@ async function verifyAccountSecret(accountId: string, providedSecret?: string) {
         select: { webhookSecret: true }
     });
     if (!account) return false;
-    if (!account.webhookSecret) return true;
+    if (!account.webhookSecret || !providedSecret) return false;
     return providedSecret === account.webhookSecret;
 }
 
@@ -383,8 +383,11 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
 
 export const emailListPublicRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Querystring: { accountId: string; email: string } }>('/lists/public/preferences', async (request, reply) => {
-        const accountId = request.query.accountId;
-        const email = request.query.email;
+        const parsed = PublicPreferencesSchema.pick({ accountId: true, email: true }).safeParse(request.query);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid input' });
+
+        const accountId = parsed.data.accountId;
+        const email = parsed.data.email.trim().toLowerCase();
         const secret = request.headers['x-overseek-webhook-secret'] as string | undefined;
 
         const allowed = await verifyAccountSecret(accountId, secret);
@@ -411,8 +414,11 @@ export const emailListPublicRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.get<{ Querystring: { accountId: string; email: string } }>('/preferences/public', async (request, reply) => {
-        const accountId = request.query.accountId;
-        const email = request.query.email;
+        const parsed = PublicPreferencesSchema.pick({ accountId: true, email: true }).safeParse(request.query);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid input' });
+
+        const accountId = parsed.data.accountId;
+        const email = parsed.data.email;
         const secret = request.headers['x-overseek-webhook-secret'] as string | undefined;
 
         const allowed = await verifyAccountSecret(accountId, secret);
@@ -469,23 +475,33 @@ export const emailListPublicRoutes: FastifyPluginAsync = async (fastify) => {
         const explicitlyUnsubscribeMarketing = parsed.data.marketingSubscribed === false;
 
         if (explicitlyUnsubscribeAll || explicitlyUnsubscribeMarketing) {
-            await prisma.emailUnsubscribe.upsert({
-                where: {
-                    accountId_email: {
+            await prisma.$transaction(async (tx) => {
+                await tx.emailUnsubscribe.deleteMany({
+                    where: {
                         accountId: parsed.data.accountId,
-                        email: normalizedEmail
+                        email: { equals: normalizedEmail, mode: 'insensitive' },
+                        NOT: { email: normalizedEmail }
                     }
-                },
-                create: {
-                    accountId: parsed.data.accountId,
-                    email: normalizedEmail,
-                    scope: explicitlyUnsubscribeAll ? 'ALL' : 'MARKETING',
-                    reason: parsed.data.reason?.trim() || 'Preference center update'
-                },
-                update: {
-                    scope: explicitlyUnsubscribeAll ? 'ALL' : 'MARKETING',
-                    reason: parsed.data.reason?.trim() || 'Preference center update'
-                }
+                });
+
+                await tx.emailUnsubscribe.upsert({
+                    where: {
+                        accountId_email: {
+                            accountId: parsed.data.accountId,
+                            email: normalizedEmail
+                        }
+                    },
+                    create: {
+                        accountId: parsed.data.accountId,
+                        email: normalizedEmail,
+                        scope: explicitlyUnsubscribeAll ? 'ALL' : 'MARKETING',
+                        reason: parsed.data.reason?.trim() || 'Preference center update'
+                    },
+                    update: {
+                        scope: explicitlyUnsubscribeAll ? 'ALL' : 'MARKETING',
+                        reason: parsed.data.reason?.trim() || 'Preference center update'
+                    }
+                });
             });
         } else if (parsed.data.globalSubscribed === true || parsed.data.marketingSubscribed === true) {
             await prisma.emailUnsubscribe.deleteMany({

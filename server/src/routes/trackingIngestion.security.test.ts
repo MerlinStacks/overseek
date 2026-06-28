@@ -1,0 +1,88 @@
+import Fastify from 'fastify';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../utils/prisma', () => ({
+    prisma: {
+        account: {
+            findUnique: vi.fn(),
+        },
+    },
+}));
+
+vi.mock('../services/TrackingService', () => ({
+    TrackingService: {
+        processEvent: vi.fn(),
+    },
+}));
+
+vi.mock('../services/tracking/BotShieldMetrics', () => ({
+    incrementBotShieldMetric: vi.fn(),
+}));
+
+import trackingIngestionRoutes from './trackingIngestion';
+import { prisma } from '../utils/prisma';
+import { TrackingService } from '../services/TrackingService';
+
+const ACCOUNT_ID = '00000000-0000-4000-8000-000000000001';
+
+describe('tracking ingestion auth', () => {
+    let app: ReturnType<typeof Fastify>;
+
+    beforeEach(async () => {
+        (vi.mocked(prisma.account.findUnique) as any).mockImplementation(async ({ where }: any) => {
+            if (where.id === ACCOUNT_ID) {
+                return { id: ACCOUNT_ID, webhookSecret: 'valid-secret' } as any;
+            }
+            return null;
+        });
+        vi.mocked(TrackingService.processEvent).mockResolvedValue({ id: 'session-1' } as any);
+
+        app = Fastify();
+        await app.register(trackingIngestionRoutes);
+        await app.ready();
+    });
+
+    afterEach(async () => {
+        await app.close();
+        vi.clearAllMocks();
+    });
+
+    it('rejects unsigned server-side events', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/events',
+            payload: {
+                accountId: ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'pageview',
+                url: 'https://shop.example.com/',
+            },
+        });
+
+        expect(res.statusCode).toBe(401);
+        expect(TrackingService.processEvent).not.toHaveBeenCalled();
+    });
+
+    it('accepts events signed with the account webhook secret', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/events',
+            headers: { authorization: 'Bearer valid-secret' },
+            payload: {
+                accountId: ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'pageview',
+                url: 'https://shop.example.com/',
+            },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ success: true });
+        expect(TrackingService.processEvent).toHaveBeenCalledWith(expect.objectContaining({
+            accountId: ACCOUNT_ID,
+            visitorId: 'visitor-1',
+            type: 'pageview',
+            payload: {},
+        }));
+    });
+});

@@ -26,19 +26,17 @@ export interface DelayConfigProps {
     onUpdate: (key: string, value: unknown) => void;
 }
 
-const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
 export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) => {
     const delayMode = config.delayMode || 'SPECIFIC_PERIOD';
-    const delayUntilDays = config.delayUntilDays ?? [];
+    const hasAdvancedConstraints = Boolean(config.useContactTimezone || config.delayUntilTimeEnabled || config.delayUntilDaysEnabled || config.jumpIfPassed);
 
-    const toggleDay = (day: string) => {
-        const current = config.delayUntilDays || [];
-        if (current.includes(day)) {
-            onUpdate('delayUntilDays', current.filter((d: string) => d !== day));
-        } else {
-            onUpdate('delayUntilDays', [...current, day]);
-        }
+    const clearAdvancedConstraints = () => {
+        onUpdate('useContactTimezone', false);
+        onUpdate('delayUntilTimeEnabled', false);
+        onUpdate('delayUntilTime', undefined);
+        onUpdate('delayUntilDaysEnabled', false);
+        onUpdate('delayUntilDays', []);
+        onUpdate('jumpIfPassed', false);
     };
 
     const handleDurationChange = (value: string) => {
@@ -125,68 +123,19 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         </select>
                     </div>
 
-                    {/* Contact Timezone */}
-                    <label className="flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-100">
-                        <input
-                            type="checkbox"
-                            checked={config.useContactTimezone || false}
-                            onChange={(e) => onUpdate('useContactTimezone', e.target.checked)}
-                            className="rounded-sm text-purple-600"
-                        />
-                        <div>
-                            <span className="text-sm font-medium text-purple-700">Use contact's timezone</span>
-                            <p className="text-xs text-purple-600">Times will be calculated based on the contact's local time</p>
-                        </div>
-                    </label>
-
-                    {/* Time of day constraint */}
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={config.delayUntilTimeEnabled || false}
-                            onChange={(e) => onUpdate('delayUntilTimeEnabled', e.target.checked)}
-                            className="rounded-sm"
-                        />
-                        <span className="text-sm text-gray-600">Delay until a specific time of day</span>
-                    </label>
-                    {config.delayUntilTimeEnabled && (
-                        <input
-                            type="time"
-                            value={config.delayUntilTime || '09:00'}
-                            onChange={(e) => onUpdate('delayUntilTime', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                            dir="ltr"
-                            style={LTR_TEXT_STYLE}
-                        />
-                    )}
-
-                    {/* Day of week constraint */}
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={config.delayUntilDaysEnabled || false}
-                            onChange={(e) => onUpdate('delayUntilDaysEnabled', e.target.checked)}
-                            className="rounded-sm"
-                        />
-                        <span className="text-sm text-gray-600">Delay until a specific day(s) of the week</span>
-                    </label>
-                    {config.delayUntilDaysEnabled && (
-                        <div className="flex flex-wrap gap-1">
-                            {DAYS_OF_WEEK.map(day => (
-                                <button
-                                    key={day}
-                                    type="button"
-                                    onClick={() => toggleDay(day)}
-                                    className={`px-2 py-1 text-xs rounded ${(config.delayUntilDays || []).includes(day)
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                        }`}
-                                >
-                                    {day}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                        <div className="font-medium">Advanced delay constraints are coming soon.</div>
+                        <p className="mt-1 text-xs">Timezone, time-of-day, day-of-week, and jump-if-passed settings are not applied by the runtime yet.</p>
+                        {hasAdvancedConstraints && (
+                            <button
+                                type="button"
+                                onClick={clearAdvancedConstraints}
+                                className="mt-2 rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-200"
+                            >
+                                Clear unsupported settings
+                            </button>
+                        )}
+                    </div>
 
                     {/* Summary pill */}
                     <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
@@ -195,25 +144,9 @@ export const DelayConfig: React.FC<DelayConfigProps> = ({ config, onUpdate }) =>
                         </div>
                         <span className="text-xs text-blue-700">
                             Delay of {config.duration || 1} {config.unit || 'hours'}
-                            {config.useContactTimezone && " (contact's timezone)"}
-                            {config.delayUntilTimeEnabled && ` until ${config.delayUntilTime || '09:00'}`}
-                            {config.delayUntilDaysEnabled && delayUntilDays.length > 0 && ` on ${delayUntilDays.join(', ')}`}.
+                            .
                         </span>
                     </div>
-
-                    {/* Jump if time passed */}
-                    <label className="flex items-center gap-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                        <input
-                            type="checkbox"
-                            checked={config.jumpIfPassed || false}
-                            onChange={(e) => onUpdate('jumpIfPassed', e.target.checked)}
-                            className="rounded-sm text-yellow-600"
-                        />
-                        <div>
-                            <span className="text-sm font-medium text-yellow-700">Jump to next step if time has passed</span>
-                            <p className="text-xs text-yellow-600">If the scheduled time already passed, skip this delay</p>
-                        </div>
-                    </label>
                 </div>
             )}
 

@@ -52,8 +52,8 @@ export class TrackingService {
         return _getLiveCarts(accountId);
     }
 
-    static getSessionHistory(sessionId: string) {
-        return _getSessionHistory(sessionId);
+    static getSessionHistory(accountId: string, sessionId: string) {
+        return _getSessionHistory(accountId, sessionId);
     }
 
     static findAbandonedCarts(accountId: string, thresholdMinutes: number = 30) {
@@ -76,32 +76,32 @@ export class TrackingService {
         return _maskIpAddress(ip);
     }
 
-    static getStats(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-        return _getStats(accountId, days, timezone);
+    static getStats(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: { startDate: Date; endDate: Date }) {
+        return _getStats(accountId, days, timezone, dateRange);
     }
 
-    static getFunnel(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-        return _getFunnel(accountId, days, timezone);
+    static getFunnel(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: { startDate: Date; endDate: Date }) {
+        return _getFunnel(accountId, days, timezone, dateRange);
     }
 
-    static getRevenue(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-        return _getRevenue(accountId, days, timezone);
+    static getRevenue(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: { startDate: Date; endDate: Date }) {
+        return _getRevenue(accountId, days, timezone, dateRange);
     }
 
-    static getAttribution(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-        return _getAttribution(accountId, days, timezone);
+    static getAttribution(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: { startDate: Date; endDate: Date }) {
+        return _getAttribution(accountId, days, timezone, dateRange);
     }
 
-    static getAbandonmentRate(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-        return _getAbandonmentRate(accountId, days, timezone);
+    static getAbandonmentRate(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: { startDate: Date; endDate: Date }) {
+        return _getAbandonmentRate(accountId, days, timezone, dateRange);
     }
 
-    static getSearches(accountId: string, days: number = 30) {
-        return _getSearches(accountId, days);
+    static getSearches(accountId: string, days: number = 30, dateRange?: { startDate: Date; endDate: Date }) {
+        return _getSearches(accountId, days, dateRange);
     }
 
-    static getExitPages(accountId: string, days: number = 30) {
-        return _getExitPages(accountId, days);
+    static getExitPages(accountId: string, days: number = 30, dateRange?: { startDate: Date; endDate: Date }) {
+        return _getExitPages(accountId, days, dateRange);
     }
 
     static getCohorts(accountId: string) {

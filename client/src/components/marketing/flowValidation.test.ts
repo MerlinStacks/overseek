@@ -4,7 +4,7 @@ import { validateFlow } from './flowValidation';
 describe('validateFlow', () => {
     it('warns when a send email step is incomplete', () => {
         const nodes: Node[] = [
-            { id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, data: { config: { triggerType: 'MANUAL' } } },
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, data: { config: { triggerType: 'CUSTOMER_CREATED' } } },
             { id: 'email', type: 'action', position: { x: 0, y: 100 }, data: { config: { actionType: 'SEND_EMAIL', subject: '' } } },
         ];
         const edges: Edge[] = [{ id: 'edge', source: 'trigger', target: 'email' }];
@@ -17,7 +17,7 @@ describe('validateFlow', () => {
 
     it('flags unsupported actions without blocking existing flow loading', () => {
         const nodes: Node[] = [
-            { id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, data: { config: { triggerType: 'MANUAL' } } },
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, data: { config: { triggerType: 'CUSTOMER_CREATED' } } },
             { id: 'future', type: 'action', position: { x: 0, y: 100 }, data: { config: { actionType: 'HTTP_REQUEST' } } },
         ];
         const edges: Edge[] = [{ id: 'edge', source: 'trigger', target: 'future' }];
@@ -31,7 +31,7 @@ describe('validateFlow', () => {
 
     it('allows unsubscribe action steps without extra config', () => {
         const nodes: Node[] = [
-            { id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, data: { config: { triggerType: 'MANUAL' } } },
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 0 }, data: { config: { triggerType: 'CUSTOMER_CREATED' } } },
             { id: 'unsubscribe', type: 'action', position: { x: 0, y: 100 }, data: { config: { actionType: 'UNSUBSCRIBE' } } },
         ];
         const edges: Edge[] = [{ id: 'edge', source: 'trigger', target: 'unsubscribe' }];

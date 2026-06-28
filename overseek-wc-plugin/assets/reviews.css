@@ -160,7 +160,7 @@
 
 .os-reviews-list--slider {
 	display: flex;
-	align-items: flex-start;
+	align-items: stretch;
 	grid-template-columns: none;
 	overflow-x: auto;
 	scrollbar-width: none;
@@ -175,6 +175,7 @@
 }
 
 .os-reviews-list--slider .os-review-card {
+	box-sizing: border-box;
 	flex: 0 0 calc((100% - (22px * (var(--os-review-slider-desktop) - 1))) / var(--os-review-slider-desktop));
 	scroll-snap-align: start;
 }

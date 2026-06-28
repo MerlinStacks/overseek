@@ -30,13 +30,13 @@ export const getDateRange = (option: DateRangeOption | string): DateRange => {
             end.setDate(end.getDate() - 1);
             break;
         case '7d':
-            start.setDate(end.getDate() - 7);
+            start.setDate(end.getDate() - 6);
             break;
         case '30d':
-            start.setDate(end.getDate() - 30);
+            start.setDate(end.getDate() - 29);
             break;
         case '90d':
-            start.setDate(end.getDate() - 90);
+            start.setDate(end.getDate() - 89);
             break;
         case 'ytd':
             start.setMonth(0, 1); // Jan 1st of current year

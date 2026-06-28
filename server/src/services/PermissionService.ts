@@ -81,6 +81,15 @@ export class PermissionService {
     }
 
     /**
+     * Check if a user has at least one permission from a set.
+     */
+    static async hasAnyPermission(userId: string, accountId: string, permissions: string[]): Promise<boolean> {
+        const perms = await this.resolvePermissions(userId, accountId);
+        if (perms['*']) return true;
+        return permissions.some(permission => !!perms[permission]);
+    }
+
+    /**
      * Bust the permission cache for a user+account pair.
      * Call this when roles or permissions are modified.
      */

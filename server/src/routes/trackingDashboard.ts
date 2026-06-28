@@ -10,28 +10,46 @@ import { getCartAbandonmentStats } from '../services/analytics/CartAbandonmentSe
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
+import { PermissionService } from '../services/PermissionService';
 
 const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
+    fastify.addHook('preHandler', async (request, reply) => {
+        const accountId = request.accountId;
+        const userId = request.user?.id;
+        if (!accountId || !userId) {
+            return reply.code(400).send({ error: 'Account ID required' });
+        }
+
+        const canView = await PermissionService.hasAnyPermission(userId, accountId, ['view_finance', 'view_analytics']);
+        if (!canView) {
+            await reply.code(403).send({ error: 'You do not have permission to view tracking analytics' });
+            return reply;
+        }
+    });
 
     const getAccountId = (request: any): string | null => request.accountId || null;
-    const resolveDaysFromQuery = (
+    const MAX_LOOKBACK_DAYS = 365;
+    const resolveMetricsWindow = (
         query: { startDate?: string; endDate?: string; days?: string },
         fallbackDays: number = 30
-    ): number => {
+    ): { days: number; dateRange?: { startDate: Date; endDate: Date } } => {
         if (query.startDate && query.endDate) {
-            const start = new Date(query.startDate);
-            const end = new Date(query.endDate);
+            const start = new Date(query.startDate.includes('T') ? query.startDate : `${query.startDate}T00:00:00.000Z`);
+            const end = new Date(query.endDate.includes('T') ? query.endDate : `${query.endDate}T23:59:59.999Z`);
 
-            if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+            if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start) {
                 const msPerDay = 24 * 60 * 60 * 1000;
-                const diffMs = Math.abs(end.getTime() - start.getTime());
-                return Math.max(1, Math.floor(diffMs / msPerDay) + 1);
+                const days = Math.max(1, Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1);
+                if (days <= MAX_LOOKBACK_DAYS) {
+                    return { days, dateRange: { startDate: start, endDate: end } };
+                }
             }
         }
 
         const parsedDays = parseInt(query.days || `${fallbackDays}`, 10);
-        return Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : fallbackDays;
+        const days = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : fallbackDays;
+        return { days: Math.min(days, MAX_LOOKBACK_DAYS) };
     };
 
     fastify.get('/live', async (request, reply) => {
@@ -177,7 +195,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get<{ Params: { sessionId: string } }>('/session/:sessionId', async (request, reply) => {
         try {
-            return await TrackingService.getSessionHistory(request.params.sessionId);
+            const accountId = getAccountId(request);
+            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+            return await TrackingService.getSessionHistory(accountId, request.params.sessionId);
         } catch (error) {
             Logger.error('Session History Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch session history' });
@@ -207,9 +227,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getAccountId(request);
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-            const days = resolveDaysFromQuery(query);
+            const { days, dateRange } = resolveMetricsWindow(query);
             const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
-            return await TrackingService.getStats(accountId, days, timezone);
+            return await TrackingService.getStats(accountId, days, timezone, dateRange);
         } catch (error) {
             Logger.error('Stats Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch stats' });
@@ -221,9 +241,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getAccountId(request);
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-            const days = resolveDaysFromQuery(query);
+            const { days, dateRange } = resolveMetricsWindow(query);
             const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
-            return await TrackingService.getFunnel(accountId, days, timezone);
+            return await TrackingService.getFunnel(accountId, days, timezone, dateRange);
         } catch (error) {
             Logger.error('Funnel Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch funnel' });
@@ -235,9 +255,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getAccountId(request);
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-            const days = resolveDaysFromQuery(query);
+            const { days, dateRange } = resolveMetricsWindow(query);
             const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
-            return await TrackingService.getRevenue(accountId, days, timezone);
+            return await TrackingService.getRevenue(accountId, days, timezone, dateRange);
         } catch (error) {
             Logger.error('Revenue Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch revenue' });
@@ -249,9 +269,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getAccountId(request);
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-            const days = resolveDaysFromQuery(query);
+            const { days, dateRange } = resolveMetricsWindow(query);
             const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
-            return await TrackingService.getAttribution(accountId, days, timezone);
+            return await TrackingService.getAttribution(accountId, days, timezone, dateRange);
         } catch (error) {
             Logger.error('Attribution Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch attribution' });
@@ -263,9 +283,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getAccountId(request);
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-            const days = resolveDaysFromQuery(query);
+            const { days, dateRange } = resolveMetricsWindow(query);
             const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
-            return await TrackingService.getAbandonmentRate(accountId, days, timezone);
+            return await TrackingService.getAbandonmentRate(accountId, days, timezone, dateRange);
         } catch (error) {
             Logger.error('Abandonment Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch abandonment' });
@@ -277,8 +297,8 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getAccountId(request);
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-            const days = resolveDaysFromQuery(query);
-            return await TrackingService.getSearches(accountId, days);
+            const { days, dateRange } = resolveMetricsWindow(query);
+            return await TrackingService.getSearches(accountId, days, dateRange);
         } catch (error) {
             Logger.error('Searches Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch searches' });
@@ -290,8 +310,8 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getAccountId(request);
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-            const days = resolveDaysFromQuery(query);
-            return await TrackingService.getExitPages(accountId, days);
+            const { days, dateRange } = resolveMetricsWindow(query);
+            return await TrackingService.getExitPages(accountId, days, dateRange);
         } catch (error) {
             Logger.error('Exits Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch exits' });
@@ -327,18 +347,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-
-            let startDate: Date;
-            let endDate: Date = new Date();
-
-            if (query.startDate && query.endDate) {
-                startDate = new Date(query.startDate);
-                endDate = new Date(query.endDate);
-            } else {
-                const days = parseInt(query.days || '30', 10);
-                startDate = new Date();
-                startDate.setDate(startDate.getDate() - days);
-            }
+            const { days, dateRange } = resolveMetricsWindow(query);
+            const endDate = dateRange?.endDate || new Date();
+            const startDate = dateRange?.startDate || new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
 
             return await getCartAbandonmentStats(accountId, startDate, endDate);
         } catch (error) {
@@ -352,14 +363,14 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = getAccountId(request);
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const query = request.query as { startDate?: string; endDate?: string; days?: string };
-            const days = resolveDaysFromQuery(query);
+            const { days, dateRange } = resolveMetricsWindow(query);
 
             const [stats, funnel, revenue, attribution, abandonment, cohorts, ltv] = await Promise.all([
-                TrackingService.getStats(accountId, days),
-                TrackingService.getFunnel(accountId, days),
-                TrackingService.getRevenue(accountId, days),
-                TrackingService.getAttribution(accountId, days),
-                TrackingService.getAbandonmentRate(accountId, days),
+                TrackingService.getStats(accountId, days, 'Australia/Sydney', dateRange),
+                TrackingService.getFunnel(accountId, days, 'Australia/Sydney', dateRange),
+                TrackingService.getRevenue(accountId, days, 'Australia/Sydney', dateRange),
+                TrackingService.getAttribution(accountId, days, 'Australia/Sydney', dateRange),
+                TrackingService.getAbandonmentRate(accountId, days, 'Australia/Sydney', dateRange),
                 TrackingService.getCohorts(accountId),
                 TrackingService.getLTV(accountId)
             ]);
@@ -377,7 +388,8 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             
             const query = request.query as { hours?: string };
-            const hours = parseInt(query.hours || '8', 10);
+            const parsedHours = parseInt(query.hours || '8', 10);
+            const hours = Number.isFinite(parsedHours) && parsedHours > 0 ? Math.min(parsedHours, 168) : 8;
 
             // Import dynamically to avoid circular dependencies if any
             const { GoogleEnhancedConversionsService } = await import('../services/tracking/GoogleEnhancedConversionsService');

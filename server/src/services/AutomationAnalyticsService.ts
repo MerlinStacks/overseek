@@ -227,10 +227,11 @@ export class AutomationAnalyticsService {
     }
 
     async listEnrollments(accountId: string, automationId: string, limit = 50) {
+        const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
         return prisma.automationEnrollment.findMany({
             where: { accountId, automationId },
             orderBy: { createdAt: 'desc' },
-            take: limit,
+            take: safeLimit,
             select: {
                 id: true,
                 email: true,
@@ -254,10 +255,11 @@ export class AutomationAnalyticsService {
     }
 
     async listRunEvents(accountId: string, automationId: string, limit = 50) {
+        const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
         return prisma.automationRunEvent.findMany({
             where: { accountId, automationId },
             orderBy: { createdAt: 'desc' },
-            take: limit,
+            take: safeLimit,
             select: {
                 id: true,
                 enrollmentId: true,

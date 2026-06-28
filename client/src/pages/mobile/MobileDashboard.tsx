@@ -30,6 +30,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 interface TrendDataDay {
     orders?: number;
     revenue?: number;
+    sales?: number;
 }
 
 interface OrderApiResponse {
@@ -102,16 +103,17 @@ export function MobileDashboard() {
             // Use same date utility as desktop for timezone-aware dates
             const { startDate, endDate } = getDateRange('today');
             const yesterday = getDateRange('yesterday');
+            const trendRange = getDateRange('7d');
 
             // Fetch all data in parallel (including anomaly detection and 7-day trend)
             const [salesRes, yesterdaySalesRes, messagesRes, inventoryRes, ordersRes, anomalyRes, trendRes] = await Promise.all([
                 fetch(`/api/analytics/sales?startDate=${startDate}&endDate=${endDate}`, { headers }),
                 fetch(`/api/analytics/sales?startDate=${yesterday.startDate}&endDate=${yesterday.endDate}`, { headers }),
                 fetch('/api/chat/unread-count', { headers }),
-                fetch('/api/analytics/health', { headers }),
+                fetch('/api/analytics/inventory/health', { headers }),
                 fetch('/api/sync/orders/search?limit=5', { headers }),
                 fetch('/api/analytics/anomalies', { headers }),
-                fetch('/api/analytics/trend?days=7', { headers }).catch(() => null)
+                fetch(`/api/analytics/sales-chart?startDate=${trendRange.startDate}&endDate=${trendRange.endDate}&interval=day`, { headers }).catch(() => null)
             ]);
 
             let todayRevenue = 0, todayOrders = 0, pendingMessages = 0, lowStockItems = 0;
@@ -156,10 +158,10 @@ export function MobileDashboard() {
             // Process trend data for sparklines
             if (trendRes && trendRes.ok) {
                 const trendData = await trendRes.json();
-                if (trendData.daily) {
+                if (Array.isArray(trendData)) {
                     setSparklines({
-                        orders: trendData.daily.map((d: TrendDataDay) => d.orders || 0),
-                        revenue: trendData.daily.map((d: TrendDataDay) => d.revenue || 0)
+                        orders: trendData.map((d: TrendDataDay) => d.orders || 0),
+                        revenue: trendData.map((d: TrendDataDay) => d.revenue ?? d.sales ?? 0)
                     });
                 }
             } else {

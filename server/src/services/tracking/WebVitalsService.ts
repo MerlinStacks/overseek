@@ -218,7 +218,8 @@ export async function getVitalsSummary(
 export async function getVitalsTimeline(
     accountId: string,
     metric: VitalMetric,
-    days = 30
+    days = 30,
+    pageType = 'all'
 ): Promise<VitalsTimelineEntry[]> {
     const cappedDays = Math.min(days, 90);
 
@@ -234,6 +235,7 @@ export async function getVitalsTimeline(
         WHERE "accountId" = ${accountId}
           AND metric = ${metric}
           AND "createdAt" >= ${since}
+          AND (${pageType} = 'all' OR "pageType" = ${pageType})
         ORDER BY day ASC
     `;
 
@@ -267,12 +269,18 @@ export async function getVitalsByPage(
     accountId: string,
     days = 30,
     metric: VitalMetric = 'LCP',
-    limit = 20
+    limit = 20,
+    pageType = 'all'
 ): Promise<PageVitalEntry[]> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     const samples = await prisma.webVitalSample.findMany({
-        where: { accountId, metric, createdAt: { gte: since } },
+        where: {
+            accountId,
+            metric,
+            createdAt: { gte: since },
+            ...(pageType !== 'all' ? { pageType } : {})
+        },
         select: { url: true, pageType: true, value: true },
         orderBy: { value: 'asc' },
     });

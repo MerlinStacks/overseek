@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomationEnrollmentService } from '../AutomationEnrollmentService';
 import { prisma } from '../../utils/prisma';
 
-vi.mock('../../utils/prisma', () => ({
-    prisma: {
+const { prismaMock } = vi.hoisted(() => {
+    const mock: any = {
+        $queryRaw: vi.fn(),
         automationEnrollment: {
             findFirst: vi.fn(),
             create: vi.fn()
@@ -11,7 +12,13 @@ vi.mock('../../utils/prisma', () => ({
         automationRunEvent: {
             create: vi.fn()
         }
-    }
+    };
+    mock.$transaction = vi.fn(async (callback: any) => callback(mock));
+    return { prismaMock: mock };
+});
+
+vi.mock('../../utils/prisma', () => ({
+    prisma: prismaMock
 }));
 
 vi.mock('../../utils/logger', () => ({
@@ -35,6 +42,8 @@ describe('AutomationEnrollmentService dedupe', () => {
         vi.mocked(prisma.automationEnrollment.findFirst).mockResolvedValue(null);
         vi.mocked(prisma.automationEnrollment.create).mockResolvedValue({ id: 'enrollment-1' } as any);
         vi.mocked(prisma.automationRunEvent.create).mockResolvedValue({} as any);
+        vi.mocked(prisma.$queryRaw).mockResolvedValue([] as any);
+        vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => callback(prisma));
     });
 
     it('dedupes against any prior enrollment when dedupe scope is ANY', async () => {

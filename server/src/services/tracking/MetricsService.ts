@@ -8,6 +8,16 @@
 import { prisma } from '../../utils/prisma';
 import { getDateRangeForDays } from '../../utils/dateRange';
 
+export interface TrackingDateRange {
+    startDate: Date;
+    endDate: Date;
+}
+
+function resolveDateRange(days: number, timezone: string, dateRange?: TrackingDateRange) {
+    if (dateRange) return dateRange;
+    return getDateRangeForDays(days, timezone);
+}
+
 // Re-export delegated modules for backward compatibility
 export { getRevenue } from './RevenueMetrics';
 export { getSearches, getExitPages } from './EngagementMetrics';
@@ -15,8 +25,8 @@ export { getSearches, getExitPages } from './EngagementMetrics';
 /**
  * Get aggregated stats for dashboard.
  */
-export async function getStats(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-    const { startDate, endDate } = getDateRangeForDays(days, timezone);
+export async function getStats(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: TrackingDateRange) {
+    const { startDate, endDate } = resolveDateRange(days, timezone, dateRange);
 
     const sessions = await prisma.analyticsSession.findMany({
         where: { accountId, createdAt: { gte: startDate, lte: endDate } },
@@ -56,8 +66,8 @@ export async function getStats(accountId: string, days: number = 30, timezone: s
 /**
  * Get funnel data for dashboard.
  */
-export async function getFunnel(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-    const { startDate, endDate } = getDateRangeForDays(days, timezone);
+export async function getFunnel(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: TrackingDateRange) {
+    const { startDate, endDate } = resolveDateRange(days, timezone, dateRange);
 
     const events = await prisma.analyticsEvent.findMany({
         where: { session: { accountId }, createdAt: { gte: startDate, lte: endDate } },
@@ -89,8 +99,8 @@ export async function getFunnel(accountId: string, days: number = 30, timezone: 
 /**
  * Get attribution data: first-touch vs last-touch.
  */
-export async function getAttribution(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-    const { startDate, endDate } = getDateRangeForDays(days, timezone);
+export async function getAttribution(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: TrackingDateRange) {
+    const { startDate, endDate } = resolveDateRange(days, timezone, dateRange);
 
     const sessions = await prisma.analyticsSession.findMany({
         where: { accountId, createdAt: { gte: startDate, lte: endDate } },
@@ -117,8 +127,8 @@ export async function getAttribution(accountId: string, days: number = 30, timez
 /**
  * Get cart abandonment rate.
  */
-export async function getAbandonmentRate(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
-    const { startDate, endDate } = getDateRangeForDays(days, timezone);
+export async function getAbandonmentRate(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: TrackingDateRange) {
+    const { startDate, endDate } = resolveDateRange(days, timezone, dateRange);
 
     const events = await prisma.analyticsEvent.findMany({
         where: {

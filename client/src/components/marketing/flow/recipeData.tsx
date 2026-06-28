@@ -6,7 +6,7 @@
  */
 /* eslint-disable react-refresh/only-export-components */
 import React from 'react';
-import { ShoppingCart, Mail, Star, Tag, Gift, Heart } from 'lucide-react';
+import { ShoppingCart, Mail, Star, Tag } from 'lucide-react';
 import type { Node, Edge } from '@xyflow/react';
 import { compileEmailDesignV2, createDefaultEmailDesignV2 } from '../../../lib/emailDesignerV2';
 import { createBlock } from '../emailDesignerV2/blockFactory';
@@ -86,7 +86,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
         icon: <Mail className="text-blue-500" size={24} />,
         category: 'Onboarding',
         nodes: [
-            { id: 'trigger', type: 'trigger', data: { label: 'Customer Signup', config: { triggerType: 'CUSTOMER_SIGNUP' } } },
+            { id: 'trigger', type: 'trigger', data: { label: 'Customer Created', config: { triggerType: 'CUSTOMER_CREATED' } } },
             { id: 'email1', type: 'action', data: { label: 'Welcome Email', config: { actionType: 'SEND_EMAIL', subject: 'Welcome to our store!' } } },
             { id: 'delay1', type: 'delay', data: { label: 'Wait 3 Days', config: { duration: 3, unit: 'days' } } },
             { id: 'email2', type: 'action', data: { label: 'Follow-up Email', config: { actionType: 'SEND_EMAIL', subject: 'Need help getting started?' } } },
@@ -147,38 +147,6 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
         edges: [
             { source: 'trigger', target: 'condition' },
             { source: 'condition', target: 'tag', sourceHandle: 'true' },
-        ],
-    },
-    {
-        id: 'birthday_offer',
-        name: 'Birthday Special Offer',
-        description: 'Send a special discount on customer birthdays',
-        icon: <Gift className="text-pink-500" size={24} />,
-        category: 'Engagement',
-        nodes: [
-            { id: 'trigger', type: 'trigger', data: { label: 'Birthday Reminder', config: { triggerType: 'BIRTHDAY_REMINDER' } } },
-            { id: 'email1', type: 'action', data: { label: 'Birthday Email', config: { actionType: 'SEND_EMAIL', subject: 'Happy Birthday! Here\'s a gift for you 🎂' } } },
-        ],
-        edges: [
-            { source: 'trigger', target: 'email1' },
-        ],
-    },
-    {
-        id: 'win_back',
-        name: 'Win-Back Campaign',
-        description: 'Re-engage customers who haven\'t purchased in 90 days',
-        icon: <Heart className="text-red-500" size={24} />,
-        category: 'Retention',
-        nodes: [
-            { id: 'trigger', type: 'trigger', data: { label: 'Manual Entry', config: { triggerType: 'MANUAL' } } },
-            { id: 'email1', type: 'action', data: { label: 'We Miss You', config: { actionType: 'SEND_EMAIL', subject: 'We miss you! Come back for 20% off' } } },
-            { id: 'delay1', type: 'delay', data: { label: 'Wait 7 Days', config: { duration: 7, unit: 'days' } } },
-            { id: 'email2', type: 'action', data: { label: 'Last Chance', config: { actionType: 'SEND_EMAIL', subject: 'Last chance: Your exclusive discount expires soon' } } },
-        ],
-        edges: [
-            { source: 'trigger', target: 'email1' },
-            { source: 'email1', target: 'delay1' },
-            { source: 'delay1', target: 'email2' },
         ],
     },
 ];

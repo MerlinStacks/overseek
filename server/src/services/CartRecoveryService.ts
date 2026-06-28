@@ -12,11 +12,23 @@ interface RecoveryPayload {
 }
 
 export class CartRecoveryService {
-    private getSecret() {
-        return process.env.AUTOMATION_RECOVERY_SECRET
+    private getSecret(): string | null {
+        const secret = process.env.AUTOMATION_RECOVERY_SECRET
             || process.env.JWT_SECRET
-            || process.env.APP_SECRET
-            || 'development-cart-recovery-secret';
+            || process.env.APP_SECRET;
+
+        if (secret) return secret;
+        return process.env.NODE_ENV === 'production' ? null : 'development-cart-recovery-secret';
+    }
+
+    private normalizeCheckoutUrl(checkoutUrl: string): string | null {
+        try {
+            const parsed = new URL(checkoutUrl);
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+            return parsed.toString();
+        } catch {
+            return null;
+        }
     }
 
     createRecoveryUrl(input: {
@@ -31,19 +43,23 @@ export class CartRecoveryService {
             return null;
         }
 
+        const secret = this.getSecret();
+        const checkoutUrl = this.normalizeCheckoutUrl(input.checkoutUrl);
+        if (!secret || !checkoutUrl) return null;
+
         const expiresInHours = input.expiresInHours ?? 72;
         const payload: RecoveryPayload = {
             accountId: input.accountId,
             enrollmentId: input.enrollmentId,
             sessionId: input.sessionId,
             email: input.email,
-            checkoutUrl: input.checkoutUrl,
+            checkoutUrl,
             expiresAt: Date.now() + expiresInHours * 60 * 60 * 1000
         };
 
         const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
         const signature = crypto
-            .createHmac('sha256', this.getSecret())
+            .createHmac('sha256', secret)
             .update(encodedPayload)
             .digest('base64url');
 
@@ -57,8 +73,11 @@ export class CartRecoveryService {
             return null;
         }
 
+        const secret = this.getSecret();
+        if (!secret) return null;
+
         const expectedSignature = crypto
-            .createHmac('sha256', this.getSecret())
+            .createHmac('sha256', secret)
             .update(encodedPayload)
             .digest('base64url');
 
@@ -71,6 +90,9 @@ export class CartRecoveryService {
             if (!payload.checkoutUrl || payload.expiresAt < Date.now()) {
                 return null;
             }
+            const checkoutUrl = this.normalizeCheckoutUrl(payload.checkoutUrl);
+            if (!checkoutUrl) return null;
+            payload.checkoutUrl = checkoutUrl;
             return payload;
         } catch {
             return null;

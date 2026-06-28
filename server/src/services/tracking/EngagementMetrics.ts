@@ -8,12 +8,17 @@
 import { prisma } from '../../utils/prisma';
 import { getDateRangeForDays } from '../../utils/dateRange';
 
+interface TrackingDateRange {
+    startDate: Date;
+    endDate: Date;
+}
+
 /**
  * Get search analytics: top queries.
  * Handles both 'search' events AND pageview events with page_type='search'.
  */
-export async function getSearches(accountId: string, days: number = 30) {
-    const { startDate, endDate } = getDateRangeForDays(days);
+export async function getSearches(accountId: string, days: number = 30, dateRange?: TrackingDateRange) {
+    const { startDate, endDate } = dateRange || getDateRangeForDays(days);
 
     const events = await prisma.analyticsEvent.findMany({
         where: {
@@ -55,8 +60,8 @@ export async function getSearches(accountId: string, days: number = 30) {
 /**
  * Get exit pages: where users leave.
  */
-export async function getExitPages(accountId: string, days: number = 30) {
-    const { startDate, endDate } = getDateRangeForDays(days);
+export async function getExitPages(accountId: string, days: number = 30, dateRange?: TrackingDateRange) {
+    const { startDate, endDate } = dateRange || getDateRangeForDays(days);
 
     const sessions = await prisma.analyticsSession.findMany({
         where: { accountId, createdAt: { gte: startDate, lte: endDate } },

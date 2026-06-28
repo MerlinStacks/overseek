@@ -8,17 +8,22 @@
 import { prisma } from '../../utils/prisma';
 import { getDateRangeForDays } from '../../utils/dateRange';
 
+interface TrackingDateRange {
+    startDate: Date;
+    endDate: Date;
+}
+
 /**
  * Get revenue analytics: AOV, total, by source.
  * Uses WooCommerce orders as the primary source of truth for revenue totals,
  * enriched with analytics session data for attribution when available.
  * Days parameter is capped at 365 to prevent unbounded queries.
  */
-export async function getRevenue(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney') {
+export async function getRevenue(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney', dateRange?: TrackingDateRange) {
     // Cap days to prevent unbounded queries, but preserve special values (-1 = yesterday)
     const MAX_DAYS = 365;
     const effectiveDays = days === -1 ? -1 : Math.min(Math.max(days, 1), MAX_DAYS);
-    const { startDate, endDate } = getDateRangeForDays(effectiveDays, timezone);
+    const { startDate, endDate } = dateRange || getDateRangeForDays(effectiveDays, timezone);
 
     // Primary source: WooCommerce orders
     const orders = await prisma.wooOrder.findMany({

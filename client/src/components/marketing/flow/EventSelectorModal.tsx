@@ -3,15 +3,12 @@
  * Left sidebar with categories, right content with event buttons.
  */
 import React, { useMemo, useState } from 'react';
-import { CreditCard, Mail, Search, ShoppingCart, Users, Webhook, X } from 'lucide-react';
+import { Search, ShoppingCart, Users, X } from 'lucide-react';
 
 const EVENT_CATEGORIES = [
     { id: 'woocommerce', label: 'WooCommerce', icon: ShoppingCart },
     { id: 'shipping', label: 'Shipping', icon: ShoppingCart },
     { id: 'customer', label: 'Customer', icon: Users },
-    { id: 'subscription', label: 'Subscription', icon: CreditCard },
-    { id: 'email', label: 'Email Engagement', icon: Mail },
-    { id: 'automation', label: 'Automation', icon: Webhook },
 ] as const;
 
 interface EventItem {
@@ -59,7 +56,6 @@ const EVENTS_BY_CATEGORY: Record<string, { subcategory?: string; events: EventIt
             subcategory: 'Cart',
             events: [
                 { id: 'ABANDONED_CART', label: 'Cart Abandoned', icon: 'Cart' },
-                { id: 'CART_VIEWED', label: 'Cart Viewed', icon: 'Eye' },
             ]
         },
         {
@@ -97,40 +93,12 @@ const EVENTS_BY_CATEGORY: Record<string, { subcategory?: string; events: EventIt
             events: [
                 { id: 'CUSTOMER_CREATED', label: 'Customer Created', icon: 'User' },
                 { id: 'NO_PURCHASE_IN_X_DAYS', label: 'No Purchase In X Days', icon: 'Clock' },
-                { id: 'MANUAL', label: 'Manual Entry', icon: 'Hand' },
             ]
         },
         {
             subcategory: 'Contact',
             events: [
                 { id: 'TAG_ADDED', label: 'Tag Added', icon: 'Tag' },
-                { id: 'TAG_REMOVED', label: 'Tag Removed', icon: 'TagOff' },
-                { id: 'CONTACT_BOUNCED', label: 'Contact Bounced', icon: 'Alert' },
-                { id: 'BIRTHDAY_REMINDER', label: 'Birthday Reminder', icon: 'Cake' },
-            ]
-        },
-    ],
-    subscription: [
-        {
-            events: [
-                { id: 'SUBSCRIPTION_CREATED', label: 'Subscription Created', icon: 'Repeat' },
-                { id: 'SUBSCRIPTION_CANCELLED', label: 'Subscription Cancelled', icon: 'Ban' },
-            ]
-        },
-    ],
-    email: [
-        {
-            events: [
-                { id: 'EMAIL_OPENED', label: 'Email Opened', icon: 'MailOpen' },
-                { id: 'LINK_CLICKED', label: 'Link Clicked', icon: 'Link' },
-                { id: 'CONTACT_UNSUBSCRIBED', label: 'Contact Unsubscribed', icon: 'Mute' },
-            ]
-        },
-    ],
-    automation: [
-        {
-            events: [
-                { id: 'WEBHOOK_RECEIVED', label: 'Webhook Received', icon: 'Webhook' },
             ]
         },
     ],

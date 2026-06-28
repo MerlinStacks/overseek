@@ -126,23 +126,33 @@ const emailPreferencesRoutes: FastifyPluginAsync = async (fastify) => {
         const unsubscribeMarketing = parsed.data.marketingSubscribed === false;
 
         if (unsubscribeAll || unsubscribeMarketing) {
-            await prisma.emailUnsubscribe.upsert({
-                where: {
-                    accountId_email: {
+            await prisma.$transaction(async (tx) => {
+                await tx.emailUnsubscribe.deleteMany({
+                    where: {
                         accountId: parsed.data.accountId,
-                        email: normalizedEmail
+                        email: { equals: normalizedEmail, mode: 'insensitive' },
+                        NOT: { email: normalizedEmail }
                     }
-                },
-                create: {
-                    accountId: parsed.data.accountId,
-                    email: normalizedEmail,
-                    scope: unsubscribeAll ? 'ALL' : 'MARKETING',
-                    reason: parsed.data.reason?.trim() || 'Preference center update'
-                },
-                update: {
-                    scope: unsubscribeAll ? 'ALL' : 'MARKETING',
-                    reason: parsed.data.reason?.trim() || 'Preference center update'
-                }
+                });
+
+                await tx.emailUnsubscribe.upsert({
+                    where: {
+                        accountId_email: {
+                            accountId: parsed.data.accountId,
+                            email: normalizedEmail
+                        }
+                    },
+                    create: {
+                        accountId: parsed.data.accountId,
+                        email: normalizedEmail,
+                        scope: unsubscribeAll ? 'ALL' : 'MARKETING',
+                        reason: parsed.data.reason?.trim() || 'Preference center update'
+                    },
+                    update: {
+                        scope: unsubscribeAll ? 'ALL' : 'MARKETING',
+                        reason: parsed.data.reason?.trim() || 'Preference center update'
+                    }
+                });
             });
         } else if (parsed.data.globalSubscribed === true || parsed.data.marketingSubscribed === true) {
             await prisma.emailUnsubscribe.deleteMany({

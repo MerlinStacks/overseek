@@ -9,15 +9,16 @@ import { useAccount } from '../../../context/AccountContext';
 interface Props {
     content: string;
     designJson?: unknown;
+    initialSubject?: string;
     onSaved: (templateId: string) => void;
     onClose: () => void;
 }
 
-export function SaveAsTemplateModal({ content, designJson, onSaved, onClose }: Props) {
+export function SaveAsTemplateModal({ content, designJson, initialSubject, onSaved, onClose }: Props) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [name, setName] = useState('');
-    const [subject, setSubject] = useState('');
+    const [subject, setSubject] = useState(initialSubject || '');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 

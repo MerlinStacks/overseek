@@ -553,7 +553,7 @@ export class EmailService {
                     sourceId: options?.sourceId,
                     canRetry: true,
                     emailPayload: {
-                        html: htmlWithTracking,
+                        html: htmlWithMergeTagUrls,
                         attachments: attachments || [],
                         options: options || {}
                     }

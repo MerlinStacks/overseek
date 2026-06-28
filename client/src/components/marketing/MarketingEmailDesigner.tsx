@@ -13,6 +13,7 @@ interface Props {
 export function MarketingEmailDesigner(props: Props) {
     useEffect(() => {
         localStorage.removeItem('overseek-email-builder-draft');
+        localStorage.removeItem('overseek-email-builder-v2-draft');
     }, []);
 
     return (

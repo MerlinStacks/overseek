@@ -583,6 +583,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                 <SaveAsTemplateModal
                     content={config.htmlContent || ''}
                     designJson={config.designJson}
+                    initialSubject={config.subject}
                     onSaved={() => setShowSaveAsTemplate(false)}
                     onClose={() => setShowSaveAsTemplate(false)}
                 />

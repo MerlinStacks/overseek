@@ -31,6 +31,41 @@ import { cacheAside, CacheNamespace, CacheTTL } from '../utils/cache';
 const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
+    const analyticsPermissions = ['view_finance', 'view_analytics'];
+    const productAnalyticsPermissions = ['view_products'];
+
+    const requireAnyPermission = async (request: any, reply: any, permissions: string[], message: string) => {
+        const accountId = request.accountId;
+        const userId = request.user?.id;
+        if (!accountId || !userId) {
+            await reply.code(400).send({ error: 'Account ID required for this resource' });
+            return false;
+        }
+
+        const canView = await PermissionService.hasAnyPermission(userId, accountId, permissions);
+        if (!canView) {
+            await reply.code(403).send({ error: message });
+            return false;
+        }
+
+        return true;
+    };
+
+    fastify.addHook('preHandler', async (request, reply) => {
+        const path = request.url.split('?')[0];
+        const isProductScoped = path.startsWith('/api/analytics/inventory')
+            || path.startsWith('/api/analytics/product-views/')
+            || path.startsWith('/inventory')
+            || path.startsWith('/product-views/');
+        const permissions = isProductScoped ? productAnalyticsPermissions : analyticsPermissions;
+        const message = isProductScoped
+            ? 'You do not have permission to view product analytics'
+            : 'You do not have permission to view analytics';
+
+        const allowed = await requireAnyPermission(request, reply, permissions, message);
+        if (!allowed) return reply;
+    });
+
     const parsePositiveInt = (value: string | undefined, fallback: number) => {
         const parsed = Number.parseInt(value || '', 10);
         return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -90,7 +125,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const userId = request.user!.id;
 
             // RBAC: Require view_finance permission for sales data
-            const canView = await PermissionService.hasPermission(userId, accountId, 'view_finance');
+            const canView = await PermissionService.hasAnyPermission(userId, accountId, analyticsPermissions);
             if (!canView) {
                 return reply.code(403).send({ error: 'You do not have permission to view sales data' });
             }
@@ -146,7 +181,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const userId = request.user!.id;
 
             // RBAC: Require view_finance permission for forecast data
-            const canView = await PermissionService.hasPermission(userId, accountId, 'view_finance');
+            const canView = await PermissionService.hasAnyPermission(userId, accountId, analyticsPermissions);
             if (!canView) {
                 return reply.code(403).send({ error: 'You do not have permission to view forecast data' });
             }
@@ -163,7 +198,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const userId = request.user!.id;
 
             // RBAC: Require view_finance permission for profitability data
-            const canView = await PermissionService.hasPermission(userId, accountId, 'view_finance');
+            const canView = await PermissionService.hasAnyPermission(userId, accountId, analyticsPermissions);
             if (!canView) {
                 return reply.code(403).send({ error: 'You do not have permission to view profitability data' });
             }
@@ -226,7 +261,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const userId = request.user!.id;
 
             // RBAC: Require view_analytics permission for acquisition data
-            const canView = await PermissionService.hasPermission(userId, accountId, 'view_analytics');
+            const canView = await PermissionService.hasAnyPermission(userId, accountId, analyticsPermissions);
             if (!canView) {
                 return reply.code(403).send({ error: 'You do not have permission to view acquisition analytics' });
             }
@@ -242,7 +277,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const userId = request.user!.id;
 
             // RBAC: Require view_analytics permission for campaign data
-            const canView = await PermissionService.hasPermission(userId, accountId, 'view_analytics');
+            const canView = await PermissionService.hasAnyPermission(userId, accountId, analyticsPermissions);
             if (!canView) {
                 return reply.code(403).send({ error: 'You do not have permission to view campaign analytics' });
             }
@@ -258,7 +293,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const userId = request.user!.id;
 
             // RBAC: Require view_analytics permission for behaviour data
-            const canView = await PermissionService.hasPermission(userId, accountId, 'view_analytics');
+            const canView = await PermissionService.hasAnyPermission(userId, accountId, analyticsPermissions);
             if (!canView) {
                 return reply.code(403).send({ error: 'You do not have permission to view behaviour analytics' });
             }
@@ -274,7 +309,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const userId = request.user!.id;
 
             // RBAC: Require view_analytics permission for search data
-            const canView = await PermissionService.hasPermission(userId, accountId, 'view_analytics');
+            const canView = await PermissionService.hasAnyPermission(userId, accountId, analyticsPermissions);
             if (!canView) {
                 return reply.code(403).send({ error: 'You do not have permission to view search analytics' });
             }
@@ -323,7 +358,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             const productWooId = Number(productId);
 
             // RBAC: Require view_products permission
-            const canView = await PermissionService.hasPermission(userId, accountId, 'view_products');
+            const canView = await PermissionService.hasAnyPermission(userId, accountId, productAnalyticsPermissions);
             if (!canView) {
                 return reply.code(403).send({ error: 'You do not have permission to view product analytics' });
             }

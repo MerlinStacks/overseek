@@ -7,6 +7,9 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { automationEnrollmentService } from '../AutomationEnrollmentService';
+import { automationQueueService } from '../AutomationQueueService';
+import { FlowDefinition } from '../automation/types';
 
 /**
  * Find Abandoned Carts.
@@ -91,7 +94,8 @@ export async function triggerAbandonedCartAutomations() {
             select: {
                 id: true,
                 accountId: true,
-                triggerConfig: true
+                triggerConfig: true,
+                flowDefinition: true
             }
         });
 
@@ -165,22 +169,46 @@ export async function triggerAbandonedCartAutomations() {
                 const automation = accountAutomations[0];
 
                 try {
-                    await prisma.automationEnrollment.create({
-                        data: {
-                            automationId: automation.id,
+                    const flow = automation.flowDefinition as unknown as FlowDefinition | null;
+                    const triggerNodeId = automationEnrollmentService.getTriggerNodeId(flow);
+                    if (!triggerNodeId) {
+                        Logger.warn('Abandoned cart automation skipped: missing trigger node', {
                             accountId,
-                            email: cart.email,
-                            wooCustomerId: cart.wooCustomerId,
-                            status: 'ACTIVE',
-                            contextData: {
-                                sessionId: cart.id,
-                                cartValue: Number(cart.cartValue),
+                            automationId: automation.id
+                        });
+                        continue;
+                    }
+
+                    const enrollmentResult = await automationEnrollmentService.createEnrollment({
+                        automation: automation as any,
+                        email: cart.email,
+                        wooCustomerId: cart.wooCustomerId,
+                        currentNodeId: triggerNodeId,
+                        nextRunAt: new Date(),
+                        triggerEntityType: 'CART',
+                        triggerEntityId: cart.id,
+                        dedupeKey: `ABANDONED_CART:${cart.id}:${cart.email.toLowerCase().trim()}`,
+                        dedupeScope: 'ACTIVE',
+                        contextData: {
+                            sessionId: cart.id,
+                            cartValue: Number(cart.cartValue),
+                            currency: cart.currency,
+                            cartItems: cart.cartItems,
+                            cart: {
+                                total: Number(cart.cartValue),
+                                items: cart.cartItems,
                                 currency: cart.currency,
-                                cartItems: cart.cartItems,
-                                triggeredAt: new Date().toISOString()
+                                checkoutUrl: (cart as any).currentPath || null
                             },
-                            nextRunAt: new Date() // Process immediately
+                            triggeredAt: new Date().toISOString()
                         }
+                    });
+
+                    if (!enrollmentResult.created) continue;
+
+                    await automationQueueService.enqueueEnrollment({
+                        enrollmentId: enrollmentResult.enrollment.id,
+                        runAt: enrollmentResult.enrollment.nextRunAt
                     });
 
                     // Mark session as notified

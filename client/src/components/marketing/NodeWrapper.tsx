@@ -4,8 +4,8 @@
  * Base wrapper for consistent flow node styling with stats support.
  */
 import React, { useCallback } from 'react';
-import { Settings, Plus, MoreVertical, Copy, Move, Trash2, AlertTriangle } from 'lucide-react';
-import { NodeStats, OnAddStepCallback, OnCopyNodeCallback, OnMoveNodeCallback, OnDeleteNodeCallback } from './flowNodeUtils';
+import { Settings, Plus, MoreVertical, Move, Trash2, AlertTriangle } from 'lucide-react';
+import { NodeStats, OnAddStepCallback, OnMoveNodeCallback, OnDeleteNodeCallback } from './flowNodeUtils';
 import type { FlowIssue } from './flowValidation';
 
 interface AddStepButtonProps {
@@ -36,12 +36,11 @@ export const AddStepButton: React.FC<AddStepButtonProps> = ({ nodeId, onAddStep 
 
 interface NodeActionMenuProps {
     nodeId: string;
-    onCopy?: OnCopyNodeCallback;
     onMove?: OnMoveNodeCallback;
     onDelete?: OnDeleteNodeCallback;
 }
 
-export const NodeActionMenu: React.FC<NodeActionMenuProps> = ({ nodeId, onCopy, onMove, onDelete }) => {
+export const NodeActionMenu: React.FC<NodeActionMenuProps> = ({ nodeId, onMove, onDelete }) => {
     const [isOpen, setIsOpen] = React.useState(false);
     const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -62,7 +61,6 @@ export const NodeActionMenu: React.FC<NodeActionMenuProps> = ({ nodeId, onCopy, 
             </button>
             {isOpen && (
                 <div className="absolute right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-lg shadow-xl shadow-slate-900/10 z-50 py-1 min-w-[130px]">
-                    {onCopy && <button onClick={(e) => { e.stopPropagation(); handleAction(() => onCopy(nodeId)); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"><Copy size={14} />Copy</button>}
                     {onMove && <button onClick={(e) => { e.stopPropagation(); handleAction(() => onMove(nodeId)); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"><Move size={14} />Move</button>}
                     {onDelete && <button onClick={(e) => { e.stopPropagation(); handleAction(() => onDelete(nodeId)); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"><Trash2 size={14} />Delete</button>}
                 </div>
@@ -85,7 +83,6 @@ interface NodeWrapperProps {
     nodeId?: string;
     onAddStep?: OnAddStepCallback;
     showAddButton?: boolean;
-    onCopy?: OnCopyNodeCallback;
     onMove?: OnMoveNodeCallback;
     onDelete?: OnDeleteNodeCallback;
     statOrder?: Array<'active' | 'queued' | 'completed' | 'skipped' | 'failed'>;
@@ -96,7 +93,7 @@ interface NodeWrapperProps {
 
 export const NodeWrapper: React.FC<NodeWrapperProps> = ({
     children, title, subtitle, icon, iconBgColor, borderColor, bgColor = 'bg-white',
-    stepNumber, stats, onSettingsClick, nodeId, onAddStep, showAddButton = true, onCopy, onMove, onDelete, statOrder, onStatsClick, density = 'comfortable', issues = []
+    stepNumber, stats, onSettingsClick, nodeId, onAddStep, showAddButton = true, onMove, onDelete, statOrder, onStatsClick, density = 'comfortable', issues = []
 }) => {
     const isCompact = density === 'compact';
     const blockingCount = issues.filter((issue) => issue.severity === 'blocking').length;
@@ -120,7 +117,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
                         {blockingCount > 0 ? blockingCount : warningCount}
                     </div>
                 )}
-                {nodeId && (onCopy || onMove || onDelete) && <NodeActionMenu nodeId={nodeId} onCopy={onCopy} onMove={onMove} onDelete={onDelete} />}
+                {nodeId && (onMove || onDelete) && <NodeActionMenu nodeId={nodeId} onMove={onMove} onDelete={onDelete} />}
             </div>
             <div className={`${isCompact ? 'px-3 py-2.5 text-[13px]' : 'px-4 py-3 text-sm'} text-slate-800`}>{children}</div>
             {stats && (() => {

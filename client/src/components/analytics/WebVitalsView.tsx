@@ -326,8 +326,8 @@ export function WebVitalsView() {
         try {
             const [summaryRes, timelineRes, pagesRes] = await Promise.all([
                 fetch(`/api/web-vitals/summary?days=30&pageType=${pageType}`, { headers }),
-                fetch(`/api/web-vitals/timeline?metric=${selectedMetric}&days=30`, { headers }),
-                fetch(`/api/web-vitals/pages?days=30&metric=${selectedMetric}&limit=20`, { headers }),
+                fetch(`/api/web-vitals/timeline?metric=${selectedMetric}&days=30&pageType=${pageType}`, { headers }),
+                fetch(`/api/web-vitals/pages?days=30&metric=${selectedMetric}&limit=20&pageType=${pageType}`, { headers }),
             ]);
 
             if (!summaryRes.ok || !timelineRes.ok || !pagesRes.ok) {

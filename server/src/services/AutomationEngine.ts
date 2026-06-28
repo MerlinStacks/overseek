@@ -11,6 +11,7 @@ import { prisma } from '../utils/prisma';
 import { FlowDefinition } from './automation/types';
 import { NodeExecutor } from './automation/NodeExecutor';
 import { findNextNodeId, calculateDelayDuration } from './automation/FlowNavigator';
+import { validateAutomationFlow } from './automation/FlowValidation';
 import { automationEnrollmentService } from './AutomationEnrollmentService';
 import { automationQueueService } from './AutomationQueueService';
 
@@ -67,15 +68,26 @@ export class AutomationEngine {
             where: { accountId, triggerType, isActive: true }
         });
 
+        const result = {
+            automations: automations.length,
+            enrolled: 0,
+            skipped: 0
+        };
+
         for (const automation of automations) {
             const passesFilters = await this.checkTriggerFilters(automation, data);
 
             if (passesFilters) {
-                await this.enroll(automation, data);
+                const enrollmentResult = await this.enroll(automation, data);
+                if (enrollmentResult.created) result.enrolled += 1;
+                else result.skipped += 1;
             } else {
+                result.skipped += 1;
                 Logger.debug(`Automation ${automation.name} skipped due to filters.`);
             }
         }
+
+        return result;
     }
 
     /**
@@ -91,19 +103,19 @@ export class AutomationEngine {
 
         if (!targetEmail) {
             Logger.warn('Cannot enroll: No email found in data', { automation: automation.name });
-            return;
+            return { created: false, skipReason: 'NO_EMAIL' };
         }
 
         const flow = automation.flowDefinition as unknown as FlowDefinition | null;
         if (!flow?.nodes) {
             Logger.warn('No flow definition for automation', { automation: automation.name });
-            return;
+            return { created: false, skipReason: 'NO_FLOW' };
         }
 
         const triggerNodeId = automationEnrollmentService.getTriggerNodeId(flow);
         if (!triggerNodeId) {
             Logger.warn('No Trigger Node found in flow', { automation: automation.name });
-            return;
+            return { created: false, skipReason: 'NO_TRIGGER' };
         }
 
         const triggerEntityId = this.getTriggerEntityId(data);
@@ -132,13 +144,15 @@ export class AutomationEngine {
                 email: targetEmail,
                 reason: enrollmentResult.skipReason
             });
-            return;
+            return { created: false, skipReason: enrollmentResult.skipReason || 'SKIPPED' };
         }
 
         await automationQueueService.enqueueEnrollment({
             enrollmentId: enrollmentResult.enrollment.id,
             runAt: enrollmentResult.enrollment.nextRunAt
         });
+
+        return { created: true, enrollmentId: enrollmentResult.enrollment.id };
     }
 
     /**
@@ -151,10 +165,55 @@ export class AutomationEngine {
         });
 
         if (!enrollment || enrollment.status !== 'ACTIVE') return;
+        if (!enrollment.automation.isActive || enrollment.automation.status !== 'ACTIVE') {
+            await automationEnrollmentService.updateProgress(enrollmentId, {
+                status: 'CANCELLED',
+                statusReason: 'FLOW_DISABLED',
+                nextRunAt: null,
+                currentNodeId: null
+            });
+            await prisma.automationEnrollment.update({
+                where: { id: enrollmentId },
+                data: { cancelledAt: new Date() }
+            });
+            await automationEnrollmentService.recordRunEvent({
+                accountId: enrollment.automation.accountId,
+                automationId: enrollment.automationId,
+                enrollmentId,
+                nodeId: enrollment.currentNodeId,
+                eventType: 'CANCELLED',
+                outcome: 'FLOW_DISABLED'
+            });
+            return;
+        }
         if (enrollment.nextRunAt && enrollment.nextRunAt > new Date()) return;
 
         const flow = enrollment.automation.flowDefinition as unknown as FlowDefinition | null;
         if (!flow) return;
+
+        const blockingIssues = validateAutomationFlow(flow).filter((issue) => issue.severity === 'blocking');
+        if (blockingIssues.length > 0) {
+            await automationEnrollmentService.updateProgress(enrollmentId, {
+                status: 'CANCELLED',
+                statusReason: 'FLOW_INVALID',
+                nextRunAt: null,
+                currentNodeId: null
+            });
+            await prisma.automationEnrollment.update({
+                where: { id: enrollmentId },
+                data: { cancelledAt: new Date() }
+            });
+            await automationEnrollmentService.recordRunEvent({
+                accountId: enrollment.automation.accountId,
+                automationId: enrollment.automationId,
+                enrollmentId,
+                nodeId: enrollment.currentNodeId,
+                eventType: 'CANCELLED',
+                outcome: 'FLOW_INVALID',
+                metadata: { issues: blockingIssues.slice(0, 5) } as any
+            });
+            return;
+        }
 
         let currentNodeId = enrollment.currentNodeId;
         let stepsProcessed = 0;
@@ -350,7 +409,7 @@ export class AutomationEngine {
 
         // Check for backlog (overflow detection)
         const backlogCount = await prisma.automationEnrollment.count({
-            where: { status: 'ACTIVE', nextRunAt: { lte: now } }
+            where: { status: 'ACTIVE', nextRunAt: { lte: now }, automation: { isActive: true, status: 'ACTIVE' } }
         });
 
         if (backlogCount > 100) {
@@ -361,7 +420,7 @@ export class AutomationEngine {
         }
 
         const due = await prisma.automationEnrollment.findMany({
-            where: { status: 'ACTIVE', nextRunAt: { lte: now } },
+            where: { status: 'ACTIVE', nextRunAt: { lte: now }, automation: { isActive: true, status: 'ACTIVE' } },
             select: { id: true, nextRunAt: true },
             take: 100
         });

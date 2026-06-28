@@ -43,6 +43,7 @@ export function TrackingScriptHelper() {
 
     // Public API URL for external clients (derived from browser location)
     const publicApiUrl = getPublicApiUrl();
+    const trackingAuthToken = currentAccount?.webhookSecret || '';
 
     const sendTestEvent = async () => {
         setTestStatus('loading');
@@ -51,9 +52,12 @@ export function TrackingScriptHelper() {
             const testVisitorId = `test-${currentAccount?.id || 'account'}`;
 
             // Send a test pageview event directly to the tracking endpoint
-            await fetch(`${apiUrl}/api/tracking/events`, {
+            const response = await fetch(`${apiUrl}/api/tracking/events`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(trackingAuthToken ? { Authorization: `Bearer ${trackingAuthToken}` } : {})
+                },
                 body: JSON.stringify({
                     accountId: currentAccount?.id,
                     visitorId: testVisitorId,
@@ -63,6 +67,10 @@ export function TrackingScriptHelper() {
                     payload: { source: 'dashboard-diagnostic', timestamp: new Date().toISOString() }
                 })
             });
+
+            if (!response.ok) {
+                throw new Error(`Tracking endpoint returned ${response.status}`);
+            }
 
             setTestStatus('success');
 
@@ -131,11 +139,12 @@ export function TrackingScriptHelper() {
     const [configCopied, setConfigCopied] = useState(false);
     const [emailPrefsCopied, setEmailPrefsCopied] = useState(false);
 
-    const emailPreferencesAuthToken = currentAccount?.webhookSecret || '';
+    const emailPreferencesAuthToken = trackingAuthToken;
 
     const connectionConfig = JSON.stringify({
         apiUrl: publicApiUrl,
-        accountId: currentAccount?.id || ''
+        accountId: currentAccount?.id || '',
+        webhookAuthToken: trackingAuthToken
     }, null, 2);
 
     const emailPreferencesConfig = JSON.stringify({

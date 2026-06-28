@@ -34,6 +34,20 @@ function sendInternalError(reply: FastifyReply, error: unknown, context: string)
     return reply.code(500).send({ error: 'Internal server error' });
 }
 
+function isFlowValidationError(error: unknown): error is { issues?: unknown[]; message: string; name?: string } {
+    return Boolean(error && typeof error === 'object' && (error as { name?: string }).name === 'FlowValidationError');
+}
+
+function getHostFromUrl(value: string | null | undefined): string | null {
+    if (!value) return null;
+    const normalized = value.startsWith('http://') || value.startsWith('https://') ? value : `https://${value}`;
+    try {
+        return new URL(normalized).host.toLowerCase();
+    } catch {
+        return null;
+    }
+}
+
 const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Params: { token: string } }>('/recover-cart/:token', async (request, reply) => {
         const payload = cartRecoveryService.verifyToken(request.params.token);
@@ -42,6 +56,15 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const recoveryUrl = new URL(payload.checkoutUrl);
+        const account = await prisma.account.findUnique({
+            where: { id: payload.accountId },
+            select: { wooUrl: true, domain: true }
+        });
+        const allowedHosts = [getHostFromUrl(account?.wooUrl), getHostFromUrl(account?.domain)].filter((host): host is string => Boolean(host));
+        if (allowedHosts.length === 0 || !allowedHosts.includes(recoveryUrl.host.toLowerCase())) {
+            return reply.code(400).send({ error: 'Recovery link destination is not allowed' });
+        }
+
         recoveryUrl.searchParams.set('overseek_recover_cart', '1');
         recoveryUrl.searchParams.set('overseek_recovery_token', request.params.token);
 
@@ -222,6 +245,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const automation = await service.upsertAutomation(getAccountId(request), request.body as any);
             return automation;
         } catch (e) {
+            if (isFlowValidationError(e)) {
+                return reply.code(400).send({ error: e.message, issues: e.issues || [] });
+            }
             return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
@@ -252,6 +278,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             if (message === 'Automation not found') {
                 return reply.code(404).send({ error: message });
             }
+            if (isFlowValidationError(e)) {
+                return reply.code(400).send({ error: e.message, issues: e.issues || [] });
+            }
             return sendInternalError(reply, e, 'Marketing route failed');
         }
     });
@@ -270,7 +299,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/automations/:id/enrollments', async (request, reply) => {
         try {
-            const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
+            const limit = parsePositiveInt(request.query.limit, 50, 100);
             return await service.listAutomationEnrollments(request.params.id, getAccountId(request), limit);
         } catch (e) {
             const message = (e as Error).message;
@@ -283,7 +312,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/automations/:id/run-events', async (request, reply) => {
         try {
-            const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
+            const limit = parsePositiveInt(request.query.limit, 50, 100);
             return await service.listAutomationRunEvents(request.params.id, getAccountId(request), limit);
         } catch (e) {
             const message = (e as Error).message;
@@ -505,7 +534,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get<{ Querystring: { days?: string } }>('/analytics/overview', async (request, reply) => {
         try {
             const { campaignTrackingService } = await import('../services/CampaignTrackingService');
-            const days = parseInt(request.query.days || '30', 10);
+            const days = parsePositiveInt(request.query.days, 30, 365);
             const overview = await campaignTrackingService.getAccountCampaignOverview(
                 getAccountId(request),
                 days
@@ -519,8 +548,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get<{ Querystring: { days?: string } }>('/analytics/email-dashboard', async (request, reply) => {
         try {
-            const days = parseInt(request.query.days || '30', 10);
-            const safeDays = Number.isFinite(days) && days > 0 ? days : 30;
+            const safeDays = parsePositiveInt(request.query.days, 30, 365);
             const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
             const accountId = getAccountId(request);
 

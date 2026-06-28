@@ -283,15 +283,22 @@ class OverSeek_Crawler_Guard
         // geographically distant server can take 20-100ms, silently dropping reports.
         // 3s is the connection setup budget. With blocking:false, the page response
         // is NOT held — PHP returns as soon as cURL starts the connection attempt.
+        $headers = array(
+            'Content-Type'     => 'application/json',
+            'X-Plugin-Version' => defined('OVERSEEK_WC_VERSION') ? OVERSEEK_WC_VERSION : 'unknown',
+        );
+
+        $webhook_token = (string) get_option('overseek_webhook_auth_token', '');
+        if ('' !== $webhook_token) {
+            $headers['Authorization'] = 'Bearer ' . $webhook_token;
+        }
+
         wp_remote_post(
             $this->api_url . '/api/t/bot-hit',
             array(
                 'blocking' => false,
                 'timeout'  => 3,
-                'headers'  => array(
-                    'Content-Type'     => 'application/json',
-                    'X-Plugin-Version' => defined('OVERSEEK_WC_VERSION') ? OVERSEEK_WC_VERSION : 'unknown',
-                ),
+                'headers'  => $headers,
                 'body'     => $body,
             )
         );

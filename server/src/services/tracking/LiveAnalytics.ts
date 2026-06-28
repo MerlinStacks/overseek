@@ -328,9 +328,9 @@ export async function getVisitorCount24h(accountId: string): Promise<number> {
  * @param sessionId - The session ID to query
  * @returns Array of analytics events in descending order by creation time
  */
-export async function getSessionHistory(sessionId: string) {
+export async function getSessionHistory(accountId: string, sessionId: string) {
     return prisma.analyticsEvent.findMany({
-        where: { sessionId },
+        where: { sessionId, session: { accountId } },
         orderBy: { createdAt: 'desc' }
     });
 }

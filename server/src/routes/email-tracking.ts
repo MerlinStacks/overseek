@@ -38,10 +38,37 @@ function parseUrlEncodedBody(body: string): Record<string, string> {
     return Object.fromEntries(params.entries());
 }
 
-function getSafeRedirectUrl(rawUrl: string): string | null {
+function normalizeHost(host: string): string {
+    return host.trim().toLowerCase().replace(/^www\./, '');
+}
+
+function hostMatches(host: string, allowedHost: string): boolean {
+    const normalizedHost = normalizeHost(host);
+    const normalizedAllowed = normalizeHost(allowedHost);
+    return normalizedHost === normalizedAllowed || normalizedHost.endsWith(`.${normalizedAllowed}`);
+}
+
+function parseAllowedHost(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+
+    try {
+        return new URL(raw).hostname;
+    } catch {
+        try {
+            return new URL(`https://${raw}`).hostname;
+        } catch {
+            return null;
+        }
+    }
+}
+
+function getSafeRedirectUrl(rawUrl: string, allowedHosts: string[]): string | null {
     try {
         const parsed = new URL(rawUrl);
         if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            return null;
+        }
+        if (!allowedHosts.some(host => hostMatches(parsed.hostname, host))) {
             return null;
         }
         return withReviewRequestMarker(parsed).toString();
@@ -104,25 +131,39 @@ async function upsertPreference(token: string, scope?: string, reason?: string) 
         return null;
     }
 
-    const unsubscribeScope = scope === 'ALL' ? 'ALL' : 'MARKETING';
+    const requestedScope = scope === 'ALL' ? 'ALL' : 'MARKETING';
+    const unsubscribeScope = context.currentScope === 'ALL' && requestedScope === 'MARKETING'
+        ? 'ALL'
+        : requestedScope;
+    const normalizedEmail = context.emailLog.to.trim().toLowerCase();
 
-    await prisma.emailUnsubscribe.upsert({
-        where: {
-            accountId_email: {
+    await prisma.$transaction(async (tx) => {
+        await tx.emailUnsubscribe.deleteMany({
+            where: {
                 accountId: context.emailLog.accountId,
-                email: context.emailLog.to
+                email: { equals: normalizedEmail, mode: 'insensitive' },
+                NOT: { email: normalizedEmail }
             }
-        },
-        create: {
-            accountId: context.emailLog.accountId,
-            email: context.emailLog.to,
-            scope: unsubscribeScope,
-            reason: reason || null
-        },
-        update: {
-            scope: unsubscribeScope,
-            reason: reason || null
-        }
+        });
+
+        await tx.emailUnsubscribe.upsert({
+            where: {
+                accountId_email: {
+                    accountId: context.emailLog.accountId,
+                    email: normalizedEmail
+                }
+            },
+            create: {
+                accountId: context.emailLog.accountId,
+                email: normalizedEmail,
+                scope: unsubscribeScope,
+                reason: reason || null
+            },
+            update: {
+                scope: unsubscribeScope,
+                reason: reason || null
+            }
+        });
     });
 
     if (context.emailLog.sourceId) {
@@ -142,6 +183,7 @@ async function upsertPreference(token: string, scope?: string, reason?: string) 
 
     return {
         ...context,
+        email: normalizedEmail,
         currentScope: unsubscribeScope,
         reason: reason || null,
         updatedAt: new Date()
@@ -272,19 +314,27 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             const { trackingId } = request.params;
             const { url } = request.query;
-            const redirectUrl = getSafeRedirectUrl(url);
-
-            if (!redirectUrl) {
-                return reply.code(400).send({ error: 'Invalid redirect URL' });
-            }
+            let redirectUrl: string | null = null;
 
             try {
                 const emailLog = await prisma.emailLog.findUnique({
-                    where: { trackingId }
+                    where: { trackingId },
+                    include: { account: { select: { wooUrl: true, domain: true } } }
                 });
 
                 if (!emailLog) {
                     return reply.code(404).send({ error: 'Tracking link not found' });
+                }
+
+                const allowedHosts = [
+                    parseAllowedHost(emailLog.account?.wooUrl),
+                    parseAllowedHost(emailLog.account?.domain)
+                ].filter((host): host is string => Boolean(host));
+
+                redirectUrl = getSafeRedirectUrl(url, allowedHosts);
+
+                if (!redirectUrl) {
+                    return reply.code(400).send({ error: 'Invalid redirect URL' });
                 }
 
                 // Log click event
@@ -312,6 +362,10 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
             } catch (error) {
                 Logger.error('Click tracking error', { trackingId, error });
                 return reply.code(500).send({ error: 'Failed to track click' });
+            }
+
+            if (!redirectUrl) {
+                return reply.code(400).send({ error: 'Invalid redirect URL' });
             }
 
             // Redirect to original URL

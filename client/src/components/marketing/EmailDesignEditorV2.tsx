@@ -51,7 +51,6 @@ interface InvoiceTemplateRecord {
     layout?: string | { items?: Array<{ type?: string; logo?: string; content?: string }> };
 }
 
-const DRAFT_STORAGE_KEY = 'overseek-email-builder-v2-draft';
 const HISTORY_STORAGE_KEY = 'overseek-email-builder-v2-history';
 const SAVED_SECTIONS_STORAGE_KEY = 'overseek-email-builder-v2-saved-sections';
 const MAX_HISTORY = 12;
@@ -510,7 +509,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const groupedIssues = groupPreflightIssues(issues);
     const designWarnings = useMemo(() => getEmailDesignWarnings(design), [design]);
     const visiblePaletteItems = paletteItems.filter((item) => item.label.toLowerCase().includes(blockSearch.trim().toLowerCase()));
-    const saveStatus = saving ? 'Autosaving...' : saveError ? 'Autosave failed, draft kept' : hasUnsavedChanges ? 'Autosave pending' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
+    const saveStatus = saving ? 'Autosaving...' : saveError ? 'Autosave failed' : hasUnsavedChanges ? 'Autosave pending' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
     const previewDevice = PREVIEW_DEVICES.find((device) => device.id === previewDeviceId) || PREVIEW_DEVICES[0];
     const isMobilePreview = previewDevice.type === 'mobile';
     const previewWidth = isMobilePreview ? previewDevice.width : Math.min(design.document.theme.contentWidth, previewDevice.width);
@@ -666,11 +665,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         setDesign((current) => {
             const next = cloneDesign(current);
             updater(next);
-            try {
-                localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ design: next, updatedAt: new Date().toISOString() }));
-            } catch {
-                // Draft persistence is best-effort and should not block editing.
-            }
             setHasUnsavedChanges(true);
             setSaveError(false);
             return next;
@@ -1104,11 +1098,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
             baselineDesignRef.current = serializedAtStart;
 
             if (JSON.stringify(latestDesignRef.current) === serializedAtStart) {
-                try {
-                    localStorage.removeItem(DRAFT_STORAGE_KEY);
-                } catch {
-                    // Ignore local draft cleanup failures.
-                }
                 setHasUnsavedChanges(false);
                 setLastSavedAt(new Date());
             } else {
@@ -1204,12 +1193,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         }
 
         if (!dirty) return;
-
-        try {
-            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ design, updatedAt: new Date().toISOString() }));
-        } catch {
-            // Draft persistence is best-effort. Server autosave still runs below.
-        }
 
         autosaveTimerRef.current = window.setTimeout(() => {
             autosaveTimerRef.current = null;
@@ -2009,7 +1992,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
             {block.type === 'social' && <><SelectField label="Icon pack" value={block.props.iconSet || 'native'} options={SOCIAL_ICON_SETS} onChange={(value) => patchProps({ iconSet: value as SocialIconSet })} /><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
             {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Email and is locked in the designer.</div>}
-            {block.type === 'rawHtml' && <TextArea label="Raw HTML" value={block.props.html} onChange={(value) => patchProps({ html: value })} />}
+            {block.type === 'rawHtml' && <TextArea label="Raw HTML" value={block.props.html} onChange={(value) => patchProps({ html: sanitizeEmailHtml(value) })} />}
         </div>
     );
 }

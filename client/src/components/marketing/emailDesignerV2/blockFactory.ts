@@ -34,7 +34,9 @@ export const paletteItems: PaletteItem[] = [
 
 export const defaultSocialLinks = [{ label: 'Facebook', href: '#' }, { label: 'Instagram', href: '#' }, { label: 'TikTok', href: '#' }];
 
-export const createAccountFooterHtml = (accountName: string) => `<p>You are receiving this email from ${accountName}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] || char));
+
+export const createAccountFooterHtml = (accountName: string) => `<p>You are receiving this email from ${escapeHtml(accountName)}.<br /><a href="{{unsubscribe_url}}">Unsubscribe</a></p>`;
 
 export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     const id = createEmailDesignId(type);
@@ -67,7 +69,7 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     if (type === 'orderTracking') return { id, type, props: { heading: 'Track your order', body: 'Your order is on its way. Use the button below to track it with Australia Post.', buttonLabel: 'Track with AusPost', showTrackingNumber: true, align: 'center' } };
     if (type === 'address') return { id, type, props: { title: 'Shipping address', source: 'shipping' } };
     if (type === 'coupon') return { id, type, props: { headline: 'Your exclusive offer', code: '{{coupon.code}}', description: '{{coupon.description}}' } };
-    if (type === 'review') return { id, type, props: { headline: 'How did we do?', rating: '{{review.rating}}', content: '{{review.content}}', reviewer: '{{review.reviewer}}', productName: '{{review.productName}}', ctaLabel: 'Write your review', ctaHref: '{{review.productUrl}}' } };
+    if (type === 'review') return { id, type, props: { headline: 'How did we do?', rating: '{{review.rating}}', content: '{{review.content}}', reviewer: '{{review.reviewer}}', productName: '{{review.productName}}', ctaLabel: 'Write your review', ctaHref: '{{review.requestUrl}}' } };
     if (type === 'menu') return { id, type, props: { links: [{ label: 'Shop', href: '{{store_url}}' }, { label: 'Account', href: '{{store_url}}/account' }, { label: 'Contact', href: '{{store_url}}/contact' }], align: 'center' } };
     if (type === 'social') return { id, type, props: { links: defaultSocialLinks, align: 'center', iconStyle: 'solid', iconSet: 'native' } };
     if (type === 'footer') return { id, type, props: { html: createAccountFooterHtml('Your Store'), align: 'center' } };

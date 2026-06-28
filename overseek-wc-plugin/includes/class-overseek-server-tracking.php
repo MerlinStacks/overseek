@@ -153,6 +153,8 @@ class OverSeek_Server_Tracking
 
         // Earlier checkout email capture for both classic and block checkout flows.
         add_action('wp_footer', array($this, 'inject_checkout_email_capture'), 20);
+        add_action('wp_ajax_nopriv_overseek_checkout_email_capture', array($this, 'ajax_checkout_email_capture'));
+        add_action('wp_ajax_overseek_checkout_email_capture', array($this, 'ajax_checkout_email_capture'));
     }
 
     /**
@@ -294,7 +296,7 @@ class OverSeek_Server_Tracking
      * @param array $payload Event-specific data
      * @param bool $is_404 Whether this is a 404 error page
      */
-    private function queue_event($type, $payload = array(), $is_404 = false)
+    private function queue_event($type, $payload = array(), $is_404 = false, $url_override = '')
     {
         // Skip if no consent
         if (!OverSeek_Tracking_Guard_Utils::has_tracking_consent()) {
@@ -315,7 +317,7 @@ class OverSeek_Server_Tracking
             'accountId' => $this->account_id,
             'visitorId' => $visitor_id,
             'type' => $type,
-            'url' => OverSeek_Tracking_Request_Utils::get_sanitized_current_url(),
+            'url' => $url_override ?: OverSeek_Tracking_Request_Utils::get_sanitized_current_url(),
             'pageTitle' => wp_get_document_title(),
             'referrer' => $referrer_data['referrer'],
             'referrerDomain' => $referrer_data['referrerDomain'],
@@ -617,18 +619,11 @@ class OverSeek_Server_Tracking
             return;
         }
 
-        $payload = OverSeek_Tracking_Event_Builder::build_checkout_capture_event(
-            $this->account_id,
-            $visitor_id,
-            function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/checkout/'),
-            $cart
-        );
-
         ?>
         <script>
         (function(){
-            const endpoint = <?php echo wp_json_encode($this->api_url . '/api/t/e'); ?>;
-            const basePayload = <?php echo wp_json_encode($payload); ?>;
+            const endpoint = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
+            const nonce = <?php echo wp_json_encode(wp_create_nonce('overseek_checkout_email_capture')); ?>;
             const selectors = [
                 'input[name="billing_email"]',
                 '#billing_email',
@@ -650,21 +645,18 @@ class OverSeek_Server_Tracking
                 }
 
                 sentEmails.add(normalized);
-                const body = JSON.stringify({
-                    ...basePayload,
-                    payload: {
-                        ...basePayload.payload,
-                        email: normalized,
-                        eventId: `os_checkout_capture_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
-                    }
+                const body = new URLSearchParams({
+                    action: 'overseek_checkout_email_capture',
+                    nonce,
+                    email: normalized
                 });
 
                 fetch(endpoint, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
                     body,
                     keepalive: true,
-                    credentials: 'omit'
+                    credentials: 'same-origin'
                 }).catch(function(){});
             }
 
@@ -734,6 +726,46 @@ class OverSeek_Server_Tracking
         })();
         </script>
         <?php
+    }
+
+    /**
+     * Secure checkout email capture proxy.
+     * Browser code posts only to the local store with a WP nonce; the plugin then
+     * forwards a signed server-side tracking event to OverSeek.
+     */
+    public function ajax_checkout_email_capture()
+    {
+        if (!check_ajax_referer('overseek_checkout_email_capture', 'nonce', false)) {
+            wp_send_json_error(array('message' => 'Invalid nonce'), 403);
+        }
+
+        if (!OverSeek_Tracking_Guard_Utils::has_tracking_consent()) {
+            wp_send_json_success(array('tracked' => false));
+        }
+
+        $email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
+        if (empty($email) || !is_email($email)) {
+            wp_send_json_error(array('message' => 'Invalid email'), 400);
+        }
+
+        $cart = $this->get_cart_safely();
+        if (!$cart || $cart->is_empty()) {
+            wp_send_json_success(array('tracked' => false));
+        }
+
+        $payload = OverSeek_Tracking_Event_Builder::build_checkout_start_payload(
+            strtolower($email),
+            $cart,
+            'os_checkout_capture_' . time() . '_' . wp_generate_password(8, false, false),
+            null,
+            'checkout_email_capture'
+        );
+
+        $checkout_url = function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/checkout/');
+        $this->queue_event('checkout_start', $payload, false, $checkout_url);
+        $this->flush_event_queue();
+
+        wp_send_json_success(array('tracked' => true));
     }
 
     /**

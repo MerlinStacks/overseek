@@ -222,7 +222,7 @@ describe('MergeTagResolver all merge tags', () => {
         expect(html).not.toMatch(/%7D%7D/i);
         expect(html).not.toMatch(/\{\{[^}]+\}\}/);
         expect(html).toContain('href="https://store.example.com/invoices/99.pdf"');
-        expect(html).toContain('href="https://store.example.com/products/classic-hoodie#review_form"');
+        expect(html).toContain('href="https://store.example.com/products/classic-hoodie?overseek_review_request=1#review_form"');
         expect(html).toContain('href="https://store.example.com/recover/abc"');
         expect(html).toContain('href="https://store.example.com/checkout"');
     });

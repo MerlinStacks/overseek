@@ -202,6 +202,9 @@ class OverSeek_Admin
 			// Update the real options
 			update_option('overseek_api_url', esc_url_raw($data['apiUrl']));
 			update_option('overseek_account_id', sanitize_text_field($data['accountId']));
+			if (!empty($data['webhookAuthToken']) && is_string($data['webhookAuthToken'])) {
+				update_option('overseek_webhook_auth_token', sanitize_text_field($data['webhookAuthToken']));
+			}
 
 			// Return input to show in the box, or clear it to indicate success? 
 			// Let's keep it so they can see what they pasted.

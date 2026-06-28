@@ -136,8 +136,9 @@ export class MarketingScheduler {
             Logger.info(`[Scheduler] Found ${abandonedSessions.length} abandoned carts`);
 
             // Run automation triggers sequentially (side-effectful: sends emails)
+            const notifiedSessionIds: string[] = [];
             for (const session of abandonedSessions) {
-                await automationEngine.processTrigger(session.accountId, 'ABANDONED_CART', {
+                const triggerResult = await automationEngine.processTrigger(session.accountId, 'ABANDONED_CART', {
                     email: session.email,
                     wooCustomerId: session.wooCustomerId,
                     cart: {
@@ -148,15 +149,19 @@ export class MarketingScheduler {
                     },
                     visitorId: session.visitorId
                 });
+
+                if (triggerResult.enrolled > 0) {
+                    notifiedSessionIds.push(session.id);
+                }
             }
 
-            // Mark all processed sessions in one updateMany — all get the same timestamp
-            // Why: avoids N individual update() calls inside the loop (N+1)
-            const sentAt = new Date();
-            await prisma.analyticsSession.updateMany({
-                where: { id: { in: abandonedSessions.map(s => s.id) } },
-                data: { abandonedNotificationSentAt: sentAt }
-            });
+            if (notifiedSessionIds.length > 0) {
+                const sentAt = new Date();
+                await prisma.analyticsSession.updateMany({
+                    where: { id: { in: notifiedSessionIds } },
+                    data: { abandonedNotificationSentAt: sentAt }
+                });
+            }
         }
     }
 

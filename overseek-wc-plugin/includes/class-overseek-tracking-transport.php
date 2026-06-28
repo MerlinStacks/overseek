@@ -74,17 +74,24 @@ class OverSeek_Tracking_Transport
             unset($data['visitorIp'], $data['_retry_count'], $data['_retry_after']);
 
             $visitor_ua = $data['userAgent'] ?? '';
+            $headers = array(
+                'Content-Type' => 'application/json',
+                'X-Forwarded-For' => $visitor_ip,
+                'X-Real-IP' => $visitor_ip,
+                'User-Agent' => !empty($visitor_ua) ? $visitor_ua : 'OverSeek-WC-Plugin/1.0',
+                'Expect' => '',
+            );
+
+            $webhook_token = (string) get_option('overseek_webhook_auth_token', '');
+            if ('' !== $webhook_token) {
+                $headers['Authorization'] = 'Bearer ' . $webhook_token;
+            }
+
             $response = wp_remote_post($api_url . '/api/t/e', array(
                 'timeout' => $timeout,
                 'blocking' => $blocking,
                 'httpversion' => '1.1',
-                'headers' => array(
-                    'Content-Type' => 'application/json',
-                    'X-Forwarded-For' => $visitor_ip,
-                    'X-Real-IP' => $visitor_ip,
-                    'User-Agent' => !empty($visitor_ua) ? $visitor_ua : 'OverSeek-WC-Plugin/1.0',
-                    'Expect' => '',
-                ),
+                'headers' => $headers,
                 'body' => wp_json_encode($data),
             ));
 

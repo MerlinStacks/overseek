@@ -79,6 +79,8 @@ export interface TrackingEventPayload {
  * @returns The upserted session, or null if filtered (bot traffic)
  */
 export async function processEvent(data: TrackingEventPayload) {
+    const payload = data.payload && typeof data.payload === 'object' ? data.payload as Record<string, any> : {};
+
     // Filter out bots/crawlers - they shouldn't be tracked
     if (data.userAgent && isBot(data.userAgent)) {
         // Fire-and-forget: log for dashboard visibility, never blocks the response
@@ -194,16 +196,16 @@ export async function processEvent(data: TrackingEventPayload) {
     if (data.type === 'add_to_cart' || data.type === 'remove_from_cart' || data.type === 'update_cart') {
         // Expect payload to have cartTotal and items
         // Support common aliases for value: total, value, price, amount
-        const payloadTotal = data.payload.total ?? data.payload.value ?? data.payload.price ?? data.payload.amount;
+        const payloadTotal = payload.total ?? payload.value ?? payload.price ?? payload.amount;
 
-        if (data.payload && typeof payloadTotal !== 'undefined') {
+        if (typeof payloadTotal !== 'undefined') {
             sessionPayload.cartValue = payloadTotal;
-            sessionPayload.currency = data.payload.currency || 'USD';
+            sessionPayload.currency = payload.currency || 'USD';
 
             // Only update items if the full list is provided.
             // Otherwise we risk wiping the list on simple 'add_to_cart' events that only send totals.
-            if (Array.isArray(data.payload.items)) {
-                sessionPayload.cartItems = data.payload.items;
+            if (Array.isArray(payload.items)) {
+                sessionPayload.cartItems = payload.items;
             }
 
             // Reset abandoned status if they interact with cart
@@ -213,20 +215,20 @@ export async function processEvent(data: TrackingEventPayload) {
 
     // If checkout start, link email and persist fingerprint bot score
     if (data.type === 'checkout_start') {
-        if (data.payload?.email) {
-            sessionPayload.email = data.payload.email;
+        if (payload.email) {
+            sessionPayload.email = payload.email;
         }
-        if (typeof data.payload?.total !== 'undefined') {
-            sessionPayload.cartValue = data.payload.total;
+        if (typeof payload.total !== 'undefined') {
+            sessionPayload.cartValue = payload.total;
         }
-        if (data.payload?.currency) {
-            sessionPayload.currency = data.payload.currency;
+        if (payload.currency) {
+            sessionPayload.currency = payload.currency;
         }
-        if (Array.isArray(data.payload?.items)) {
-            sessionPayload.cartItems = data.payload.items;
+        if (Array.isArray(payload.items)) {
+            sessionPayload.cartItems = payload.items;
         }
-        if (typeof data.payload?.fpScore === 'number') {
-            sessionPayload.fpScore = data.payload.fpScore;
+        if (typeof payload.fpScore === 'number') {
+            sessionPayload.fpScore = payload.fpScore;
             sessionPayload.fpScoredAt = new Date();
         }
     }
@@ -239,8 +241,8 @@ export async function processEvent(data: TrackingEventPayload) {
     }
 
     // Capture email from purchase event if not already set on session
-    if (data.type === 'purchase' && data.payload?.email) {
-        sessionPayload.email = data.payload.email;
+    if (data.type === 'purchase' && payload.email) {
+        sessionPayload.email = payload.email;
     }
 
     // Handle Search (Just ensure payload has term)
@@ -251,13 +253,13 @@ export async function processEvent(data: TrackingEventPayload) {
 
     // Session Stitching: Link visitor to customer on login
     if (data.type === 'identify') {
-        const payloadCustomerId = data.payload?.customerId ?? data.payload?.id ?? data.payload?.userId;
+        const payloadCustomerId = payload.customerId ?? payload.id ?? payload.userId;
 
         if (payloadCustomerId) {
             // wooCustomerId is an Int in the schema
             sessionPayload.wooCustomerId = parseInt(String(payloadCustomerId), 10) || null;
-            if (data.payload.email) {
-                sessionPayload.email = data.payload.email;
+            if (payload.email) {
+                sessionPayload.email = payload.email;
             }
             // Note: firstName and lastName are not stored on AnalyticsSession
             // They should be looked up from WooCustomer if needed
@@ -265,13 +267,13 @@ export async function processEvent(data: TrackingEventPayload) {
     }
 
     // Product View: Store detailed product data
-    if (data.type === 'product_view' && data.payload?.productId) {
+    if (data.type === 'product_view' && payload.productId) {
         // This is logged as an event with rich product data
         // The payload should include: productId, productName, price, sku, category
     }
 
     // A/B Test: Store experiment variation
-    if (data.type === 'experiment' && data.payload?.experimentId) {
+    if (data.type === 'experiment' && payload.experimentId) {
         // Log experiment assignment for later analysis
         // payload: { experimentId, variationId }
     }
@@ -478,8 +480,7 @@ export async function processEvent(data: TrackingEventPayload) {
     }
 
     try {
-        const payload = data.payload as Record<string, unknown> | undefined;
-        const orderId = payload?.orderId ?? payload?.order_id;
+        const orderId = payload.orderId ?? payload.order_id;
         const eventOrderId = (typeof orderId === 'number' && Number.isInteger(orderId)) ? orderId : undefined;
 
         await prisma.analyticsEvent.create({

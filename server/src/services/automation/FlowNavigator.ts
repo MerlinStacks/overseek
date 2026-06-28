@@ -9,7 +9,9 @@ import { FlowDefinition } from './types';
 const DELAY_MULTIPLIERS: Record<string, number> = {
     'minutes': 60000,
     'hours': 3600000,
-    'days': 86400000
+    'days': 86400000,
+    'weeks': 7 * 86400000,
+    'months': 30 * 86400000
 };
 
 /**

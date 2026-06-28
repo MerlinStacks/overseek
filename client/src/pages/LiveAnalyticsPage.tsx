@@ -99,6 +99,8 @@ export function LiveAnalyticsPage() {
             if (viewId === 'entry') endpoint = '/api/analytics/behaviour/entry';
             if (viewId === 'exit') endpoint = '/api/analytics/behaviour/exit';
 
+            if (!endpoint) return;
+
             // Use shared date utility for consistent timezone handling
             const range = getDateRange(dateRange);
 
@@ -116,7 +118,7 @@ export function LiveAnalyticsPage() {
 
     useEffect(() => {
         // Fetch Report Data when view changes
-        if (activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && activeView !== 'performance') {
+        if (activeView !== 'overview' && activeView !== 'realtime' && activeView !== 'url-builder' && activeView !== 'roadblocks' && activeView !== 'performance') {
             fetchReport(activeView);
         }
     }, [activeView, dateRange, currentAccount, fetchReport]);

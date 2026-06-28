@@ -255,8 +255,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
     const initialStatsSignature = getNodeStatsSignature(initialFlow?.nodes);
 
 
-    // Stable callback refs for node operations (to avoid circular deps in node data)
-    const copyNodeRef = useRef<(nodeId: string) => void>(() => { });
+    // Stable callback ref for node operations (to avoid circular deps in node data)
     const deleteNodeRef = useRef<(nodeId: string) => void>(() => { });
     const historyRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
     const historyIndexRef = useRef(-1);
@@ -518,21 +517,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
         setSelectedNode(null);
     }, [setNodes, setEdges]);
 
-    // --- Node Copy/Move Operations ---
-    const [_clipboard, setClipboard] = useState<Node | null>(null);
-
-    const handleCopyNode = useCallback((nodeId: string) => {
-        const nodeToCopy = nodes.find(n => n.id === nodeId);
-        if (nodeToCopy) {
-            // Deep clone the node with a new ID
-            setClipboard({
-                ...nodeToCopy,
-                id: getId(),
-                data: { ...nodeToCopy.data }
-            });
-        }
-    }, [nodes]);
-
     const handleDeleteNode = useCallback((nodeId: string) => {
         deleteNode(nodeId);
     }, [deleteNode]);
@@ -615,12 +599,10 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
 
     // Keep refs in sync with callbacks
     useEffect(() => {
-        copyNodeRef.current = handleCopyNode;
         deleteNodeRef.current = handleDeleteNode;
-    }, [handleCopyNode, handleDeleteNode]);
+    }, [handleDeleteNode]);
 
     // Wrapper functions that use refs (stable references for node data)
-    const onNodeCopy = useCallback((nodeId: string) => copyNodeRef.current(nodeId), []);
     const onNodeDelete = useCallback((nodeId: string) => deleteNodeRef.current(nodeId), []);
 
     // --- Step Type Selection (+ button) ---
@@ -658,7 +640,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                 label: event.label,
                 config: { triggerType: event.triggerType },
                 onAddStep: handleOpenStepPopup,
-                onCopy: onNodeCopy,
                 onDelete: onNodeDelete,
                 density: flowDensity,
             },
@@ -687,7 +668,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                 },
             ]));
         }
-    }, [nodes, edges, setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete, flowDensity]);
+    }, [nodes, edges, setNodes, setEdges, handleOpenStepPopup, onNodeDelete, flowDensity]);
 
     // --- Recipe Selection ---
     const handleRecipeSelect = useCallback((recipe: AutomationRecipe) => {
@@ -699,7 +680,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
             data: {
                 ...node.data,
                 onAddStep: handleOpenStepPopup,
-                onCopy: onNodeCopy,
                 onDelete: onNodeDelete,
                 density: flowDensity,
             },
@@ -719,7 +699,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
 
         setNodes(nodesWithPositions);
         setEdges(edgesWithIds);
-    }, [setNodes, setEdges, handleOpenStepPopup, onNodeCopy, onNodeDelete, flowDensity]);
+    }, [setNodes, setEdges, handleOpenStepPopup, onNodeDelete, flowDensity]);
 
     const handleStepSelect = (stepType: StepType) => {
         const edgeToInsertInto = pendingInsertEdgeId
@@ -753,7 +733,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                     label: 'Delay',
                     config: { duration: 1, unit: 'hours' },
                     onAddStep: handleOpenStepPopup,
-                    onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
                     density: flowDensity,
                 },
@@ -769,54 +748,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                     label: 'Condition',
                     config: {},
                     onAddStep: handleOpenStepPopup,
-                    onCopy: onNodeCopy,
-                    onDelete: onNodeDelete,
-                    density: flowDensity,
-                },
-            };
-            addNodeAndConnect(newNode, parentId, edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle || undefined, edgeToInsertInto || undefined);
-        } else if (stepType === 'goal') {
-            // Goal node - track when contact reaches a goal
-            const newNode: Node = {
-                id: getId(),
-                type: 'action',
-                position: newPosition,
-                data: {
-                    label: 'Goal',
-                    config: { actionType: 'GOAL', goalName: 'Conversion' },
-                    onAddStep: handleOpenStepPopup,
-                    onCopy: onNodeCopy,
-                    onDelete: onNodeDelete,
-                    density: flowDensity,
-                },
-            };
-            addNodeAndConnect(newNode, parentId, edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle || undefined, edgeToInsertInto || undefined);
-        } else if (stepType === 'jump') {
-            // Jump to another step
-            const newNode: Node = {
-                id: getId(),
-                type: 'action',
-                position: newPosition,
-                data: {
-                    label: 'Jump',
-                    config: { actionType: 'JUMP', targetNodeId: '' },
-                    onAddStep: handleOpenStepPopup,
-                    onCopy: onNodeCopy,
-                    onDelete: onNodeDelete,
-                    density: flowDensity,
-                },
-            };
-            addNodeAndConnect(newNode, parentId, edgeToInsertInto?.sourceHandle || pendingConditionSourceHandle || undefined, edgeToInsertInto || undefined);
-        } else if (stepType === 'exit') {
-            // Exit automation
-            const newNode: Node = {
-                id: getId(),
-                type: 'action',
-                position: newPosition,
-                data: {
-                    label: 'Exit',
-                    config: { actionType: 'EXIT' },
-                    onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
                     density: flowDensity,
                 },
@@ -847,7 +778,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                 label: action.label,
                 config: { actionType: action.actionType },
                 onAddStep: handleOpenStepPopup,
-                onCopy: onNodeCopy,
                 onDelete: onNodeDelete,
                 density: flowDensity,
             },
@@ -1012,7 +942,6 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                     ...(node.data as Record<string, unknown>),
                     onAddStep: canAddFromNode ? handleOpenStepPopup : undefined,
                     onAddConditionBranch: node.type === 'condition' ? handleOpenConditionBranchPopup : undefined,
-                    onCopy: onNodeCopy,
                     onDelete: onNodeDelete,
                     onViewAnalytics: onViewNodeAnalytics,
                     density: flowDensity,
@@ -1020,7 +949,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
                 },
             };
         });
-    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, handleOpenConditionBranchPopup, onNodeCopy, onNodeDelete, onViewNodeAnalytics, flowDensity, flowIssuesByNode]);
+    }, [nodes, edges, invalidNodeIds, handleOpenStepPopup, handleOpenConditionBranchPopup, onNodeDelete, onViewNodeAnalytics, flowDensity, flowIssuesByNode]);
 
     return (
             <div className="h-full w-full relative">

@@ -8,30 +8,59 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { onShutdown } from '../utils/shutdown';
 import { registerRuntimeMetricsProvider } from '../utils/runtimeMetrics';
+import crypto from 'crypto';
 
 // Account validation cache
-const accountCache = new Map<string, number>();
+const accountCache = new Map<string, { timestamp: number; webhookSecret: string | null }>();
 const CACHE_TTL = 60000;
+
+function timingSafeStringEquals(a: string, b: string): boolean {
+    const aBuffer = Buffer.from(a);
+    const bBuffer = Buffer.from(b);
+    return aBuffer.length === bBuffer.length && crypto.timingSafeEqual(aBuffer, bBuffer);
+}
+
+function extractBearerToken(authHeader: unknown): string {
+    if (typeof authHeader !== 'string') return '';
+    const match = authHeader.trim().match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() : '';
+}
+
+async function getAccountAuthContext(accountId: string): Promise<{ exists: boolean; webhookSecret: string | null }> {
+    const cached = accountCache.get(accountId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return { exists: true, webhookSecret: cached.webhookSecret };
+    }
+
+    const account = await prisma.account.findUnique({
+        where: { id: accountId },
+        select: { id: true, webhookSecret: true }
+    });
+
+    if (!account) {
+        return { exists: false, webhookSecret: null };
+    }
+
+    accountCache.set(accountId, { timestamp: Date.now(), webhookSecret: account.webhookSecret || null });
+    return { exists: true, webhookSecret: account.webhookSecret || null };
+}
 
 /**
  * Validates that an account exists (with 1-minute caching).
  */
 export async function isValidAccount(accountId: string): Promise<boolean> {
-    const cached = accountCache.get(accountId);
-    if (cached && Date.now() - cached < CACHE_TTL) {
-        return true;
-    }
+    return (await getAccountAuthContext(accountId)).exists;
+}
 
-    const account = await prisma.account.findUnique({
-        where: { id: accountId },
-        select: { id: true }
-    });
+/**
+ * Validates signed server-side tracking requests from the WooCommerce plugin.
+ */
+export async function hasValidTrackingAuth(accountId: string, authHeader: unknown): Promise<boolean> {
+    const account = await getAccountAuthContext(accountId);
+    if (!account.exists || !account.webhookSecret) return false;
 
-    if (account) {
-        accountCache.set(accountId, Date.now());
-        return true;
-    }
-    return false;
+    const token = extractBearerToken(authHeader);
+    return token.length > 0 && timingSafeStringEquals(account.webhookSecret, token);
 }
 
 /** Why fixed-window: O(1) per check vs O(n) array filter; no GC pressure under load */
@@ -76,12 +105,12 @@ export async function cleanupRateLimits() {
     }
 
     // Also clean expired account validation cache entries
-    for (const [accountId, timestamp] of accountCache.entries()) {
+    for (const [accountId, cached] of accountCache.entries()) {
         if (++count % batchSize === 0) {
             await new Promise(resolve => setImmediate(resolve));
         }
 
-        if (now - timestamp >= CACHE_TTL) {
+        if (now - cached.timestamp >= CACHE_TTL) {
             accountCache.delete(accountId);
         }
     }
@@ -103,4 +132,3 @@ registerRuntimeMetricsProvider('trackingMiddleware', () => ({
     accountValidationCacheSize: accountCache.size,
     accountRateLimitMapSize: accountRateLimits.size,
 }));
-

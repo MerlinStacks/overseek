@@ -135,27 +135,34 @@ export class NodeExecutor {
 
     private async executeAddTag(config: any, enrollment: any): Promise<void> {
         const conversationId = enrollment.contextData?.conversationId;
-        if (!conversationId || !config.labelId) return;
+        const labelName = typeof config.tagName === 'string' ? config.tagName.trim() : '';
+        if (!conversationId || (!config.labelId && !labelName)) return;
 
         const scopedConversationId = await this.getScopedConversationId(enrollment, conversationId);
         if (!scopedConversationId) return;
 
-        const label = await prisma.conversationLabel.findFirst({
+        const label = config.labelId ? await prisma.conversationLabel.findFirst({
             where: { id: config.labelId, accountId: enrollment.automation.accountId },
+            select: { id: true }
+        }) : await prisma.conversationLabel.upsert({
+            where: { accountId_name: { accountId: enrollment.automation.accountId, name: labelName } },
+            create: { accountId: enrollment.automation.accountId, name: labelName },
+            update: {},
             select: { id: true }
         });
         if (!label) {
             Logger.warn('Cannot add tag: label not found in account scope', {
                 labelId: config.labelId,
+                tagName: labelName || undefined,
                 accountId: enrollment.automation.accountId
             });
             return;
         }
 
-        Logger.info(`Adding tag ${config.labelId} to ${scopedConversationId}`);
+        Logger.info(`Adding tag ${label.id} to ${scopedConversationId}`);
         await prisma.conversationLabelAssignment.upsert({
-            where: { conversationId_labelId: { conversationId: scopedConversationId, labelId: config.labelId } },
-            create: { conversationId: scopedConversationId, labelId: config.labelId },
+            where: { conversationId_labelId: { conversationId: scopedConversationId, labelId: label.id } },
+            create: { conversationId: scopedConversationId, labelId: label.id },
             update: {}
         });
     }
@@ -227,14 +234,24 @@ export class NodeExecutor {
             select: { wooUrl: true, domain: true }
         });
         const storeUrl = account?.wooUrl || account?.domain || '';
+        const normalizedStoreUrl = storeUrl && !/^https?:\/\//i.test(storeUrl) ? `https://${storeUrl}` : storeUrl;
 
         const baseContextData = enrollment.contextData || {};
+        const rawCheckoutUrl = baseContextData?.cart?.checkoutUrl || baseContextData?.checkoutUrl || null;
+        let checkoutUrl = rawCheckoutUrl;
+        if (typeof rawCheckoutUrl === 'string' && rawCheckoutUrl && !/^https?:\/\//i.test(rawCheckoutUrl) && normalizedStoreUrl) {
+            try {
+                checkoutUrl = new URL(rawCheckoutUrl, normalizedStoreUrl).toString();
+            } catch {
+                checkoutUrl = null;
+            }
+        }
         const recoveryUrl = cartRecoveryService.createRecoveryUrl({
             accountId: enrollment.automation.accountId,
             enrollmentId: enrollment.id,
             sessionId: baseContextData?.sessionId,
             email: enrollment.email,
-            checkoutUrl: baseContextData?.cart?.checkoutUrl || baseContextData?.checkoutUrl || null
+            checkoutUrl
         });
 
         const contextData = await automationContextService.buildContext({
@@ -262,9 +279,9 @@ export class NodeExecutor {
                     checkoutUrl: contextData.cart?.checkoutUrl || contextData.checkoutUrl || ''
                 }
                 : undefined,
-            store: { url: storeUrl },
-            storeUrl,
-            store_url: storeUrl
+            store: { url: normalizedStoreUrl },
+            storeUrl: normalizedStoreUrl,
+            store_url: normalizedStoreUrl
         };
 
         const recipientTemplate = config.to || enrollment.email;

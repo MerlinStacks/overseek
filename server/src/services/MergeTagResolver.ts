@@ -60,9 +60,9 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     const linkTriggerUrl = normalizeStoreUrl(context.linkTriggerUrl || context.link_trigger) || storeUrl;
     replaceMergeTag('{{link_trigger}}', linkTriggerUrl);
     const preferencesUrl = context.preferencesUrl || context.preferences_url || '';
-    replaceMergeTag('{{preferences_url}}', preferencesUrl);
-    const unsubscribeUrl = context.unsubscribeUrl || context.unsubscribe_url || (storeUrl ? `${storeUrl.replace(/\/$/, '')}/?unsubscribe=1` : '');
-    replaceMergeTag('{{unsubscribe_url}}', unsubscribeUrl);
+    if (preferencesUrl) replaceMergeTag('{{preferences_url}}', preferencesUrl);
+    const unsubscribeUrl = context.unsubscribeUrl || context.unsubscribe_url || '';
+    if (unsubscribeUrl) replaceMergeTag('{{unsubscribe_url}}', unsubscribeUrl);
 
     // Order merge tags
     if (context.order) {
@@ -291,8 +291,7 @@ function buildAusPostTrackingUrl(trackingNumber: string): string {
 function withReviewAnchor(url: string): string {
     const trimmed = String(url || '').trim();
     if (!trimmed) return '';
-    if (/#/.test(trimmed)) return trimmed;
-    return `${trimmed.replace(/\/$/, '')}#review_form`;
+    return buildReviewRequestUrl(trimmed.replace(/\/$/, ''));
 }
 
 function buildReviewRequestUrl(rawUrl: string, rating?: number, prefill?: { name?: string; email?: string }): string {
@@ -487,7 +486,7 @@ function getReviewFallback(context: MergeTagContext, storeUrl: string): { produc
 
     const productId = product.id || product.productId || product.product_id || firstItem?.product_id || firstItem?.productId;
     if (storeUrl && productId) {
-        return { productName, productUrl: `${storeUrl.replace(/\/$/, '')}/?p=${encodeURIComponent(String(productId))}#review_form` };
+        return { productName, productUrl: buildReviewRequestUrl(`${storeUrl.replace(/\/$/, '')}/?p=${encodeURIComponent(String(productId))}`) };
     }
 
     return { productName, productUrl: storeUrl };
@@ -538,7 +537,7 @@ function renderOrderReviewLinks(items: any[], storeUrl: string, prefill?: { name
             const directUrl = item?.permalink || item?.productUrl || item?.product_url || item?.url;
             const productId = item?.product_id || item?.productId || item?.id;
             const fallbackUrl = storeUrl && productId
-                ? `${storeUrl.replace(/\/$/, '')}/?p=${encodeURIComponent(String(productId))}#review_form`
+                ? buildReviewRequestUrl(`${storeUrl.replace(/\/$/, '')}/?p=${encodeURIComponent(String(productId))}`)
                 : storeUrl;
             const reviewUrl = buildReviewRequestUrl(getReviewProductUrl(directUrl, fallbackUrl, storeUrl), undefined, prefill);
             if (!reviewUrl) return '';

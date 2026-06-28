@@ -76,7 +76,6 @@ const TRIGGER_TYPES = [
     { value: 'ORDER_STATUS_CHANGED', label: 'Order Status Changed', group: 'WooCommerce' },
     { value: 'FIRST_ORDER', label: 'First Order', group: 'WooCommerce' },
     { value: 'ABANDONED_CART', label: 'Cart Abandoned', group: 'WooCommerce' },
-    { value: 'CART_VIEWED', label: 'Cart Viewed', group: 'WooCommerce' },
     { value: 'REVIEW_LEFT', label: 'Review Left', group: 'WooCommerce' },
     { value: 'ARTWORK_UPLOADED', label: 'Artwork Uploaded', group: 'WooCommerce' },
     { value: 'ARTWORK_APPROVAL_REQUESTED', label: 'Artwork Approval Requested', group: 'WooCommerce' },
@@ -92,12 +91,6 @@ const TRIGGER_TYPES = [
     { value: 'CUSTOMER_CREATED', label: 'Customer Created', group: 'Customer' },
     { value: 'NO_PURCHASE_IN_X_DAYS', label: 'No Purchase In X Days', group: 'Customer' },
     { value: 'TAG_ADDED', label: 'Tag Added', group: 'Customer' },
-    { value: 'TAG_REMOVED', label: 'Tag Removed', group: 'Customer' },
-    { value: 'MANUAL', label: 'Manual Entry', group: 'Customer' },
-    { value: 'SUBSCRIPTION_CREATED', label: 'Subscription Created', group: 'Subscriptions' },
-    { value: 'SUBSCRIPTION_CANCELLED', label: 'Subscription Cancelled', group: 'Subscriptions' },
-    { value: 'EMAIL_OPENED', label: 'Email Opened', group: 'Email Engagement' },
-    { value: 'LINK_CLICKED', label: 'Link Clicked', group: 'Email Engagement' },
 ];
 
 export const TriggerConfig: React.FC<TriggerConfigProps> = ({ config, onUpdate }) => {

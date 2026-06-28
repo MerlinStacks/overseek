@@ -159,7 +159,7 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'days must be a positive integer' });
             }
 
-            const forecastDays = parsedDays;
+            const forecastDays = Math.min(parsedDays, 365);
 
             const forecasts = await InventoryForecastService.getSkuForecasts(accountId, forecastDays);
             return forecasts;
@@ -184,7 +184,7 @@ const analyticsInventoryRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(400).send({ error: 'threshold must be a positive integer' });
             }
 
-            const thresholdDays = parsedThreshold;
+            const thresholdDays = Math.min(parsedThreshold, 365);
 
             const alerts = await InventoryForecastService.getStockoutAlerts(accountId, thresholdDays);
             return alerts;

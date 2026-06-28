@@ -7,7 +7,7 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Clock, Split } from 'lucide-react';
 import { NodeWrapper } from './NodeWrapper';
 import {
-    NodeStats, OnAddStepCallback, OnCopyNodeCallback, OnDeleteNodeCallback,
+    NodeStats, OnAddStepCallback, OnDeleteNodeCallback,
     OnViewNodeAnalyticsCallback, getTriggerIcon, getTriggerLabel, getActionIcon, getActionLabel, getActionGradient
 } from './flowNodeUtils';
 import type { FlowIssue } from './flowValidation';
@@ -32,7 +32,6 @@ interface FlowNodeData {
     stepNumber?: number;
     onAddStep?: OnAddStepCallback;
     onAddConditionBranch?: (nodeId: string, sourceHandle: 'true' | 'false', position: { x: number; y: number }) => void;
-    onCopy?: OnCopyNodeCallback;
     onDelete?: OnDeleteNodeCallback;
     onViewAnalytics?: OnViewNodeAnalyticsCallback;
     onSettingsClick?: () => void;
@@ -56,7 +55,6 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
     const stats = (data.stats as NodeStats | undefined) ?? { active: 0, queued: 0, completed: 0, skipped: 0, failed: 0 };
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
-    const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
@@ -77,7 +75,6 @@ export const TriggerNode = memo(({ data, id }: NodeProps) => {
                 onSettingsClick={data.onSettingsClick as (() => void) | undefined}
                 nodeId={id}
                 onAddStep={onAddStep}
-                onCopy={onCopy}
                 onDelete={onDelete}
                 statOrder={['completed']}
                 onStatsClick={() => onViewAnalytics?.(id)}
@@ -101,7 +98,6 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
     const stats = (data.stats as NodeStats | undefined) ?? { active: 0, queued: 0, completed: 0, skipped: 0, failed: 0 };
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
-    const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
@@ -127,7 +123,6 @@ export const ActionNode = memo(({ data, id }: NodeProps) => {
                 nodeId={id}
                 onAddStep={onAddStep}
                 showAddButton={!isExitNode}
-                onCopy={onCopy}
                 onDelete={onDelete}
                 statOrder={isExitNode ? ['completed', 'skipped'] : ['queued', 'completed', 'skipped', 'failed']}
                 onStatsClick={() => onViewAnalytics?.(id)}
@@ -163,7 +158,6 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
     const stats = (data.stats as NodeStats | undefined) ?? { active: 0, queued: 0, completed: 0, skipped: 0, failed: 0 };
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
-    const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
@@ -190,7 +184,6 @@ export const DelayNode = memo(({ data, id }: NodeProps) => {
                 stats={stats}
                 nodeId={id}
                 onAddStep={onAddStep}
-                onCopy={onCopy}
                 onDelete={onDelete}
                 statOrder={['queued', 'completed', 'skipped']}
                 onStatsClick={() => onViewAnalytics?.(id)}
@@ -215,7 +208,6 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
     const stepNumber = data.stepNumber as number | undefined;
     const onAddStep = data.onAddStep as OnAddStepCallback | undefined;
     const onAddConditionBranch = data.onAddConditionBranch as ((nodeId: string, sourceHandle: 'true' | 'false', position: { x: number; y: number }) => void) | undefined;
-    const onCopy = data.onCopy as OnCopyNodeCallback | undefined;
     const onDelete = data.onDelete as OnDeleteNodeCallback | undefined;
     const onViewAnalytics = data.onViewAnalytics as OnViewNodeAnalyticsCallback | undefined;
     const density = nodeData.density ?? 'comfortable';
@@ -245,7 +237,6 @@ export const ConditionNode = memo(({ data, id }: NodeProps) => {
                 nodeId={id}
                 onAddStep={onAddStep}
                 showAddButton={false}
-                onCopy={onCopy}
                 onDelete={onDelete}
                 statOrder={['queued', 'completed', 'skipped', 'failed']}
                 onStatsClick={() => onViewAnalytics?.(id)}

@@ -13,6 +13,7 @@ import { WooService } from '../services/woo';
 import { OrderTaggingService } from '../services/OrderTaggingService';
 import { AuditService, AuditActions } from '../services/AuditService';
 import { seedDefaultBlockRules } from '../services/tracking/CrawlerService';
+import { invalidateExcludedIpsCache } from '../services/tracking/IpExclusionService';
 
 async function isSuperAdminUser(userId: string): Promise<boolean> {
     const user = await prisma.user.findUnique({
@@ -513,6 +514,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { id: accountId },
                 data: { excludedIps: newIps }
             });
+            await invalidateExcludedIpsCache(accountId);
 
             Logger.info('Added excluded IPs', { accountId, added: ipsToAdd, userId });
             return { success: true, excludedIps: newIps };
@@ -554,6 +556,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { id: accountId },
                 data: { excludedIps: newIps }
             });
+            await invalidateExcludedIpsCache(accountId);
 
             Logger.info('Removed excluded IP', { accountId, removed: decodedIp, userId });
             return { success: true, excludedIps: newIps };

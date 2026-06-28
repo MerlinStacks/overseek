@@ -102,29 +102,6 @@ class OverSeek_Tracking_Event_Builder
     }
 
     /**
-     * @param object $cart WooCommerce cart instance.
-     * @return array<string, mixed>
-     */
-    public static function build_checkout_capture_event(string $account_id, string $visitor_id, string $checkout_url, $cart): array
-    {
-        return array(
-            'accountId' => $account_id,
-            'visitorId' => $visitor_id,
-            'type' => 'checkout_start',
-            'url' => $checkout_url,
-            'payload' => array(
-                'currency' => self::get_currency(),
-                'total' => floatval($cart->get_cart_contents_total()),
-                'itemCount' => $cart->get_cart_contents_count(),
-                'items' => OverSeek_Tracking_Payload_Utils::get_cart_items_snapshot($cart),
-                'source' => 'checkout_email_capture',
-                'eventId' => wp_generate_uuid4(),
-                'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
-            ),
-        );
-    }
-
-    /**
      * @param object $order WooCommerce order instance.
      */
     public static function ensure_order_event_id($order): string

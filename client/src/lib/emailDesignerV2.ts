@@ -660,16 +660,25 @@ export function compileEmailDesignV2(envelope: EmailDesignV2Envelope): string {
 </html>`;
 }
 
-function toAbsoluteUrl(url: string): string {
+function toAbsoluteUrl(url: string, options: { allowData?: boolean; allowCid?: boolean } = {}): string {
     const value = url.trim();
     if (!value) return value;
     if (value.includes('{{') || value.includes('}}')) return value;
-    if (/^(https?:|mailto:|tel:|data:|cid:)/i.test(value)) return value;
-    if (typeof window === 'undefined' || !window.location?.origin) return value;
+    if (value.startsWith('#')) return value;
+
+    const isAllowedProtocol = (protocol: string) => {
+        if (protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:' || protocol === 'tel:') return true;
+        if (options.allowData && protocol === 'data:') return true;
+        if (options.allowCid && protocol === 'cid:') return true;
+        return false;
+    };
+
     try {
-        return new URL(value, `${window.location.origin}/`).toString();
+        const base = typeof window !== 'undefined' && window.location?.origin ? `${window.location.origin}/` : undefined;
+        const parsed = base ? new URL(value, base) : new URL(value);
+        return isAllowedProtocol(parsed.protocol) ? parsed.toString() : '';
     } catch {
-        return value;
+        return '';
     }
 }
 
@@ -705,7 +714,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'siteLogo') {
         const props = block.props;
-        const logoSrc = toAbsoluteUrl(props.src || '');
+        const logoSrc = toAbsoluteUrl(props.src || '', { allowData: true, allowCid: true });
         const content = logoSrc && isEmailImageSource(logoSrc)
             ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(props.alt || props.fallbackText || 'Logo')}" width="${props.width || 160}" style="display:block;max-width:100%;height:auto;border:0;margin:0 auto;" />`
             : `<h1 class="os-email-heading" style="margin:0;color:${theme.textColor};font-size:28px;line-height:1.25;">${escapeHtml(props.fallbackText || props.alt || 'Your Store')}</h1>`;
@@ -719,7 +728,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'image') {
         const props = block.props;
-        const imageSrc = toAbsoluteUrl(props.src || '');
+        const imageSrc = toAbsoluteUrl(props.src || '', { allowData: true, allowCid: true });
         if (!isEmailImageSource(imageSrc)) {
             return `<div class="${joinClasses(blockClass, 'os-email-muted')}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};color:${theme.mutedTextColor};font-size:13px;">Image source unavailable</div>`;
         }
@@ -758,7 +767,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         const showTitle = props.showTitle !== false;
         const showButton = props.showButton !== false;
         const productUrl = toAbsoluteUrl(props.productUrl || props.buttonHref || '{{store_url}}');
-        const productImageSrc = toAbsoluteUrl(productImage);
+        const productImageSrc = toAbsoluteUrl(productImage, { allowData: true, allowCid: true });
         return `<div class="${blockClass}" style="padding:${(props as { padding?: string }).padding || '18px 0'};text-align:${(props as { align?: string }).align || 'center'};">
             ${props.showImage ? `<img src="${escapeHtml(productImageSrc)}" alt="${escapeHtml(productName)}" width="220" style="display:block;max-width:100%;height:auto;border-radius:10px;margin:0 auto 14px;" />` : ''}
             ${showTitle ? `<h3 class="os-email-product-title" style="margin:0 0 8px;color:${theme.textColor};font-size:20px;line-height:1.3;">${escapeHtml(productName)}</h3>` : ''}
@@ -813,7 +822,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
             showReviewer ? escapeHtml(block.props.reviewer || '{{review.reviewer}}') : '',
             showProductName ? `on ${escapeHtml(block.props.productName || '{{review.productName}}')}` : '',
         ].filter(Boolean).join(' ');
-        return `<div class="${joinClasses(blockClass, 'os-email-review')}" style="padding:${block.props.padding || '18px'};margin:8px 0;background:${block.props.backgroundColor || 'transparent'};border:${block.props.borderColor ? `1px solid ${block.props.borderColor}` : '0'};border-radius:${theme.borderRadius}px;text-align:${block.props.align || 'left'};">${showHeadline ? `<p class="os-email-heading" style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p>` : ''}${showRating ? `<p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p>` : ''}${showContent ? `<p class="os-email-review-content" style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p>` : ''}${attribution ? `<p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${attribution}</p>` : ''}${showCta ? `<a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.productUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a>` : ''}</div>`;
+        return `<div class="${joinClasses(blockClass, 'os-email-review')}" style="padding:${block.props.padding || '18px'};margin:8px 0;background:${block.props.backgroundColor || 'transparent'};border:${block.props.borderColor ? `1px solid ${block.props.borderColor}` : '0'};border-radius:${theme.borderRadius}px;text-align:${block.props.align || 'left'};">${showHeadline ? `<p class="os-email-heading" style="margin:0 0 8px;color:${theme.textColor};font-size:18px;font-weight:700;">${escapeHtml(block.props.headline || 'Customer review')}</p>` : ''}${showRating ? `<p style="margin:0 0 8px;color:#b45309;font-size:18px;letter-spacing:1px;">${stars}</p>` : ''}${showContent ? `<p class="os-email-review-content" style="margin:0 0 10px;color:${theme.textColor};line-height:1.6;">${escapeHtml(block.props.content || '{{review.content}}')}</p>` : ''}${attribution ? `<p class="os-email-muted" style="margin:0 0 14px;color:${theme.mutedTextColor};font-size:13px;">- ${attribution}</p>` : ''}${showCta ? `<a href="${escapeHtml(toAbsoluteUrl(block.props.ctaHref || '{{review.requestUrl}}'))}" style="display:inline-block;background:${theme.primaryColor};color:#ffffff;text-decoration:none;border-radius:${theme.borderRadius}px;padding:10px 16px;font-weight:700;">${escapeHtml(block.props.ctaLabel || 'Leave a review')}</a>` : ''}</div>`;
     }
 
     if (block.type === 'social') {
@@ -831,11 +840,11 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
 
     if (block.type === 'footer') {
         const props = block.props;
-        const html = props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>';
+        const html = sanitizeEmailHtml(props.html || '<p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>');
         return `<div class="${joinClasses(blockClass, 'os-email-footer')}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:12px;line-height:1.6;color:${props.color || theme.mutedTextColor};">${html}</div>`;
     }
 
-    return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '8px 0'};text-align:${(block.props as { align?: string }).align || 'left'};">${block.props.html}</div>`;
+    return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '8px 0'};text-align:${(block.props as { align?: string }).align || 'left'};">${sanitizeEmailHtml(String(block.props.html || ''))}</div>`;
 }
 
 function getOrderItemsMergeTag(format: OrderItemsFormat | undefined): string {

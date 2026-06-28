@@ -26,109 +26,127 @@ interface CreateEnrollmentResult {
 
 export class AutomationEnrollmentService {
     async createEnrollment(input: CreateEnrollmentInput): Promise<CreateEnrollmentResult> {
-        const frequencyCapWhere = input.frequencyCapHours && input.frequencyCapHours > 0
-            ? await prisma.automationEnrollment.findFirst({
-                where: {
-                    accountId: input.automation.accountId,
-                    automationId: input.automation.id,
-                    email: { equals: input.email, mode: 'insensitive' },
-                    createdAt: {
-                        gte: new Date(Date.now() - input.frequencyCapHours * 60 * 60 * 1000)
-                    }
-                },
-                orderBy: { createdAt: 'desc' }
-            })
-            : null;
+        const normalizedEmail = input.email.trim().toLowerCase();
+        const lockKey = [
+            'automation-enrollment',
+            input.automation.accountId,
+            input.automation.id,
+            input.dedupeKey || normalizedEmail
+        ].join(':');
 
-        if (frequencyCapWhere) {
-            await this.recordRunEvent({
-                accountId: input.automation.accountId,
-                automationId: input.automation.id,
-                enrollmentId: frequencyCapWhere.id,
-                eventType: 'SKIPPED',
-                outcome: 'FREQUENCY_CAPPED',
-                metadata: {
-                    email: input.email,
-                    frequencyCapHours: input.frequencyCapHours
-                }
-            });
-            return {
-                enrollment: frequencyCapWhere,
-                created: false,
-                skipReason: 'FREQUENCY_CAPPED'
-            };
-        }
+        return prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 
-        const existingWhere = input.dedupeKey
-            ? await prisma.automationEnrollment.findFirst({
-                where: {
-                    accountId: input.automation.accountId,
-                    automationId: input.automation.id,
-                    dedupeKey: input.dedupeKey,
-                    ...(input.dedupeLookbackHours && input.dedupeLookbackHours > 0
-                        ? {
-                            createdAt: {
-                                gte: new Date(Date.now() - input.dedupeLookbackHours * 60 * 60 * 1000)
-                            }
+            const frequencyCapWhere = input.frequencyCapHours && input.frequencyCapHours > 0
+                ? await tx.automationEnrollment.findFirst({
+                    where: {
+                        accountId: input.automation.accountId,
+                        automationId: input.automation.id,
+                        email: { equals: normalizedEmail, mode: 'insensitive' },
+                        createdAt: {
+                            gte: new Date(Date.now() - input.frequencyCapHours * 60 * 60 * 1000)
                         }
-                        : input.dedupeScope === 'ANY'
-                            ? {}
-                            : { status: 'ACTIVE' })
-                }
-            })
-            : null;
+                    },
+                    orderBy: { createdAt: 'desc' }
+                })
+                : null;
 
-        if (existingWhere) {
-            await this.recordRunEvent({
-                accountId: input.automation.accountId,
-                automationId: input.automation.id,
-                enrollmentId: existingWhere.id,
-                eventType: 'SKIPPED',
-                outcome: 'DUPLICATE_ENROLLMENT',
-                metadata: {
-                    dedupeKey: input.dedupeKey,
-                    dedupeLookbackHours: input.dedupeLookbackHours ?? null
+            if (frequencyCapWhere) {
+                await tx.automationRunEvent.create({
+                    data: {
+                        accountId: input.automation.accountId,
+                        automationId: input.automation.id,
+                        enrollmentId: frequencyCapWhere.id,
+                        eventType: 'SKIPPED',
+                        outcome: 'FREQUENCY_CAPPED',
+                        metadata: {
+                            email: normalizedEmail,
+                            frequencyCapHours: input.frequencyCapHours
+                        }
+                    }
+                });
+                return {
+                    enrollment: frequencyCapWhere,
+                    created: false,
+                    skipReason: 'FREQUENCY_CAPPED'
+                };
+            }
+
+            const existingWhere = input.dedupeKey
+                ? await tx.automationEnrollment.findFirst({
+                    where: {
+                        accountId: input.automation.accountId,
+                        automationId: input.automation.id,
+                        dedupeKey: input.dedupeKey,
+                        ...(input.dedupeLookbackHours && input.dedupeLookbackHours > 0
+                            ? {
+                                createdAt: {
+                                    gte: new Date(Date.now() - input.dedupeLookbackHours * 60 * 60 * 1000)
+                                }
+                            }
+                            : input.dedupeScope === 'ANY'
+                                ? {}
+                                : { status: 'ACTIVE' })
+                    }
+                })
+                : null;
+
+            if (existingWhere) {
+                await tx.automationRunEvent.create({
+                    data: {
+                        accountId: input.automation.accountId,
+                        automationId: input.automation.id,
+                        enrollmentId: existingWhere.id,
+                        eventType: 'SKIPPED',
+                        outcome: 'DUPLICATE_ENROLLMENT',
+                        metadata: {
+                            dedupeKey: input.dedupeKey,
+                            dedupeLookbackHours: input.dedupeLookbackHours ?? null
+                        }
+                    }
+                });
+                return {
+                    enrollment: existingWhere,
+                    created: false,
+                    skipReason: 'DUPLICATE_ENROLLMENT'
+                };
+            }
+
+            const enrollment = await tx.automationEnrollment.create({
+                data: {
+                    automationId: input.automation.id,
+                    accountId: input.automation.accountId,
+                    email: normalizedEmail,
+                    wooCustomerId: input.wooCustomerId ?? null,
+                    contextData: input.contextData,
+                    status: 'ACTIVE',
+                    currentNodeId: input.currentNodeId ?? null,
+                    nextRunAt: input.nextRunAt ?? new Date(),
+                    triggerEntityType: input.triggerEntityType ?? null,
+                    triggerEntityId: input.triggerEntityId ?? null,
+                    dedupeKey: input.dedupeKey ?? null
                 }
             });
+
+            await tx.automationRunEvent.create({
+                data: {
+                    accountId: input.automation.accountId,
+                    automationId: input.automation.id,
+                    enrollmentId: enrollment.id,
+                    nodeId: input.currentNodeId ?? null,
+                    eventType: 'ENROLLED',
+                    metadata: {
+                        triggerEntityType: input.triggerEntityType,
+                        triggerEntityId: input.triggerEntityId
+                    }
+                }
+            });
+
             return {
-                enrollment: existingWhere,
-                created: false,
-                skipReason: 'DUPLICATE_ENROLLMENT'
+                enrollment,
+                created: true
             };
-        }
-
-        const enrollment = await prisma.automationEnrollment.create({
-            data: {
-                automationId: input.automation.id,
-                accountId: input.automation.accountId,
-                email: input.email,
-                wooCustomerId: input.wooCustomerId ?? null,
-                contextData: input.contextData,
-                status: 'ACTIVE',
-                currentNodeId: input.currentNodeId ?? null,
-                nextRunAt: input.nextRunAt ?? new Date(),
-                triggerEntityType: input.triggerEntityType ?? null,
-                triggerEntityId: input.triggerEntityId ?? null,
-                dedupeKey: input.dedupeKey ?? null
-            }
         });
-
-        await this.recordRunEvent({
-            accountId: input.automation.accountId,
-            automationId: input.automation.id,
-            enrollmentId: enrollment.id,
-            nodeId: input.currentNodeId ?? null,
-            eventType: 'ENROLLED',
-            metadata: {
-                triggerEntityType: input.triggerEntityType,
-                triggerEntityId: input.triggerEntityId
-            }
-        });
-
-        return {
-            enrollment,
-            created: true
-        };
     }
 
     async updateProgress(enrollmentId: string, data: {

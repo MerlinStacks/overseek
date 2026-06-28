@@ -1,11 +1,11 @@
 /**
  * StepTypePopup - Compact popup for selecting step types when clicking "+" button.
- * Shows Action, Delay, Condition, Goal, Jump, Exit options.
+ * Shows executable step types.
  */
 import * as React from 'react';
-import { X, Zap, Clock, GitBranch, Target, ArrowUpDown, LogOut } from 'lucide-react';
+import { X, Zap, Clock, GitBranch } from 'lucide-react';
 
-export type StepType = 'action' | 'delay' | 'condition' | 'goal' | 'jump' | 'exit';
+export type StepType = 'action' | 'delay' | 'condition';
 
 interface StepOption {
     id: StepType;
@@ -18,9 +18,6 @@ const STEP_OPTIONS: StepOption[] = [
     { id: 'action', label: 'Action', icon: <Zap size={16} />, color: 'text-yellow-600' },
     { id: 'delay', label: 'Delay', icon: <Clock size={16} />, color: 'text-green-600' },
     { id: 'condition', label: 'Condition', icon: <GitBranch size={16} />, color: 'text-purple-600' },
-    { id: 'goal', label: 'Goal', icon: <Target size={16} />, color: 'text-green-600' },
-    { id: 'jump', label: 'Jump', icon: <ArrowUpDown size={16} />, color: 'text-red-600' },
-    { id: 'exit', label: 'Exit', icon: <LogOut size={16} />, color: 'text-blue-600' },
 ];
 
 interface StepTypePopupProps {

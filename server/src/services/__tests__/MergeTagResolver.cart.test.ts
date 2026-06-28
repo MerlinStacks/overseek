@@ -108,7 +108,7 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).toContain('5');
         expect(html).toContain('Classic Hoodie');
         expect(html).toContain('Great fit and quality.');
-        expect(html).toContain('https://store.example.com/products/classic-hoodie#review_form');
+        expect(html).toContain('https://store.example.com/products/classic-hoodie?overseek_review_request=1#review_form');
     });
 
     it('renders review merge tags from fallback field names', () => {
@@ -127,7 +127,7 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).toContain('Jordan');
         expect(html).toContain('Arrived quickly.');
         expect(html).toContain('Canvas Tote');
-        expect(html).toContain('https://store.example.com/products/canvas-tote#review_form');
+        expect(html).toContain('https://store.example.com/products/canvas-tote?overseek_review_request=1#review_form');
     });
 
     it('renders review merge tags with defaults when review context is missing', () => {
@@ -150,7 +150,7 @@ describe('MergeTagResolver cart merge tags', () => {
         expect(html).toContain('5');
         expect(html).toContain('Thanks for your order. We would love to hear your feedback.');
         expect(html).toContain('Everyday Tee');
-        expect(html).toContain('https://store.example.com/products/everyday-tee#review_form');
+        expect(html).toContain('https://store.example.com/products/everyday-tee?overseek_review_request=1#review_form');
     });
 
     it('builds a WooCommerce product review link from order line items', () => {
@@ -165,7 +165,7 @@ describe('MergeTagResolver cart merge tags', () => {
         );
 
         expect(html).toContain('Review Custom Mug');
-        expect(html).toContain('href="https://store.example.com/?p=123#review_form"');
+        expect(html).toContain('href="https://store.example.com/?p=123&overseek_review_request=1#review_form"');
     });
 
     it('prefills review request links from customer context', () => {
@@ -205,7 +205,7 @@ describe('MergeTagResolver cart merge tags', () => {
         );
 
         expect(html).toContain('Review Custom Cap');
-        expect(html).toContain('href="https://store.example.com/?p=456#review_form"');
+        expect(html).toContain('href="https://store.example.com/?p=456&overseek_review_request=1#review_form"');
     });
 
     it('prefers explicit CusRev review URLs from order metadata', () => {

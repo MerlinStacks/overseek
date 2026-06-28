@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '../../utils/prisma';
-import { cacheAside, CacheTTL } from '../../utils/cache';
+import { cacheAside, CacheTTL, cacheDelete } from '../../utils/cache';
 
 /**
  * Check if an IP address is in CIDR notation and matches a given IP.
@@ -167,8 +167,6 @@ export async function isExcludedIp(accountId: string, ip: string): Promise<boole
  *
  * @param accountId - The account ID
  */
-export function invalidateExcludedIpsCache(_accountId: string): void {
-    // Cache invalidation is handled by cache utility's TTL
-    // For immediate invalidation, we'd need to add a delete method to cache
-    // For now, changes take effect after TTL expires (5 min default)
+export async function invalidateExcludedIpsCache(accountId: string): Promise<void> {
+    await cacheDelete(`excluded-ips:${accountId}`, { namespace: 'tracking' });
 }

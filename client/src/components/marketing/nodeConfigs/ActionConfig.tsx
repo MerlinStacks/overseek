@@ -42,8 +42,6 @@ const ACTION_TYPES = [
     { value: 'UPDATE_ORDER_STATUS', label: 'Update Order Status' },
     { value: 'UNSUBSCRIBE', label: 'Unsubscribe Customer' },
     { value: 'ADD_TAG', label: 'Add Tag' },
-    { value: 'REMOVE_TAG', label: 'Remove Tag' },
-    { value: 'WEBHOOK', label: 'Webhook' },
 ];
 
 const SUPPORTED_ACTION_IDS = getSupportedFlowActionIds();
@@ -210,37 +208,6 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                         style={LTR_TEXT_STYLE}
                     />
                     <p className="text-xs text-gray-500 mt-1">This tag will be added to the contact</p>
-                </div>
-            )}
-
-            {selectedActionType === 'REMOVE_TAG' && (
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tag Name</label>
-                    <input
-                        type="text"
-                        value={config.tagName || ''}
-                        onChange={(e) => onUpdate('tagName', sanitizeBidiText(e.target.value))}
-                        placeholder="Abandoned Cart"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        dir="ltr"
-                        style={LTR_TEXT_STYLE}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">This tag will be removed from the contact</p>
-                </div>
-            )}
-
-            {selectedActionType === 'WEBHOOK' && (
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Webhook URL</label>
-                    <input
-                        type="url"
-                        value={config.webhookUrl || ''}
-                        onChange={(e) => onUpdate('webhookUrl', sanitizeBidiText(e.target.value))}
-                        placeholder="https://example.com/webhook"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        dir="ltr"
-                        style={LTR_TEXT_STYLE}
-                    />
                 </div>
             )}
 

@@ -21,7 +21,6 @@ export interface NodeStats {
 }
 
 export type OnAddStepCallback = (nodeId: string, position: { x: number; y: number }) => void;
-export type OnCopyNodeCallback = (nodeId: string) => void;
 export type OnMoveNodeCallback = (nodeId: string) => void;
 export type OnDeleteNodeCallback = (nodeId: string) => void;
 export type OnViewNodeAnalyticsCallback = (nodeId: string) => void;
