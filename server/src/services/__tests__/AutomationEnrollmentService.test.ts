@@ -4,7 +4,7 @@ import { prisma } from '../../utils/prisma';
 
 const { prismaMock } = vi.hoisted(() => {
     const mock: any = {
-        $queryRaw: vi.fn(),
+        $executeRaw: vi.fn(),
         automationEnrollment: {
             findFirst: vi.fn(),
             create: vi.fn()
@@ -42,7 +42,7 @@ describe('AutomationEnrollmentService dedupe', () => {
         vi.mocked(prisma.automationEnrollment.findFirst).mockResolvedValue(null);
         vi.mocked(prisma.automationEnrollment.create).mockResolvedValue({ id: 'enrollment-1' } as any);
         vi.mocked(prisma.automationRunEvent.create).mockResolvedValue({} as any);
-        vi.mocked(prisma.$queryRaw).mockResolvedValue([] as any);
+        vi.mocked(prisma.$executeRaw).mockResolvedValue(0 as any);
         vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => callback(prisma));
     });
 

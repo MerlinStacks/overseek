@@ -32,6 +32,32 @@ const fastify = Fastify({
     trustProxy: true,
 });
 
+const RATE_LIMIT_ALLOWLIST_PREFIXES = [
+    '/api/auth/login', '/api/auth/refresh', '/api/auth/me',
+    '/api/sync', '/api/webhooks', '/api/webhook/',
+    '/health', '/api/t/', '/api/tracking-email-events', '/wp-json/overseek/v1/tracking-email-events', '/api/artwork-events',
+    '/api/notifications', '/api/chat', '/api/fp/', '/api/dashboard',
+    '/api/status-center'
+];
+
+const DASHBOARD_POLL_ALLOWLIST_PATHS = new Set([
+    '/api/tracking/live',
+    '/api/tracking/carts',
+    '/api/tracking/visitors-24h',
+    '/api/tracking/status',
+    '/api/analytics/visitors/log',
+    '/api/analytics/ecommerce/log',
+]);
+
+function shouldSkipGlobalRateLimit(req: { method: string; url: string }): boolean {
+    const path = req.url.split('?')[0];
+    if (RATE_LIMIT_ALLOWLIST_PREFIXES.some(prefix => req.url.startsWith(prefix))) return true;
+
+    // These authenticated live-dashboard polls are intentionally frequent and
+    // can otherwise exhaust the shared IP bucket for teams behind one NAT/proxy.
+    return req.method === 'GET' && DASHBOARD_POLL_ALLOWLIST_PATHS.has(path);
+}
+
 async function build() {
     const envOrigins = process.env.CORS_ORIGINS
         ? process.env.CORS_ORIGINS.split(',').map(v => v.trim()).filter(Boolean)
@@ -69,13 +95,7 @@ async function build() {
     await fastify.register(rateLimit, {
         max: RATE_LIMITS.MAX_REQUESTS,
         timeWindow: RATE_LIMITS.WINDOW_MS,
-        allowList: (req) => [
-            '/api/auth/login', '/api/auth/refresh', '/api/auth/me',
-            '/api/sync', '/api/webhooks', '/api/webhook/',
-            '/health', '/api/t/', '/api/tracking-email-events', '/wp-json/overseek/v1/tracking-email-events', '/api/artwork-events',
-            '/api/notifications', '/api/chat', '/api/fp/', '/api/dashboard',
-            '/api/status-center'
-        ].some(p => req.url.startsWith(p)),
+        allowList: shouldSkipGlobalRateLimit,
         errorResponseBuilder: () => ({ error: 'Too many requests, please try again later.' })
     });
 

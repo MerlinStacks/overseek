@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type MutableRefObject } from 'react';
 import { useTabLeader } from './useTabLeader';
 
 /**
@@ -23,6 +23,18 @@ function postMessageSafely(channel: BroadcastChannel, message: PollingDataMessag
         if (!(error instanceof DOMException) || error.name !== 'InvalidStateError') {
             throw error;
         }
+    }
+}
+
+async function runOnce(inFlightRef: MutableRefObject<boolean>, callbackRef: MutableRefObject<() => void | Promise<void>>): Promise<boolean> {
+    if (inFlightRef.current) return false;
+
+    inFlightRef.current = true;
+    try {
+        await callbackRef.current();
+        return true;
+    } finally {
+        inFlightRef.current = false;
     }
 }
 
@@ -54,6 +66,7 @@ export function useVisibilityPolling(
     const savedCallback = useRef(callback);
     const dataChannelRef = useRef<BroadcastChannel | null>(null);
     const deferredUntilAuthRef = useRef(false);
+    const inFlightRef = useRef(false);
 
     // Only use leader election when channelName is provided
     const { isLeader } = useTabLeader(channelName ? `visibility-${channelName}` : 'unused');
@@ -78,7 +91,7 @@ export function useVisibilityPolling(
             if (event.data.type === 'polling-complete' && event.data.channelName === channelName) {
                 // Only non-leaders should react to this
                 if (!isLeader && document.visibilityState === 'visible') {
-                    savedCallback.current();
+                    void runOnce(inFlightRef, savedCallback);
                 }
             }
         };
@@ -111,7 +124,8 @@ export function useVisibilityPolling(
                 return;
             }
 
-            await savedCallback.current();
+            const didRun = await runOnce(inFlightRef, savedCallback);
+            if (!didRun) return;
 
             // Notify other tabs that data is fresh (they can refetch from cache)
             const channel = dataChannelRef.current;
@@ -162,5 +176,5 @@ export function useVisibilityPolling(
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('overseek:auth-refresh-completed', handleAuthRefreshCompleted);
         };
-    }, [intervalMs, shouldCoordinate, isLeader, channelName, deps]);
+    }, [intervalMs, shouldCoordinate, isLeader, channelName, ...deps]);
 }
