@@ -47,27 +47,10 @@ describe('tracking ingestion auth', () => {
         vi.clearAllMocks();
     });
 
-    it('rejects unsigned server-side events', async () => {
+    it('accepts unsigned live session events for existing plugin installs', async () => {
         const res = await app.inject({
             method: 'POST',
             url: '/events',
-            payload: {
-                accountId: ACCOUNT_ID,
-                visitorId: 'visitor-1',
-                type: 'pageview',
-                url: 'https://shop.example.com/',
-            },
-        });
-
-        expect(res.statusCode).toBe(401);
-        expect(TrackingService.processEvent).not.toHaveBeenCalled();
-    });
-
-    it('accepts events signed with the account webhook secret', async () => {
-        const res = await app.inject({
-            method: 'POST',
-            url: '/events',
-            headers: { authorization: 'Bearer valid-secret' },
             payload: {
                 accountId: ACCOUNT_ID,
                 visitorId: 'visitor-1',
@@ -77,12 +60,52 @@ describe('tracking ingestion auth', () => {
         });
 
         expect(res.statusCode).toBe(200);
-        expect(res.json()).toEqual({ success: true });
         expect(TrackingService.processEvent).toHaveBeenCalledWith(expect.objectContaining({
             accountId: ACCOUNT_ID,
             visitorId: 'visitor-1',
             type: 'pageview',
             payload: {},
+        }));
+    });
+
+    it('rejects unsigned conversion events', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/events',
+            payload: {
+                accountId: ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'purchase',
+                url: 'https://shop.example.com/checkout/order-received/1',
+                payload: { total: 49.95 },
+            },
+        });
+
+        expect(res.statusCode).toBe(401);
+        expect(TrackingService.processEvent).not.toHaveBeenCalled();
+    });
+
+    it('accepts conversion events signed with the account webhook secret', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/events',
+            headers: { authorization: 'Bearer valid-secret' },
+            payload: {
+                accountId: ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'purchase',
+                url: 'https://shop.example.com/checkout/order-received/1',
+                payload: { total: 49.95 },
+            },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ success: true });
+        expect(TrackingService.processEvent).toHaveBeenCalledWith(expect.objectContaining({
+            accountId: ACCOUNT_ID,
+            visitorId: 'visitor-1',
+            type: 'purchase',
+            payload: { total: 49.95 },
         }));
     });
 });

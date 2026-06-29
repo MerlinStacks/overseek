@@ -73,6 +73,13 @@ const VITALS_IP_WINDOW_MS = 60 * 1000;
 const VITALS_IP_MAX_REQUESTS = 300;
 const vitalsIpHits = new Map<string, { count: number; startedAt: number }>();
 
+const UNSIGNED_COMPATIBLE_EVENT_TYPES = new Set([
+    'pageview',
+    'product_view',
+    'cart_view',
+    'checkout_view',
+]);
+
 function pruneBotHitIpHits(now: number): void {
     for (const [key, value] of botHitIpHits) {
         if (now - value.startedAt > BOT_HIT_IP_WINDOW_MS || botHitIpHits.size > BOT_HIT_IP_MAX_KEYS) {
@@ -142,6 +149,29 @@ async function requireSignedTrackingRequest(accountId: string, request: any, rep
     return true;
 }
 
+async function authorizeTrackingEvent(accountId: string, type: string, request: any, reply: any): Promise<boolean> {
+    if (!(await isValidAccount(accountId))) {
+        reply.code(400).send({ error: 'Invalid account' });
+        return false;
+    }
+
+    if (isRateLimited(accountId)) {
+        reply.code(429).send({ error: 'Rate limit exceeded' });
+        return false;
+    }
+
+    if (UNSIGNED_COMPATIBLE_EVENT_TYPES.has(type)) {
+        return true;
+    }
+
+    if (!(await hasValidTrackingAuth(accountId, request.headers.authorization))) {
+        reply.code(401).send({ error: 'Tracking auth required' });
+        return false;
+    }
+
+    return true;
+}
+
 const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
     /**
      * DEPRECATED: Returns no-op script (server-side tracking only).
@@ -166,7 +196,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             const body = parsed.data as any;
             const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
 
-            if (!(await requireSignedTrackingRequest(accountId, request, reply))) return;
+            if (!(await authorizeTrackingEvent(accountId, type, request, reply))) return;
 
             Logger.debug('Tracking event received', { type, accountId });
 
@@ -211,7 +241,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             const body = parsed.data as any;
             const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
 
-            if (!(await requireSignedTrackingRequest(accountId, request, reply))) return;
+            if (!(await authorizeTrackingEvent(accountId, type, request, reply))) return;
 
             // Prefer visitorIp from body (WC plugin sends real visitor IP for server-side events)
             const ip = normalizeIpHeader(visitorIp || request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip);
@@ -268,7 +298,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
 
             const canProcessPixel = Boolean(accountId && visitorId && type)
                 && await isValidAccount(accountId || '')
-                && await hasValidTrackingAuth(accountId || '', request.headers.authorization)
+                && (UNSIGNED_COMPATIBLE_EVENT_TYPES.has(type || '') || await hasValidTrackingAuth(accountId || '', request.headers.authorization))
                 && !isRateLimited(accountId || '');
 
             if (!canProcessPixel) {
