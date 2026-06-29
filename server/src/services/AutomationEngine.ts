@@ -11,7 +11,6 @@ import { prisma } from '../utils/prisma';
 import { FlowDefinition } from './automation/types';
 import { NodeExecutor } from './automation/NodeExecutor';
 import { findNextNodeId, calculateDelayDuration } from './automation/FlowNavigator';
-import { validateAutomationFlow } from './automation/FlowValidation';
 import { automationEnrollmentService } from './AutomationEnrollmentService';
 import { automationQueueService } from './AutomationQueueService';
 
@@ -190,30 +189,6 @@ export class AutomationEngine {
 
         const flow = enrollment.automation.flowDefinition as unknown as FlowDefinition | null;
         if (!flow) return;
-
-        const blockingIssues = validateAutomationFlow(flow).filter((issue) => issue.severity === 'blocking');
-        if (blockingIssues.length > 0) {
-            await automationEnrollmentService.updateProgress(enrollmentId, {
-                status: 'CANCELLED',
-                statusReason: 'FLOW_INVALID',
-                nextRunAt: null,
-                currentNodeId: null
-            });
-            await prisma.automationEnrollment.update({
-                where: { id: enrollmentId },
-                data: { cancelledAt: new Date() }
-            });
-            await automationEnrollmentService.recordRunEvent({
-                accountId: enrollment.automation.accountId,
-                automationId: enrollment.automationId,
-                enrollmentId,
-                nodeId: enrollment.currentNodeId,
-                eventType: 'CANCELLED',
-                outcome: 'FLOW_INVALID',
-                metadata: { issues: blockingIssues.slice(0, 5) } as any
-            });
-            return;
-        }
 
         let currentNodeId = enrollment.currentNodeId;
         let stepsProcessed = 0;

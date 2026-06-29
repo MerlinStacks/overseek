@@ -140,7 +140,7 @@ export function validateAutomationFlow(flow: FlowDefinition | null | undefined):
 
             if (actionType === 'SEND_EMAIL') {
                 const emailCategory = String(config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING')).toUpperCase();
-                const htmlContent = String(config.htmlContent || '');
+                const htmlContent = String(config.htmlContent || config.body || config.html || '');
                 const subject = String(config.subject || '');
                 const to = String(config.to || '{{customer.email}}');
 
