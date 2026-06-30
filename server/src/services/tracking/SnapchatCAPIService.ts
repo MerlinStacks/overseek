@@ -10,6 +10,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { getPayloadWooOrderIdString } from '../../utils/orderIds';
 import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
@@ -84,7 +85,8 @@ export class SnapchatCAPIService implements ConversionPlatformService {
         if (data.payload) {
             if (data.payload.total !== undefined) event.price = String(data.payload.total);
             if (data.payload.currency) event.currency = data.payload.currency;
-            if (data.payload.orderId) event.transaction_id = String(data.payload.orderId);
+            const orderId = getPayloadWooOrderIdString(data.payload);
+            if (orderId) event.transaction_id = orderId;
             if (Array.isArray(data.payload.items)) {
                 event.number_items = String(data.payload.items.length);
                 event.item_ids = JSON.stringify(data.payload.items.map((i: any) => String(i.contentId || i.id || i.sku || '')));

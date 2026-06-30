@@ -2,6 +2,7 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { REVENUE_STATUSES } from '../../constants/orderStatus';
 import { normalizeSource } from './utils';
+import { getPayloadWooOrderId } from '../../utils/orderIds';
 
 export interface AttributionModel {
     name: string;
@@ -88,8 +89,7 @@ export class AttributionAnalytics {
 
             const purchaseEventByOrder = new Map<number, typeof purchaseEvents[0]>();
             for (const event of purchaseEvents) {
-                const payload = event.payload as any;
-                const wooId = payload?.orderId || payload?.order_id;
+                const wooId = event.orderId || getPayloadWooOrderId(event.payload);
                 if (wooId) {
                     purchaseEventByOrder.set(wooId, event);
                 }

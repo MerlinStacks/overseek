@@ -18,6 +18,7 @@ import { ConversionForwarder } from './ConversionForwarder';
 import * as CrawlerService from './CrawlerService';
 import { automationEnrollmentService } from '../AutomationEnrollmentService';
 import { Logger } from '../../utils/logger';
+import { getPayloadWooOrderId, getPayloadWooOrderIdString } from '../../utils/orderIds';
 
 const UAParser = require('ua-parser-js');
 
@@ -480,8 +481,7 @@ export async function processEvent(data: TrackingEventPayload) {
     }
 
     try {
-        const orderId = payload.orderId ?? payload.order_id;
-        const eventOrderId = (typeof orderId === 'number' && Number.isInteger(orderId)) ? orderId : undefined;
+        const eventOrderId = getPayloadWooOrderId(payload) ?? undefined;
 
         await prisma.analyticsEvent.create({
             data: {
@@ -554,7 +554,7 @@ async function recordRecoveredAutomationPurchase(data: TrackingEventPayload) {
         return;
     }
 
-    const orderId = data.payload?.orderId ? String(data.payload.orderId) : null;
+    const orderId = getPayloadWooOrderIdString(data.payload);
     if (orderId) {
         const existingGoal = await prisma.automationGoalEvent.findFirst({
             where: {

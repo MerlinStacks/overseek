@@ -9,6 +9,7 @@
 
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
+import { getPayloadWooOrderId } from '../../../utils/orderIds';
 
 
 export interface CrossChannelInsight {
@@ -135,7 +136,7 @@ export class CrossChannelAnalyzer {
             }>();
 
             for (const event of purchaseEvents) {
-                const orderId = (event.payload as any)?.orderId || (event.payload as any)?.order_id;
+                const orderId = event.orderId || getPayloadWooOrderId(event.payload);
                 if (orderId && event.session) {
                     orderAttributionMap.set(Number(orderId), {
                         firstTouch: normalizeSource(event.session.firstTouchSource),

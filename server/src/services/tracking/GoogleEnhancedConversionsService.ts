@@ -18,6 +18,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { redisClient } from '../../utils/redis';
+import { getPayloadWooOrderIdString } from '../../utils/orderIds';
 import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
 import { getCredentials } from '../ads/types';
 import { ensureGoogleAdsAccessToken } from '../ads/GoogleAdsClient';
@@ -202,7 +203,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             ? new Date(orderDate).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00')
             : new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00');
 
-        const orderId = data.payload?.orderId ? String(data.payload.orderId) : eventId;
+        const orderId = getPayloadWooOrderIdString(data.payload) || eventId;
 
         const adjustment: Record<string, any> = {
             conversionAction: `customers/${customerId.replace(/-/g, '')}/conversionActions/${conversionActionId}`,

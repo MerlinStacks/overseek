@@ -13,6 +13,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { getPayloadWooOrderIdString } from '../../utils/orderIds';
 import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
@@ -88,7 +89,8 @@ export class TikTokEventsService implements ConversionPlatformService {
         if (data.payload) {
             if (data.payload.total !== undefined) properties.value = data.payload.total;
             if (data.payload.currency) properties.currency = data.payload.currency;
-            if (data.payload.orderId) properties.order_id = String(data.payload.orderId);
+            const orderId = getPayloadWooOrderIdString(data.payload);
+            if (orderId) properties.order_id = orderId;
             if (Array.isArray(data.payload.items)) {
                 properties.contents = data.payload.items.map((item: any) => ({
                     content_id: String(item.contentId || item.id || item.sku || ''),

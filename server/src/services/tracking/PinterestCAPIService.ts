@@ -10,6 +10,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { getPayloadWooOrderIdString } from '../../utils/orderIds';
 import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
@@ -91,8 +92,9 @@ export class PinterestCAPIService implements ConversionPlatformService {
             if (data.payload.currency) {
                 customData.currency = data.payload.currency;
             }
-            if (data.payload.orderId) {
-                customData.order_id = String(data.payload.orderId);
+            const orderId = getPayloadWooOrderIdString(data.payload);
+            if (orderId) {
+                customData.order_id = orderId;
             }
             if (Array.isArray(data.payload.items)) {
                 const getProductId = (item: any): string => String(

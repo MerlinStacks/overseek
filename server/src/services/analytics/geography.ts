@@ -1,6 +1,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { REVENUE_STATUSES } from '../../constants/orderStatus';
+import { getPayloadWooOrderId } from '../../utils/orderIds';
 
 export class GeographyAnalytics {
 
@@ -83,7 +84,7 @@ export class GeographyAnalytics {
 
             const orderGeoMap = new Map<number, { country: string | null }>();
             for (const event of purchaseEvents) {
-                const orderId = (event.payload as any)?.orderId;
+                const orderId = event.orderId || getPayloadWooOrderId(event.payload);
                 if (orderId && event.session) {
                     orderGeoMap.set(orderId, {
                         country: event.session.country

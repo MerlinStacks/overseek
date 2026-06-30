@@ -3,8 +3,10 @@
  */
 
 import { FastifyPluginAsync } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { getPayloadWooOrderId, parseWooOrderId } from '../../utils/orderIds';
 import { requireAuthFastify } from '../../middleware/auth';
 import {
     findOrderByAnyId,
@@ -47,6 +49,34 @@ function mapEventToBasicAttribution(event: {
     };
 }
 
+function getEventWooOrderId(event: { orderId: number | null; payload: unknown }): number | null {
+    if (event.orderId) return event.orderId;
+    return getPayloadWooOrderId(event.payload);
+}
+
+async function findPurchaseEventsForOrderIds(accountId: string, orderIds: number[]) {
+    const orderIdTexts = orderIds.map(String);
+    const eventRows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT e.id
+        FROM "AnalyticsEvent" e
+        INNER JOIN "AnalyticsSession" s ON s.id = e."sessionId"
+        WHERE s."accountId" = ${accountId}
+          AND e.type = 'purchase'
+          AND COALESCE(e."orderId"::text, e.payload->>'orderId', e.payload->>'order_id') IN (${Prisma.join(orderIdTexts)})
+        ORDER BY e."createdAt" DESC
+    `);
+
+    const eventIds = eventRows.map((row) => row.id);
+    if (eventIds.length === 0) return [];
+
+    return prisma.analyticsEvent.findMany({
+        where: { id: { in: eventIds } },
+        include: {
+            session: { select: ATTRIBUTION_SESSION_SELECT }
+        }
+    });
+}
+
 const attributionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
@@ -69,30 +99,14 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
             });
             const wooIds = new Set(orders.map(o => o.wooId));
 
-            // 2. Query purchase events directly by denormalized orderId
-            const purchaseEvents = await prisma.analyticsEvent.findMany({
-                where: {
-                    orderId: { in: ids },
-                    session: { accountId }
-                },
-                include: {
-                    session: {
-                        select: {
-                            firstTouchSource: true,
-                            lastTouchSource: true,
-                            utmSource: true,
-                            utmMedium: true,
-                            utmCampaign: true,
-                            referrer: true
-                        }
-                    }
-                }
-            });
+            // 2. Query purchase events by denormalized orderId with payload fallback for legacy/string IDs.
+            const purchaseEvents = await findPurchaseEventsForOrderIds(accountId, ids);
 
             // 3. Build a map from orderId to the most recent event per order
             const eventMap = new Map<number, typeof purchaseEvents[0]>();
             for (const event of purchaseEvents) {
-                const oid = event.orderId!;
+                const oid = getEventWooOrderId(event);
+                if (!oid) continue;
                 const existing = eventMap.get(oid);
                 if (!existing || event.createdAt > existing.createdAt) {
                     eventMap.set(oid, event);
@@ -140,14 +154,7 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
-            const matchedEvent = await prisma.analyticsEvent.findFirst({
-                where: {
-                    orderId: order.wooId,
-                    session: { accountId }
-                },
-                include: { session: { select: ATTRIBUTION_SESSION_SELECT } },
-                orderBy: { createdAt: 'desc' }
-            });
+            const matchedEvent = (await findPurchaseEventsForOrderIds(accountId, [order.wooId]))[0] || null;
 
             const attribution = matchedEvent
                 ? {

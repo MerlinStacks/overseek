@@ -10,6 +10,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { getPayloadWooOrderIdString } from '../../utils/orderIds';
 import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
@@ -81,7 +82,8 @@ export class MicrosoftCAPIService implements ConversionPlatformService {
         if (data.payload) {
             if (data.payload.total !== undefined) event.revenue_value = data.payload.total;
             if (data.payload.currency) event.revenue_currency = data.payload.currency;
-            if (data.payload.orderId) event.variable_revenue = String(data.payload.orderId);
+            const orderId = getPayloadWooOrderIdString(data.payload);
+            if (orderId) event.variable_revenue = orderId;
         }
 
         return event;

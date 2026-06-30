@@ -18,6 +18,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { getPayloadWooOrderIdString } from '../../utils/orderIds';
 import { mapEventName, extractUserData } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
@@ -161,8 +162,9 @@ export class GA4MeasurementService implements ConversionPlatformService {
             if (data.payload.currency) {
                 event.params.currency = data.payload.currency;
             }
-            if (data.payload.orderId) {
-                event.params.transaction_id = String(data.payload.orderId);
+            const orderId = getPayloadWooOrderIdString(data.payload);
+            if (orderId) {
+                event.params.transaction_id = orderId;
             }
             if (data.payload.tax !== undefined) {
                 event.params.tax = data.payload.tax;

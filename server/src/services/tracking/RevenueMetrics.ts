@@ -7,6 +7,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { getDateRangeForDays } from '../../utils/dateRange';
+import { getPayloadWooOrderId } from '../../utils/orderIds';
 
 interface TrackingDateRange {
     startDate: Date;
@@ -63,7 +64,7 @@ export async function getRevenue(accountId: string, days: number = 30, timezone:
     }>();
 
     for (const event of purchaseEvents) {
-        const orderId = (event.payload as any)?.orderId;
+        const orderId = event.orderId || getPayloadWooOrderId(event.payload);
         if (orderId && event.session) {
             // Session data is correctly typed via the select above
             orderAttributionMap.set(orderId, event.session);

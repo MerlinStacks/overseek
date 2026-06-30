@@ -9,6 +9,7 @@
 
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
+import { getPayloadWooOrderId } from '../../../utils/orderIds';
 
 
 export interface SegmentPerformance {
@@ -147,7 +148,7 @@ export class AudienceAnalyzer {
             }>();
 
             for (const event of purchaseEvents) {
-                const orderId = (event.payload as any)?.orderId;
+                const orderId = event.orderId || getPayloadWooOrderId(event.payload);
                 if (orderId && event.session) {
                     orderAnalyticsMap.set(Number(orderId), {
                         device: event.session.deviceType,

@@ -9,6 +9,7 @@
 
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
+import { getPayloadWooOrderId } from '../../../utils/orderIds';
 
 
 export interface ChannelLTV {
@@ -143,7 +144,7 @@ export class LTVAnalyzer {
             const customerAcquisitionChannel = new Map<string, string>();
 
             for (const event of purchaseEvents) {
-                const orderId = (event.payload as any)?.orderId;
+                const orderId = event.orderId || getPayloadWooOrderId(event.payload);
                 if (orderId && event.session?.visitorId) {
                     // Find which customer this order belongs to
                     const order = orders.find(o => o.wooId === Number(orderId));
