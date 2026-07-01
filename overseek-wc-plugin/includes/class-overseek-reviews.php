@@ -435,9 +435,7 @@ class OverSeek_Reviews {
 		$args = $this->normalize_shortcode_args( $atts, 'overseek_product_reviews' );
 		$args['product_reviews'] = 'true';
 		$args['shop_reviews']    = 'false';
-		if ( $this->is_review_request() ) {
-			$args['add_review'] = '1';
-		}
+		$args['add_review']      = '1';
 		$is_preview = $this->is_block_editor_preview_request();
 		if ( empty( $args['product_id'] ) ) {
 			$args['product_id'] = $this->get_current_product_id();

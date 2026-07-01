@@ -141,12 +141,12 @@ class OverSeek_Review_Form {
 	}
 
 	/**
-	 * Render a direct form for email review requests when the theme does not expose one.
+	 * Render a direct form when the theme does not expose one.
 	 *
 	 * @return void
 	 */
 	public function render_review_request_fallback(): void {
-		if ( ( empty( $_GET['overseek_review_request'] ) && empty( $_GET['overseek_review_rating'] ) ) || ! ( function_exists( 'is_product' ) && is_product() ) ) {
+		if ( ! ( function_exists( 'is_product' ) && is_product() ) ) {
 			return;
 		}
 
