@@ -1175,7 +1175,8 @@ class OverSeek_Reviews {
 			return '';
 		}
 
-		$product_id = absint( $value ) ?: ( ! empty( $args['product_id'] ) ? (int) $args['product_id'] : $this->get_current_product_id() );
+		$explicit_product_id = is_numeric( $value ) && absint( $value ) > 1 ? absint( $value ) : 0;
+		$product_id          = $explicit_product_id ?: ( ! empty( $args['product_id'] ) ? (int) $args['product_id'] : $this->get_current_product_id() );
 		if ( ! $product_id && $this->truthy( $args['shop_reviews'] ?? false ) ) {
 			return do_shortcode( '[overseek_review_form shop_review="true"]' );
 		}
