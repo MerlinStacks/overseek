@@ -24,6 +24,7 @@ import { prisma } from '../utils/prisma';
 import { TrackingService } from '../services/TrackingService';
 
 const ACCOUNT_ID = '00000000-0000-4000-8000-000000000001';
+const LEGACY_ACCOUNT_ID = '00000000-0000-4000-8000-000000000002';
 
 describe('tracking ingestion auth', () => {
     let app: ReturnType<typeof Fastify>;
@@ -32,6 +33,9 @@ describe('tracking ingestion auth', () => {
         (vi.mocked(prisma.account.findUnique) as any).mockImplementation(async ({ where }: any) => {
             if (where.id === ACCOUNT_ID) {
                 return { id: ACCOUNT_ID, webhookSecret: 'valid-secret' } as any;
+            }
+            if (where.id === LEGACY_ACCOUNT_ID) {
+                return { id: LEGACY_ACCOUNT_ID, webhookSecret: null } as any;
             }
             return null;
         });
@@ -83,6 +87,28 @@ describe('tracking ingestion auth', () => {
 
         expect(res.statusCode).toBe(401);
         expect(TrackingService.processEvent).not.toHaveBeenCalled();
+    });
+
+    it('accepts unsigned conversion events for accounts without a webhook secret', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/events',
+            payload: {
+                accountId: LEGACY_ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'purchase',
+                url: 'https://shop.example.com/checkout/order-received/1',
+                payload: { orderId: 123, total: 49.95 },
+            },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(TrackingService.processEvent).toHaveBeenCalledWith(expect.objectContaining({
+            accountId: LEGACY_ACCOUNT_ID,
+            visitorId: 'visitor-1',
+            type: 'purchase',
+            payload: { orderId: 123, total: 49.95 },
+        }));
     });
 
     it('accepts conversion events signed with the account webhook secret', async () => {

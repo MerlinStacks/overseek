@@ -63,6 +63,11 @@ export async function hasValidTrackingAuth(accountId: string, authHeader: unknow
     return token.length > 0 && timingSafeStringEquals(account.webhookSecret, token);
 }
 
+export async function requiresTrackingAuth(accountId: string): Promise<boolean> {
+    const account = await getAccountAuthContext(accountId);
+    return account.exists && !!account.webhookSecret;
+}
+
 /** Why fixed-window: O(1) per check vs O(n) array filter; no GC pressure under load */
 interface RateWindow {
     count: number;

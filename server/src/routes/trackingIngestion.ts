@@ -6,7 +6,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { TrackingService } from '../services/TrackingService';
 import { Logger } from '../utils/logger';
-import { hasValidTrackingAuth, isValidAccount, isRateLimited } from '../middleware/trackingMiddleware';
+import { hasValidTrackingAuth, isValidAccount, isRateLimited, requiresTrackingAuth } from '../middleware/trackingMiddleware';
 import * as z from 'zod';
 import { incrementBotShieldMetric } from '../services/tracking/BotShieldMetrics';
 
@@ -164,7 +164,7 @@ async function authorizeTrackingEvent(accountId: string, type: string, request: 
         return true;
     }
 
-    if (!(await hasValidTrackingAuth(accountId, request.headers.authorization))) {
+    if (await requiresTrackingAuth(accountId) && !(await hasValidTrackingAuth(accountId, request.headers.authorization))) {
         reply.code(401).send({ error: 'Tracking auth required' });
         return false;
     }
