@@ -52,11 +52,13 @@ class OverSeek_Tracking_Transport
     /**
      * @param array<int, array<string, mixed>> $events
      */
-    public static function flush_events(string $api_url, array $events): void
+    public static function flush_events(string $api_url, array $events): array
     {
         if (empty($events)) {
-            return;
+            return array();
         }
+
+        $results = array();
 
 		$is_ajax = wp_doing_ajax();
 		$is_rest = defined('REST_REQUEST') && REST_REQUEST;
@@ -69,6 +71,7 @@ class OverSeek_Tracking_Transport
             $visitor_ip = $data['visitorIp'] ?? '';
             $retry_count = $data['_retry_count'] ?? 0;
             $event_type = $data['type'] ?? 'unknown';
+            $event_id = isset($data['payload']['eventId']) ? (string) $data['payload']['eventId'] : '';
             $blocking = self::should_block_for_event((string) $event_type);
             $timeout = $blocking ? 2 : 0.5;
             unset($data['visitorIp'], $data['_retry_count'], $data['_retry_after']);
@@ -105,7 +108,14 @@ class OverSeek_Tracking_Transport
                 }
             }
 
-            if ($blocking && (is_wp_error($response) || self::is_retryable_response($response))) {
+            if ($blocking) {
+                $successful = !is_wp_error($response) && self::is_success_response($response);
+                if ($event_id !== '') {
+                    $results[$event_id] = $successful;
+                }
+            }
+
+            if ($blocking && (is_wp_error($response) || !self::is_success_response($response))) {
                 $data['visitorIp'] = $visitor_ip;
                 $data['_retry_count'] = $retry_count;
                 self::store_failed_event($data);
@@ -115,6 +125,8 @@ class OverSeek_Tracking_Transport
                 }
             }
         }
+
+        return $results;
     }
 
     private static function should_block_for_event(string $event_type): bool
@@ -133,6 +145,19 @@ class OverSeek_Tracking_Transport
 
         $status = (int) wp_remote_retrieve_response_code($response);
         return 429 === $status || $status >= 500;
+    }
+
+    /**
+     * @param array<string, mixed>|WP_Error $response
+     */
+    private static function is_success_response($response): bool
+    {
+        if (is_wp_error($response)) {
+            return false;
+        }
+
+        $status = (int) wp_remote_retrieve_response_code($response);
+        return $status >= 200 && $status < 300;
     }
 
     /**

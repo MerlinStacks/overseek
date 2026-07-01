@@ -6,7 +6,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
-import { getPayloadWooOrderId, parseWooOrderId } from '../../utils/orderIds';
+import { getPayloadWooOrderId } from '../../utils/orderIds';
 import { requireAuthFastify } from '../../middleware/auth';
 import {
     findOrderByAnyId,
@@ -28,6 +28,94 @@ const ATTRIBUTION_SESSION_SELECT = {
     browser: true,
     os: true,
 };
+
+interface BasicAttribution {
+    lastTouchSource: string;
+    firstTouchSource?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    referrer?: string;
+    country?: string | null;
+    city?: string | null;
+    deviceType?: string | null;
+    browser?: string | null;
+    os?: string | null;
+}
+
+function toStringValue(value: unknown): string | undefined {
+    if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+    const text = String(value).trim();
+    return text || undefined;
+}
+
+function getMetaValue(rawData: unknown, keys: string[]): string | undefined {
+    const order = rawData as Record<string, unknown> | null;
+    const metaData = order?.meta_data;
+    if (!Array.isArray(metaData)) return undefined;
+
+    const normalizedKeys = new Set(keys.map((key) => key.toLowerCase()));
+    for (const item of metaData) {
+        const meta = item as { key?: unknown; value?: unknown };
+        const key = toStringValue(meta.key)?.toLowerCase();
+        if (key && normalizedKeys.has(key)) return toStringValue(meta.value);
+    }
+
+    return undefined;
+}
+
+function getRawAttributionValue(rawData: unknown, keys: string[]): string | undefined {
+    const order = rawData as Record<string, unknown> | null;
+    const attribution = order?.attribution as Record<string, unknown> | null;
+
+    for (const key of keys) {
+        const direct = toStringValue(order?.[key]);
+        if (direct) return direct;
+
+        const attrValue = toStringValue(attribution?.[key]);
+        if (attrValue) return attrValue;
+    }
+
+    return getMetaValue(rawData, keys);
+}
+
+function sourceFromReferrer(referrer?: string): string | undefined {
+    if (!referrer) return undefined;
+
+    try {
+        return new URL(referrer).hostname.replace(/^www\./, '');
+    } catch {
+        return referrer;
+    }
+}
+
+function mapWooOrderAttribution(rawData: unknown): BasicAttribution | null {
+    const sourceType = getRawAttributionValue(rawData, ['source_type', '_wc_order_attribution_source_type']);
+    const utmSource = getRawAttributionValue(rawData, ['utm_source', '_wc_order_attribution_utm_source']);
+    const utmMedium = getRawAttributionValue(rawData, ['utm_medium', '_wc_order_attribution_utm_medium']);
+    const utmCampaign = getRawAttributionValue(rawData, ['utm_campaign', '_wc_order_attribution_utm_campaign']);
+    const referrer = getRawAttributionValue(rawData, ['referrer', '_wc_order_attribution_referrer']);
+    const deviceType = getRawAttributionValue(rawData, ['device_type', '_wc_order_attribution_device_type']);
+
+    if (!sourceType && !utmSource && !utmMedium && !utmCampaign && !referrer && !deviceType) {
+        return null;
+    }
+
+    const lastTouchSource = utmSource
+        || sourceFromReferrer(referrer)
+        || (sourceType === 'typein' ? 'direct' : sourceType)
+        || 'direct';
+
+    return {
+        lastTouchSource,
+        firstTouchSource: lastTouchSource,
+        utmSource,
+        utmMedium,
+        utmCampaign,
+        referrer,
+        deviceType,
+    };
+}
 
 function mapEventToBasicAttribution(event: {
     session: {
@@ -62,7 +150,11 @@ async function findPurchaseEventsForOrderIds(accountId: string, orderIds: number
         INNER JOIN "AnalyticsSession" s ON s.id = e."sessionId"
         WHERE s."accountId" = ${accountId}
           AND e.type = 'purchase'
-          AND COALESCE(e."orderId"::text, e.payload->>'orderId', e.payload->>'order_id') IN (${Prisma.join(orderIdTexts)})
+            AND (
+                e."orderId"::text IN (${Prisma.join(orderIdTexts)})
+                OR e.payload->>'orderId' IN (${Prisma.join(orderIdTexts)})
+                OR e.payload->>'order_id' IN (${Prisma.join(orderIdTexts)})
+            )
         ORDER BY e."createdAt" DESC
     `);
 
@@ -95,9 +187,10 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
             // 1. Fetch all matching orders in one query
             const orders = await prisma.wooOrder.findMany({
                 where: { accountId, wooId: { in: ids } },
-                select: { wooId: true }
+                select: { wooId: true, rawData: true }
             });
             const wooIds = new Set(orders.map(o => o.wooId));
+            const orderMap = new Map(orders.map((order) => [order.wooId, order]));
 
             // 2. Query purchase events by denormalized orderId with payload fallback for legacy/string IDs.
             const purchaseEvents = await findPurchaseEventsForOrderIds(accountId, ids);
@@ -114,14 +207,7 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             // 4. Build result
-            const result: Record<number, {
-                lastTouchSource: string;
-                firstTouchSource?: string;
-                utmSource?: string;
-                utmMedium?: string;
-                utmCampaign?: string;
-                referrer?: string;
-            } | null> = {};
+            const result: Record<number, BasicAttribution | null> = {};
 
             for (const wooId of ids) {
                 if (!wooIds.has(wooId)) {
@@ -130,7 +216,9 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                 }
 
                 const matched = eventMap.get(wooId);
-                result[wooId] = matched ? mapEventToBasicAttribution(matched) : null;
+                result[wooId] = matched
+                    ? mapEventToBasicAttribution(matched)
+                    : mapWooOrderAttribution(orderMap.get(wooId)?.rawData);
             }
 
             return { attributions: result };
@@ -165,7 +253,7 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                     browser: matchedEvent.session.browser,
                     os: matchedEvent.session.os
                 }
-                : null;
+                : mapWooOrderAttribution(order.rawData);
 
             return { attribution };
         } catch (error) {

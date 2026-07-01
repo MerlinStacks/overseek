@@ -373,7 +373,7 @@ class OverSeek_Server_Tracking
      * Uses blocking requests during AJAX (where shutdown may not complete),
      * and non-blocking for regular page loads.
      */
-    public function flush_event_queue()
+    public function flush_event_queue(): array
     {
         // Get any failed events from previous requests to retry
         $retry_events = OverSeek_Tracking_Transport::get_failed_events_for_retry();
@@ -382,13 +382,15 @@ class OverSeek_Server_Tracking
         $all_events = array_merge($retry_events, $this->event_queue);
 
         if (empty($all_events)) {
-            return;
+            return array();
         }
 
-        OverSeek_Tracking_Transport::flush_events($this->api_url, $all_events);
+        $results = OverSeek_Tracking_Transport::flush_events($this->api_url, $all_events);
 
         // Clear queue after sending
         $this->event_queue = array();
+
+        return $results;
     }
 
     /**
@@ -795,10 +797,13 @@ class OverSeek_Server_Tracking
         $payload = OverSeek_Tracking_Event_Builder::build_purchase_payload($order, (int) $order_id, $event_id, $meta_config);
 
         $this->queue_event('purchase', $payload);
+        $results = $this->flush_event_queue();
 
-        // Mark as tracked to prevent duplicates
-        $order->update_meta_data('_overseek_tracked', true);
-        $order->save();
+        // Mark as tracked only after the blocking purchase request succeeds.
+        if (!empty($results[$event_id])) {
+            $order->update_meta_data('_overseek_tracked', true);
+            $order->save();
+        }
     }
 
     /**
