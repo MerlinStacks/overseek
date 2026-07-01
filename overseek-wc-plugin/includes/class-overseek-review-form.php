@@ -428,11 +428,11 @@ class OverSeek_Review_Form {
 	}
 
 	private function product_review_form_allowed( int $product_id ): bool {
-		if ( 'yes' !== (string) get_option( 'woocommerce_enable_reviews', 'yes' ) ) {
+		if ( $product_id <= 0 || 'product' !== get_post_type( $product_id ) ) {
 			return false;
 		}
 
-		return comments_open( $product_id );
+		return ! function_exists( 'wc_get_product' ) || false !== wc_get_product( $product_id );
 	}
 
 	private function product_review_submission_allowed( int $product_id, string $email ): bool {
