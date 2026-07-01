@@ -71,11 +71,11 @@ describe('email click redirects', () => {
         });
 
         expect(res.statusCode).toBe(302);
-        expect(res.headers.location).toBe('https://www.example.com/products/ring?overseek_review_request=1#review_form');
+        expect(res.headers.location).toBe('https://www.example.com/products/ring?overseek_review_request=track-1#review_form');
         expect(prisma.messageTrackingEvent.create).toHaveBeenCalledWith({
             data: expect.objectContaining({
                 eventType: 'CLICK',
-                linkUrl: 'https://www.example.com/products/ring?overseek_review_request=1#review_form',
+                linkUrl: 'https://www.example.com/products/ring?overseek_review_request=track-1#review_form',
             }),
         });
     });

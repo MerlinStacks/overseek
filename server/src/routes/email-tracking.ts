@@ -62,7 +62,7 @@ function parseAllowedHost(raw: string | null | undefined): string | null {
     }
 }
 
-function getSafeRedirectUrl(rawUrl: string, allowedHosts: string[]): string | null {
+function getSafeRedirectUrl(rawUrl: string, allowedHosts: string[], reviewRequestMarker = '1'): string | null {
     try {
         const parsed = new URL(rawUrl);
         if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
@@ -71,15 +71,15 @@ function getSafeRedirectUrl(rawUrl: string, allowedHosts: string[]): string | nu
         if (!allowedHosts.some(host => hostMatches(parsed.hostname, host))) {
             return null;
         }
-        return withReviewRequestMarker(parsed).toString();
+        return withReviewRequestMarker(parsed, reviewRequestMarker).toString();
     } catch {
         return null;
     }
 }
 
-function withReviewRequestMarker(url: URL): URL {
+function withReviewRequestMarker(url: URL, markerValue: string): URL {
     if (url.hash.toLowerCase() === '#review_form') {
-        url.searchParams.set('overseek_review_request', '1');
+        url.searchParams.set('overseek_review_request', markerValue || '1');
     }
 
     return url;
@@ -331,7 +331,7 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                     parseAllowedHost(emailLog.account?.domain)
                 ].filter((host): host is string => Boolean(host));
 
-                redirectUrl = getSafeRedirectUrl(url, allowedHosts);
+                redirectUrl = getSafeRedirectUrl(url, allowedHosts, trackingId);
 
                 if (!redirectUrl) {
                     return reply.code(400).send({ error: 'Invalid redirect URL' });

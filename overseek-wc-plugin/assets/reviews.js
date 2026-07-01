@@ -53,13 +53,38 @@
 		return null;
 	}
 
-	function revealReviewFormFromUrl() {
+	function findReviewTabLink() {
+		var links = document.querySelectorAll('.woocommerce-tabs .tabs a, .tabs.wc-tabs a');
+		for (var index = 0; index < links.length; index++) {
+			var href = links[index].getAttribute('href') || '';
+			if (links[index].hash === '#tab-reviews' || href.indexOf('#tab-reviews') !== -1 || href.indexOf('#reviews') !== -1) {
+				return links[index];
+			}
+		}
+
+		return null;
+	}
+
+	function revealReviewFormFromUrl(attempt) {
 		if (!isReviewRequestUrl()) {
 			return;
 		}
 
+		attempt = attempt || 0;
+
 		var form = document.getElementById('review_form');
 		if (!form) {
+			var reviewTabLink = findReviewTabLink();
+			if (reviewTabLink) {
+				reviewTabLink.click();
+			}
+
+			if (attempt < 12) {
+				window.setTimeout(function () {
+					revealReviewFormFromUrl(attempt + 1);
+				}, 250);
+			}
+
 			return;
 		}
 
@@ -74,6 +99,9 @@
 		window.setTimeout(function () {
 			form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 			form.classList.add('os-review-form--focused');
+			if (window.location.hash !== '#review_form') {
+				history.replaceState(null, '', window.location.pathname + window.location.search + '#review_form');
+			}
 		}, 120);
 	}
 

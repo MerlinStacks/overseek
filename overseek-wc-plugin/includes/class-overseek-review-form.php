@@ -37,9 +37,31 @@ class OverSeek_Review_Form {
 		add_shortcode( 'overseek_review_form', [ $this, 'render_shortcode' ] );
 		add_action( 'admin_post_overseek_submit_review', [ $this, 'handle_submission' ] );
 		add_action( 'admin_post_nopriv_overseek_submit_review', [ $this, 'handle_submission' ] );
+		add_action( 'template_redirect', [ $this, 'disable_cache_for_review_requests' ], 0 );
 		add_action( 'woocommerce_after_single_product_summary', [ $this, 'render_review_request_fallback' ], 11 );
 		add_filter( 'woocommerce_product_tabs', [ $this, 'maybe_replace_reviews_tab' ], 999 );
 		add_filter( 'comments_template', [ $this, 'maybe_replace_product_comments_template' ], 20 );
+	}
+
+	/**
+	 * Review-request URLs must render a fresh page so the direct form is available.
+	 *
+	 * @return void
+	 */
+	public function disable_cache_for_review_requests(): void {
+		if ( empty( $_GET['overseek_review_request'] ) && empty( $_GET['overseek_review_rating'] ) ) {
+			return;
+		}
+
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true );
+		}
+
+		if ( function_exists( 'do_action' ) ) {
+			do_action( 'litespeed_control_set_nocache', 'OverSeek review request' );
+		}
+
+		nocache_headers();
 	}
 
 	/**
