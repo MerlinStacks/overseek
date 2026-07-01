@@ -137,6 +137,38 @@ function mapEventToBasicAttribution(event: {
     };
 }
 
+function mapSessionToBasicAttribution(session: {
+    lastTouchSource: string | null;
+    firstTouchSource: string | null;
+    utmSource: string | null;
+    utmMedium: string | null;
+    utmCampaign: string | null;
+    referrer: string | null;
+    country?: string | null;
+    city?: string | null;
+    deviceType?: string | null;
+    browser?: string | null;
+    os?: string | null;
+}): BasicAttribution | null {
+    if (!session.lastTouchSource && !session.firstTouchSource && !session.utmSource && !session.referrer) {
+        return null;
+    }
+
+    return {
+        lastTouchSource: session.lastTouchSource || session.utmSource || sourceFromReferrer(session.referrer || undefined) || 'direct',
+        firstTouchSource: session.firstTouchSource || undefined,
+        utmSource: session.utmSource || undefined,
+        utmMedium: session.utmMedium || undefined,
+        utmCampaign: session.utmCampaign || undefined,
+        referrer: session.referrer || undefined,
+        country: session.country,
+        city: session.city,
+        deviceType: session.deviceType,
+        browser: session.browser,
+        os: session.os,
+    };
+}
+
 function getEventWooOrderId(event: { orderId: number | null; payload: unknown }): number | null {
     if (event.orderId) return event.orderId;
     return getPayloadWooOrderId(event.payload);
@@ -169,6 +201,43 @@ async function findPurchaseEventsForOrderIds(accountId: string, orderIds: number
     });
 }
 
+async function findSessionAttributionForOrder(order: {
+    accountId: string;
+    billingEmail: string | null;
+    wooCustomerId: number | null;
+    dateCreated: Date;
+}): Promise<BasicAttribution | null> {
+    const email = order.billingEmail?.toLowerCase().trim();
+    const identityFilters: Prisma.AnalyticsSessionWhereInput[] = [];
+
+    if (email) {
+        identityFilters.push({ email: { equals: email, mode: 'insensitive' } });
+    }
+
+    if (order.wooCustomerId) {
+        identityFilters.push({ wooCustomerId: order.wooCustomerId });
+    }
+
+    if (identityFilters.length === 0) {
+        return null;
+    }
+
+    const session = await prisma.analyticsSession.findFirst({
+        where: {
+            accountId: order.accountId,
+            OR: identityFilters,
+            lastActiveAt: {
+                lte: new Date(order.dateCreated.getTime() + 24 * 60 * 60 * 1000),
+                gte: new Date(order.dateCreated.getTime() - 30 * 24 * 60 * 60 * 1000),
+            },
+        },
+        select: ATTRIBUTION_SESSION_SELECT,
+        orderBy: { lastActiveAt: 'desc' },
+    });
+
+    return session ? mapSessionToBasicAttribution(session) : null;
+}
+
 const attributionRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
@@ -187,7 +256,7 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
             // 1. Fetch all matching orders in one query
             const orders = await prisma.wooOrder.findMany({
                 where: { accountId, wooId: { in: ids } },
-                select: { wooId: true, rawData: true }
+                select: { accountId: true, wooId: true, rawData: true, billingEmail: true, wooCustomerId: true, dateCreated: true }
             });
             const wooIds = new Set(orders.map(o => o.wooId));
             const orderMap = new Map(orders.map((order) => [order.wooId, order]));
@@ -216,9 +285,11 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                 }
 
                 const matched = eventMap.get(wooId);
+                const order = orderMap.get(wooId);
                 result[wooId] = matched
                     ? mapEventToBasicAttribution(matched)
-                    : mapWooOrderAttribution(orderMap.get(wooId)?.rawData);
+                    : mapWooOrderAttribution(order?.rawData)
+                    || (order ? await findSessionAttributionForOrder(order) : null);
             }
 
             return { attributions: result };
@@ -253,7 +324,8 @@ const attributionRoutes: FastifyPluginAsync = async (fastify) => {
                     browser: matchedEvent.session.browser,
                     os: matchedEvent.session.os
                 }
-                : mapWooOrderAttribution(order.rawData);
+                : mapWooOrderAttribution(order.rawData)
+                || await findSessionAttributionForOrder(order);
 
             return { attribution };
         } catch (error) {
