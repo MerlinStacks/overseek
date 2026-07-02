@@ -72,7 +72,7 @@ describe('tracking ingestion auth', () => {
         }));
     });
 
-    it('rejects unsigned conversion events', async () => {
+    it('rejects unsigned conversion events without an order ID', async () => {
         const res = await app.inject({
             method: 'POST',
             url: '/events',
@@ -87,6 +87,28 @@ describe('tracking ingestion auth', () => {
 
         expect(res.statusCode).toBe(401);
         expect(TrackingService.processEvent).not.toHaveBeenCalled();
+    });
+
+    it('accepts unsigned Woo purchase events with an order ID', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/events',
+            payload: {
+                accountId: ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'purchase',
+                url: 'https://shop.example.com/checkout/order-received/1',
+                payload: { orderId: 123, total: 49.95 },
+            },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(TrackingService.processEvent).toHaveBeenCalledWith(expect.objectContaining({
+            accountId: ACCOUNT_ID,
+            visitorId: 'visitor-1',
+            type: 'purchase',
+            payload: { orderId: 123, total: 49.95 },
+        }));
     });
 
     it('accepts unsigned conversion events for accounts without a webhook secret', async () => {
