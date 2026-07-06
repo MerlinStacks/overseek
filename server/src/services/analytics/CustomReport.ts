@@ -8,6 +8,7 @@
 import { esClient } from '../../utils/elastic';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { REVENUE_STATUSES } from '../../constants/orderStatus';
 
 /** Available dimensions for custom reports */
 export type ReportDimension =
@@ -240,52 +241,59 @@ export class CustomReportService {
         const result = new Map<string, { orders: number; sales: number }>();
 
         try {
-            // Map dimension to ES field
-            let esField: string;
+            // Traffic attribution lives on tracked sessions/visits, not reliably on synced order documents.
+            // Use purchase events to connect revenue back to the same attribution fields used for sessions.
+            let dimensionExpr: string;
             switch (dimension) {
                 case 'traffic_source':
-                    esField = 'referrer.keyword';
+                    dimensionExpr = `COALESCE(NULLIF(v."referrer", ''), NULLIF(s."referrer", ''), '(direct)')`;
                     break;
                 case 'utm_source':
-                    esField = 'utm_source.keyword';
+                    dimensionExpr = `COALESCE(NULLIF(v."utmSource", ''), NULLIF(s."utmSource", ''), '(direct)')`;
                     break;
                 case 'device':
-                    esField = 'device_type.keyword';
+                    dimensionExpr = `COALESCE(NULLIF(v."deviceType", ''), NULLIF(s."deviceType", ''), '(unknown)')`;
                     break;
                 case 'country':
-                    esField = 'billing.country.keyword';
+                    dimensionExpr = `COALESCE(NULLIF(v."country", ''), NULLIF(s."country", ''), '(unknown)')`;
                     break;
                 default:
-                    esField = 'referrer.keyword';
+                    dimensionExpr = `COALESCE(NULLIF(v."referrer", ''), NULLIF(s."referrer", ''), '(direct)')`;
             }
 
-            const response = await esClient.search({
-                index: 'orders',
-                size: 0,
-                query: {
-                    bool: {
-                        must: [
-                            { term: { accountId } },
-                            { range: { date_created: { gte: startDate, lte: endDate } } }
-                        ]
-                    }
-                },
-                aggs: {
-                    by_dimension: {
-                        terms: { field: esField, size: 50, missing: '(direct)' },
-                        aggs: {
-                            total_sales: { sum: { field: 'total' } },
-                            order_count: { value_count: { field: 'id' } }
-                        }
-                    }
-                }
-            });
+            const rows: Array<{ dimension: string; orders: bigint | number; sales: unknown }> = await prisma.$queryRawUnsafe(
+                `WITH attributed_orders AS (
+                    SELECT DISTINCT ON (o.id)
+                        o.id,
+                        ${dimensionExpr} AS dimension,
+                        o.total
+                    FROM "AnalyticsEvent" e
+                    JOIN "AnalyticsSession" s ON e."sessionId" = s.id
+                    LEFT JOIN "AnalyticsVisit" v ON e."visitId" = v.id
+                    JOIN "WooOrder" o ON o."accountId" = s."accountId" AND o."wooId" = e."orderId"
+                    WHERE s."accountId" = $1
+                    AND e.type = 'purchase'
+                    AND e."orderId" IS NOT NULL
+                    AND o."dateCreated" >= $2
+                    AND o."dateCreated" <= $3
+                    AND o.status = ANY($4::text[])
+                    ORDER BY o.id, e."createdAt" DESC
+                )
+                SELECT dimension, COUNT(*) AS orders, COALESCE(SUM(total), 0) AS sales
+                FROM attributed_orders
+                GROUP BY dimension
+                ORDER BY orders DESC
+                LIMIT 50`,
+                accountId,
+                new Date(startDate),
+                new Date(endDate),
+                REVENUE_STATUSES
+            );
 
-            const buckets = (response.aggregations as any)?.by_dimension?.buckets || [];
-            for (const bucket of buckets) {
-                result.set(bucket.key, {
-                    orders: bucket.order_count.value,
-                    sales: bucket.total_sales.value
+            for (const row of rows) {
+                result.set(row.dimension, {
+                    orders: Number(row.orders),
+                    sales: Number(row.sales)
                 });
             }
         } catch (error) {
