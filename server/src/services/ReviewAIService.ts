@@ -111,6 +111,22 @@ function injectReviewVariables(template: string, review: { rating: number; conte
         .replace(/\{\{current_draft\}\}/g, currentDraft?.trim() || '');
 }
 
+function reviewReplyStyleGuard(): string {
+    return `
+
+NON-NEGOTIABLE OUTPUT RULES
+- Return only the exact reply text to post publicly under the review.
+- Do not describe the reply, explain your reasoning, mention AI, or include labels.
+- Do not use markdown, HTML, numbering, bullets, hashtags, emojis, sign-offs, or multiple options.
+- Do not use generic filler such as "we value your feedback", "thank you for bringing this to our attention", or "we strive to".
+- Avoid corporate, technical, policy, or process language.
+- Sound like a real store team member: warm, direct, natural, and concise.
+- Keep it under 70 words unless the current draft is already longer and needs the detail.
+- For positive reviews, say thanks and refer to a specific detail when available.
+- For negative reviews, acknowledge the issue plainly, apologise where appropriate, and invite them to contact support without sounding defensive.
+- Do not mention order details unless they are directly useful to the customer reply.`;
+}
+
 export class ReviewAIService {
     static async generateReply(accountId: string, reviewId: string, currentDraft?: string): Promise<{ reply: string; error?: string }> {
         try {
@@ -158,7 +174,7 @@ export class ReviewAIService {
             ]);
 
             const basePrompt = accountPromptTemplate?.content || globalPromptTemplate?.content || this.getDefaultPrompt();
-            const systemPrompt = injectReviewVariables(basePrompt, review, currentDraft);
+            const systemPrompt = `${injectReviewVariables(basePrompt, review, currentDraft)}${reviewReplyStyleGuard()}`;
             const userMessage = buildUserMessage(review, currentDraft);
 
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {

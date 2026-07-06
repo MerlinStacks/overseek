@@ -51,7 +51,7 @@ const PROMPT_CONFIGS: PromptConfig[] = [
         id: 'review_reply',
         name: 'Review Reply Generator',
         description: 'Generate thoughtful replies to customer reviews',
-        placeholder: 'You are responding to a customer review on behalf of the store. Generate a professional and warm reply:\n\nReview Rating: {{rating}}/5\nReview Text: {{review_text}}\nProduct: {{product_name}}\nCustomer: {{customer_name}}\nOrder Details:\n{{order_details}}\n\nGuidelines:\n- Thank the customer\n- Address specific points mentioned\n- Reference order details only when relevant\n- If negative, offer solution\n- Keep it under 100 words\n- Return one plain-text reply only',
+        placeholder: 'You write direct customer-facing review replies for the store. Return one ready-to-post reply only.\n\nReview Rating: {{rating}}/5\nReview Text: {{review_text}}\nProduct: {{product_name}}\nCustomer: {{customer_name}}\nOrder Details:\n{{order_details}}\n\nGuidelines:\n- Sound like a real store team member, not an AI assistant or support script\n- Keep it warm, natural, clear, and concise\n- Avoid tech talk, internal process details, policy explanations, marketing fluff, and generic phrases like "we value your feedback"\n- Reference review or product details only when useful\n- For negative reviews, acknowledge the issue plainly and invite them to contact support\n- Keep it under 70 words\n- Return plain text only, with no labels, sign-off, markdown, or multiple options',
         helpText: 'Available variables: {{rating}}, {{review_text}}, {{product_name}}, {{reviewer_name}}, {{customer_name}}, {{order_details}}, {{order_number}}, {{order_status}}, {{order_items}}'
     },
     {
