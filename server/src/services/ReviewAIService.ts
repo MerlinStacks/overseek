@@ -91,10 +91,10 @@ ORDER AND CUSTOMER CONTEXT
 ${formatOrderContext(review)}`;
 
     const task = currentDraft?.trim()
-        ? `Improve this current draft while using the review and order context.\n\nCURRENT DRAFT:\n${stripHtmlTags(currentDraft.trim())}`
-        : 'Generate a concise customer review reply using the review and order context.';
+        ? `Rewrite this draft into a direct, ready-to-post customer review reply. Keep any useful specifics, but remove anything that sounds generic, corporate, explanatory, or AI-written.\n\nCURRENT DRAFT:\n${stripHtmlTags(currentDraft.trim())}`
+        : 'Write a direct, ready-to-post customer review reply using the review context.';
 
-    return `${context}\n\nTASK\n${task}\n\nReturn exactly one ready-to-post reply. Do not include classification, labels, analysis, markdown, numbering, or multiple options. Do not mention order details unless they are directly relevant and present above.`;
+    return `${context}\n\nTASK\n${task}\n\nReturn exactly one reply the store can post as-is. Write only the reply text, as if typed by a real person from the store. Do not include labels, analysis, markdown, numbering, multiple options, placeholders, greetings like "Dear", sign-offs, hashtags, emojis, or any mention of AI. Do not explain that you used the review or order context. Do not mention order details unless they are directly relevant and present above. Keep it natural, specific, and concise.`;
 }
 
 function injectReviewVariables(template: string, review: { rating: number; content: string | null; productName: string | null; reviewer: string; order?: { number: string; status: string; currency: string; total: unknown; dateCreated: Date; rawData: unknown } | null; customer?: { firstName: string | null; lastName: string | null; email: string; totalSpent: unknown; ordersCount: number } | null }, currentDraft?: string): string {
@@ -196,7 +196,7 @@ export class ReviewAIService {
     }
 
     private static getDefaultPrompt(): string {
-        return `You are responding to a customer review on behalf of the store. Generate a professional and warm reply:
+        return `You write customer-facing review replies for the store. Your output must be a direct reply suggestion the team can post without editing.
 
 Review Rating: {{rating}}/5
 Review Text: {{review_text}}
@@ -206,11 +206,15 @@ Order Details:
 {{order_details}}
 
 Guidelines:
-- Thank the customer
-- Address specific points mentioned
-- If negative, acknowledge the issue and invite them to contact support
-- Keep it under 100 words
+- Sound like a real person from the store, not an AI assistant or support script
+- Match a warm, confident ecommerce brand voice: helpful, friendly, clear, and not overly formal
+- Reply directly to the customer, using their name only if it feels natural
+- Reference the product or review details only when it adds value
+- For positive reviews, keep it appreciative and brief
+- For negative reviews, acknowledge the issue plainly, apologise where appropriate, and invite them to contact support without being defensive
+- Avoid tech talk, internal process details, policy explanations, marketing fluff, clichés, and phrases like "we value your feedback"
+- Keep it under 70 words
 - Return exactly one ready-to-post reply
-- Return plain text only, with no markdown, HTML, classification, numbering, or multiple options`;
+- Return plain text only, with no markdown, HTML, labels, classification, numbering, sign-off, or multiple options`;
     }
 }
