@@ -54,6 +54,33 @@ interface CartItem {
     price?: number;
 }
 
+function formatCartItem(item: CartItem, currency = 'USD'): string {
+    const quantity = Number(item.quantity) || 1;
+    const name = item.name || `Product ${item.productId || ''}`.trim() || 'Item';
+    const price = Number(item.price) || 0;
+
+    if (price > 0) {
+        return `${name} x${quantity} - ${fmtCurrency(price * quantity, currency)}`;
+    }
+
+    return `${name} x${quantity}`;
+}
+
+function getCartTooltip(v: VisitorSession): string {
+    const cartValue = Number(v.cartValue) || 0;
+    const currency = v.currency || 'USD';
+    const lines = [`Cart: ${fmtCurrency(cartValue, currency)}`];
+    const cartItems = Array.isArray(v.cartItems) ? v.cartItems : [];
+
+    if (cartItems.length > 0) {
+        lines.push('', ...cartItems.map((item) => formatCartItem(item, currency)));
+    } else {
+        lines.push('', 'Cart item details are not available yet.');
+    }
+
+    return lines.join('\n');
+}
+
 interface VisitorSession {
     id: string;
     visitorId: string;
@@ -77,7 +104,7 @@ interface VisitorSession {
     cartValue?: number;
     cartItems?: CartItem[];
     currency?: string;
-    _count?: { events: number };
+    _count?: { events: number; visits?: number };
     events?: VisitorEvent[];
     customer?: {
         firstName?: string | null;
@@ -392,6 +419,7 @@ const VisitorLogWidget = (_props: WidgetProps) => {
                             const funnel = getFunnelStage(v);
                             const cartVal = Number(v.cartValue) || 0;
                             const isAbandoned = funnel.stage === 'abandoned';
+                            const visitCount = v._count?.visits ?? 1;
 
                             return (
                                 <div
@@ -419,8 +447,8 @@ const VisitorLogWidget = (_props: WidgetProps) => {
                                                             ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim()
                                                             : v.email || `Visitor ${v.visitorId.slice(0, 6)}`}
                                                     </span>
-                                                    {(v.totalVisits ?? 1) > 1 && (
-                                                        <span className="text-xs bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0" title={`${v.totalVisits} total visits`}>
+                                                    {visitCount > 1 && (
+                                                        <span className="text-xs bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0" title={`${visitCount} total visits`}>
                                                             <RefreshCw className="w-2.5 h-2.5" />
                                                             Returning
                                                         </span>
@@ -446,7 +474,7 @@ const VisitorLogWidget = (_props: WidgetProps) => {
                                         <div className="flex items-center gap-2 shrink-0 ml-2">
                                             {/* Cart value (prominent when > 0) */}
                                             {cartVal > 0 && funnel.stage !== 'purchased' && (
-                                                <span className="text-sm font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1" title={`Cart: ${fmtCurrency(cartVal, v.currency)}`}>
+                                                <span className="text-sm font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1" title={getCartTooltip(v)}>
                                                     <ShoppingCart className="w-3.5 h-3.5" />
                                                     {fmtCurrency(cartVal, v.currency)}
                                                 </span>

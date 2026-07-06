@@ -59,7 +59,7 @@ export class AnalyticsService {
                     userAgent: true,
                     fpScore: true,
                     createdAt: true,
-                    _count: { select: { events: true } },
+                    _count: { select: { events: true, visits: true } },
                     events: {
                         orderBy: { createdAt: 'desc' },
                         take: 10,
@@ -144,7 +144,7 @@ export class AnalyticsService {
                     cartValue: true,
                     cartItems: true,
                     currency: true,
-                    _count: { select: { events: true } },
+                    _count: { select: { events: true, visits: true } },
                     events: {
                         orderBy: { createdAt: 'desc' },
                         take: 10,
