@@ -104,8 +104,8 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
     }, [initialConfig, autoRun, generateReport]);
 
     return (
-        <div className={`space - y - 6 ${viewMode ? 'h-full flex flex-col' : 'bg-white p-6 rounded-xl shadow-xs border border-gray-200'} `}>
-            <div className={`flex flex - col md: flex - row gap - 6 ${viewMode ? 'h-full' : ''} `}>
+        <div className={`min-w-0 ${viewMode ? 'h-full flex flex-col' : 'space-y-6 overflow-hidden bg-white p-6 rounded-xl shadow-xs border border-gray-200'} `}>
+            <div className={`flex min-w-0 flex-col gap-6 md:flex-row ${viewMode ? 'h-full' : ''} `}>
 
                 {/* Configuration Panel - Hidden in View Mode unless toggled (future feature) */}
                 {!viewMode && (
@@ -142,4 +142,3 @@ export function ReportBuilder({ initialConfig, autoRun = false, viewMode = false
         </div>
     );
 }
-

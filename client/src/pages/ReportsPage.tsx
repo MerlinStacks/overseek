@@ -163,7 +163,7 @@ export function ReportsPage() {
 
     return (
         <>
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
                 {/* Header */}
                 <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xs dark:border-slate-700 dark:bg-slate-900/80">
                     <div className="relative p-6 sm:p-8">
@@ -266,7 +266,7 @@ export function ReportsPage() {
                                 colorClass="bg-blue-100 text-blue-600"
                             />
                         ) : (
-                            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:h-[calc(100vh-14rem)]">
+                            <div className="flex min-w-0 flex-col gap-6 lg:h-[calc(100vh-14rem)] lg:flex-row lg:items-start">
                                 <ReportsSidebar
                                     templates={templates}
                                     selectedTemplateId={selectedTemplateId}
@@ -274,7 +274,7 @@ export function ReportsPage() {
                                     onDelete={handleDeleteTemplate}
                                     onCreateCustom={enterCustomBuilder}
                                 />
-                                <div className="min-h-[28rem] flex-1 overflow-hidden lg:h-full lg:min-h-0">
+                                <div className="min-h-[28rem] min-w-0 flex-1 overflow-hidden lg:h-full lg:min-h-0">
                                     {customReportConfig ? (
                                         <ReportBuilder
                                             initialConfig={customReportConfig}

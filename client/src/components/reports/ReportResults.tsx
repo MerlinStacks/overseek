@@ -119,11 +119,11 @@ export function ReportResults({
     }, {} as Record<string, number>);
 
     return (
-        <div className={`flex-1 min-h-[400px] flex flex-col ${viewMode ? 'bg-white/50 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-6' : ''}`}>
+        <div className={`min-w-0 flex min-h-[400px] flex-1 flex-col overflow-hidden ${viewMode ? 'bg-white/50 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-6' : ''}`}>
 
             {/* Header */}
-            <div className="flex justify-between items-center mb-6">
-                <div>
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
                     <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                         {viewMode && <BarChart3 className="text-blue-600" size={24} />}
                         {viewMode ? 'Report Analysis' : 'Results'}
@@ -134,7 +134,7 @@ export function ReportResults({
                         </p>
                     )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex shrink-0 gap-2">
                     <button
                         onClick={exportCSV}
                         disabled={results.length === 0}
@@ -186,7 +186,7 @@ export function ReportResults({
                     </div>
 
                     {/* Data Table */}
-                    <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-xs flex-1">
+                    <div className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-gray-200 shadow-xs">
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50/80">
                                 <tr>
@@ -206,7 +206,7 @@ export function ReportResults({
                                         key={i}
                                         className={`hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
                                     >
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        <td className="max-w-[28rem] break-words px-6 py-4 text-sm font-medium text-gray-900">
                                             {row.dimension}
                                         </td>
                                         {metrics.map(m => (
