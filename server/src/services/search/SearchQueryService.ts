@@ -197,8 +197,30 @@ export class SearchQueryService {
             const hits = result.hits.hits || [];
             const total = (result.hits.total as any)?.value || 0;
 
+            const orders = hits.map(h => h._source as any);
+            const customerIds = Array.from(new Set(
+                orders
+                    .map(order => Number(order?.customer_id))
+                    .filter(customerId => Number.isFinite(customerId) && customerId > 0)
+            ));
+
+            const customers = customerIds.length > 0
+                ? await prisma.wooCustomer.findMany({
+                    where: { accountId, wooId: { in: customerIds } },
+                    select: { id: true, wooId: true, ordersCount: true }
+                })
+                : [];
+            const customerMetaByWooId = new Map(customers.map(customer => [customer.wooId, {
+                internalId: customer.id,
+                wooId: customer.wooId,
+                ordersCount: customer.ordersCount,
+            }]));
+
             return {
-                orders: hits.map(h => h._source),
+                orders: orders.map(order => ({
+                    ...order,
+                    _customerMeta: customerMetaByWooId.get(Number(order?.customer_id)) ?? null,
+                })),
                 total,
                 page,
                 totalPages: Math.ceil(total / limit)

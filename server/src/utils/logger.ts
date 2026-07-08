@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { sendOperationalAlert } from '../services/OperationalAlertService';
 
 
 
@@ -71,6 +72,14 @@ export const Logger = {
         } else {
             pinoInstance.error(message);
         }
+        sendOperationalAlert({
+            severity: 'error',
+            category: 'server_error',
+            title: message,
+            message: typeof serialized?.error === 'object' && serialized.error ? (serialized.error as { message?: string }).message : undefined,
+            fingerprint: `logger:error:${message}`,
+            metadata: serialized,
+        });
     },
     warn: (message: string, meta?: Record<string, any>) => {
         const serialized = serializeMeta(meta);

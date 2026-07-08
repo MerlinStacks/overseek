@@ -33,7 +33,9 @@ describe('TikTokEventsService', () => {
             total: 120.00,
             currency: 'USD',
             email: 'buyer@test.com',
-            ttp: 'tiktok-click-id-1',
+            ttp: 'tiktok-browser-id-1',
+            clickId: 'tiktok-click-id-1',
+            clickPlatform: 'tiktok',
         },
     };
 
@@ -74,11 +76,12 @@ describe('TikTokEventsService', () => {
         }
     });
 
-    it('should include ttclid from ttp cookie', async () => {
+    it('should include ttp browser ID separately from ttclid click ID', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
         // v1.3 places ttclid inside the user object, not body.context
+        expect(body.data[0].user?.ttp).toBe('tiktok-browser-id-1');
         expect(body.data[0].user?.ttclid).toBe('tiktok-click-id-1');
     });
 

@@ -98,6 +98,7 @@ class OverSeek_Pixels {
 		// ─── Google Consent Mode v2 ──────────────────────────────────────.
 		// Must come BEFORE any gtag/fbq/ttq scripts.
 		$this->inject_consent_mode( $config );
+		$this->inject_pixel_loader();
 
 		// ─── Meta Pixel ─────────────────────────────────────────────────.
 		if ( ! empty( $config['meta']['pixelId'] ) ) {
@@ -110,7 +111,7 @@ class OverSeek_Pixels {
 				$init_params['external_id'] = hash( 'sha256', strtolower( trim( $external_id ) ) );
 			}
 
-			echo "<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');";
+			echo "<script>!function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];f.overseekLoadTrackingScript&&f.overseekLoadTrackingScript('https://connect.facebook.net/en_US/fbevents.js')}(window);";
 			if ( ! empty( $init_params ) ) {
 				echo "fbq('init','{$pixel_id}'," . wp_json_encode( $init_params ) . ');';
 			} else {
@@ -123,7 +124,7 @@ class OverSeek_Pixels {
 		// ─── TikTok Pixel + Advanced Matching ───────────────────────────.
 		if ( ! empty( $config['tiktok']['pixelCode'] ) ) {
 			$pixel_code = esc_js( $config['tiktok']['pixelCode'] );
-			echo "<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js',o=n&&n.partner;ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;ttq._t=ttq._t||{};ttq._t[e+\"_\"+o]=1;var a=d.createElement('script');a.type='text/javascript';a.async=!0;a.src=r+'?sdkid='+e+'&lib='+t;var s=d.getElementsByTagName('script')[0];s.parentNode.insertBefore(a,s)};ttq.load('{$pixel_code}');ttq.page();";
+			echo "<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js',o=n&&n.partner;ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;ttq._t=ttq._t||{};ttq._t[e+\"_\"+o]=1;w.overseekLoadTrackingScript&&w.overseekLoadTrackingScript(r+'?sdkid='+e+'&lib='+t)};ttq.load('{$pixel_code}');ttq.page();";
 
 			// TikTok Advanced Matching — send hashed PII for better match rates.
 			if ( ! empty( $config['tiktok']['advancedMatching'] ) ) {
@@ -140,14 +141,18 @@ class OverSeek_Pixels {
 		$gads_id      = $config['google']['conversionId'] ?? '';
 		$gtag_primary = ( '' !== $ga4_id ) ? $ga4_id : $gads_id;
 		if ( ! empty( $gtag_primary ) ) {
-			echo '<script async src="https://www.googletagmanager.com/gtag/js?id=' . esc_attr( $gtag_primary ) . '"></script>' . "\n";
+			echo '<script async fetchpriority="low" src="https://www.googletagmanager.com/gtag/js?id=' . esc_attr( $gtag_primary ) . '"></script>' . "\n";
 			// gtag() and dataLayer already defined by consent mode above — only add js init + config calls.
 			echo "<script>gtag('js',new Date());";
+			$google_user_data = ! empty( $gads_id ) ? OverSeek_Pixel_Matching_Utils::get_google_user_data_params() : array();
+			if ( ! empty( $google_user_data ) ) {
+				echo "gtag('set','user_data'," . wp_json_encode( $google_user_data ) . ');';
+			}
 			if ( ! empty( $ga4_id ) ) {
 				echo "gtag('config','" . esc_js( $ga4_id ) . "');";
 			}
 			if ( ! empty( $gads_id ) ) {
-				echo "gtag('config','" . esc_js( $gads_id ) . "');";
+				echo "gtag('config','" . esc_js( $gads_id ) . "',{'allow_enhanced_conversions':true});";
 			}
 			echo "</script>\n";
 		}
@@ -178,6 +183,19 @@ class OverSeek_Pixels {
 		}
 
 		echo "<!-- OverSeek Tracking Pixels End -->\n";
+		// phpcs:enable WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.EnqueuedResources.NonEnqueuedScript
+	}
+
+	/**
+	 * Inject a tiny deferred script loader for third-party pixels.
+	 * Pixel command queues are created immediately, but heavy vendor libraries
+	 * load after page load/idle to reduce render and main-thread contention.
+	 */
+	private function inject_pixel_loader(): void {
+		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.EnqueuedResources.NonEnqueuedScript
+		echo '<script>';
+		echo 'window.overseekLoadTrackingScript=window.overseekLoadTrackingScript||function(src,onload){var w=window,d=document,loaded=w.__overseekLoadedTrackingScripts=w.__overseekLoadedTrackingScripts||{};if(loaded[src]){if(onload){onload();}return;}loaded[src]=1;var load=function(){var s=d.createElement("script");s.async=true;s.src=src;if(onload){s.onload=onload;}var first=d.getElementsByTagName("script")[0];first.parentNode.insertBefore(s,first);};var schedule=function(){if("requestIdleCallback" in w){w.requestIdleCallback(load,{timeout:2000});}else{setTimeout(load,1);}};if(d.readyState==="complete"){schedule();}else{w.addEventListener("load",schedule,{once:true});}};';
+		echo "</script>\n";
 		// phpcs:enable WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.EnqueuedResources.NonEnqueuedScript
 	}
 
@@ -356,7 +374,7 @@ class OverSeek_Pixels {
         if(p.pinterest&&window.pintrk) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency,event_id:eid});
         if(p.snapchat&&window.snaptr) snaptr('track','ADD_CART',{item_ids:[productId],price:value,currency:currency,event_tag:eid});
         if(p.ga4&&window.gtag) gtag('event','add_to_cart',{items:[{item_id:productId,item_name:productName,price:value}],value:value,currency:currency});
-        if(p.googleAdsAtc&&window.gtag) gtag('event','conversion',{send_to:p.googleAdsAtc,value:value,currency:currency});
+        if(p.googleAdsAtc&&window.gtag) gtag('event','conversion',{send_to:p.googleAdsAtc,value:value,currency:currency,items:[{id:String(productId),quantity:1,price:value}]});
         if(p.bing){window.uetq=window.uetq||[];window.uetq.push('event','add_to_cart',{ecomm_prodid:productId,revenue_value:value,currency:currency,event_id:eid});}
         if(p.twitter&&window.twq) twq('event','tw-atc-event',{value:value,currency:currency,num_items:1,event_id:eid});
     }

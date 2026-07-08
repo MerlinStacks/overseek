@@ -37,6 +37,7 @@ const SYSTEM_TEMPLATES = [
     { id: 'sys_category_performance', name: 'Category Performance', type: 'SYSTEM', category: 'Sales', config: { dimension: 'category', metrics: ['sales', 'orders', 'quantity'], dateRange: '30d' } },
     { id: 'sys_traffic_sources', name: 'Traffic Sources', type: 'SYSTEM', category: 'Traffic', config: { dimension: 'traffic_source', metrics: ['sessions', 'visitors', 'conversion_rate'], dateRange: '30d' } },
     { id: 'sys_campaigns', name: 'Campaign Performance', type: 'SYSTEM', category: 'Traffic', config: { dimension: 'utm_source', metrics: ['sessions', 'sales', 'conversion_rate'], dateRange: '30d' } },
+    { id: 'sys_utm_conversion_tracking', name: 'UTM Conversion Tracking', type: 'SYSTEM', category: 'Conversion', config: { dimension: 'utm_campaign', metrics: ['sessions', 'orders', 'sales', 'conversion_rate', 'aov'], dateRange: '30d' } },
     { id: 'sys_devices', name: 'Device Performance', type: 'SYSTEM', category: 'Traffic', config: { dimension: 'device', metrics: ['sessions', 'sales', 'conversion_rate'], dateRange: '30d' } },
     { id: 'sys_geographic', name: 'Geographic Sales', type: 'SYSTEM', category: 'Customer', config: { dimension: 'country', metrics: ['sales', 'orders', 'sessions'], dateRange: '30d' } },
     { id: 'sys_customer_performance', name: 'Top Customers', type: 'SYSTEM', category: 'Customer', config: { dimension: 'customer', metrics: ['sales', 'orders'], dateRange: '90d' } },

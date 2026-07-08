@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { WidgetLoadingState, WidgetEmptyState, WidgetErrorState } from './WidgetState';
 import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass, widgetListRowClass } from './widgetStyles';
 
@@ -86,12 +87,13 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
         }
     }, [currentAccount, token]);
 
+    useVisibilityPolling(fetchOrders, 60000, [fetchOrders], 'recent-orders-widget');
+
     useEffect(() => {
-        fetchOrders();
         return () => {
             fetchAbortRef.current?.abort();
         };
-    }, [fetchOrders]);
+    }, []);
 
     useEffect(() => {
         return () => {
@@ -111,6 +113,8 @@ export function RecentOrdersWidget({ className }: WidgetProps) {
                 clearTimeout(newOrderTimeoutRef.current);
             }
             newOrderTimeoutRef.current = setTimeout(() => setNewOrderId(null), 3000);
+        } else {
+            void fetchOrders();
         }
     });
 

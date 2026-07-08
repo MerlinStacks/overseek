@@ -167,6 +167,21 @@ describe('GoogleEnhancedConversionsService', () => {
         expect(emailIdentifier.hashedEmail).toHaveLength(64);
     });
 
+    it('should apply Google enhanced conversion Gmail normalization before hashing', async () => {
+        const gmailData = {
+            ...purchaseData,
+            payload: { ...purchaseData.payload, email: 'Jane.Doe+Shop@googlemail.com' },
+        };
+
+        await service.sendEvent(accountId, config, gmailData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const adjustment = body.conversionAdjustments[0];
+        const emailIdentifier = adjustment.userIdentifiers.find((u: any) => u.hashedEmail);
+
+        expect(emailIdentifier.hashedEmail).toBe('338abf9ef1c8793cadc7bcf51ed595338eb727ed9e06ce3d91d566d60b975937');
+    });
+
     it('should include gclid when click platform is google', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 

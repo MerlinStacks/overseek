@@ -7,7 +7,7 @@
 /** Available dimensions for grouping report data */
 type ReportDimension =
     | 'day' | 'month' | 'product' | 'category' | 'customer' | 'customer_segment'
-    | 'traffic_source' | 'utm_source' | 'device' | 'country' | 'order_status';
+    | 'traffic_source' | 'utm_source' | 'utm_medium' | 'utm_campaign' | 'device' | 'country' | 'order_status';
 
 /** Available metrics for report calculations */
 type ReportMetric =
@@ -28,6 +28,8 @@ export const DIMENSION_OPTIONS: { value: ReportDimension; label: string; categor
     // Traffic Dimensions
     { value: 'traffic_source', label: 'Traffic Source', category: 'traffic' },
     { value: 'utm_source', label: 'UTM Source', category: 'traffic' },
+    { value: 'utm_medium', label: 'UTM Medium', category: 'traffic' },
+    { value: 'utm_campaign', label: 'UTM Campaign', category: 'traffic' },
     { value: 'device', label: 'Device Type', category: 'traffic' },
     { value: 'country', label: 'Country', category: 'traffic' }
 ];

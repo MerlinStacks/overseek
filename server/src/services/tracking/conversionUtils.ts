@@ -113,15 +113,27 @@ export interface ConversionUserData {
     externalId?: string;
 }
 
+function normalizeGoogleEnhancedEmail(value: string): string {
+    const normalized = value.trim().toLowerCase();
+    const [localPart, domain, ...rest] = normalized.split('@');
+    if (!localPart || !domain || rest.length > 0) return normalized;
+
+    if (domain === 'gmail.com' || domain === 'googlemail.com') {
+        return `${localPart.replace(/\./g, '').replace(/\+.*/, '')}@${domain}`;
+    }
+
+    return normalized;
+}
+
 /**
  * SHA-256 hash a value after lowercasing and trimming.
  * All ad platforms require PII to be hashed this way.
  *
  * @returns Hex-encoded SHA-256 hash, or undefined if input is falsy
  */
-export function hashSHA256(value: string | undefined | null): string | undefined {
+export function hashSHA256(value: string | undefined | null, valueType?: 'email'): string | undefined {
     if (!value || !value.trim()) return undefined;
-    const normalised = value.trim().toLowerCase();
+    const normalised = valueType === 'email' ? normalizeGoogleEnhancedEmail(value) : value.trim().toLowerCase();
     return createHash('sha256').update(normalised).digest('hex');
 }
 

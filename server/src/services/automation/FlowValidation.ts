@@ -32,6 +32,7 @@ const SUPPORTED_ACTIONS = new Set([
     'CLOSE_CONVERSATION',
     'ADD_NOTE',
     'SEND_CANNED_RESPONSE',
+    'EXIT',
 ]);
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);

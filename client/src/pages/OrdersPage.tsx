@@ -267,11 +267,21 @@ export function OrdersPage() {
                                                 <Link to={`/customers/${order.customer_id}`} className="block hover:text-blue-600" onClick={(e) => e.stopPropagation()} title={order.billing.email}>
                                                     <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
                                                     <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
+                                                    {order._customerMeta?.ordersCount !== undefined && (
+                                                        <div className="text-blue-600 text-xs font-medium">
+                                                            {order._customerMeta.ordersCount} order{order._customerMeta.ordersCount !== 1 ? 's' : ''} incl. this one
+                                                        </div>
+                                                    )}
                                                 </Link>
                                             ) : (
                                                 <div title={order.billing.email}>
                                                     <div className="font-medium">{order.billing.first_name} {order.billing.last_name}</div>
                                                     <div className="text-gray-500 text-xs truncate max-w-[150px]">{order.billing.email}</div>
+                                                    {order._customerMeta?.ordersCount !== undefined && (
+                                                        <div className="text-blue-600 text-xs font-medium">
+                                                            {order._customerMeta.ordersCount} order{order._customerMeta.ordersCount !== 1 ? 's' : ''} incl. this one
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </td>

@@ -13,7 +13,7 @@ import { shouldExcludeFromLiveVisitors } from './tracking/TrafficAnalyzer';
 export class AnalyticsService {
     /**
      * Get Visitor Log (Real-time Traffic)
-     * Includes last 10 events per session for action display
+     * Includes last 10 events for action display. Live mode limits actions to the latest visit.
      * @param liveMode - If true, only returns sessions active in last 3 minutes
      * @param startDate - Optional ISO date string to filter sessions from this date
      * @param endDate - Optional ISO date string to filter sessions until this date
@@ -60,10 +60,16 @@ export class AnalyticsService {
                     fpScore: true,
                     createdAt: true,
                     _count: { select: { events: true, visits: true } },
-                    events: {
-                        orderBy: { createdAt: 'desc' },
-                        take: 10,
-                        select: { id: true, type: true, url: true, pageTitle: true, createdAt: true, payload: true }
+                    visits: {
+                        orderBy: { startedAt: 'desc' },
+                        take: 1,
+                        select: {
+                            events: {
+                                orderBy: { createdAt: 'desc' },
+                                take: 10,
+                                select: { id: true, type: true, url: true, pageTitle: true, createdAt: true, payload: true }
+                            }
+                        }
                     }
                 }
             });
@@ -96,8 +102,9 @@ export class AnalyticsService {
                 }
             }
 
-            const data = pagedSessions.map(({ userAgent: _userAgent, fpScore: _fpScore, createdAt: _createdAt, ...session }) => ({
+            const data = pagedSessions.map(({ userAgent: _userAgent, fpScore: _fpScore, createdAt: _createdAt, visits, ...session }) => ({
                 ...session,
+                events: visits[0]?.events ?? [],
                 customer: session.wooCustomerId ? customerMap.get(session.wooCustomerId) || null : null
             }));
 

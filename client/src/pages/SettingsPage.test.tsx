@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { SettingsPage } from './SettingsPage';
 
@@ -87,11 +86,8 @@ describe('SettingsPage tab behavior', () => {
     it('updates URL query when a tab is clicked', async () => {
         renderSettings('/settings');
 
-        const user = userEvent.setup();
         const emailButtons = await screen.findAllByRole('button', { name: /Email/i });
-        for (const button of emailButtons) {
-            await user.click(button);
-        }
+        fireEvent.click(emailButtons[0]);
 
         await waitFor(() => {
             expect(screen.getByTestId('location-search')).toHaveTextContent('tab=email');

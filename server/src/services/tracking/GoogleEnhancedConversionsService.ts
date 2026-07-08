@@ -227,7 +227,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         // Add hashed email — SHA-256, lowercase, trimmed
         if (userData.email) {
             adjustment.userIdentifiers.push({
-                hashedEmail: hashSHA256(userData.email),
+                hashedEmail: hashSHA256(userData.email, 'email'),
             });
         }
 
@@ -299,7 +299,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         // Hashed email
         if (userData.email) {
             conversion.userIdentifiers.push({
-                hashedEmail: hashSHA256(userData.email),
+                hashedEmail: hashSHA256(userData.email, 'email'),
             });
         }
 

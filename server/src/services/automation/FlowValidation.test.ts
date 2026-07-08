@@ -27,4 +27,16 @@ describe('validateAutomationFlow', () => {
             ]
         } as any).some((issue) => issue.id === 'email-content-email')).toBe(false);
     });
+
+    it('accepts exit action nodes as supported terminal steps', () => {
+        const issues = validateAutomationFlow({
+            nodes: [
+                { id: 'trigger', type: 'trigger', data: { config: { triggerType: 'CUSTOMER_CREATED' } } },
+                { id: 'exit', type: 'action', data: { config: { actionType: 'EXIT' } } },
+            ],
+            edges: [{ id: 'edge-1', source: 'trigger', target: 'exit' }],
+        } as any);
+
+        expect(issues.some((issue) => issue.id === 'unsupported-action-exit')).toBe(false);
+    });
 });

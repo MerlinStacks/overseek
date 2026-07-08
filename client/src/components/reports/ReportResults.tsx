@@ -40,6 +40,8 @@ const getDimensionLabel = (dimension: string): string => {
         customer_segment: 'Segment',
         traffic_source: 'Traffic Source',
         utm_source: 'UTM Source',
+        utm_medium: 'UTM Medium',
+        utm_campaign: 'UTM Campaign',
         device: 'Device',
         country: 'Country',
         order_status: 'Order Status'

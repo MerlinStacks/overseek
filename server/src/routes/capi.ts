@@ -343,7 +343,7 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
             META_CAPI: ['pixelId', 'events', 'advancedMatching', 'contentIdFormat', 'contentIdPrefix', 'contentIdSuffix', 'excludeShipping', 'excludeTax'],
             TIKTOK_EVENTS_API: ['pixelCode', 'events', 'advancedMatching'],
             GA4_MEASUREMENT: ['measurementId', 'events'],
-            GOOGLE_ENHANCED_CONVERSIONS: ['conversionId', 'conversionLabel', 'conversionLabelAddToCart', 'conversionLabelBeginCheckout', 'conversionLabelViewItem', 'events'],
+            GOOGLE_ENHANCED_CONVERSIONS: ['conversionId', 'conversionLabel', 'conversionLabelPurchase', 'conversionLabelAddToCart', 'conversionLabelBeginCheckout', 'conversionLabelViewItem', 'merchantId', 'feedCountry', 'feedLanguage', 'events'],
             PINTEREST_CAPI: ['tagId', 'events'],
             SNAPCHAT_CAPI: ['pixelId', 'events'],
             MICROSOFT_CAPI: ['tagId', 'events'],

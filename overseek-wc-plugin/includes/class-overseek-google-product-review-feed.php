@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 class OverSeek_Google_Product_Review_Feed
 {
 	private const QUERY_VAR = 'overseek_google_product_reviews';
-	private const CACHE_KEY = 'overseek_google_product_review_feed_xml';
+	private const CACHE_KEY = 'overseek_google_product_review_feed_xml_v2';
 	private const CACHE_TTL = 6 * HOUR_IN_SECONDS;
 	private const MAX_REVIEWS = 5000;
 
@@ -226,7 +226,7 @@ class OverSeek_Google_Product_Review_Feed
 		$product_node = $dom->createElement('product');
 		$product_ids = $dom->createElement('product_ids');
 
-		$gtin = $this->get_first_product_meta($product->get_id(), ['_global_unique_id', '_wc_gpf_gtin', '_alg_ean', '_wpm_gtin_code']);
+		$gtin = $this->get_valid_gtin($product->get_id());
 		if ('' !== $gtin) {
 			$gtins = $dom->createElement('gtins');
 			$this->append_text_node($dom, $gtins, 'gtin', $gtin);
@@ -240,9 +240,14 @@ class OverSeek_Google_Product_Review_Feed
 			$product_ids->appendChild($mpns);
 		}
 
-		if ('' !== $product->get_sku()) {
+		$sku = trim((string) $product->get_sku());
+		if ('' === $sku) {
+			$sku = (string) $product->get_id();
+		}
+
+		if ('' !== $sku) {
 			$skus = $dom->createElement('skus');
-			$this->append_text_node($dom, $skus, 'sku', $product->get_sku());
+			$this->append_text_node($dom, $skus, 'sku', $sku);
 			$product_ids->appendChild($skus);
 		}
 
@@ -295,6 +300,19 @@ class OverSeek_Google_Product_Review_Feed
 		}
 
 		return '';
+	}
+
+	/**
+	 * Return the first populated GTIN that matches Google's feed schema.
+	 *
+	 * @param int $product_id Product ID.
+	 * @return string
+	 */
+	private function get_valid_gtin(int $product_id): string
+	{
+		$gtin = $this->get_first_product_meta($product_id, ['_global_unique_id', '_wc_gpf_gtin', '_alg_ean', '_wpm_gtin_code']);
+
+		return preg_match('/^[\d \-xX]{7,}$/', $gtin) ? $gtin : '';
 	}
 
 	/**

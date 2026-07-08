@@ -5,6 +5,7 @@ import v8 from 'v8';
 import { monitorEventLoopDelay } from 'perf_hooks';
 import { Logger } from './logger';
 import { getRuntimeMetricsSnapshot } from './runtimeMetrics';
+import { sendOperationalAlert } from '../services/OperationalAlertService';
 
 let monitorInterval: NodeJS.Timeout | null = null;
 let latestSnapshot: MemorySnapshot | null = null;
@@ -219,6 +220,14 @@ function logSnapshot(warnHeapPct: number, snapshotLogLevel: 'info' | 'warn'): vo
     const meta = { ...snapshot };
     if (snapshot.heapUsedPct >= warnHeapPct) {
         Logger.warn('[MemoryMonitor] High heap usage detected', meta);
+        sendOperationalAlert({
+            severity: snapshot.heapUsedPct >= 95 ? 'critical' : 'warning',
+            category: 'memory',
+            title: '[MemoryMonitor] High heap usage detected',
+            message: `Heap usage is ${snapshot.heapUsedPct}%`,
+            fingerprint: 'memory:high-heap-usage',
+            metadata: meta,
+        });
         return;
     }
 

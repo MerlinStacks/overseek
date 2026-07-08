@@ -23,6 +23,7 @@ interface Order {
     date_created: string;
     customer_id?: number;
     tags?: string[];
+    _customerMeta?: { ordersCount?: number } | null;
     billing: {
         first_name: string;
         last_name: string;

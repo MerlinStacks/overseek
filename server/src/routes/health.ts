@@ -11,6 +11,7 @@ import { esClient } from '../utils/elastic';
 import { Logger } from '../utils/logger';
 import { getLatestMemorySnapshot } from '../utils/memoryMonitor';
 import { QueueFactory } from '../services/queue/QueueFactory';
+import { sendOperationalAlert } from '../services/OperationalAlertService';
 
 interface HealthStatus {
     status: 'healthy' | 'degraded' | 'unhealthy';
@@ -41,6 +42,42 @@ interface HealthStatus {
             backlog: number;
         }>;
     };
+}
+
+type QueueDepthSnapshot = NonNullable<HealthStatus['runtime']>['queues'];
+
+function positiveEnvInt(name: string, fallback: number): number {
+    const parsed = Number(process.env[name]);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function alertOnQueuePressure(queues: QueueDepthSnapshot): void {
+    const failedThreshold = positiveEnvInt('OPERATIONAL_ALERT_QUEUE_FAILED_THRESHOLD', 10);
+    const backlogThreshold = positiveEnvInt('OPERATIONAL_ALERT_QUEUE_BACKLOG_THRESHOLD', 500);
+
+    for (const [queueName, queue] of Object.entries(queues)) {
+        if (queue.failed >= failedThreshold) {
+            sendOperationalAlert({
+                severity: 'warning',
+                category: 'queue',
+                title: `[Queue] Failed jobs above threshold`,
+                message: `${queueName} has ${queue.failed} failed jobs`,
+                fingerprint: `queue:failed:${queueName}`,
+                metadata: { queueName, threshold: failedThreshold, queue },
+            });
+        }
+
+        if (queue.backlog >= backlogThreshold) {
+            sendOperationalAlert({
+                severity: 'warning',
+                category: 'queue',
+                title: `[Queue] Backlog above threshold`,
+                message: `${queueName} has ${queue.backlog} queued jobs`,
+                fingerprint: `queue:backlog:${queueName}`,
+                metadata: { queueName, threshold: backlogThreshold, queue },
+            });
+        }
+    }
 }
 
 const healthRoutes: FastifyPluginAsync = async (fastify) => {
@@ -113,9 +150,21 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
             checks
         };
 
+        if (overallStatus !== 'healthy') {
+            sendOperationalAlert({
+                severity: allDown ? 'critical' : 'warning',
+                category: 'readiness',
+                title: `[Health] Readiness ${overallStatus}`,
+                message: `Dependency health check is ${overallStatus}`,
+                fingerprint: `health:ready:${overallStatus}:${Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).sort().join(',')}`,
+                metadata: { checks, uptime: process.uptime() },
+            });
+        }
+
         try {
             const memory = getLatestMemorySnapshot();
             const queues = await QueueFactory.getQueueDepthSnapshot();
+            alertOnQueuePressure(queues);
             status.runtime = {
                 memory: {
                     heapUsedPct: memory.heapUsedPct,

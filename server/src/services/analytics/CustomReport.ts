@@ -13,7 +13,7 @@ import { REVENUE_STATUSES } from '../../constants/orderStatus';
 /** Available dimensions for custom reports */
 export type ReportDimension =
     | 'day' | 'month' | 'product' | 'category' | 'customer' | 'customer_segment'
-    | 'traffic_source' | 'utm_source' | 'device' | 'country' | 'order_status';
+    | 'traffic_source' | 'utm_source' | 'utm_medium' | 'utm_campaign' | 'device' | 'country' | 'order_status';
 
 /** Available metrics for custom reports */
 export type ReportMetric =
@@ -42,7 +42,7 @@ export interface CustomReportResult {
 }
 
 /** Traffic-based dimensions that require session data */
-const TRAFFIC_DIMENSIONS = ['traffic_source', 'utm_source', 'device', 'country'];
+const TRAFFIC_DIMENSIONS = ['traffic_source', 'utm_source', 'utm_medium', 'utm_campaign', 'device', 'country'];
 
 /** Traffic-based metrics that require session data */
 const TRAFFIC_METRICS = ['visitors', 'sessions', 'page_views', 'conversion_rate'];
@@ -118,6 +118,12 @@ export class CustomReportService {
                 break;
             case 'utm_source':
                 groupByField = 'utmSource';
+                break;
+            case 'utm_medium':
+                groupByField = 'utmMedium';
+                break;
+            case 'utm_campaign':
+                groupByField = 'utmCampaign';
                 break;
             case 'device':
                 groupByField = 'deviceType';
@@ -198,6 +204,8 @@ export class CustomReportService {
             const DIMENSION_COLUMNS: Record<string, string> = {
                 referrer: '"referrer"',
                 utmSource: '"utmSource"',
+                utmMedium: '"utmMedium"',
+                utmCampaign: '"utmCampaign"',
                 deviceType: '"deviceType"',
                 country: '"country"',
             };
@@ -250,6 +258,12 @@ export class CustomReportService {
                     break;
                 case 'utm_source':
                     dimensionExpr = `COALESCE(NULLIF(v."utmSource", ''), NULLIF(s."utmSource", ''), '(direct)')`;
+                    break;
+                case 'utm_medium':
+                    dimensionExpr = `COALESCE(NULLIF(v."utmMedium", ''), NULLIF(s."utmMedium", ''), '(direct)')`;
+                    break;
+                case 'utm_campaign':
+                    dimensionExpr = `COALESCE(NULLIF(v."utmCampaign", ''), NULLIF(s."utmCampaign", ''), '(direct)')`;
                     break;
                 case 'device':
                     dimensionExpr = `COALESCE(NULLIF(v."deviceType", ''), NULLIF(s."deviceType", ''), '(unknown)')`;

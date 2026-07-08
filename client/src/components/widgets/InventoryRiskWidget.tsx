@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { WidgetProps } from './WidgetRegistry';
 import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetListRowClass } from './widgetStyles';
 
@@ -83,9 +84,7 @@ export function InventoryRiskWidget({ className }: WidgetProps) {
         }
     }, [currentAccount, token]);
 
-    useEffect(() => {
-        fetchRisk();
-    }, [fetchRisk]);
+    useVisibilityPolling(fetchRisk, 120000, [fetchRisk], 'inventory-risk-widget');
 
     useEffect(() => {
         return () => {

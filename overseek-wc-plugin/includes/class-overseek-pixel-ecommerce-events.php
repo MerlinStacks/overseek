@@ -99,7 +99,25 @@ class OverSeek_Pixel_Ecommerce_Events {
 			) . ');';
 		}
 		if ( ! empty( $config['google']['conversionId'] ) && ! empty( $config['google']['conversionLabelViewItem'] ) ) {
-			$js .= "gtag('event','conversion',{send_to:'" . esc_js( $config['google']['conversionId'] . '/' . $config['google']['conversionLabelViewItem'] ) . "',value:" . $value . ",currency:'" . esc_js( $currency ) . "'});";
+			$ads_cart_data = self::build_google_ads_cart_data(
+				$config,
+				array(
+					array(
+						'id'       => $content_id,
+						'quantity' => 1,
+						'price'    => $value,
+					)
+				)
+			);
+			$ads_payload   = array_merge(
+				array(
+					'send_to'  => $config['google']['conversionId'] . '/' . $config['google']['conversionLabelViewItem'],
+					'value'    => $value,
+					'currency' => $currency,
+				),
+				$ads_cart_data
+			);
+			$js           .= "gtag('event','conversion'," . wp_json_encode( $ads_payload ) . ');';
 		}
 		if ( ! empty( $config['microsoft']['tagId'] ) ) {
 			$js .= "window.uetq=window.uetq||[];window.uetq.push('event','page_view',{ecomm_prodid:'" . esc_js( $content_id ) . "',ecomm_pagetype:'product',revenue_value:" . $value . ",currency:'" . esc_js( $currency ) . "'});";
@@ -220,29 +238,28 @@ class OverSeek_Pixel_Ecommerce_Events {
 		$num_items                   = $cart->get_cart_contents_count();
 		$event_id                    = wp_generate_uuid4();
 		$google_begin_checkout_label = $config['google']['conversionLabelBeginCheckout'] ?? '';
+		$cart_items                  = self::get_cart_ads_items( $cart, $config );
 
 		$js = '';
 		if ( ! empty( $config['meta']['pixelId'] ) ) {
 			$js .= "fbq('track','InitiateCheckout'," . wp_json_encode(
 				array(
-					'value'     => $value,
-					'currency'  => $currency,
-					'num_items' => $num_items,
+					'value'        => $value,
+					'currency'     => $currency,
+					'num_items'    => $num_items,
+					'content_type' => 'product',
+					'content_ids'  => array_column( $cart_items, 'id' ),
+					'contents'     => self::build_meta_contents( $cart_items ),
 				)
 			) . ",{eventID:'{$event_id}'});";
 		}
 		if ( ! empty( $config['tiktok']['pixelCode'] ) ) {
-			$tt_content_ids = array();
-			foreach ( $cart->get_cart() as $item ) {
-				$product = $item['data'] ?? null;
-				if ( $product ) {
-					$tt_content_ids[] = (string) OverSeek_Pixel_Matching_Utils::get_content_id( $product, $config );
-				}
-			}
+			$tt_content_ids = array_column( $cart_items, 'id' );
 			$js .= "ttq.track('InitiateCheckout'," . wp_json_encode(
 				array(
 					'content_id'   => implode( ',', $tt_content_ids ),
 					'content_type' => 'product',
+					'contents'     => self::build_tiktok_contents( $cart_items ),
 					'value'        => $value,
 					'currency'     => $currency,
 				)
@@ -254,6 +271,8 @@ class OverSeek_Pixel_Ecommerce_Events {
 					'value'          => $value,
 					'currency'       => $currency,
 					'order_quantity' => $num_items,
+					'product_ids'    => array_column( $cart_items, 'id' ),
+					'contents'       => self::build_pinterest_contents( $cart_items ),
 					'event_id'       => $event_id,
 				)
 			) . ');';
@@ -264,20 +283,38 @@ class OverSeek_Pixel_Ecommerce_Events {
 					'price'        => $value,
 					'currency'     => $currency,
 					'number_items' => $num_items,
+					'item_ids'     => array_column( $cart_items, 'id' ),
 					'event_tag'    => $event_id,
 				)
 			) . ');';
 		}
 		if ( ! empty( $config['ga4']['measurementId'] ) ) {
+			$ga_items = array();
+			foreach ( $cart_items as $item ) {
+				$ga_items[] = array(
+					'item_id'  => $item['id'],
+					'quantity' => $item['quantity'],
+					'price'    => $item['price'],
+				);
+			}
 			$js .= "gtag('event','begin_checkout'," . wp_json_encode(
 				array(
 					'value'    => $value,
 					'currency' => $currency,
+					'items'    => $ga_items,
 				)
 			) . ');';
 		}
 		if ( ! empty( $config['google']['conversionId'] ) && ! empty( $google_begin_checkout_label ) ) {
-			$js .= "gtag('event','conversion',{send_to:'" . esc_js( $config['google']['conversionId'] . '/' . $google_begin_checkout_label ) . "',value:" . $value . ",currency:'" . esc_js( $currency ) . "'});";
+			$ads_payload  = array_merge(
+				array(
+					'send_to'  => $config['google']['conversionId'] . '/' . $google_begin_checkout_label,
+					'value'    => $value,
+					'currency' => $currency,
+				),
+				self::build_google_ads_cart_data( $config, $cart_items )
+			);
+			$js          .= "gtag('event','conversion'," . wp_json_encode( $ads_payload ) . ');';
 		}
 		if ( ! empty( $config['microsoft']['tagId'] ) ) {
 			$js .= "window.uetq=window.uetq||[];window.uetq.push('event','begin_checkout',{revenue_value:" . $value . ",currency:'" . esc_js( $currency ) . "'});";
@@ -362,6 +399,7 @@ class OverSeek_Pixel_Ecommerce_Events {
 					'content_ids'  => $content_ids,
 					'content_type' => 'product',
 					'num_items'    => count( $items ),
+					'contents'     => self::build_meta_contents( $items ),
 				)
 			) . ",{eventID:'{$event_id}'});";
 		}
@@ -371,6 +409,7 @@ class OverSeek_Pixel_Ecommerce_Events {
 				array(
 					'content_id'   => implode( ',', $tt_content_ids ),
 					'content_type' => 'product',
+					'contents'     => self::build_tiktok_contents( $items ),
 					'value'        => $total,
 					'currency'     => $currency,
 				)
@@ -384,6 +423,7 @@ class OverSeek_Pixel_Ecommerce_Events {
 					'currency'       => $currency,
 					'order_quantity' => count( $items ),
 					'product_ids'    => $product_ids,
+					'contents'       => self::build_pinterest_contents( $items ),
 					'event_id'       => $event_id,
 				)
 			) . ');';
@@ -421,7 +461,21 @@ class OverSeek_Pixel_Ecommerce_Events {
 		}
 		$purchase_label = $config['google']['conversionLabelPurchase'] ?? $config['google']['conversionLabel'] ?? '';
 		if ( ! empty( $config['google']['conversionId'] ) && ! empty( $purchase_label ) ) {
-			$js .= "gtag('event','conversion',{send_to:'" . esc_js( $config['google']['conversionId'] . '/' . $purchase_label ) . "',value:" . $total . ",currency:'" . esc_js( $currency ) . "',transaction_id:'" . esc_js( (string) $order_id ) . "'});";
+			$google_user_data = OverSeek_Pixel_Matching_Utils::get_google_user_data_params_from_order( $order );
+			if ( ! empty( $google_user_data ) ) {
+				$js .= "gtag('set','user_data'," . wp_json_encode( $google_user_data ) . ');';
+			}
+
+			$ads_payload = array_merge(
+				array(
+					'send_to'        => $config['google']['conversionId'] . '/' . $purchase_label,
+					'value'          => $total,
+					'currency'       => $currency,
+					'transaction_id' => (string) $order_id,
+				),
+				self::build_google_ads_cart_data( $config, $items )
+			);
+			$js         .= "gtag('event','conversion'," . wp_json_encode( $ads_payload ) . ');';
 		}
 		if ( ! empty( $config['microsoft']['tagId'] ) ) {
 			$js .= "window.uetq=window.uetq||[];window.uetq.push('event','purchase',{ecomm_prodid:" . wp_json_encode( array_column( $items, 'id' ) ) . ",ecomm_pagetype:'purchase',revenue_value:" . $total . ",currency:'" . esc_js( $currency ) . "',event_id:'{$event_id}'});";
@@ -431,5 +485,125 @@ class OverSeek_Pixel_Ecommerce_Events {
 		}
 
 		return $js;
+	}
+
+	/**
+	 * Build Google Ads cart data parameters for conversion tags.
+	 *
+	 * @param array<string, mixed> $config Pixel configuration.
+	 * @param array<int, array<string, mixed>> $items Cart or order items.
+	 * @return array<string, mixed>
+	 */
+	private static function build_google_ads_cart_data( array $config, array $items ): array {
+		$cart_data = array();
+		$ads_items = array();
+
+		foreach ( $items as $item ) {
+			$id = $item['id'] ?? $item['item_id'] ?? $item['productId'] ?? '';
+			if ( '' === (string) $id ) {
+				continue;
+			}
+
+			$ads_items[] = array(
+				'id'       => (string) $id,
+				'quantity' => max( 1, (int) ( $item['quantity'] ?? 1 ) ),
+				'price'    => max( 0, (float) ( $item['price'] ?? 0 ) ),
+			);
+		}
+
+		if ( ! empty( $ads_items ) ) {
+			$cart_data['items'] = $ads_items;
+		}
+
+		if ( ! empty( $config['google']['merchantId'] ) ) {
+			$cart_data['aw_merchant_id'] = (string) $config['google']['merchantId'];
+		}
+		if ( ! empty( $config['google']['feedCountry'] ) ) {
+			$cart_data['aw_feed_country'] = strtoupper( (string) $config['google']['feedCountry'] );
+		}
+		if ( ! empty( $config['google']['feedLanguage'] ) ) {
+			$cart_data['aw_feed_language'] = strtolower( (string) $config['google']['feedLanguage'] );
+		}
+
+		return $cart_data;
+	}
+
+	/**
+	 * @param object $cart WooCommerce cart instance.
+	 * @param array<string, mixed> $config Pixel configuration.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function get_cart_ads_items( $cart, array $config ): array {
+		$items = array();
+
+		foreach ( $cart->get_cart() as $cart_item ) {
+			$product = $cart_item['data'] ?? null;
+			if ( ! $product instanceof WC_Product ) {
+				continue;
+			}
+
+			$items[] = array(
+				'id'       => OverSeek_Pixel_Matching_Utils::get_content_id( $product, $config ),
+				'name'     => $product->get_name(),
+				'quantity' => (int) ( $cart_item['quantity'] ?? 1 ),
+				'price'    => (float) $product->get_price(),
+			);
+		}
+
+		return $items;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $items Ecommerce items.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function build_meta_contents( array $items ): array {
+		return array_map(
+			static function ( array $item ): array {
+				return array(
+					'id'         => (string) ( $item['id'] ?? '' ),
+					'quantity'   => max( 1, (int) ( $item['quantity'] ?? 1 ) ),
+					'item_price' => max( 0, (float) ( $item['price'] ?? 0 ) ),
+				);
+			},
+			$items
+		);
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $items Ecommerce items.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function build_tiktok_contents( array $items ): array {
+		return array_map(
+			static function ( array $item ): array {
+				return array(
+					'content_id'   => (string) ( $item['id'] ?? '' ),
+					'content_type' => 'product',
+					'content_name' => (string) ( $item['name'] ?? '' ),
+					'quantity'     => max( 1, (int) ( $item['quantity'] ?? 1 ) ),
+					'price'        => max( 0, (float) ( $item['price'] ?? 0 ) ),
+				);
+			},
+			$items
+		);
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $items Ecommerce items.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function build_pinterest_contents( array $items ): array {
+		return array_map(
+			static function ( array $item ): array {
+				return array(
+					'id'         => (string) ( $item['id'] ?? '' ),
+					'item_name'  => (string) ( $item['name'] ?? '' ),
+					'quantity'   => max( 1, (int) ( $item['quantity'] ?? 1 ) ),
+					'item_price' => (string) max( 0, (float) ( $item['price'] ?? 0 ) ),
+				);
+			},
+			$items
+		);
 	}
 }

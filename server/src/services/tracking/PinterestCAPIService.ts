@@ -71,8 +71,8 @@ export class PinterestCAPIService implements ConversionPlatformService {
                 country: userData.country ? [hashSHA256(userData.country)] : undefined,
                 client_ip_address: userData.ipAddress,
                 client_user_agent: userData.userAgent,
-                // Pinterest click ID
-                click_id: userData.epq || undefined,
+                // Pinterest click ID from epik URL attribution; fall back to cookie-forwarded value.
+                click_id: userData.clickPlatform === 'pinterest' && userData.clickId ? userData.clickId : userData.epq || undefined,
                 ...(userData.externalId ? { external_id: [hashSHA256(userData.externalId)] } : {}),
             },
         };

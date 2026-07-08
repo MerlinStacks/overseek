@@ -35,7 +35,9 @@ describe('PinterestCAPIService', () => {
             total: 75.00,
             currency: 'USD',
             email: 'buyer@test.com',
-            epq: 'pinterest-epik-123',
+            epq: 'pinterest-cookie-123',
+            clickId: 'pinterest-epik-123',
+            clickPlatform: 'pinterest',
         },
     };
 

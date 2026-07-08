@@ -114,6 +114,10 @@ export class NodeExecutor {
         if (actionType === 'UNSUBSCRIBE') {
             return this.executeUnsubscribe(enrollment);
         }
+
+        if (actionType === 'EXIT') {
+            return { action: 'NEXT' };
+        }
     }
 
     private async executeAssignConversation(config: any, enrollment: any): Promise<void> {

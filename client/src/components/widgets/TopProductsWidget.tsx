@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { WidgetLoadingState, WidgetEmptyState, WidgetErrorState } from './WidgetState';
 import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass, widgetListRowClass, widgetPillClass } from './widgetStyles';
 
@@ -53,12 +54,13 @@ export function TopProductsWidget({ className, dateRange }: WidgetProps) {
         }
     }, [currentAccount, dateRange.endDate, dateRange.startDate, token]);
 
+    useVisibilityPolling(fetchTopProducts, 60000, [fetchTopProducts], 'top-products-widget');
+
     useEffect(() => {
-        fetchTopProducts();
         return () => {
             fetchAbortRef.current?.abort();
         };
-    }, [fetchTopProducts]);
+    }, []);
 
     useEffect(() => {
         return () => {

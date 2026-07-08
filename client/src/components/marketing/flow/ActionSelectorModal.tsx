@@ -50,6 +50,7 @@ const ACTIONS_BY_CATEGORY: Record<string, { subcategory?: string; actions: Actio
         {
             subcategory: 'Flow Control',
             actions: [
+                { id: 'EXIT', label: 'Exit', icon: '⏹️' },
                 { id: 'MOVE_TO_AUTOMATION', label: 'Move to Automation', icon: '➡️' },
                 { id: 'REMOVE_FROM_AUTOMATION', label: 'Remove from Automation', icon: '⏹️' },
             ]

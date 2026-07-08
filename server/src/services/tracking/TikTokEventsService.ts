@@ -77,7 +77,8 @@ export class TikTokEventsService implements ConversionPlatformService {
         if (hashedPhone) user.phone_number = hashedPhone;
         if (userData.ipAddress) user.ip = userData.ipAddress;
         if (userData.userAgent) user.user_agent = userData.userAgent;
-        if (userData.ttp) user.ttclid = userData.ttp;
+        if (userData.ttp) user.ttp = userData.ttp;
+        if (userData.clickPlatform === 'tiktok' && userData.clickId) user.ttclid = userData.clickId;
 
         // Build page context
         const page: Record<string, any> = {};

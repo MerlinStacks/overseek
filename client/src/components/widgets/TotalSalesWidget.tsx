@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useWidgetSocket } from '../../hooks/useWidgetSocket';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { widgetCardClass, widgetSubtleTextClass } from './widgetStyles';
 
 interface SalesResponse {
@@ -67,12 +68,13 @@ export function TotalSalesWidget({ className, dateRange, comparison, comparisonL
         }
     }, [comparison, currentAccount, dateRange.endDate, dateRange.startDate, token]);
 
+    useVisibilityPolling(fetchSales, 60000, [fetchSales], 'total-sales-widget');
+
     useEffect(() => {
-        fetchSales();
         return () => {
             fetchAbortRef.current?.abort();
         };
-    }, [fetchSales]);
+    }, []);
 
     useEffect(() => {
         return () => {

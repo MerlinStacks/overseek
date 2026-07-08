@@ -18,6 +18,7 @@ const SUPPORTED_ACTIONS = new Set([
     'ADD_ORDER_NOTE',
     'UPDATE_ORDER_STATUS',
     'UNSUBSCRIBE',
+    'EXIT',
 ]);
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);

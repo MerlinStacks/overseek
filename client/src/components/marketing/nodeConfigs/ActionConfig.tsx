@@ -11,7 +11,7 @@ import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 import { getSupportedFlowActionIds } from '../flowValidation';
 
 interface ActionNodeConfig {
-    actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK' | 'GENERATE_COUPON' | 'ADD_ORDER_NOTE' | 'UPDATE_ORDER_STATUS' | 'UNSUBSCRIBE';
+    actionType?: 'SEND_EMAIL' | 'SEND_SMS' | 'ADD_TAG' | 'REMOVE_TAG' | 'WEBHOOK' | 'GENERATE_COUPON' | 'ADD_ORDER_NOTE' | 'UPDATE_ORDER_STATUS' | 'UNSUBSCRIBE' | 'EXIT';
     smsMessage?: string;
     isTransactional?: boolean;
     tagName?: string;
@@ -42,6 +42,7 @@ const ACTION_TYPES = [
     { value: 'UPDATE_ORDER_STATUS', label: 'Update Order Status' },
     { value: 'UNSUBSCRIBE', label: 'Unsubscribe Customer' },
     { value: 'ADD_TAG', label: 'Add Tag' },
+    { value: 'EXIT', label: 'Exit' },
 ];
 
 const SUPPORTED_ACTION_IDS = getSupportedFlowActionIds();
@@ -128,6 +129,15 @@ export const ActionConfig: React.FC<ActionConfigProps> = ({ config, onUpdate, on
                     <h4 className="text-sm font-semibold text-red-900">Unsubscribe from all emails</h4>
                     <p className="mt-1 text-sm text-red-800">
                         When this step runs, the enrolled customer email will be suppressed from all future marketing and transactional emails for this account.
+                    </p>
+                </div>
+            )}
+
+            {selectedActionType === 'EXIT' && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <h4 className="text-sm font-semibold text-slate-900">Exit flow</h4>
+                    <p className="mt-1 text-sm text-slate-700">
+                        Contacts stop on this path when they reach this step.
                     </p>
                 </div>
             )}

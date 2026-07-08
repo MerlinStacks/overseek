@@ -92,6 +92,101 @@ class OverSeek_Pixel_Matching_Utils
         return $params;
     }
 
+    public static function get_google_user_data_params(): array
+    {
+        $params = array();
+
+        $user = wp_get_current_user();
+        if ($user->ID > 0 && $user->user_email) {
+            $params['email'] = trim((string) $user->user_email);
+        }
+
+        $wc = function_exists('WC') ? WC() : null;
+        $customer = $wc ? ($wc->customer ?? null) : null;
+        if ($customer) {
+            $phone = $customer->get_billing_phone();
+            if ($phone) {
+                $params['phone_number'] = trim((string) $phone);
+            }
+
+            $address = self::build_google_address(
+                $customer->get_billing_first_name(),
+                $customer->get_billing_last_name(),
+                trim($customer->get_billing_address_1() . ' ' . $customer->get_billing_address_2()),
+                $customer->get_billing_city(),
+                $customer->get_billing_state(),
+                $customer->get_billing_postcode(),
+                $customer->get_billing_country()
+            );
+            if (!empty($address)) {
+                $params['address'] = $address;
+            }
+        }
+
+        return $params;
+    }
+
+    public static function get_google_user_data_params_from_order($order): array
+    {
+        if (!$order) {
+            return array();
+        }
+
+        $params = array();
+        $email = $order->get_billing_email();
+        if ($email) {
+            $params['email'] = trim((string) $email);
+        }
+
+        $phone = $order->get_billing_phone();
+        if ($phone) {
+            $params['phone_number'] = trim((string) $phone);
+        }
+
+        $address = self::build_google_address(
+            $order->get_billing_first_name(),
+            $order->get_billing_last_name(),
+            trim($order->get_billing_address_1() . ' ' . $order->get_billing_address_2()),
+            $order->get_billing_city(),
+            $order->get_billing_state(),
+            $order->get_billing_postcode(),
+            $order->get_billing_country()
+        );
+        if (!empty($address)) {
+            $params['address'] = $address;
+        }
+
+        return $params;
+    }
+
+    private static function build_google_address($first_name, $last_name, $street, $city, $region, $postal_code, $country): array
+    {
+        $address = array();
+        if ($first_name) {
+            $address['first_name'] = trim((string) $first_name);
+        }
+        if ($last_name) {
+            $address['last_name'] = trim((string) $last_name);
+        }
+        if ($street) {
+            $address['street'] = trim((string) $street);
+        }
+        if ($city) {
+            $address['city'] = trim((string) $city);
+        }
+        if ($region) {
+            $address['region'] = trim((string) $region);
+        }
+        if ($postal_code) {
+            $address['postal_code'] = trim((string) $postal_code);
+        }
+        if ($country) {
+            $address['country'] = strtoupper(trim((string) $country));
+        }
+
+        return $address;
+    }
+
     public static function get_external_id(): string
     {
         $user = wp_get_current_user();
