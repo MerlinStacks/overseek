@@ -171,7 +171,7 @@ interface InvoiceMetaEntry {
 }
 
 export interface InvoiceLineItemLike {
-  sku?: string;
+  sku?: string | null;
   variation_id?: number;
   meta_data?: InvoiceMetaEntry[];
   [key: string]: unknown;
@@ -181,6 +181,117 @@ export interface InvoiceItemMeta {
   label: string;
   value: string;
 }
+
+const PERSONALISEIT_CUSTOMISATION_KEY = '_oc_customisation';
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const parseMaybeJsonRecord = (value: unknown): Record<string, unknown> | null => {
+  if (isRecord(value)) return value;
+  if (typeof value !== 'string') return null;
+
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const humanizePersonaliseItLabel = (value: unknown, fallback: string): string => {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  const label = raw || fallback;
+  return label.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
+const getPersonaliseItLayerValue = (layer: Record<string, unknown>): string => {
+  const type = String(layer.type || '').toLowerCase();
+  const input = isRecord(layer.input) ? layer.input : layer;
+
+  if (type === 'text' || type === 'textarea' || type === 'spotify') {
+    return stringifyInvoiceValue(input.value).trim();
+  }
+
+  if ((type === 'image' || type === 'clipmask') && Number(input.attachmentId || layer.artworkAttachmentId || 0) > 0) {
+    return 'Image uploaded';
+  }
+
+  if (type === 'clipart' && Number(input.clipartId || 0) > 0) {
+    return 'Clipart selected';
+  }
+
+  return '';
+};
+
+const addPersonaliseItMeta = (
+  meta: InvoiceItemMeta[],
+  seenEntries: Set<string>,
+  label: string,
+  value: string,
+) => {
+  const normalizedLabel = label.toLowerCase().trim();
+  const normalizedValue = value.replace(/\s+/g, ' ').trim();
+  if (!normalizedLabel || !normalizedValue) return;
+
+  const dedupeKey = `${normalizedLabel}::${normalizedValue.toLowerCase()}`;
+  if (seenEntries.has(dedupeKey)) return;
+
+  seenEntries.add(dedupeKey);
+  meta.push({
+    label: label.charAt(0).toUpperCase() + label.slice(1),
+    value: normalizedValue,
+  });
+};
+
+export const getPersonaliseItItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[] => {
+  const meta: InvoiceItemMeta[] = [];
+  const seenEntries = new Set<string>();
+  const entries = Array.isArray(item.meta_data) ? item.meta_data : [];
+  const customisationEntry = entries.find((entry) => String(entry?.key || entry?.name || '') === PERSONALISEIT_CUSTOMISATION_KEY);
+  const customisation = parseMaybeJsonRecord(customisationEntry?.value);
+  if (!customisation) return meta;
+
+  const designVariantLabel = stringifyInvoiceValue(customisation.designVariantLabel).trim();
+  if (designVariantLabel) {
+    addPersonaliseItMeta(meta, seenEntries, 'Artwork Option', designVariantLabel);
+  }
+
+  const renderSpec = isRecord(customisation.renderSpec) ? customisation.renderSpec : null;
+  const areas = isRecord(renderSpec?.areas) ? renderSpec.areas : null;
+  if (areas) {
+    const beforeAreaMetaCount = meta.length;
+    Object.values(areas).forEach((area) => {
+      if (!isRecord(area) || !Array.isArray(area.layers)) return;
+
+      area.layers.forEach((rawLayer) => {
+        if (!isRecord(rawLayer)) return;
+        const value = getPersonaliseItLayerValue(rawLayer);
+        if (!value) return;
+
+        const label = humanizePersonaliseItLabel(rawLayer.label, `Layer ${String(rawLayer.id || '').trim() || rawLayer.type || ''}`);
+        addPersonaliseItMeta(meta, seenEntries, label, value);
+      });
+    });
+
+    if (meta.length > beforeAreaMetaCount) return meta;
+  }
+
+  const layers = isRecord(customisation.layers) ? customisation.layers : null;
+  if (layers) {
+    Object.entries(layers).forEach(([layerId, rawLayer]) => {
+      if (!isRecord(rawLayer)) return;
+      const value = getPersonaliseItLayerValue(rawLayer);
+      if (!value) return;
+
+      const label = humanizePersonaliseItLabel(rawLayer.label, `Layer ${layerId}`);
+      addPersonaliseItMeta(meta, seenEntries, label, value);
+    });
+  }
+
+  return meta;
+};
 
 export interface InvoiceOrderLike {
   meta_data?: InvoiceMetaEntry[];
@@ -245,6 +356,8 @@ export const getInvoiceItemMeta = (item: InvoiceLineItemLike): InvoiceItemMeta[]
   };
 
   if (item.sku) addMeta('SKU', item.sku);
+
+  getPersonaliseItItemMeta(item).forEach((entry) => addMeta(entry.label, entry.value));
 
   const attrs =
     item.meta_data?.filter((entry) => {

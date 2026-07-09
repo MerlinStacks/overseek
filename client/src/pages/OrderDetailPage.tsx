@@ -24,6 +24,7 @@ import { ShipmentMonitoringPanel } from '../components/shipping/ShipmentMonitori
 import { InvoiceGenerationIssueModal } from '../components/invoicing/InvoiceGenerationIssueModal';
 import { generateCanonicalInvoice, InvoiceGenerationError } from '../utils/invoiceGeneration';
 import type { InvoiceGenerationIssue } from '../utils/invoiceGeneration';
+import { getPersonaliseItItemMeta } from '../../../packages/overseek-core/src/invoiceItemUtils';
 
 interface Attribution {
     firstTouchSource: string;
@@ -235,13 +236,27 @@ export function OrderDetailPage() {
         return Number.isFinite(parsed) ? parsed : 0;
     };
     const toStringValue = (value: unknown): string => (typeof value === 'string' || typeof value === 'number') ? String(value) : '';
-    const toMetaData = (value: unknown[]): Array<{ key: string; value: string; display_key?: string; display_value?: string }> =>
-        value.filter((entry): entry is { key: string; value: string; display_key?: string; display_value?: string } => (
+    const toMetaData = (item: OrderLineItem): Array<{ key: string; value: string; display_key?: string; display_value?: string }> => {
+        const publicMeta = (item.meta_data || []).filter((entry): entry is { key: string; value: string; display_key?: string; display_value?: string } => (
             typeof entry === 'object' &&
             entry !== null &&
             typeof (entry as { key?: unknown }).key === 'string' &&
             typeof (entry as { value?: unknown }).value === 'string'
         ));
+
+        const personalisationLineItem: Parameters<typeof getPersonaliseItItemMeta>[0] = {
+            sku: item.sku,
+            meta_data: item.meta_data as Parameters<typeof getPersonaliseItItemMeta>[0]['meta_data'],
+        };
+        const personalisationMeta = getPersonaliseItItemMeta(personalisationLineItem).map((entry) => ({
+            key: entry.label,
+            value: entry.value,
+            display_key: entry.label,
+            display_value: entry.value,
+        }));
+
+        return [...publicMeta, ...personalisationMeta];
+    };
 
     const handleGenerateInvoice = async (regenerateAttempt = false) => {
         if (!order || !token || !currentAccount?.id) return;
@@ -699,7 +714,7 @@ export function OrderDetailPage() {
                                                 <div className="font-medium text-gray-900">{item.name}</div>
                                                 <div className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</div>
                                                 {item.meta_data && item.meta_data.length > 0 && (
-                                                    <OrderMetaSection metaData={toMetaData(item.meta_data)} onImageClick={setSelectedImage} />
+                                                    <OrderMetaSection metaData={toMetaData(item)} onImageClick={setSelectedImage} />
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 text-right text-gray-600">

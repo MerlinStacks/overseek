@@ -15,6 +15,7 @@ import { getSafeHref } from '../../utils/url';
 import { InvoiceGenerationIssueModal } from '../../components/invoicing/InvoiceGenerationIssueModal';
 import { generateCanonicalInvoice, InvoiceGenerationError } from '../../utils/invoiceGeneration';
 import type { InvoiceGenerationIssue } from '../../utils/invoiceGeneration';
+import { getPersonaliseItItemMeta } from '../../../../packages/overseek-core/src/invoiceItemUtils';
 
 interface OrderApiLineItem {
     id: string;
@@ -512,8 +513,7 @@ export function MobileOrderDetail() {
                             {/* Product Variations / Metadata */}
                             {item.meta_data && item.meta_data.length > 0 && (
                                 <div className="ml-[76px] mt-3 space-y-1.5">
-                                    {item.meta_data
-                                        .filter((meta) => !String(meta.key || '').startsWith('_'))
+                                    {getMobileItemMetaData(item)
                                         .map((meta, idx) => {
                                             const metaKey = String(meta.key || 'Detail');
                                             const metaValue = stringifyMetaValue(meta.value);
@@ -651,6 +651,20 @@ const stringifyMetaValue = (value: unknown): string => {
     } catch {
         return String(value);
     }
+};
+
+const getMobileItemMetaData = (item: OrderLineItem): OrderMetaData[] => {
+    const publicMeta = (item.meta_data || []).filter((meta) => !String(meta.key || '').startsWith('_'));
+    const personalisationLineItem: Parameters<typeof getPersonaliseItItemMeta>[0] = {
+        sku: item.sku,
+        meta_data: item.meta_data as Parameters<typeof getPersonaliseItItemMeta>[0]['meta_data'],
+    };
+    const personalisationMeta = getPersonaliseItItemMeta(personalisationLineItem).map((entry) => ({
+        key: entry.label,
+        value: entry.value,
+    }));
+
+    return [...publicMeta, ...personalisationMeta];
 };
 
 const extractAllImageUrls = (value: string): string[] => {
