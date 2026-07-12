@@ -19,7 +19,6 @@ import {
     Star,
     LineChart,
     DollarSign,
-    GitBranch,
     X,
     BookOpen,
     Zap,
@@ -111,7 +110,6 @@ const navItems = [
         children: [
             { icon: LineChart, label: 'Overview', path: '/analytics' },
             { icon: DollarSign, label: 'Revenue', path: '/analytics/revenue' },
-            { icon: GitBranch, label: 'Attribution & Cohorts', path: '/analytics/attribution' },
             { icon: BarChart3, label: 'Acquisition', path: '/live' },
             { icon: BarChart3, label: 'Reports', path: '/reports' },
             { icon: Bot, label: 'Bot Shield', path: '/crawlers' },

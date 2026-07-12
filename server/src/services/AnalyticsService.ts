@@ -12,6 +12,78 @@ import { shouldExcludeFromLiveVisitors } from './tracking/TrafficAnalyzer';
 
 export class AnalyticsService {
     /**
+     * Get UTM campaign performance for a selected period.
+     * Traffic is attributed sessions; conversions are purchase events from those sessions.
+     */
+    static async getUtmCampaigns(accountId: string, startDate?: string, endDate?: string, limit = 10) {
+        if (!accountId) throw new Error("Account ID is required");
+
+        const createdAt = startDate && endDate ? {
+            gte: new Date(startDate),
+            lte: new Date(endDate)
+        } : undefined;
+
+        const sessions = await prisma.analyticsSession.groupBy({
+            by: ['utmCampaign'],
+            where: {
+                accountId,
+                utmCampaign: { not: null },
+                ...(createdAt ? { createdAt } : {})
+            },
+            _count: { _all: true },
+            orderBy: { _count: { utmCampaign: 'desc' } },
+            take: limit
+        });
+
+        const campaigns = sessions
+            .map((session) => session.utmCampaign)
+            .filter((campaign): campaign is string => Boolean(campaign));
+
+        if (campaigns.length === 0) {
+            return { campaigns: [], totalTraffic: 0, totalConversions: 0 };
+        }
+
+        const conversionEvents = await prisma.analyticsEvent.findMany({
+            where: {
+                type: 'purchase',
+                ...(createdAt ? { createdAt } : {}),
+                session: {
+                    accountId,
+                    utmCampaign: { in: campaigns }
+                }
+            },
+            select: {
+                session: { select: { utmCampaign: true } }
+            }
+        });
+
+        const conversionsByCampaign = new Map<string, number>();
+        for (const event of conversionEvents) {
+            const campaign = event.session.utmCampaign;
+            if (!campaign) continue;
+            conversionsByCampaign.set(campaign, (conversionsByCampaign.get(campaign) || 0) + 1);
+        }
+
+        const data = sessions.map((session) => {
+            const campaign = session.utmCampaign || 'Unknown Campaign';
+            const traffic = session._count._all;
+            const conversions = conversionsByCampaign.get(campaign) || 0;
+            return {
+                campaign,
+                traffic,
+                conversions,
+                conversionRate: traffic > 0 ? (conversions / traffic) * 100 : 0
+            };
+        });
+
+        return {
+            campaigns: data,
+            totalTraffic: data.reduce((sum, item) => sum + item.traffic, 0),
+            totalConversions: data.reduce((sum, item) => sum + item.conversions, 0)
+        };
+    }
+
+    /**
      * Get Visitor Log (Real-time Traffic)
      * Includes last 10 events for action display. Live mode limits actions to the latest visit.
      * @param liveMode - If true, only returns sessions active in last 3 minutes

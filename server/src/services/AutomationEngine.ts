@@ -579,6 +579,13 @@ export class AutomationEngine {
             const milestone = data?.scanEventCode || data?.shipmentStatus || '';
             return `${triggerType}:${shipmentId || 'shipment'}:${milestone}:${email.toLowerCase()}`;
         }
+        if (triggerType.includes('ARTWORK')) {
+            const proofVersion = data?.proofVersion ?? data?.proof_version ?? data?.rawEvent?.proof_version;
+            const proofSuffix = proofVersion !== undefined && proofVersion !== null && proofVersion !== ''
+                ? `:${proofVersion}`
+                : '';
+            return `${triggerType}:${entityId || email.toLowerCase()}${proofSuffix}:${email.toLowerCase()}`;
+        }
         if (entityId) {
             return `${triggerType}:${entityId}:${email.toLowerCase()}`;
         }

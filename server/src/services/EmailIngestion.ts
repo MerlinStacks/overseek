@@ -816,13 +816,13 @@ export class EmailIngestion {
         conversationId: string
     ) {
         try {
-            // Use the email account that received the email (must have SMTP enabled)
+            // Use the email account that received the email so replies preserve the same thread/from address.
             const emailAccount = await prisma.emailAccount.findUnique({
                 where: { id: emailAccountId }
             });
 
-            if (!emailAccount || !emailAccount.smtpEnabled) {
-                Logger.info('[EmailIngestion] Receiving email account has no SMTP, skipping auto-reply', { emailAccountId });
+            if (!emailAccount || (!emailAccount.smtpEnabled && !(emailAccount.relayEndpoint && emailAccount.relayApiKey))) {
+                Logger.info('[EmailIngestion] Receiving email account cannot send, skipping auto-reply', { emailAccountId });
                 return;
             }
 

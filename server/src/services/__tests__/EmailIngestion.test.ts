@@ -11,6 +11,9 @@ const mockConversationFindFirst = vi.fn();
 const mockConversationCreate = vi.fn();
 const mockConversationUpdate = vi.fn();
 const mockEmailUnsubscribeUpsert = vi.fn();
+const mockEmailLogFindFirst = vi.fn();
+const mockAccountFeatureFindFirst = vi.fn();
+const mockSendEmail = vi.fn();
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
@@ -33,13 +36,13 @@ vi.mock('../../utils/prisma', () => ({
             update: (...args: any[]) => mockConversationUpdate(...args)
         },
         emailLog: {
-            findFirst: vi.fn().mockResolvedValue(null)
+            findFirst: (...args: any[]) => mockEmailLogFindFirst(...args)
         },
         emailUnsubscribe: {
             upsert: (...args: any[]) => mockEmailUnsubscribeUpsert(...args)
         },
         accountFeature: {
-            findFirst: vi.fn().mockResolvedValue(null)
+            findFirst: (...args: any[]) => mockAccountFeatureFindFirst(...args)
         }
     }
 }));
@@ -63,7 +66,7 @@ vi.mock('../events', () => ({
 
 vi.mock('../EmailService', () => ({
     EmailService: class {
-        sendEmail = vi.fn().mockResolvedValue(undefined);
+        sendEmail = mockSendEmail;
     }
 }));
 
@@ -98,6 +101,10 @@ describe('EmailIngestion', () => {
         mockConversationUpdate.mockResolvedValue({ id: 'conv-1', status: 'OPEN' });
         mockEmailUnsubscribeUpsert.mockResolvedValue({ id: 'unsub-1' });
         mockMessageCreate.mockResolvedValue({ id: 'msg-1' });
+        mockEmailLogFindFirst.mockResolvedValue(null);
+        mockAccountFeatureFindFirst.mockResolvedValue(null);
+        mockSendEmail.mockResolvedValue(undefined);
+        vi.mocked(BlockedContactService.isBlocked).mockResolvedValue(false);
     });
 
     it('creates customer profile for unknown inbound sender and marks unsubscribed', async () => {
@@ -262,5 +269,164 @@ describe('EmailIngestion', () => {
             })
         );
         expect(io.emit).not.toHaveBeenCalled();
+    });
+
+    it('sends a transactional offline auto-reply through the receiving SMTP account', async () => {
+        mockEmailAccountFindUnique
+            .mockResolvedValueOnce({ accountId: 'account-1' })
+            .mockResolvedValueOnce({ id: 'email-account-1', smtpEnabled: true });
+        mockAccountFeatureFindFirst.mockResolvedValue({
+            isEnabled: true,
+            config: {
+                businessHours: {
+                    enabled: true,
+                    days: {
+                        sun: { isOpen: false },
+                        mon: { isOpen: false },
+                        tue: { isOpen: false },
+                        wed: { isOpen: false },
+                        thu: { isOpen: false },
+                        fri: { isOpen: false },
+                        sat: { isOpen: false }
+                    },
+                    offlineMessage: 'We are closed right now.'
+                }
+            }
+        });
+
+        const io = {
+            to: vi.fn().mockReturnThis(),
+            emit: vi.fn()
+        } as any;
+
+        const addMessageFn = vi.fn().mockResolvedValue(undefined);
+        const ingestion = new EmailIngestion(io, addMessageFn);
+
+        await ingestion.handleIncomingEmail({
+            emailAccountId: 'email-account-1',
+            fromEmail: 'customer@example.com',
+            subject: 'Order help',
+            body: 'Hello',
+            messageId: '<inbound-1@example.com>'
+        });
+
+        expect(mockEmailLogFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                sourceId: 'conv-1',
+                source: 'AUTO_REPLY'
+            })
+        }));
+        expect(mockSendEmail).toHaveBeenCalledWith(
+            'account-1',
+            'email-account-1',
+            'customer@example.com',
+            'Re: Order help',
+            expect.stringContaining('We are closed right now.'),
+            undefined,
+            expect.objectContaining({
+                source: 'AUTO_REPLY',
+                sourceId: 'conv-1',
+                inReplyTo: '<inbound-1@example.com>',
+                references: '<inbound-1@example.com>',
+                category: 'TRANSACTIONAL'
+            })
+        );
+        expect(addMessageFn).toHaveBeenCalledWith('conv-1', '[Auto-reply sent] We are closed right now.', 'SYSTEM');
+    });
+
+    it('allows offline auto-reply through a receiving HTTP relay account', async () => {
+        mockEmailAccountFindUnique
+            .mockResolvedValueOnce({ accountId: 'account-1' })
+            .mockResolvedValueOnce({
+                id: 'email-account-1',
+                smtpEnabled: false,
+                relayEndpoint: 'https://example.com/wp-json/overseek/v1/email-relay',
+                relayApiKey: 'encrypted-key'
+            });
+        mockAccountFeatureFindFirst.mockResolvedValue({
+            isEnabled: true,
+            config: {
+                businessHours: {
+                    enabled: true,
+                    days: {
+                        sun: { isOpen: false },
+                        mon: { isOpen: false },
+                        tue: { isOpen: false },
+                        wed: { isOpen: false },
+                        thu: { isOpen: false },
+                        fri: { isOpen: false },
+                        sat: { isOpen: false }
+                    },
+                    offlineMessage: 'Closed.'
+                }
+            }
+        });
+
+        const io = {
+            to: vi.fn().mockReturnThis(),
+            emit: vi.fn()
+        } as any;
+
+        const ingestion = new EmailIngestion(io, vi.fn().mockResolvedValue(undefined));
+
+        await ingestion.handleIncomingEmail({
+            emailAccountId: 'email-account-1',
+            fromEmail: 'customer@example.com',
+            subject: 'Re: Existing thread',
+            body: 'Hello',
+            messageId: '<inbound-2@example.com>'
+        });
+
+        expect(mockSendEmail).toHaveBeenCalledWith(
+            'account-1',
+            'email-account-1',
+            'customer@example.com',
+            'Re: Existing thread',
+            expect.any(String),
+            undefined,
+            expect.objectContaining({ source: 'AUTO_REPLY', category: 'TRANSACTIONAL' })
+        );
+    });
+
+    it('does not send an offline auto-reply when one was sent recently', async () => {
+        mockEmailAccountFindUnique.mockResolvedValue({ accountId: 'account-1' });
+        mockEmailLogFindFirst.mockResolvedValue({ id: 'log-1', createdAt: new Date() });
+        mockAccountFeatureFindFirst.mockResolvedValue({
+            isEnabled: true,
+            config: {
+                businessHours: {
+                    enabled: true,
+                    days: {
+                        sun: { isOpen: false },
+                        mon: { isOpen: false },
+                        tue: { isOpen: false },
+                        wed: { isOpen: false },
+                        thu: { isOpen: false },
+                        fri: { isOpen: false },
+                        sat: { isOpen: false }
+                    },
+                    offlineMessage: 'Closed.'
+                }
+            }
+        });
+
+        const io = {
+            to: vi.fn().mockReturnThis(),
+            emit: vi.fn()
+        } as any;
+
+        const addMessageFn = vi.fn().mockResolvedValue(undefined);
+        const ingestion = new EmailIngestion(io, addMessageFn);
+
+        await ingestion.handleIncomingEmail({
+            emailAccountId: 'email-account-1',
+            fromEmail: 'customer@example.com',
+            subject: 'Order help',
+            body: 'Hello',
+            messageId: '<inbound-3@example.com>'
+        });
+
+        expect(mockSendEmail).not.toHaveBeenCalled();
+        expect(addMessageFn).not.toHaveBeenCalledWith(expect.any(String), expect.stringContaining('[Auto-reply sent]'), 'SYSTEM');
     });
 });

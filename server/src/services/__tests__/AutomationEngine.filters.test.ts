@@ -90,4 +90,23 @@ describe('AutomationEngine trigger filters', () => {
 
         expect(result).toBe(false);
     });
+
+    it('includes artwork proof version in dedupe keys', () => {
+        const v1Key = (engine as any).buildDedupeKey(
+            'ARTWORK_APPROVAL_REQUESTED',
+            'buyer@example.com',
+            '1001',
+            { proofVersion: 1 }
+        );
+        const v2Key = (engine as any).buildDedupeKey(
+            'ARTWORK_APPROVAL_REQUESTED',
+            'buyer@example.com',
+            '1001',
+            { proofVersion: 2 }
+        );
+
+        expect(v1Key).toBe('ARTWORK_APPROVAL_REQUESTED:1001:1:buyer@example.com');
+        expect(v2Key).toBe('ARTWORK_APPROVAL_REQUESTED:1001:2:buyer@example.com');
+        expect(v1Key).not.toBe(v2Key);
+    });
 });

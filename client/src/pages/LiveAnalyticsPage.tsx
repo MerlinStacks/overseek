@@ -4,7 +4,7 @@ import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
-import { Globe, LayoutDashboard, Link, FileText, MousePointer, LogOut, LogIn, History, Search, AlertTriangle, Gauge } from 'lucide-react';
+import { Globe, LayoutDashboard, Link, FileText, MousePointer, History, Search, AlertTriangle, Gauge } from 'lucide-react';
 import { WebVitalsView } from '../components/analytics/WebVitalsView';
 import { getDateRange } from '../utils/dateUtils';
 import { LiveSession } from '../types/analytics';
@@ -16,7 +16,22 @@ import { RoadblocksView } from '../components/analytics/RoadblocksView';
 import VisitorProfileModal from '../components/analytics/VisitorProfileModal';
 
 interface ReportRow {
-    [key: string]: unknown;
+    channel?: string;
+    sessions?: number;
+    conversions?: number;
+    exitRate?: number;
+    domains?: string[];
+    source?: string;
+    medium?: string;
+    campaign?: string;
+    revenue?: number;
+    url?: string;
+    title?: string;
+    views?: number;
+    entries?: number;
+    exits?: number;
+    term?: string;
+    searches?: number;
 }
 
 // Sidebar Menu Items
@@ -35,8 +50,6 @@ const MENUS = [
         title: 'Behaviour',
         items: [
             { id: 'pages', label: 'Pages', icon: FileText },
-            { id: 'entry', label: 'Entry Pages', icon: LogIn },
-            { id: 'exit', label: 'Exit Pages', icon: LogOut },
             { id: 'roadblocks', label: 'Roadblocks', icon: AlertTriangle },
             { id: 'search', label: 'Site Search', icon: Search },
         ]
@@ -90,19 +103,55 @@ export function LiveAnalyticsPage() {
         if (!token || !currentAccount?.id) return;
         setLoadingReport(true);
         try {
+            // Use shared date utility for consistent timezone handling
+            const range = getDateRange(dateRange);
+
+            if (viewId === 'pages') {
+                const headers = { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id };
+                const [pagesRes, entryRes, exitRes] = await Promise.all([
+                    fetch(`/api/analytics/behaviour/pages?startDate=${range.startDate}&endDate=${range.endDate}`, { headers }),
+                    fetch(`/api/analytics/behaviour/entry?startDate=${range.startDate}&endDate=${range.endDate}`, { headers }),
+                    fetch(`/api/analytics/behaviour/exit?startDate=${range.startDate}&endDate=${range.endDate}`, { headers }),
+                ]);
+
+                const [pagesData, entryData, exitData] = await Promise.all([
+                    pagesRes.ok ? pagesRes.json() : [],
+                    entryRes.ok ? entryRes.json() : [],
+                    exitRes.ok ? exitRes.json() : [],
+                ]) as [ReportRow[], ReportRow[], ReportRow[]];
+
+                const combined = new Map<string, ReportRow>();
+                const getUrl = (row: ReportRow) => typeof row.url === 'string' ? row.url : '';
+
+                pagesData.forEach(row => {
+                    const url = getUrl(row);
+                    if (!url) return;
+                    combined.set(url, { url, title: row.title, views: row.views ?? 0, entries: 0, exits: 0 });
+                });
+
+                entryData.forEach(row => {
+                    const url = getUrl(row);
+                    if (!url) return;
+                    combined.set(url, { url, title: combined.get(url)?.title, views: combined.get(url)?.views ?? 0, entries: row.entries ?? 0, exits: combined.get(url)?.exits ?? 0 });
+                });
+
+                exitData.forEach(row => {
+                    const url = getUrl(row);
+                    if (!url) return;
+                    combined.set(url, { url, title: combined.get(url)?.title, views: combined.get(url)?.views ?? 0, entries: combined.get(url)?.entries ?? 0, exits: row.exits ?? 0 });
+                });
+
+                setReportData(Array.from(combined.values()));
+                return;
+            }
+
             // Determine endpoint
             let endpoint = '';
             if (viewId === 'channels') endpoint = '/api/analytics/acquisition/channels';
             if (viewId === 'campaigns') endpoint = '/api/analytics/acquisition/campaigns';
-            if (viewId === 'pages') endpoint = '/api/analytics/behaviour/pages';
             if (viewId === 'search') endpoint = '/api/analytics/behaviour/search';
-            if (viewId === 'entry') endpoint = '/api/analytics/behaviour/entry';
-            if (viewId === 'exit') endpoint = '/api/analytics/behaviour/exit';
 
             if (!endpoint) return;
-
-            // Use shared date utility for consistent timezone handling
-            const range = getDateRange(dateRange);
 
             const res = await fetch(`${endpoint}?startDate=${range.startDate}&endDate=${range.endDate}`, {
                 headers: { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id }

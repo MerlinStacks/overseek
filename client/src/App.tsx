@@ -82,7 +82,6 @@ const ShippingSettingsPage = lazy(() => import('./pages/shipping/ShippingSetting
 // Analytics Sub-Pages
 const AnalyticsOverviewPage = lazy(() => import('./pages/analytics/AnalyticsOverviewPage').then(m => ({ default: m.AnalyticsOverviewPage })));
 const RevenuePage = lazy(() => import('./pages/analytics/RevenuePage').then(m => ({ default: m.RevenuePage })));
-const AttributionPage = lazy(() => import('./pages/analytics/AttributionPage').then(m => ({ default: m.AttributionPage })));
 const CLVPage = lazy(() => import('./pages/analytics/CLVPage').then(m => ({ default: m.CLVPage })));
 
 // Admin pages
@@ -312,8 +311,6 @@ function App() {
                                                 <Route path={ROUTE_PATHS.live} element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.analytics} element={<AccountGuard><AnalyticsOverviewPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.analyticsRevenue} element={<AccountGuard><RevenuePage /></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.analyticsAttribution} element={<AccountGuard><AttributionPage /></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.analyticsCohorts} element={<Navigate to={ROUTE_PATHS.analyticsAttribution} replace />} />
                                                 <Route path={ROUTE_PATHS.analyticsClv} element={<AccountGuard><CLVPage /></AccountGuard>} />
 
                                                 <Route path={ROUTE_PATHS.reviews} element={<AccountGuard><ReviewsPage /></AccountGuard>} />

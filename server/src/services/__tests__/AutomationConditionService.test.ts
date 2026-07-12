@@ -184,6 +184,18 @@ describe('AutomationConditionService', () => {
         expect(fourStarResult).toBe(false);
     });
 
+    it('evaluates artwork proof version conditions', () => {
+        expect(automationConditionService.evaluate(
+            { field: 'proofVersion', operator: 'gt', value: '1' },
+            { proofVersion: '2', eventStatus: 'approval_requested' }
+        )).toBe(true);
+
+        expect(automationConditionService.evaluate(
+            { field: 'proofVersion', operator: 'gt', value: '1' },
+            { proofVersion: '1', eventStatus: 'approval_requested' }
+        )).toBe(false);
+    });
+
     it('matches order status conditions after normalizing Woo status prefixes', () => {
         expect(automationConditionService.evaluate(
             { field: 'order.status', operator: 'eq', value: 'processing' },

@@ -22,6 +22,8 @@ class OverSeek_Review_Form {
 	private const MAX_BYTES    = 10485760;
 	private const RATE_LIMIT_MAX = 5;
 	private const RATE_LIMIT_WINDOW = HOUR_IN_SECONDS;
+	private const DUPLICATE_SUBMISSION_COOLDOWN = 2 * MINUTE_IN_SECONDS;
+	private const DUPLICATE_LOCK_CLEANUP_KEY = 'os_review_dup_cleanup';
 
 	/**
 	 * Track forms already rendered during the request to avoid duplicate fallbacks.
@@ -239,6 +241,11 @@ class OverSeek_Review_Form {
 			$this->redirect_with_status( $redirect, 'not-allowed' );
 		}
 
+		$duplicate_lock_key = $this->get_duplicate_submission_lock_key( $product_id, $shop_review, $email, $rating, $content );
+		if ( ! $this->acquire_duplicate_submission_lock( $duplicate_lock_key ) ) {
+			$this->redirect_with_status( $redirect, 'duplicate' );
+		}
+
 		$comment_id = wp_insert_comment(
 			[
 				'comment_post_ID'      => $product_id,
@@ -255,6 +262,7 @@ class OverSeek_Review_Form {
 		);
 
 		if ( ! $comment_id || is_wp_error( $comment_id ) ) {
+			$this->release_duplicate_submission_lock( $duplicate_lock_key );
 			$this->redirect_with_status( $redirect, 'failed' );
 		}
 
@@ -346,7 +354,7 @@ class OverSeek_Review_Form {
 				<small><?php echo esc_html( sprintf( __( 'Upload up to %1$d files, up to %2$s each. Reviews are held for moderation.', 'overseek-wc' ), self::MAX_FILES, size_format( $this->max_upload_bytes() ) ) ); ?></small>
 			</label>
 
-			<button type="submit" class="os-review-form__submit"><?php esc_html_e( 'Submit review', 'overseek-wc' ); ?></button>
+			<button type="submit" class="os-review-form__submit" data-submitting-label="<?php esc_attr_e( 'Submitting...', 'overseek-wc' ); ?>"><?php esc_html_e( 'Submit review', 'overseek-wc' ); ?></button>
 		</form>
 		<?php
 		return (string) ob_get_clean();
@@ -376,6 +384,10 @@ class OverSeek_Review_Form {
 		$status = sanitize_key( wp_unslash( $_GET['overseek_review_status'] ) );
 		if ( 'submitted' === $status ) {
 			return '<div class="os-review-form__notice os-review-form__notice--success">' . esc_html__( 'Thanks. Your review has been submitted and may be held briefly for moderation.', 'overseek-wc' ) . '</div>';
+		}
+
+		if ( 'duplicate' === $status ) {
+			return '<div class="os-review-form__notice os-review-form__notice--success">' . esc_html__( 'Thanks. We already received this review.', 'overseek-wc' ) . '</div>';
 		}
 
 		$messages = [
@@ -425,6 +437,62 @@ class OverSeek_Review_Form {
 
 		set_transient( $key, $count + 1, self::RATE_LIMIT_WINDOW );
 		return true;
+	}
+
+	private function get_duplicate_submission_lock_key( int $product_id, bool $shop_review, string $email, int $rating, string $content ): string {
+		$ip          = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$fingerprint = implode(
+			'|',
+			[
+				$shop_review ? 'shop' : 'product',
+				(string) $product_id,
+				strtolower( $email ),
+				(string) $rating,
+				trim( preg_replace( '/\s+/', ' ', $content ) ?? $content ),
+				$ip,
+			]
+		);
+
+		return 'os_review_dup_' . substr( hash( 'sha256', $fingerprint ), 0, 32 );
+	}
+
+	private function acquire_duplicate_submission_lock( string $key ): bool {
+		$this->cleanup_expired_duplicate_submission_locks();
+
+		$expires_at = time() + self::DUPLICATE_SUBMISSION_COOLDOWN;
+		$existing   = get_option( $key, 0 );
+
+		if ( $existing && (int) $existing > time() ) {
+			return false;
+		}
+
+		if ( $existing ) {
+			delete_option( $key );
+		}
+
+		return add_option( $key, (string) $expires_at, '', 'no' );
+	}
+
+	private function release_duplicate_submission_lock( string $key ): void {
+		delete_option( $key );
+	}
+
+	private function cleanup_expired_duplicate_submission_locks(): void {
+		if ( get_transient( self::DUPLICATE_LOCK_CLEANUP_KEY ) ) {
+			return;
+		}
+
+		global $wpdb;
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(option_value AS UNSIGNED) <= %d",
+				$wpdb->esc_like( 'os_review_dup_' ) . '%',
+				time()
+			)
+		);
+
+		set_transient( self::DUPLICATE_LOCK_CLEANUP_KEY, '1', HOUR_IN_SECONDS );
 	}
 
 	private function product_review_form_allowed( int $product_id ): bool {

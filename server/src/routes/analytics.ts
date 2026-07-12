@@ -113,6 +113,14 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         catch (e: any) { return reply.code(500).send({ error: e.message }); }
     });
 
+    fastify.get('/utm-campaigns', async (request, reply) => {
+        try {
+            const query = request.query as { startDate?: string; endDate?: string; limit?: string };
+            const limit = Math.min(parsePositiveInt(query.limit, 10), 50);
+            return await AnalyticsService.getUtmCampaigns(request.accountId!, query.startDate, query.endDate, limit);
+        } catch (e: any) { return reply.code(500).send({ error: e.message }); }
+    });
+
     fastify.get('/search-terms', async (request, reply) => {
         try { return await AnalyticsService.getSearchTerms(request.accountId!); }
         catch (e: any) { return reply.code(500).send({ error: e.message }); }

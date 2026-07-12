@@ -37,6 +37,30 @@
 		button.classList.toggle('is-loading', loading);
 	}
 
+	function initReviewSubmitLocks() {
+		document.querySelectorAll('.os-review-form').forEach(function (form) {
+			if (form.dataset.osReviewSubmitLockReady) {
+				return;
+			}
+
+			form.dataset.osReviewSubmitLockReady = '1';
+			form.addEventListener('submit', function (event) {
+				var button = form.querySelector('.os-review-form__submit');
+				if (form.dataset.osReviewSubmitting === '1') {
+					event.preventDefault();
+					return;
+				}
+
+				form.dataset.osReviewSubmitting = '1';
+				if (button) {
+					button.disabled = true;
+					button.textContent = button.dataset.submittingLabel || 'Submitting...';
+					setLoading(button, true);
+				}
+			});
+		});
+	}
+
 	function isReviewRequestUrl() {
 		var params = new URLSearchParams(window.location.search);
 		return window.location.hash === '#review_form' || params.has('overseek_review_request') || params.has('overseek_review_rating');
@@ -196,6 +220,10 @@
 	document.addEventListener('DOMContentLoaded', initReviewSliders);
 	document.addEventListener('overseek:reviews:updated', initReviewSliders);
 	initReviewSliders();
+
+	document.addEventListener('DOMContentLoaded', initReviewSubmitLocks);
+	document.addEventListener('overseek:reviews:updated', initReviewSubmitLocks);
+	initReviewSubmitLocks();
 
 	document.addEventListener('DOMContentLoaded', revealReviewFormFromUrl);
 	revealReviewFormFromUrl();

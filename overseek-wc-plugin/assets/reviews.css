@@ -49,14 +49,14 @@
 	overflow: hidden;
 	border-radius: 0;
 	background: none;
-	color: #f5b400;
+	color: var(--os-review-star-color, #f5b400);
 	font-family: Arial, Helvetica, sans-serif;
 	font-size: 34px;
 	font-weight: 900;
 	line-height: 1;
 	text-align: center;
 	box-shadow: none;
-	text-shadow: 0 8px 18px rgba(245, 180, 0, 0.28);
+	text-shadow: 0 8px 18px color-mix(in srgb, var(--os-review-star-color, #f5b400) 28%, transparent);
 }
 
 .os-reviews-summary__badge svg {
@@ -116,6 +116,10 @@
 .os-review-stars__base,
 .os-review-stars__fill {
 	display: block;
+}
+
+.os-review-stars-summary .os-review-stars {
+	color: var(--os-review-star-color, #f59e0b);
 }
 
 .os-review-stars__fill {

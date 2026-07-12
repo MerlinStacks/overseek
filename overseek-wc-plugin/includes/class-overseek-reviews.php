@@ -370,7 +370,8 @@ class OverSeek_Reviews {
 			return '';
 		}
 
-		$color = ! empty( $atts['color_stars'] ) ? sanitize_hex_color( (string) $atts['color_stars'] ) : '';
+		$colors = $this->get_review_brand_colors();
+		$color  = ! empty( $atts['color_stars'] ) ? sanitize_hex_color( (string) $atts['color_stars'] ) : $colors['primary'];
 		$style = $color ? ' style="--os-review-star-color:' . esc_attr( $color ) . '"' : '';
 		$full  = (int) floor( max( 0.0, min( 5.0, $rating ) ) );
 		$stars = str_repeat( '★', $full ) . str_repeat( '☆', 5 - $full );
