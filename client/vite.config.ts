@@ -11,6 +11,9 @@ import { visualizer } from 'rollup-plugin-visualizer'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '')
+    const buildId = (env.VITE_BUILD_ID || new Date().toISOString())
+        .replace(/[^a-zA-Z0-9_-]/g, '')
+        .slice(0, 40)
     return {
         plugins: [
             react(),
@@ -114,6 +117,9 @@ export default defineConfig(({ mode }) => {
             include: ['react-grid-layout', 'cookie', 'react-router', 'react-router-dom', 'react-email-editor'],
         },
         build: {
+            // Namespace every release so a transient 502 cached by an outer proxy
+            // cannot poison unchanged content-hashed chunks in later deployments.
+            assetsDir: `assets/${buildId}`,
             commonjsOptions: {
                 include: [/react-grid-layout/, /cookie/, /node_modules/],
                 transformMixedEsModules: true

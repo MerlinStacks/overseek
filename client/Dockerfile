@@ -5,6 +5,9 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 
+ARG BUILD_ID
+ENV VITE_BUILD_ID=$BUILD_ID
+
 # Increase Node memory for large builds
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 

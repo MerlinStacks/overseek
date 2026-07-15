@@ -164,6 +164,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overseek-web:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overseek-web:${{ github.sha }}
+          build-args: |
+            BUILD_ID=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
