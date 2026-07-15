@@ -35,6 +35,8 @@ const EXCLUDED_PRODUCT_FEED_FIELDS = new Set([
     'canonical_link',
     'image_link',
     'additional_image_link',
+    'identifier_exists',
+    'store_code',
 ]);
 
 export function isProductFeedWriteField(field: string): boolean {

@@ -163,6 +163,15 @@ interface PreviewMergeContext {
     cartTotal: string;
     cartCurrency: string;
     cartItemsTable: string;
+    newProducts: PreviewProduct[];
+}
+
+interface PreviewProduct {
+    name: string;
+    price: string;
+    image: string;
+    description: string;
+    url: string;
 }
 
 function applyPreviewMergeTags(html: string, context: PreviewMergeContext): string {
@@ -239,13 +248,17 @@ function renderPreviewNewProducts(params: string, context: PreviewMergeContext):
     const textColor = decodeURIComponent(getParam('textColor') || '#0f172a');
     const mutedTextColor = decodeURIComponent(getParam('mutedTextColor') || '#64748b');
     const borderRadius = Math.max(0, Number(getParam('borderRadius')) || 10);
-    const products = Array.from({ length: count }, (_, index) => ({
-        name: index === 0 ? context.productName || 'Newest product' : `Newest product ${index + 1}`,
+    const previewProducts = context.newProducts.length ? context.newProducts : [{
+        name: context.productName || 'Newest product',
         price: context.productPrice || '$49.00',
         image: context.productImage || 'https://via.placeholder.com/320x240?text=New+Product',
         description: context.productDescription || 'A recently added WooCommerce product will appear here when this email sends.',
         url: context.storeUrl || '#',
-    }));
+    }];
+    const products = Array.from({ length: count }, (_, index) => previewProducts[index] || {
+        ...previewProducts[index % previewProducts.length],
+        name: `Newest product ${index + 1}`,
+    });
     const width = `${Math.floor(100 / columns)}%`;
     const rows: string[] = [];
 
@@ -307,6 +320,7 @@ function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContex
         cartTotal: '$99.00',
         cartCurrency: 'AUD',
         cartItemsTable: '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tbody><tr><td style="padding:12px;border-bottom:1px solid #e5e7eb;">Classic Hoodie</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:center;">1</td><td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;">$89.00</td></tr></tbody></table>',
+        newProducts: [],
     };
 }
 
@@ -589,6 +603,33 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
 
         const fetchPreviewData = async () => {
             try {
+                let previewProducts: PreviewProduct[] = [];
+                const productsResponse = await fetch('/api/products?limit=6', {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'X-Account-ID': currentAccount.id,
+                    },
+                    signal: controller.signal,
+                });
+                if (productsResponse.ok) {
+                    const payload = await productsResponse.json() as { products?: Array<Record<string, unknown>> };
+                    previewProducts = (payload.products || []).map((product) => {
+                        const rawData = (product.rawData && typeof product.rawData === 'object' ? product.rawData : {}) as Record<string, unknown>;
+                        const images = Array.isArray(product.images) ? product.images as Array<Record<string, unknown>> : [];
+                        const price = product.price !== undefined && product.price !== null && product.price !== ''
+                            ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: String(rawData.currency || 'AUD') }).format(Number(product.price))
+                            : '';
+                        return {
+                            name: String(product.name || rawData.name || 'New product'),
+                            price: Number.isFinite(Number(product.price)) ? price : String(product.price || rawData.price || ''),
+                            image: String(product.mainImage || images[0]?.src || ''),
+                            description: String(rawData.short_description || rawData.description || '').replace(/<[^>]*>/g, '').trim(),
+                            url: String(product.permalink || rawData.permalink || rawData.url || fallbackContext.storeUrl),
+                        };
+                    });
+                    if (previewProducts.length) setPreviewMergeContext({ ...fallbackContext, newProducts: previewProducts });
+                }
+
                 const listResponse = await fetch('/api/orders?limit=1', {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -692,6 +733,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     cartTotal: fmtMoney(order.total),
                     cartCurrency: currency,
                     cartItemsTable: renderPreviewOrderItemsTable(lineItems, fmtMoney),
+                    newProducts: previewProducts,
                 });
             } catch {
                 // Preview data is best-effort and should not block editing.

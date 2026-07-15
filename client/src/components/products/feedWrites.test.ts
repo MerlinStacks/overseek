@@ -2,7 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { getFeedOverrideKey, isProductFeedWriteField, type FeedWriteRow } from './feedWrites';
 
 describe('product feed writes', () => {
-    it.each(['id', 'mpn', 'sku', 'price', 'sale_price', 'link', 'canonical_link', 'image_link', 'additional_image_link'])(
+    it.each([
+        'id',
+        'mpn',
+        'sku',
+        'price',
+        'sale_price',
+        'link',
+        'canonical_link',
+        'image_link',
+        'additional_image_link',
+        'identifier_exists',
+        'store_code',
+    ])(
         'excludes %s from product-level editing',
         (field) => expect(isProductFeedWriteField(field)).toBe(false),
     );
