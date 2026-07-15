@@ -79,7 +79,7 @@ services:
   # Image built and pushed by GitHub Actions (.github/workflows/deploy.yml)
   # For local builds: docker-compose.override.yml restores build: directives
   api:
-    image: ghcr.io/merlinstacks/overseek-api:latest
+    image: ${OVERSEEK_API_IMAGE:-ghcr.io/merlinstacks/overseek-api:latest}
     ports:
       - "3000:3000"
     env_file:
@@ -131,7 +131,7 @@ services:
   # Frontend (Vite + Nginx)
   # Image built and pushed by GitHub Actions (.github/workflows/deploy.yml)
   web:
-    image: ghcr.io/merlinstacks/overseek-web:latest
+    image: ${OVERSEEK_WEB_IMAGE:-ghcr.io/merlinstacks/overseek-web:latest}
     ports:
       - "5173:80" # External 5173 -> Internal Nginx 80
     depends_on:

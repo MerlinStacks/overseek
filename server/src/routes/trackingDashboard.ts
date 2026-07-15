@@ -126,12 +126,58 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
                         lastActiveAt: true,
                         abandonedNotificationSentAt: true
                     },
-                    orderBy: { lastActiveAt: 'desc' },
+                    orderBy: { createdAt: 'desc' },
                     take: limit,
                     skip: offset
                 }),
                 prisma.analyticsSession.count({ where })
             ]);
+
+            const enrollments = sessions.length > 0
+                ? await prisma.automationEnrollment.findMany({
+                    where: {
+                        accountId,
+                        triggerEntityType: 'CART',
+                        triggerEntityId: { in: sessions.map((session) => session.id) },
+                        automation: { triggerType: 'ABANDONED_CART' }
+                    },
+                    select: {
+                        triggerEntityId: true,
+                        conversionAt: true,
+                        convertedOrderId: true,
+                        convertedRevenue: true,
+                        automation: { select: { name: true } },
+                        runEvents: {
+                            where: { outcome: 'EMAIL_SENT' },
+                            select: { createdAt: true },
+                            orderBy: { createdAt: 'desc' },
+                            take: 1
+                        }
+                    },
+                    orderBy: { enteredAt: 'desc' }
+                })
+                : [];
+            const flowStatusByCartId = new Map<string, {
+                flowName: string;
+                flowSentAt: Date | null;
+                recoveredAt: Date | null;
+                recoveredOrderId: string | null;
+                recoveredRevenue: number | null;
+            }>();
+
+            for (const enrollment of enrollments) {
+                if (!enrollment.triggerEntityId) continue;
+                const existing = flowStatusByCartId.get(enrollment.triggerEntityId);
+                const sentAt = enrollment.runEvents[0]?.createdAt || null;
+                flowStatusByCartId.set(enrollment.triggerEntityId, {
+                    flowName: existing?.flowName || enrollment.automation.name,
+                    flowSentAt: existing?.flowSentAt || sentAt,
+                    recoveredAt: existing?.recoveredAt || enrollment.conversionAt,
+                    recoveredOrderId: existing?.recoveredOrderId || enrollment.convertedOrderId,
+                    recoveredRevenue: existing?.recoveredRevenue
+                        ?? (enrollment.convertedRevenue === null ? null : Number(enrollment.convertedRevenue))
+                });
+            }
 
             const customerIds = sessions
                 .map((session) => session.wooCustomerId)
@@ -147,6 +193,7 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
 
             return {
                 items: sessions.map((session) => {
+                    const flowStatus = flowStatusByCartId.get(session.id);
                     const customer = session.wooCustomerId ? customerByWooId.get(session.wooCustomerId) : null;
                     const cartItems = Array.isArray(session.cartItems)
                         ? session.cartItems.map((item: any) => ({
@@ -176,7 +223,12 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
                         createdAt: session.createdAt,
                         lastActiveAt: session.lastActiveAt,
                         minutesSinceActivity: Math.floor((now - new Date(session.lastActiveAt).getTime()) / 60000),
-                        status: session.abandonedNotificationSentAt ? 'Notified' : 'Recoverable',
+                        status: flowStatus?.recoveredAt ? 'Recovered' : flowStatus?.flowSentAt ? 'Flow sent' : 'Not sent',
+                        flowName: flowStatus?.flowName || null,
+                        flowSentAt: flowStatus?.flowSentAt || null,
+                        recoveredAt: flowStatus?.recoveredAt || null,
+                        recoveredOrderId: flowStatus?.recoveredOrderId || null,
+                        recoveredRevenue: flowStatus?.recoveredRevenue ?? null,
                         cartItems,
                         itemCount: cartItems.reduce((sum, item) => sum + item.quantity, 0),
                         cartValue: Number(session.cartValue),

@@ -243,20 +243,17 @@ export function usePWAUpdate() {
         };
     }, []);
 
-    const handleUpdate = () => {
-        // Clear caches and reload
+    const handleUpdate = async () => {
         if ('caches' in window) {
-            caches.keys().then(names => {
-                names.forEach(name => caches.delete(name));
-            });
+            const names = await caches.keys();
+            await Promise.all(names.map(name => caches.delete(name)));
         }
 
-        // Force service worker update
-        navigator.serviceWorker?.ready.then(registration => {
-            registration.update();
-        });
+        if ('serviceWorker' in navigator) {
+            const registration = await navigator.serviceWorker.ready;
+            await registration.update();
+        }
 
-        // Reload the page
         window.location.reload();
     };
 

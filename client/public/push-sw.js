@@ -177,53 +177,8 @@ self.addEventListener('fetch', (event) => {
     // Skip socket.io requests
     if (request.url.includes('/socket.io/')) return;
 
-    // Stale-while-revalidate for safe API endpoints (read-only list data)
-    // These endpoints benefit from instant cached responses while updating in background
-    const SWR_API_PATTERNS = [
-        '/api/products',    // Product listings
-        '/api/orders',      // Order listings (not individual orders)
-        '/api/analytics',   // Analytics data
-        '/api/dashboard',   // Dashboard widgets
-    ];
-
-    const isSWREndpoint = SWR_API_PATTERNS.some(pattern =>
-        url.pathname.startsWith(pattern) && !url.pathname.match(/\/api\/\w+\/[^/]+$/) // Exclude individual resource lookups
-    );
-
-    if (request.url.includes('/api/') && isSWREndpoint) {
-        event.respondWith(
-            caches.open(CACHE_NAME).then(async (cache) => {
-                const cachedResponse = await cache.match(request);
-
-                // Fetch from network (always) to update cache
-                const networkPromise = fetch(request).then((networkResponse) => {
-                    if (networkResponse.ok) {
-                        // Clone and cache the fresh response
-                        cache.put(request, networkResponse.clone());
-                    }
-                    return networkResponse;
-                }).catch(() => null);
-
-                // Return cached response immediately if available (stale)
-                // Otherwise wait for network
-                if (cachedResponse) {
-                    // Revalidate in background (don't await)
-                    networkPromise;
-                    return cachedResponse;
-                }
-
-                // No cache, wait for network
-                const networkResponse = await networkPromise;
-                return networkResponse || new Response(JSON.stringify({ error: 'Offline' }), {
-                    status: 503,
-                    headers: { 'Content-Type': 'application/json' }
-                });
-            })
-        );
-        return;
-    }
-
-    // Skip remaining API requests - always go to network
+    // Authenticated API responses must not be cached by URL. Different accounts
+    // can request the same path, and old response shapes can outlive a deployment.
     if (request.url.includes('/api/')) return;
 
     // Navigation requests - network first, cache fallback

@@ -39,7 +39,20 @@ vi.mock('../services/analytics/CartAbandonmentService', () => ({
     getCartAbandonmentStats: vi.fn(),
 }));
 
-vi.mock('../utils/prisma', () => ({ prisma: {} }));
+const prismaMocks = vi.hoisted(() => ({
+    analyticsSession: {
+        findMany: vi.fn(),
+        count: vi.fn(),
+    },
+    automationEnrollment: {
+        findMany: vi.fn(),
+    },
+    wooCustomer: {
+        findMany: vi.fn(),
+    },
+}));
+
+vi.mock('../utils/prisma', () => ({ prisma: prismaMocks }));
 
 import trackingDashboardRoutes from './trackingDashboard';
 import { PermissionService } from '../services/PermissionService';
@@ -92,5 +105,56 @@ describe('tracking dashboard permissions and date windows', () => {
                 endDate: new Date('2026-01-04T23:59:59.999Z'),
             }
         );
+    });
+
+    it('returns newest carts with flow send and recovery status', async () => {
+        vi.mocked(PermissionService.hasAnyPermission).mockResolvedValue(true);
+        prismaMocks.analyticsSession.findMany.mockResolvedValue([{
+            id: 'cart-1',
+            visitorId: 'visitor-1',
+            email: 'customer@example.com',
+            wooCustomerId: null,
+            cartValue: 125,
+            cartItems: [],
+            currency: 'AUD',
+            createdAt: new Date('2026-07-14T10:00:00Z'),
+            lastActiveAt: new Date('2026-07-14T10:05:00Z'),
+            abandonedNotificationSentAt: new Date('2026-07-14T11:00:00Z'),
+        } as any]);
+        prismaMocks.analyticsSession.count.mockResolvedValue(1);
+        prismaMocks.automationEnrollment.findMany.mockResolvedValue([{
+            triggerEntityId: 'cart-1',
+            conversionAt: new Date('2026-07-14T12:00:00Z'),
+            convertedOrderId: '987',
+            convertedRevenue: 125,
+            automation: { name: 'Cart rescue' },
+            runEvents: [{ createdAt: new Date('2026-07-14T11:00:00Z') }],
+        } as any]);
+
+        const res = await app.inject({
+            method: 'GET',
+            url: '/api/tracking/abandoned-carts',
+            headers: { 'x-account-id': 'acct-1' },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(prismaMocks.analyticsSession.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            orderBy: { createdAt: 'desc' },
+        }));
+        expect(prismaMocks.automationEnrollment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                accountId: 'acct-1',
+                triggerEntityType: 'CART',
+                triggerEntityId: { in: ['cart-1'] },
+            }),
+        }));
+        expect(res.json().items[0]).toMatchObject({
+            status: 'Recovered',
+            flowName: 'Cart rescue',
+            flowSentAt: '2026-07-14T11:00:00.000Z',
+            recoveredAt: '2026-07-14T12:00:00.000Z',
+            recoveredOrderId: '987',
+            recoveredRevenue: 125,
+        });
     });
 });

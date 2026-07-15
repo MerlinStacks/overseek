@@ -26,7 +26,7 @@ Pushes to `main` trigger GitHub Actions to build only the changed service image(
 1. **Push to `main`** → GitHub Actions detects changed paths (`server/` vs `client/`)
 2. **Build** → Only the affected image is built and pushed to GHCR
 3. **Deploy** → Portainer GitOps detects the change and pulls the new image
-4. **Zero downtime** → Health checks gate the rollover; `shutdown.ts` drains in-flight requests
+4. **Health-gated restart** → Health checks validate each replacement container; `shutdown.ts` drains in-flight API requests
 
 ### First-Time Setup
 
@@ -53,6 +53,8 @@ Instead of waiting for Portainer polling, you can trigger instant redeploys:
    - `PORTAINER_WEBHOOK_API`
    - `PORTAINER_WEBHOOK_WEB`
 3. The workflow will ping them after pushing images
+
+When both services change, the workflow waits for both images before triggering either webhook. For reliable deployments, configure these webhooks rather than relying only on GitOps polling: polling can observe a Git commit before its images finish publishing.
 
 ---
 
@@ -144,11 +146,9 @@ If an update fails:
 # Portainer: Click "Rollback" on the stack
 # Or via CLI — roll back to previous image by SHA:
 docker compose pull   # pulls latest (which may be broken)
-# Instead, use a specific known-good SHA:
-# docker pull ghcr.io/merlinstacks/overseek-api:<good-commit-sha>
-# docker compose up -d --no-deps api
+# Instead, override the service image with a known-good SHA:
+OVERSEEK_API_IMAGE=ghcr.io/merlinstacks/overseek-api:<good-commit-sha> docker compose up -d --no-deps api
 
 # Or force recreate with current images:
 docker compose up -d --force-recreate
 ```
-

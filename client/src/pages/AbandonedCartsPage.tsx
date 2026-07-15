@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useState } from 'react';
-import { Download, Eye, Loader2, MoreVertical, Search, ShoppingCart } from 'lucide-react';
+import { CheckCircle2, Download, Eye, Loader2, MailCheck, MoreVertical, Search, ShoppingCart } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
@@ -28,7 +28,12 @@ interface AbandonedCart {
     createdAt: string;
     lastActiveAt: string;
     minutesSinceActivity: number;
-    status: 'Recoverable' | 'Notified';
+    status: 'Not sent' | 'Flow sent' | 'Recovered';
+    flowName: string | null;
+    flowSentAt: string | null;
+    recoveredAt: string | null;
+    recoveredOrderId: string | null;
+    recoveredRevenue: number | null;
     cartItems: CartItem[];
     itemCount: number;
     cartValue: number;
@@ -109,7 +114,7 @@ export function AbandonedCartsPage() {
     }, [accountId, deferredSearch, token]);
 
     const exportCsv = () => {
-        const headers = ['Contact', 'Email', 'Phone', 'Created On', 'Last Active', 'Status', 'Items', 'Total'];
+        const headers = ['Contact', 'Email', 'Phone', 'Created On', 'Last Active', 'Status', 'Flow', 'Flow Sent', 'Recovered', 'Order', 'Items', 'Total'];
         const rows = data.items.map((cart) => [
             cart.customerName || `Visitor ${cart.visitorId.slice(0, 8)}`,
             cart.email || '',
@@ -117,6 +122,10 @@ export function AbandonedCartsPage() {
             formatDateTime(cart.createdAt),
             formatDistanceToNow(new Date(cart.lastActiveAt), { addSuffix: true }),
             cart.status,
+            cart.flowName || '',
+            cart.flowSentAt ? formatDateTime(cart.flowSentAt) : '',
+            cart.recoveredAt ? formatDateTime(cart.recoveredAt) : '',
+            cart.recoveredOrderId || '',
             itemSummary(cart.cartItems),
             formatCurrency(cart.cartValue, cart.currency)
         ]);
@@ -195,7 +204,12 @@ export function AbandonedCartsPage() {
                                 </tr>
                             )}
                             {data.items.map((cart) => (
-                                <tr key={cart.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                                <tr
+                                    key={cart.id}
+                                    className={cart.recoveredAt
+                                        ? 'bg-emerald-50/80 hover:bg-emerald-100/70 dark:bg-emerald-950/25 dark:hover:bg-emerald-950/40'
+                                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}
+                                >
                                     <td className="px-4 py-3 align-top"><input type="checkbox" className="rounded border-slate-300" aria-label={`Select ${cart.email || cart.visitorId}`} /></td>
                                     <td className="px-2 py-3 align-top text-slate-400"><MoreVertical className="h-4 w-4" /></td>
                                     <td className="px-4 py-3 align-top">
@@ -215,7 +229,29 @@ export function AbandonedCartsPage() {
                                     </td>
                                     <td className="whitespace-nowrap px-4 py-3 align-top text-slate-700 dark:text-slate-300">{formatDateTime(cart.createdAt)}</td>
                                     <td className="px-4 py-3 align-top">
-                                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">{cart.status}</span>
+                                        {cart.recoveredAt ? (
+                                            <div className="space-y-1">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white">
+                                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                                    Recovered
+                                                </span>
+                                                <div className="text-xs text-emerald-700 dark:text-emerald-300">
+                                                    {formatDateTime(cart.recoveredAt)}{cart.recoveredOrderId ? ` - Order #${cart.recoveredOrderId}` : ''}
+                                                </div>
+                                            </div>
+                                        ) : cart.flowSentAt ? (
+                                            <div className="space-y-1">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                                                    <MailCheck className="h-3.5 w-3.5" />
+                                                    Flow sent
+                                                </span>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400">
+                                                    {cart.flowName || 'Abandoned cart flow'} - {formatDateTime(cart.flowSentAt)}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Not sent</span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3 align-top text-blue-700 dark:text-blue-400">{itemSummary(cart.cartItems)}</td>
                                     <td className="px-4 py-3 align-top text-right">

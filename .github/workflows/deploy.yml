@@ -64,6 +64,8 @@ jobs:
             web:
               - 'client/**'
               - 'packages/overseek-core/**'
+              - 'package.json'
+              - 'package-lock.json'
 
   # ── Step 1b: Lint client before web build ────────────────────────────────────
   lint-client:
@@ -126,13 +128,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Optional: Ping Portainer webhook for instant redeploy
-      - name: Trigger Portainer redeploy (API)
-        if: vars.PORTAINER_WEBHOOK_API != ''
-        run: curl -sS -X POST "${{ vars.PORTAINER_WEBHOOK_API }}" || true
-        # Why || true: webhook failure should not fail the build — Portainer
-        # GitOps polling will pick up the change on its next cycle regardless.
-
   # ── Step 2b: Build & push Web image ──────────────────────────────────────────
   build-web:
     name: Build Web Image
@@ -169,7 +164,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Optional: Ping Portainer webhook for instant redeploy
+  # ── Step 3: Deploy only after every required image is available ──────────────
+  deploy:
+    name: Trigger Deployment
+    runs-on: ubuntu-latest
+    needs: [build-api, build-web]
+    if: >-
+      always() &&
+      !cancelled() &&
+      (needs.build-api.result == 'success' || needs.build-api.result == 'skipped') &&
+      (needs.build-web.result == 'success' || needs.build-web.result == 'skipped') &&
+      (needs.build-api.result == 'success' || needs.build-web.result == 'success')
+    steps:
+      - name: Trigger Portainer redeploy (API)
+        if: needs.build-api.result == 'success' && vars.PORTAINER_WEBHOOK_API != ''
+        run: curl --fail --show-error --silent --retry 3 -X POST "${{ vars.PORTAINER_WEBHOOK_API }}"
+
       - name: Trigger Portainer redeploy (Web)
-        if: vars.PORTAINER_WEBHOOK_WEB != ''
-        run: curl -sS -X POST "${{ vars.PORTAINER_WEBHOOK_WEB }}" || true
+        if: needs.build-web.result == 'success' && vars.PORTAINER_WEBHOOK_WEB != ''
+        run: curl --fail --show-error --silent --retry 3 -X POST "${{ vars.PORTAINER_WEBHOOK_WEB }}"
