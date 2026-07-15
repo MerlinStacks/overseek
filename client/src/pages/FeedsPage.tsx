@@ -112,6 +112,7 @@ export function FeedsPage() {
     const [isSelectingAllMatching, setIsSelectingAllMatching] = useState(false);
     const [allMatchingSelected, setAllMatchingSelected] = useState(false);
     const [mappingDraft, setMappingDraft] = useState<FeedMapping[]>([]);
+    const [productTypeCategoryPriorityDraft, setProductTypeCategoryPriorityDraft] = useState('');
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
     const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
 
@@ -203,6 +204,20 @@ export function FeedsPage() {
         },
     });
 
+    const {
+        data: productTypeCategoryPriorityData,
+        isLoading: productTypeCategoryPriorityLoading,
+        refetch: refetchProductTypeCategoryPriority,
+    } = useApiQuery<{ productTypeCategoryPriority: string[] }>({
+        queryKey: ['feed-product-type-category-priority', currentAccount?.id],
+        enabled: !!token && !!currentAccount?.id,
+        queryFn: async () => {
+            const res = await fetch('/api/feeds/settings/product-type-category-priority', { headers });
+            if (!res.ok) throw new Error('Failed to fetch product type category priority');
+            return res.json();
+        },
+    });
+
     const { data: feedUrlData, isLoading: feedUrlLoading } = useApiQuery<FeedExportUrlsResponse>({
         queryKey: ['feed-export-urls', currentAccount?.id],
         enabled: !!token && !!currentAccount?.id,
@@ -225,6 +240,22 @@ export function FeedsPage() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'Failed to save bulk limit');
+            return data;
+        },
+    });
+
+    const { mutateAsync: saveProductTypeCategoryPriority, isPending: isSavingProductTypeCategoryPriority } = useApiMutation<
+        { productTypeCategoryPriority: string[] },
+        { productTypeCategoryPriority: string[] }
+    >({
+        mutationFn: async (payload) => {
+            const res = await fetch('/api/feeds/settings/product-type-category-priority', {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Failed to save product type category priority');
             return data;
         },
     });
@@ -473,6 +504,10 @@ export function FeedsPage() {
     useEffect(() => {
         setMappingDraft(mappingsData?.mappings || []);
     }, [mappingsData?.mappings]);
+
+    useEffect(() => {
+        setProductTypeCategoryPriorityDraft((productTypeCategoryPriorityData?.productTypeCategoryPriority || []).join('\n'));
+    }, [productTypeCategoryPriorityData?.productTypeCategoryPriority]);
 
     const getColumn = (row: FeedRow, field: string) => row.columns.find((c) => c.targetField === field);
     const canAiOptimizeField = (field: string) => field === 'title' || field === 'description';
@@ -762,6 +797,43 @@ export function FeedsPage() {
                                 Save cap
                             </button>
                             <span className="text-xs text-slate-500 dark:text-slate-400">Current: {maxBulkOptimizeRows.toLocaleString()}</span>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Product type category priority</h2>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                            Enter one exact WooCommerce category name per line, highest priority first. Categories not listed keep their WooCommerce order after these entries.
+                        </p>
+                        <textarea
+                            rows={6}
+                            value={productTypeCategoryPriorityDraft}
+                            disabled={productTypeCategoryPriorityLoading}
+                            onChange={(event) => setProductTypeCategoryPriorityDraft(event.target.value)}
+                            placeholder={'Personalised Wedding Gifts\nGifts for Couples\nPersonalised Engagement Gifts'}
+                            className="w-full max-w-2xl px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm disabled:opacity-50"
+                        />
+                        <div>
+                            <button
+                                type="button"
+                                disabled={isSavingProductTypeCategoryPriority || productTypeCategoryPriorityLoading}
+                                className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
+                                onClick={async () => {
+                                    const productTypeCategoryPriority = productTypeCategoryPriorityDraft
+                                        .split(/\r?\n/)
+                                        .map((value) => value.trim())
+                                        .filter(Boolean);
+                                    try {
+                                        await saveProductTypeCategoryPriority({ productTypeCategoryPriority });
+                                        await Promise.all([refetchProductTypeCategoryPriority(), refetchRows()]);
+                                        toast.success('Product type category priority saved.');
+                                    } catch (error: any) {
+                                        toast.error(error?.message || 'Failed to save product type category priority');
+                                    }
+                                }}
+                            >
+                                {isSavingProductTypeCategoryPriority ? 'Saving...' : 'Save priority'}
+                            </button>
                         </div>
                     </div>
 

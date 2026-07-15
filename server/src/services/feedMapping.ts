@@ -33,6 +33,7 @@ interface FeedFeatureConfig {
     mappings?: Partial<Record<FeedChannel, FeedFieldMapping[]>>;
     refreshModes?: Partial<Record<FeedChannel, FeedRefreshMode>>;
     maxBulkOptimizeRows?: number;
+    productTypeCategoryPriority?: string[];
 }
 
 interface FeedAccountContext {
@@ -132,6 +133,7 @@ function stripHtml(value: string | null | undefined): string | null {
         .replace(/&lt;/gi, '<')
         .replace(/&gt;/gi, '>')
         .replace(/\s+/g, ' ')
+        .replace(/\s+([,.;:!?])/g, '$1')
         .trim() || null;
 }
 
@@ -161,10 +163,22 @@ function normalizeStockStatus(status: unknown): string | null {
     return normalized;
 }
 
-function getProductType(rawData: any): string | null {
+function getProductType(rawData: any, categoryPriority: string[] = []): string | null {
+    const categories: Array<{ name: string; sourceIndex: number }> = Array.isArray(rawData?.categories)
+        ? rawData.categories
+            .map((category: any, sourceIndex: number) => ({ name: String(category?.name || ''), sourceIndex }))
+            .filter((category: { name: string }) => !!category.name)
+        : [];
+    const priorityByName = new Map(categoryPriority.map((name, index) => [name.toLowerCase(), index]));
+    categories.sort((a, b) => {
+        const aPriority = priorityByName.get(a.name.toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+        const bPriority = priorityByName.get(b.name.toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+        return aPriority - bPriority || a.sourceIndex - b.sourceIndex;
+    });
+
     return rawData?.product_type
         || rawData?.productType
-        || (Array.isArray(rawData?.categories) ? rawData.categories.map((category: any) => category?.name).filter(Boolean).join(' > ') : null)
+        || (categories.length > 0 ? categories.map((category) => category.name).join(' > ') : null)
         || null;
 }
 
@@ -235,7 +249,7 @@ function normalizeChannel(channel: string): FeedChannel {
     throw new Error('Unsupported feed channel');
 }
 
-function getSourceValue(sourceField: string, product: any, account?: FeedAccountContext): string | null {
+function getSourceValue(sourceField: string, product: any, account?: FeedAccountContext, categoryPriority: string[] = []): string | null {
     switch (sourceField) {
         case 'wooId': return String(product.wooId);
         case 'itemGroupId': return String(product.wooId);
@@ -259,7 +273,7 @@ function getSourceValue(sourceField: string, product: any, account?: FeedAccount
         }
         case 'condition': return product.rawData?.condition || 'new';
         case 'googleProductCategory': return product.rawData?.google_product_category || product.rawData?.googleProductCategory || null;
-        case 'productType': return getProductType(product.rawData);
+        case 'productType': return getProductType(product.rawData, categoryPriority);
         case 'gtin': return product.rawData?.gtin || product.rawData?._gtin || null;
         case 'mpn': return product.rawData?.mpn || product.rawData?._mpn || product.sku || null;
         case 'salePrice': return formatFeedPrice(product.rawData?.sale_price, account?.currency);
@@ -270,7 +284,7 @@ function getSourceValue(sourceField: string, product: any, account?: FeedAccount
     }
 }
 
-function getVariationSourceValue(sourceField: string, variation: any, parent: any, account?: FeedAccountContext): string | null {
+function getVariationSourceValue(sourceField: string, variation: any, parent: any, account?: FeedAccountContext, categoryPriority: string[] = []): string | null {
     switch (sourceField) {
         case 'wooId': return `${parent.wooId}-${variation.wooId}`;
         case 'itemGroupId': return String(parent.wooId);
@@ -304,7 +318,7 @@ function getVariationSourceValue(sourceField: string, variation: any, parent: an
         }
         case 'condition': return variation.rawData?.condition || parent.rawData?.condition || 'new';
         case 'googleProductCategory': return variation.rawData?.google_product_category || parent.rawData?.google_product_category || null;
-        case 'productType': return getProductType(variation.rawData) || getProductType(parent.rawData);
+        case 'productType': return getProductType(variation.rawData, categoryPriority) || getProductType(parent.rawData, categoryPriority);
         case 'gtin': return variation.rawData?.gtin || variation.rawData?._gtin || parent.rawData?.gtin || parent.rawData?._gtin || null;
         case 'mpn': return variation.rawData?.mpn || variation.rawData?._mpn || variation.sku || parent.rawData?.mpn || parent.rawData?._mpn || parent.sku || null;
         case 'salePrice': return formatFeedPrice(variation.rawData?.sale_price || parent.rawData?.sale_price, account?.currency);
@@ -441,12 +455,12 @@ export class FeedMappingService {
                 values.set(column.targetField, value);
             }
 
-            const productTitle = values.get('title') || row.name || `Product ${row.wooId}`;
-            const description = stripHtml(values.get('description')) || '';
             const link = values.get('link') || '';
 
             const gFields = Array.from(values.entries())
                 .flatMap(([key, value]) => {
+                    if (key === 'link') return [];
+
                     const fieldValue = key === 'description' ? (stripHtml(value) || '') : value;
                     if (key === 'additional_image_link') {
                         return fieldValue
@@ -462,8 +476,6 @@ export class FeedMappingService {
 
             return [
                 '  <item>',
-                `    <title>${xmlEscape(productTitle)}</title>`,
-                `    <description>${xmlEscape(description)}</description>`,
                 `    <link>${xmlEscape(link)}</link>`,
                 gFields,
                 '  </item>',
@@ -522,6 +534,45 @@ export class FeedMappingService {
             },
         });
 
+        return normalized;
+    }
+
+    static async getProductTypeCategoryPriority(accountId: string): Promise<string[]> {
+        const feature = await prisma.accountFeature.findUnique({
+            where: { accountId_featureKey: { accountId, featureKey: FEED_FEATURE_KEY } },
+            select: { config: true },
+        });
+        const values = ((feature?.config || {}) as FeedFeatureConfig).productTypeCategoryPriority;
+        return Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string' && !!value.trim()) : [];
+    }
+
+    static async setProductTypeCategoryPriority(accountId: string, values: string[]): Promise<string[]> {
+        const seen = new Set<string>();
+        const normalized = values.map((value) => value.trim()).filter((value) => {
+            const key = value.toLowerCase();
+            if (!value || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+        const feature = await prisma.accountFeature.findUnique({
+            where: { accountId_featureKey: { accountId, featureKey: FEED_FEATURE_KEY } },
+            select: { config: true },
+        });
+        const nextConfig: FeedFeatureConfig = {
+            ...((feature?.config || {}) as FeedFeatureConfig),
+            productTypeCategoryPriority: normalized,
+        };
+
+        await prisma.accountFeature.upsert({
+            where: { accountId_featureKey: { accountId, featureKey: FEED_FEATURE_KEY } },
+            update: { config: nextConfig as unknown as Prisma.InputJsonValue },
+            create: {
+                accountId,
+                featureKey: FEED_FEATURE_KEY,
+                isEnabled: false,
+                config: nextConfig as unknown as Prisma.InputJsonValue,
+            },
+        });
         return normalized;
     }
 
@@ -624,12 +675,18 @@ export class FeedMappingService {
         limit: number,
         query: string,
         variationMode: VariationMode,
+        productWooId?: number,
     ): Promise<{ total: number; rows: any[]; mappings: FeedFieldMapping[] }> {
         const channel = normalizeChannel(channelInput);
-        const mappings = await this.getMappings(accountId, channel);
+        const [mappings, categoryPriority] = await Promise.all([
+            this.getMappings(accountId, channel),
+            this.getProductTypeCategoryPriority(accountId),
+        ]);
 
         const where: any = { accountId };
-        if (query) {
+        if (productWooId) {
+            where.wooId = productWooId;
+        } else if (query) {
             where.OR = [
                 { name: { contains: query, mode: 'insensitive' } },
                 { sku: { contains: query, mode: 'insensitive' } },
@@ -713,7 +770,7 @@ export class FeedMappingService {
                     sku: product.sku,
                     name: product.name,
                     channel,
-                    columns: mapColumns((sourceField) => getSourceValue(sourceField, product, account || undefined)),
+                    columns: mapColumns((sourceField) => getSourceValue(sourceField, product, account || undefined, categoryPriority)),
                 });
             }
 
@@ -752,7 +809,7 @@ export class FeedMappingService {
                         sku: variation.sku || product.sku,
                         name: getVariationSourceValue('name', variation, product),
                         channel,
-                        columns: mapColumns((sourceField) => getVariationSourceValue(sourceField, variation, product, account || undefined), variationId),
+                        columns: mapColumns((sourceField) => getVariationSourceValue(sourceField, variation, product, account || undefined, categoryPriority), variationId),
                     });
                 });
             }

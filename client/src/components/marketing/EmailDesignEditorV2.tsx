@@ -216,7 +216,53 @@ function applyPreviewMergeTags(html: string, context: PreviewMergeContext): stri
         [/\{\{cart\.itemsTable\}\}/g, context.cartItemsTable],
     ];
 
-    return replacements.reduce((result, [pattern, value]) => result.replace(pattern, value || ''), html);
+    const resolved = replacements.reduce((result, [pattern, value]) => result.replace(pattern, value || ''), html);
+    return resolved.replace(/\{\{\s*new_products([^}]*)\}\}/g, (_match, params) => renderPreviewNewProducts(String(params || ''), context));
+}
+
+function renderPreviewNewProducts(params: string, context: PreviewMergeContext): string {
+    const getParam = (name: string) => params.match(new RegExp(`${name}:([^\\s]+)`))?.[1];
+    const count = Math.min(6, Math.max(1, Number(getParam('count')) || 3));
+    const columns = Math.min(3, Math.max(1, Number(getParam('columns')) || 3));
+    const boolParam = (name: string, fallback: boolean) => {
+        const value = getParam(name);
+        if (value === 'true') return true;
+        if (value === 'false') return false;
+        return fallback;
+    };
+    const showImage = boolParam('showImage', true);
+    const showDescription = boolParam('showDescription', false);
+    const showPrice = boolParam('showPrice', true);
+    const showButton = boolParam('showButton', true);
+    const buttonLabel = decodeURIComponent(getParam('buttonLabel') || 'View Product');
+    const primaryColor = decodeURIComponent(getParam('primaryColor') || '#4f46e5');
+    const textColor = decodeURIComponent(getParam('textColor') || '#0f172a');
+    const mutedTextColor = decodeURIComponent(getParam('mutedTextColor') || '#64748b');
+    const borderRadius = Math.max(0, Number(getParam('borderRadius')) || 10);
+    const products = Array.from({ length: count }, (_, index) => ({
+        name: index === 0 ? context.productName || 'Newest product' : `Newest product ${index + 1}`,
+        price: context.productPrice || '$49.00',
+        image: context.productImage || 'https://via.placeholder.com/320x240?text=New+Product',
+        description: context.productDescription || 'A recently added WooCommerce product will appear here when this email sends.',
+        url: context.storeUrl || '#',
+    }));
+    const width = `${Math.floor(100 / columns)}%`;
+    const rows: string[] = [];
+
+    for (let index = 0; index < products.length; index += columns) {
+        const rowProducts = products.slice(index, index + columns);
+        rows.push(`<tr>${rowProducts.map((product) => `<td width="${width}" valign="top" style="width:${width};padding:6px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:${borderRadius}px;"><tbody><tr><td style="padding:12px;text-align:center;">
+                ${showImage ? `<a href="${escapePreviewHtml(product.url)}"><img src="${escapePreviewHtml(product.image)}" alt="${escapePreviewHtml(product.name)}" width="160" style="display:block;max-width:100%;height:auto;border:0;border-radius:${Math.max(0, borderRadius - 2)}px;margin:0 auto 10px;" /></a>` : ''}
+                <p style="margin:0 0 6px;color:${escapePreviewHtml(textColor)};font-size:15px;line-height:1.35;font-weight:700;">${escapePreviewHtml(product.name)}</p>
+                ${showDescription ? `<p style="margin:0 0 8px;color:${escapePreviewHtml(mutedTextColor)};font-size:13px;line-height:1.45;">${escapePreviewHtml(product.description)}</p>` : ''}
+                ${showPrice ? `<p style="margin:0 0 10px;color:${escapePreviewHtml(primaryColor)};font-weight:700;">${escapePreviewHtml(product.price)}</p>` : ''}
+                ${showButton ? `<a href="${escapePreviewHtml(product.url)}" style="display:inline-block;background:${escapePreviewHtml(primaryColor)};color:#ffffff;text-decoration:none;border-radius:${borderRadius}px;padding:8px 12px;font-size:13px;font-weight:700;">${escapePreviewHtml(buttonLabel)}</a>` : ''}
+            </td></tr></tbody></table>
+        </td>`).join('')}${rowProducts.length < columns ? '<td>&nbsp;</td>'.repeat(columns - rowProducts.length) : ''}</tr>`);
+    }
+
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;"><tbody>${rows.join('')}</tbody></table>`;
 }
 
 function sanitizeBidiText(value: string): string {

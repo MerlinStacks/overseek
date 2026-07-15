@@ -7,7 +7,7 @@
 
 import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot } from 'lucide-react';
+import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot, Rss } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
@@ -34,6 +34,8 @@ import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import type { MerchantIssue } from '../components/Seo/MerchantCenterPanel';
 import type { MerchantCenterIssue } from '../components/Seo/MerchantCenterScoreBadge';
 import type { ProductVariant as VariantType } from '../components/products/variantTypes';
+import { FeedWritesPanel } from '../components/products/FeedWritesPanel';
+import { useAccountFeature } from '../hooks/useAccountFeature';
 
 type SupplierOption = { id: string; name: string };
 type GalleryImage = { id: string | number; src: string; alt?: string };
@@ -130,6 +132,7 @@ function ProductEditPageContent({
     hasDraft
 }: ProductEditPageContentProps) {
     const activeTabParam = searchParams.get('tab');
+    const hasFeedExports = useAccountFeature('FEED_EXPORTS');
 
     const previewImage = (formData.images as Array<{ src?: string }> | undefined)?.[0]?.src || product.mainImage;
     const statusTone = saveState === 'error'
@@ -322,6 +325,12 @@ function ProductEditPageContent({
                 </div>
             )
         },
+        ...(hasFeedExports ? [{
+            id: 'feed-writes',
+            label: 'Feed Writes',
+            icon: <Rss size={16} />,
+            content: <FeedWritesPanel productWooId={product.wooId} />
+        }] : []),
         {
             id: 'history',
             label: 'Edit History',

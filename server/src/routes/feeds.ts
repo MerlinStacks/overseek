@@ -75,6 +75,10 @@ const bulkLimitBodySchema = z.object({
     maxBulkOptimizeRows: z.coerce.number().int().min(1).max(200000),
 });
 
+const productTypeCategoryPriorityBodySchema = z.object({
+    productTypeCategoryPriority: z.array(z.string().trim().min(1).max(200)).max(500),
+});
+
 const feedsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
     fastify.addHook('preHandler', async (request, reply) => {
@@ -186,6 +190,37 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
             Logger.error('Failed to fetch feed rows', { error: error?.message || error });
             const status = error?.message === 'Unsupported feed channel' ? 400 : 500;
             return reply.code(status).send({ error: status === 400 ? error.message : 'Failed to fetch feed rows' });
+        }
+    });
+
+    fastify.get<{ Params: { channel: string; wooId: string } }>('/:channel/products/:wooId', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { channel, wooId } = rowParamsSchema.parse(request.params);
+            const parsedChannel = FeedMappingService.parseChannel(channel);
+            const result = await FeedMappingService.getFeedRows(
+                accountId,
+                parsedChannel,
+                1,
+                1_000_000,
+                '',
+                'variable_and_variations',
+                wooId,
+            );
+
+            if (result.total === 0) {
+                return reply.code(404).send({ error: 'Product not found' });
+            }
+
+            return {
+                channel: parsedChannel,
+                mappings: result.mappings,
+                rows: result.rows,
+            };
+        } catch (error: any) {
+            Logger.error('Failed to fetch product feed rows', { error: error?.message || error });
+            const status = error?.message === 'Unsupported feed channel' ? 400 : 500;
+            return reply.code(status).send({ error: status === 400 ? error.message : 'Failed to fetch product feed rows' });
         }
     });
 
@@ -312,6 +347,16 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get('/settings/product-type-category-priority', async (request, reply) => {
+        try {
+            const productTypeCategoryPriority = await FeedMappingService.getProductTypeCategoryPriority(request.accountId!);
+            return { productTypeCategoryPriority };
+        } catch (error: any) {
+            Logger.error('Failed to fetch product type category priority', { error: error?.message || error });
+            return reply.code(500).send({ error: 'Failed to fetch product type category priority' });
+        }
+    });
+
     fastify.get('/settings/urls', async (request, reply) => {
         try {
             const accountId = request.accountId!;
@@ -337,6 +382,17 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error: any) {
             Logger.error('Failed to save feed bulk optimize limit', { error: error?.message || error });
             return reply.code(400).send({ error: 'Failed to save bulk optimize limit' });
+        }
+    });
+
+    fastify.put<{ Body: { productTypeCategoryPriority: string[] } }>('/settings/product-type-category-priority', async (request, reply) => {
+        try {
+            const { productTypeCategoryPriority } = productTypeCategoryPriorityBodySchema.parse(request.body);
+            const saved = await FeedMappingService.setProductTypeCategoryPriority(request.accountId!, productTypeCategoryPriority);
+            return { productTypeCategoryPriority: saved };
+        } catch (error: any) {
+            Logger.error('Failed to save product type category priority', { error: error?.message || error });
+            return reply.code(400).send({ error: 'Failed to save product type category priority' });
         }
     });
 
