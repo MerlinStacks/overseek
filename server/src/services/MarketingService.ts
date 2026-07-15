@@ -9,7 +9,7 @@ import { MarketingCampaign } from '@prisma/client';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { SegmentService } from './SegmentService';
-import { resolveMergeTags } from './MergeTagResolver';
+import { loadDynamicEmailProducts, resolveMergeTags, resolveMergeTagsWithDynamicProducts } from './MergeTagResolver';
 import { EmailService } from './EmailService';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { campaignTrackingService } from './CampaignTrackingService';
@@ -203,7 +203,7 @@ export class MarketingService {
 
         const account = await prisma.account?.findFirst({
             where: { id: accountId },
-            select: { wooUrl: true, domain: true }
+            select: { wooUrl: true, domain: true, currency: true }
         });
         const storeUrl = account?.wooUrl || account?.domain || '';
         const normalizedStoreUrl = storeUrl.startsWith('http://') || storeUrl.startsWith('https://')
@@ -218,6 +218,8 @@ export class MarketingService {
             store: { url: normalizedStoreUrl },
             storeUrl: normalizedStoreUrl,
             store_url: normalizedStoreUrl,
+            accountId,
+            currency: account?.currency || 'USD',
             preferencesUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/my-account/edit-account/` : '',
             unsubscribeUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/?unsubscribe=1` : ''
         };
@@ -227,7 +229,7 @@ export class MarketingService {
             defaultEmailAccount.id,
             recipientEmail,
             resolveMergeTags(campaign.subject, context),
-            resolveMergeTags(campaign.content, context),
+            await resolveMergeTagsWithDynamicProducts(campaign.content, context),
             undefined,
             { source: 'TEST', sourceId: campaignId, category: 'MARKETING' }
         );
@@ -254,7 +256,7 @@ export class MarketingService {
 
         const account = await prisma.account?.findFirst({
             where: { id: accountId },
-            select: { wooUrl: true, domain: true }
+            select: { wooUrl: true, domain: true, currency: true }
         });
         const storeUrl = account?.wooUrl || account?.domain || '';
 
@@ -293,6 +295,9 @@ export class MarketingService {
         let failedCount = 0;
         let skippedCount = 0;
         const BATCH_SIZE = 1000;
+        const dynamicProducts = campaign.content.includes('{{new_products')
+            ? await loadDynamicEmailProducts(accountId)
+            : undefined;
 
         const sendToBatch = async (customers: Array<{ id: string; email: string | null; firstName?: string | null; lastName?: string | null }>) => {
             for (const customer of customers) {
@@ -305,10 +310,12 @@ export class MarketingService {
                         customer,
                         store: { url: storeUrl }
                     });
-                    const content = resolveMergeTags(campaign.content, {
+                    const content = await resolveMergeTagsWithDynamicProducts(campaign.content, {
                         customer,
-                        store: { url: storeUrl }
-                    });
+                        store: { url: storeUrl },
+                        accountId,
+                        currency: account?.currency || 'USD'
+                    }, dynamicProducts);
 
                     const result = await this.emailService.sendEmail(
                         accountId,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
-import { Cog } from 'lucide-react';
+import { Cog, RefreshCw } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -113,6 +113,7 @@ export function FeedsPage() {
     const [allMatchingSelected, setAllMatchingSelected] = useState(false);
     const [mappingDraft, setMappingDraft] = useState<FeedMapping[]>([]);
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+    const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
 
     const headers = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
@@ -317,6 +318,12 @@ export function FeedsPage() {
     const googleProductCategoryIds = useMemo(() => new Set(googleProductCategories.map((option) => option.id)), [googleProductCategories]);
     const total = rowsData?.total || 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
+    const feedUrl = useMemo(() => {
+        const baseUrl = feedUrlData?.urls?.[activeChannel];
+        if (!baseUrl) return '';
+        const separator = baseUrl.includes('?') ? '&' : '?';
+        return `${baseUrl}${separator}variationMode=${encodeURIComponent(variationMode)}`;
+    }, [activeChannel, feedUrlData?.urls, variationMode]);
 
     const getDefaultColumnWidth = (field: string) => {
         if (field === 'select') return 44;
@@ -555,17 +562,26 @@ export function FeedsPage() {
     };
 
     const copyFeedUrl = async () => {
-        const url = feedUrlData?.urls?.[activeChannel];
-        if (!url) {
+        if (!feedUrl) {
             toast.error('Feed URL not available yet.');
             return;
         }
 
         try {
-            await navigator.clipboard.writeText(url);
+            await navigator.clipboard.writeText(feedUrl);
             toast.success('Feed URL copied to clipboard.');
         } catch (_error) {
             toast.error('Could not copy feed URL.');
+        }
+    };
+
+    const refreshFeed = async () => {
+        setIsRefreshingFeed(true);
+        try {
+            await refetchRows();
+            toast.success(`${activeChannel.charAt(0).toUpperCase() + activeChannel.slice(1)} feed refreshed.`);
+        } finally {
+            setIsRefreshingFeed(false);
         }
     };
 
@@ -578,18 +594,29 @@ export function FeedsPage() {
                         Configure feed channel settings and refresh behavior.
                     </p>
                 </div>
-                {activeTab === 'settings' && (
+                <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-indigo-600 bg-indigo-600 text-white shadow-sm transition-colors"
-                        onClick={() => setActiveTab('spreadsheet')}
-                        title="Back to spreadsheet"
-                        aria-label="Back to spreadsheet"
-                        aria-pressed
+                        disabled={isRefreshingFeed || !currentAccount?.id}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700"
+                        onClick={refreshFeed}
                     >
-                        <Cog size={18} />
+                        <RefreshCw size={16} className={isRefreshingFeed ? 'animate-spin' : ''} />
+                        {isRefreshingFeed ? 'Refreshing...' : 'Refresh feed'}
                     </button>
-                )}
+                    {activeTab === 'settings' && (
+                        <button
+                            type="button"
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-indigo-600 bg-indigo-600 text-white shadow-sm transition-colors"
+                            onClick={() => setActiveTab('spreadsheet')}
+                            title="Back to spreadsheet"
+                            aria-label="Back to spreadsheet"
+                            aria-pressed
+                        >
+                            <Cog size={18} />
+                        </button>
+                    )}
+                </div>
             </div>
 
             {activeTab === 'settings' && (
@@ -633,7 +660,7 @@ export function FeedsPage() {
                     <div className="space-y-2">
                         <h2 className="text-base font-semibold text-slate-900 dark:text-white">Feed URL ({activeChannel})</h2>
                         <p className="text-xs text-slate-600 dark:text-slate-400">
-                            Copy and paste this URL into your ad platform catalog feed source.
+                            Copy this URL into your ad platform. It uses the variation mode selected above.
                         </p>
                         {feedUrlLoading ? (
                             <p className="text-sm text-slate-600 dark:text-slate-400">Loading feed URL...</p>
@@ -642,14 +669,14 @@ export function FeedsPage() {
                                 <input
                                     type="text"
                                     readOnly
-                                    value={feedUrlData?.urls?.[activeChannel] || ''}
+                                    value={feedUrl}
                                     className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm"
                                 />
                                 <button
                                     type="button"
                                     className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
                                     onClick={copyFeedUrl}
-                                    disabled={!feedUrlData?.urls?.[activeChannel]}
+                                    disabled={!feedUrl}
                                 >
                                     Copy URL
                                 </button>
@@ -900,13 +927,6 @@ export function FeedsPage() {
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder="Search name or SKU"
                         />
-                        <button
-                            type="button"
-                            className="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600"
-                            onClick={async () => { await refetchRows(); }}
-                        >
-                            Refresh
-                        </button>
                         {editingCell && (
                             <button
                                 type="button"

@@ -14,7 +14,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderIdString } from '../../utils/orderIds';
-import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
+import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164 } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
@@ -44,7 +44,13 @@ export class TikTokEventsService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session, data.ipAddress);
+        const userData = extractUserData({
+            ...(data.payload || {}),
+            email: data.payload?.email || data.email,
+            customerId: data.payload?.customerId || data.customerId,
+            clickId: data.payload?.clickId || data.clickId,
+            clickPlatform: data.payload?.clickPlatform || data.clickPlatform,
+        }, session, data.ipAddress);
         const payload = this.buildPayload(pixelCode, eventName, eventId, data, userData, testEventCode);
 
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
@@ -72,9 +78,10 @@ export class TikTokEventsService implements ConversionPlatformService {
         // Build user object — TikTok requires SHA-256 hashed PII
         const user: Record<string, any> = {};
         const hashedEmail = hashSHA256(userData.email);
-        if (hashedEmail) user.email = hashedEmail;
-        const hashedPhone = hashSHA256(userData.phone);
-        if (hashedPhone) user.phone_number = hashedPhone;
+        user.email = hashedEmail || '';
+        const hashedPhone = hashSHA256(normalizePhoneE164(userData.phone, userData.country));
+        user.phone_number = hashedPhone || '';
+        user.external_id = hashSHA256(userData.externalId) || '';
         if (userData.ipAddress) user.ip = userData.ipAddress;
         if (userData.userAgent) user.user_agent = userData.userAgent;
         if (userData.ttp) user.ttp = userData.ttp;

@@ -42,6 +42,8 @@ const trackingEventPayloadSchema = z.object({
     eventId: z.string().max(150).optional(),
     visitorIp: z.string().max(128).optional(),
     consentState: z.enum(['granted', 'denied']).optional(),
+    customerId: z.number().int().positive().optional(),
+    email: z.string().email().max(320).optional(),
 });
 
 const customEventPayloadSchema = z.object({
@@ -203,7 +205,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const body = parsed.data as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState, customerId, email } = body;
 
             if (!(await authorizeTrackingEvent(accountId, type, payload, request, reply))) return;
 
@@ -221,7 +223,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
                 referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, is404,
                 clickId, clickPlatform, landingReferrer, eventId: resolvedEventId,
-                consentState
+                consentState, customerId, email
             });
 
             if (session) {
@@ -248,7 +250,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const body = parsed.data as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState, customerId, email } = body;
 
             if (!(await authorizeTrackingEvent(accountId, type, payload, request, reply))) return;
 
@@ -264,7 +266,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
                 referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, is404,
                 clickId, clickPlatform, landingReferrer, eventId: resolvedEventId,
-                consentState
+                consentState, customerId, email
             });
 
             if (session) {

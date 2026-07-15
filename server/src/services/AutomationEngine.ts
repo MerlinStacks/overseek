@@ -64,7 +64,12 @@ export class AutomationEngine {
         }
 
         const automations = await prisma.marketingAutomation.findMany({
-            where: { accountId, triggerType, isActive: true }
+            where: {
+                accountId,
+                triggerType,
+                isActive: true,
+                ...(data?.automationId ? { id: String(data.automationId) } : {})
+            }
         });
 
         const result = {

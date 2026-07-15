@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hashSHA256, isConversionEvent, mapEventName, extractUserData, getSupportedPlatforms } from '../conversionUtils';
+import { hashSHA256, isConversionEvent, mapEventName, extractUserData, getSupportedPlatforms, normalizePhoneE164 } from '../conversionUtils';
 
 describe('conversionUtils', () => {
     describe('hashSHA256', () => {
@@ -21,6 +21,20 @@ describe('conversionUtils', () => {
         it('should produce consistent hashes for same input', () => {
             expect(hashSHA256('hello')).toBe(hashSHA256('hello'));
             expect(hashSHA256('Hello')).toBe(hashSHA256('hello'));
+        });
+    });
+
+    describe('normalizePhoneE164', () => {
+        it('should add the billing country code to a national number', () => {
+            expect(normalizePhoneE164('0412 345 678', 'AU')).toBe('+61412345678');
+        });
+
+        it('should preserve a valid international number', () => {
+            expect(normalizePhoneE164('+44 7700 900123', 'GB')).toBe('+447700900123');
+        });
+
+        it('should reject a national number without a known country', () => {
+            expect(normalizePhoneE164('0412 345 678')).toBeUndefined();
         });
     });
 

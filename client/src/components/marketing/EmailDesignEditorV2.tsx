@@ -111,6 +111,12 @@ const PRODUCT_VISIBILITY_FIELDS = [
     { key: 'showRegularPrice', label: 'Regular Price' },
     { key: 'showButton', label: 'Button' },
 ] as const;
+const NEW_PRODUCTS_VISIBILITY_FIELDS = [
+    { key: 'showImage', label: 'Image' },
+    { key: 'showDescription', label: 'Description' },
+    { key: 'showPrice', label: 'Price' },
+    { key: 'showButton', label: 'Button' },
+] as const;
 const REVIEW_VISIBILITY_FIELDS = [
     { key: 'showHeadline', label: 'Headline' },
     { key: 'showRating', label: 'Rating' },
@@ -1951,6 +1957,38 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
                 </div>
                 <Field label="Button label" value={block.props.buttonLabel} onChange={(value) => patchProps({ buttonLabel: value })} />
                 <Field label="Button URL" value={block.props.buttonHref} onChange={(value) => patchProps({ buttonHref: value, productUrl: value })} />
+            </>}
+            {block.type === 'newProducts' && <>
+                <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200">Pulls the newest WooCommerce products when the email sends.</div>
+                <Field label="Heading" value={block.props.heading || ''} onChange={(value) => patchProps({ heading: value })} />
+                <Field label="Products to show" type="number" value={String(block.props.count || 3)} onChange={(value) => {
+                    const count = Number(value);
+                    patchProps({ count: Number.isFinite(count) ? Math.min(6, Math.max(1, Math.floor(count))) : 3 });
+                }} />
+                <SelectField label="Columns" value={String(block.props.columns || 3)} options={['1', '2', '3']} onChange={(value) => patchProps({ columns: Number(value) as 1 | 2 | 3 })} />
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Visible Product Fields</p>
+                    <div className="space-y-2">
+                        {NEW_PRODUCTS_VISIBILITY_FIELDS.map((field) => {
+                            const enabled = block.props[field.key] !== false;
+                            return (
+                                <label key={field.key} className="flex items-center justify-between text-sm text-slate-700 dark:text-slate-200">
+                                    <span>{field.label}</span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={enabled}
+                                        onClick={() => patchProps({ [field.key]: !enabled })}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${enabled ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                                    >
+                                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                                    </button>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </div>
+                <Field label="Button label" value={block.props.buttonLabel} onChange={(value) => patchProps({ buttonLabel: value })} />
             </>}
             {block.type === 'orderSummary' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><SelectField label="Format" value={block.props.itemsFormat || 'table'} options={ORDER_ITEMS_FORMATS} onChange={(value) => patchProps({ itemsFormat: value as OrderItemsFormat })} /><ToggleField label="Show total" checked={block.props.showTotals} onChange={(checked) => patchProps({ showTotals: checked })} /></>}
             {block.type === 'cartItems' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><ToggleField label="Show cart total" checked={block.props.showTotal} onChange={(checked) => patchProps({ showTotal: checked })} /><SelectField label="Alignment" value={block.props.align || 'left'} options={['left', 'center', 'right']} onChange={(value) => patchProps({ align: value as 'left' | 'center' | 'right' })} /></>}

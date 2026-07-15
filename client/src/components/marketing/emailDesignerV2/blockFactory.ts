@@ -1,7 +1,7 @@
-import { Box, Code2, Download, ImageIcon, Link2, List, MapPin, Menu, MessageSquareQuote, Minus, PanelTop, RectangleHorizontal, ReceiptText, ShoppingCart, Share2, Smartphone, Ticket, Truck, Type } from 'lucide-react';
+import { Box, Code2, Download, ImageIcon, Link2, List, MapPin, Menu, MessageSquareQuote, Minus, PackagePlus, PanelTop, RectangleHorizontal, ReceiptText, ShoppingCart, Share2, Smartphone, Ticket, Truck, Type } from 'lucide-react';
 import { createEmailDesignId, type EmailBlock } from '../../../lib/emailDesignerV2';
 
-export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'cartItems' | 'cartLink' | 'orderSummary' | 'orderTracking' | 'address' | 'coupon' | 'review' | 'invoiceDownload';
+export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'newProducts' | 'cartItems' | 'cartLink' | 'orderSummary' | 'orderTracking' | 'address' | 'coupon' | 'review' | 'invoiceDownload';
 
 export interface PaletteItem {
     key: PaletteKey;
@@ -22,6 +22,7 @@ export const paletteItems: PaletteItem[] = [
     { key: 'rawHtml', label: 'HTML', group: 'General', icon: Code2 },
     { key: 'footer', label: 'Footer', group: 'General', icon: Smartphone },
     { key: 'product', label: 'Product', group: 'WooCommerce', icon: Box },
+    { key: 'newProducts', label: 'New Products', group: 'WooCommerce', icon: PackagePlus },
     { key: 'cartItems', label: 'Cart Items', group: 'WooCommerce', icon: ShoppingCart },
     { key: 'cartLink', label: 'Cart Link', group: 'WooCommerce', icon: Link2 },
     { key: 'orderSummary', label: 'Order Summary', group: 'WooCommerce', icon: ReceiptText },
@@ -60,6 +61,23 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
                 showButton: true,
                 buttonLabel: 'View Product',
                 buttonHref: '{{store_url}}',
+            },
+        };
+    }
+    if (type === 'newProducts') {
+        return {
+            id,
+            type,
+            props: {
+                heading: 'New arrivals',
+                count: 3,
+                columns: 3,
+                showImage: true,
+                showDescription: false,
+                showPrice: true,
+                showButton: true,
+                buttonLabel: 'View Product',
+                align: 'center',
             },
         };
     }

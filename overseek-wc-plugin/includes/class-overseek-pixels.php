@@ -59,12 +59,72 @@ class OverSeek_Pixels {
 			return;
 		}
 
+		add_filter( 'woocommerce_loop_add_to_cart_args', array( $this, 'add_loop_content_id' ), 10, 2 );
+		add_filter( 'woocommerce_available_variation', array( $this, 'add_variation_content_id' ), 10, 3 );
+		add_action( 'woocommerce_before_add_to_cart_button', array( $this, 'render_add_to_cart_content_id' ) );
+
 		if ( is_admin() || defined( 'REST_REQUEST' ) || wp_doing_ajax() ) {
 			return;
 		}
 
 		add_action( 'wp_head', array( $this, 'inject_base_codes' ), 1 );
 		add_action( 'wp_footer', array( $this, 'inject_page_events' ), 50 );
+	}
+
+	/**
+	 * Add the catalog-matching content ID to product-loop add-to-cart buttons.
+	 *
+	 * @param array<string, mixed> $args    Add-to-cart link arguments.
+	 * @param WC_Product          $product WooCommerce product.
+	 * @return array<string, mixed>
+	 */
+	public function add_loop_content_id( array $args, WC_Product $product ): array {
+		$config = $this->get_pixel_config();
+		if ( empty( $config ) ) {
+			return $args;
+		}
+
+		if ( ! isset( $args['attributes'] ) || ! is_array( $args['attributes'] ) ) {
+			$args['attributes'] = array();
+		}
+		$args['attributes']['data-overseek-content-id'] = OverSeek_Pixel_Matching_Utils::get_content_id( $product, $config );
+
+		return $args;
+	}
+
+	/**
+	 * Expose the catalog-matching ID for each selectable variation.
+	 *
+	 * @param array<string, mixed>  $data      Variation data sent to WooCommerce JavaScript.
+	 * @param WC_Product_Variable  $product   Parent product.
+	 * @param WC_Product_Variation $variation Product variation.
+	 * @return array<string, mixed>
+	 */
+	public function add_variation_content_id( array $data, WC_Product_Variable $product, WC_Product_Variation $variation ): array {
+		$config = $this->get_pixel_config();
+		if ( ! empty( $config ) ) {
+			$data['overseek_content_id'] = OverSeek_Pixel_Matching_Utils::get_content_id( $variation, $config );
+		}
+
+		return $data;
+	}
+
+	/**
+	 * Render the canonical product ID used by single-product add-to-cart forms.
+	 */
+	public function render_add_to_cart_content_id(): void {
+		global $product;
+
+		$config = $this->get_pixel_config();
+		if ( ! $product instanceof WC_Product || empty( $config ) ) {
+			return;
+		}
+
+		$content_id = OverSeek_Pixel_Matching_Utils::get_content_id( $product, $config );
+		printf(
+			'<input type="hidden" name="overseek_content_id" value="%1$s" data-parent-content-id="%1$s" />',
+			esc_attr( $content_id )
+		);
 	}
 
 	/**
@@ -384,10 +444,18 @@ class OverSeek_Pixels {
     jQuery(document.body).on('added_to_cart',function(e,fragments,cart_hash,btn){
         var eid=btn?ensureButtonEid(btn):makeEid();
         var name=btn&&btn.data('product_name')||'';
-        var id=btn&&btn.data('product_id')||'';
+        var id=btn&&(btn.attr('data-overseek-content-id')||btn.data('product_id'))||'';
         var price=btn&&btn.data('product_price')||0;
         fireATC(name,String(id),parseFloat(price)||0,'{$this->get_currency_code()}',eid);
     });
+    jQuery('form.variations_form')
+        .on('found_variation',function(e,variation){
+            if(variation&&variation.overseek_content_id){jQuery(this).find('input[name=overseek_content_id]').val(variation.overseek_content_id);}
+        })
+        .on('reset_data',function(){
+            var input=jQuery(this).find('input[name=overseek_content_id]');
+            input.val(input.attr('data-parent-content-id')||'');
+        });
     jQuery('form.cart').on('submit',function(){
         var form=jQuery(this);
         var eidInput=form.find('input[name="overseek_event_id"]');
@@ -395,7 +463,7 @@ class OverSeek_Pixels {
         if(!eidInput.length){eidInput=jQuery('<input/>',{type:'hidden',name:'overseek_event_id'});form.append(eidInput);}
         eidInput.val(eid);
         var name=form.closest('.product').find('.product_title').text()||'';
-        var id=form.find('input[name=product_id],button[name=add-to-cart]').val()||'';
+        var id=form.find('input[name=overseek_content_id]').val()||form.find('input[name=product_id],button[name=add-to-cart]').val()||'';
         var price=form.closest('.product').find('.price ins .amount, .price > .amount').first().text().replace(/[^0-9.]/g,'')||0;
         fireATC(name.trim(),String(id),parseFloat(price)||0,'{$this->get_currency_code()}',String(eid));
     });

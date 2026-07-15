@@ -61,7 +61,8 @@ export function evaluateEmailPreflight({ html, subject = '', emailCategory = 'MA
         return issues;
     }
 
-    const hasLink = /<a\s+[^>]*href=["'][^"']+["'][^>]*>/i.test(trimmedHtml);
+    const hasLink = /<a\s+[^>]*href=["'][^"']+["'][^>]*>/i.test(trimmedHtml)
+        || /\{\{\s*new_products\b[^}]*\bshowButton:true\b[^}]*\}\}/i.test(trimmedHtml);
     if (!hasLink) {
         issues.push({ id: 'cta', severity: 'warning', message: 'No CTA link detected. Consider adding at least one action link.' });
     }

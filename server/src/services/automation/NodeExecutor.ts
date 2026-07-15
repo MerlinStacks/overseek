@@ -14,7 +14,7 @@ import { cartRecoveryService } from '../CartRecoveryService';
 import { automationConditionService } from '../AutomationConditionService';
 import { automationContextService } from '../AutomationContextService';
 import { automationCouponService } from '../AutomationCouponService';
-import { applyPreviewText, resolveMergeTags } from '../MergeTagResolver';
+import { applyPreviewText, resolveMergeTags, resolveMergeTagsWithDynamicProducts } from '../MergeTagResolver';
 import { WooService } from '../woo';
 import { FlowNode, NodeExecutionResult } from './types';
 import { renderTemplate } from './FlowNavigator';
@@ -235,7 +235,7 @@ export class NodeExecutor {
     private async executeSendEmail(config: any, enrollment: any): Promise<NodeExecutionResult> {
         const account = await prisma.account.findFirst({
             where: { id: enrollment.automation.accountId },
-            select: { wooUrl: true, domain: true }
+            select: { wooUrl: true, domain: true, currency: true }
         });
         const storeUrl = account?.wooUrl || account?.domain || '';
         const normalizedStoreUrl = storeUrl && !/^https?:\/\//i.test(storeUrl) ? `https://${storeUrl}` : storeUrl;
@@ -285,7 +285,9 @@ export class NodeExecutor {
                 : undefined,
             store: { url: normalizedStoreUrl },
             storeUrl: normalizedStoreUrl,
-            store_url: normalizedStoreUrl
+            store_url: normalizedStoreUrl,
+            accountId: enrollment.automation.accountId,
+            currency: account?.currency || 'USD'
         };
 
         const recipientTemplate = config.to || enrollment.email;
@@ -338,7 +340,7 @@ export class NodeExecutor {
                     context
                 );
                 const bodyTemplate = config.htmlContent || config.body || config.html || '';
-                const body = resolveMergeTags(
+                const body = await resolveMergeTagsWithDynamicProducts(
                     renderTemplate(bodyTemplate, context, { preserveUnknown: true }),
                     context
                 );

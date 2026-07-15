@@ -316,9 +316,9 @@ class OverSeek_Preference_Center {
 		$action_url  = $base_url ? $base_url : $fallback_url;
 		$form_action = esc_url( add_query_arg( $this->query_key, rawurlencode( $token ), $action_url ) );
 		$wrapper_class = $embedded ? ' os-pref-wrap--embedded' : '';
-		$status_badge  = $message ? 'Issue' : ( $is_success ? 'Updated' : 'Manage preferences' );
-		$status_class  = $message ? 'os-pref-badge--error' : ( $is_success ? 'os-pref-badge--success' : 'os-pref-badge--neutral' );
-		$marketing_active = 'MARKETING' !== $current_scope && 'ALL' !== $current_scope;
+		$status_text  = $message ? 'Needs attention' : ( $is_success ? 'Saved' : 'Your choices' );
+		$status_class = $message ? 'os-pref-status--error' : ( $is_success ? 'os-pref-status--success' : 'os-pref-status--neutral' );
+		$marketing_active = 'MARKETING' === $current_scope;
 		$all_active       = 'ALL' === $current_scope;
 
 		ob_start();
@@ -326,20 +326,18 @@ class OverSeek_Preference_Center {
 		<div class="os-pref-shell<?php echo esc_attr( $embedded ? ' is-embedded' : '' ); ?>">
 			<div class="os-pref-wrap<?php echo esc_attr( $wrapper_class ); ?>">
 				<div class="os-pref-card">
-					<div class="os-pref-card__hero">
-						<div>
-							<div class="os-pref-kicker">OverSeek Preferences</div>
-							<h1><?php echo esc_html( $title ); ?></h1>
-							<p class="os-pref-subtitle">Review what lands in your inbox and make a one-click update to this sender's email permissions.</p>
-						</div>
-						<span class="os-pref-badge <?php echo esc_attr( $status_class ); ?>"><?php echo esc_html( $status_badge ); ?></span>
+					<div class="os-pref-card__header">
+						<p class="os-pref-eyebrow"><?php echo esc_html( $account_name ); ?></p>
+						<h1><?php echo esc_html( $title ); ?></h1>
+						<p class="os-pref-subtitle">Control the emails sent to <?php echo esc_html( $email ?: 'this address' ); ?>.</p>
+						<span class="os-pref-status <?php echo esc_attr( $status_class ); ?>"><?php echo esc_html( $status_text ); ?></span>
 					</div>
 
 					<?php if ( $message ) : ?>
 						<div class="os-pref-banner os-pref-banner--error"><?php echo esc_html( $message ); ?></div>
 					<?php elseif ( $is_success ) : ?>
 						<div class="os-pref-banner os-pref-banner--success"><?php echo esc_html( $success_message ); ?></div>
-						<div class="os-pref-summary-grid">
+						<div class="os-pref-summary-list">
 							<div class="os-pref-summary-card">
 								<span class="os-pref-summary-label">Updated address</span>
 								<strong><?php echo esc_html( $email ?: 'This recipient' ); ?></strong>
@@ -349,9 +347,9 @@ class OverSeek_Preference_Center {
 								<strong><?php echo esc_html( 'ALL' === $current_scope ? 'All email blocked' : 'Marketing blocked' ); ?></strong>
 							</div>
 						</div>
-						<p class="os-pref-note">Your preference was saved successfully. You can close this window now.</p>
+						<p class="os-pref-note">Your preference has been saved. You can close this window.</p>
 					<?php else : ?>
-						<div class="os-pref-summary-grid">
+						<div class="os-pref-summary-list">
 							<div class="os-pref-summary-card">
 								<span class="os-pref-summary-label">Email address</span>
 								<strong class="os-pref-email"><?php echo esc_html( $email ); ?></strong>
@@ -362,20 +360,22 @@ class OverSeek_Preference_Center {
 							</div>
 						</div>
 
-						<p>Choose whether to stop marketing emails only, or stop all email from this sender.</p>
 						<div class="os-pref-note"><?php echo esc_html( $scope_message ); ?></div>
+						<p class="os-pref-section-title">What would you like to stop?</p>
 						<form method="post" action="<?php echo esc_url( $form_action ); ?>" class="os-pref-actions">
 							<?php wp_nonce_field( $this->nonce_action, $this->nonce_name ); ?>
 							<button type="submit" class="os-pref-option <?php echo $marketing_active ? 'is-active' : ''; ?>" name="scope" value="MARKETING">
+								<span class="os-pref-option__marker" aria-hidden="true"></span>
 								<span class="os-pref-option__title">Unsubscribe from marketing</span>
-								<span class="os-pref-option__copy">Keep transactional updates like receipts and essential order messaging.</span>
+								<span class="os-pref-option__copy">Stop newsletters, sales campaigns, and product follow-ups. Keep receipts and important order updates.</span>
 							</button>
 							<button type="submit" class="os-pref-option os-pref-option--all <?php echo $all_active ? 'is-active' : ''; ?>" name="scope" value="ALL">
+								<span class="os-pref-option__marker" aria-hidden="true"></span>
 								<span class="os-pref-option__title">Unsubscribe from all email</span>
-								<span class="os-pref-option__copy">Stop marketing, campaigns, and non-essential follow-up from this sender entirely.</span>
+								<span class="os-pref-option__copy">Use this if you do not want any further email from this sender.</span>
 							</button>
 						</form>
-						<p class="os-pref-footnote">Order receipts and other important updates can continue if you only opt out of marketing.</p>
+						<p class="os-pref-footnote">Changes apply to this email address only.</p>
 					<?php endif; ?>
 				</div>
 			</div>

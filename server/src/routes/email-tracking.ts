@@ -26,10 +26,36 @@ function getWooPreferenceCenterUrl(wooUrl: string | null | undefined, token: str
 
     try {
         const url = new URL(wooUrl);
+        if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
         url.searchParams.set('overseek_email_preferences', token);
         return url.toString();
     } catch {
         return null;
+    }
+}
+
+async function supportsWooPreferenceCenter(wooUrl: string): Promise<boolean> {
+    try {
+        const healthUrl = new URL(wooUrl);
+        if (healthUrl.protocol !== 'https:' && healthUrl.protocol !== 'http:') return false;
+        healthUrl.pathname = `${healthUrl.pathname.replace(/\/$/, '')}/wp-json/overseek/v1/health`;
+        healthUrl.search = '';
+        healthUrl.hash = '';
+
+        const response = await fetch(healthUrl, { signal: AbortSignal.timeout(2500) });
+        if (!response.ok) return false;
+        const health = await response.json() as {
+            success?: boolean;
+            plugin?: string;
+            capabilities?: { emailPreferenceCenter?: boolean };
+            preferenceCenterReady?: boolean;
+        };
+        return health.success === true
+            && health.plugin === 'overseek-wc'
+            && health.capabilities?.emailPreferenceCenter === true
+            && health.preferenceCenterReady === true;
+    } catch {
+        return false;
     }
 }
 
@@ -196,21 +222,59 @@ function renderHostedPreferenceHtml(context: NonNullable<Awaited<ReturnType<type
 
     return `
         <!DOCTYPE html>
-        <html><head><title>Email Preferences</title></head>
-        <body style="font-family: system-ui; padding: 40px; text-align: center; max-width: 500px; margin: 0 auto;">
-            <h1>Email Preferences</h1>
-            <p><strong>${escapedEmail}</strong> is receiving emails from <strong>${escapedAccountName}</strong>.</p>
-            <p style="color: #555;">Choose whether to stop marketing emails only, or stop all email from this sender.</p>
-            <form method="POST" action="/api/email/unsubscribe/${context.emailLog.trackingId}" style="display: grid; gap: 12px; margin-top: 24px;">
-                <button type="submit" name="scope" value="MARKETING" style="background: #dc2626; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
-                    Unsubscribe From Marketing Emails
-                </button>
-                <button type="submit" name="scope" value="ALL" style="background: #111827; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer;">
-                    Unsubscribe From All Emails
-                </button>
-            </form>
-            <p style="margin-top: 20px; color: #666; font-size: 14px;">Order receipts and other important updates can continue if you only opt out of marketing.</p>
-        </body></html>
+        <html>
+        <head>
+            <title>Email Preferences</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                body { margin: 0; background: #f7f4ed; color: #202020; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+                main { box-sizing: border-box; width: min(680px, calc(100% - 24px)); margin: 48px auto; padding: 34px; border: 1px solid #ded8cc; border-radius: 18px; background: #fffdf8; box-shadow: 0 18px 45px rgba(44, 36, 22, 0.08); }
+                header { padding-bottom: 22px; margin-bottom: 24px; border-bottom: 1px solid #ebe5d9; }
+                .eyebrow { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #8a6b1f; }
+                h1 { max-width: 520px; margin: 0 0 10px; font-size: clamp(2rem, 4vw, 3rem); line-height: 1; letter-spacing: -0.04em; }
+                p { color: #5e5a52; line-height: 1.55; }
+                .summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+                .summary div, .note { padding: 14px 16px; border: 1px solid #ebe5d9; border-radius: 14px; background: #faf7ef; }
+                .summary span { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; color: #766f64; }
+                .summary strong { word-break: break-word; }
+                .note { border-color: #eadcac; background: #f8f3e6; }
+                form { display: grid; gap: 10px; margin-top: 22px; }
+                button { display: grid; grid-template-columns: 22px 1fr; width: 100%; padding: 17px 18px; border: 1px solid #ded8cc; border-radius: 14px; background: #ffffff; text-align: left; cursor: pointer; }
+                button:hover, button:focus { border-color: #c5ad49; box-shadow: 0 10px 24px rgba(44, 36, 22, 0.08); outline: none; }
+                button::before { content: ""; width: 12px; height: 12px; margin-top: 4px; border: 2px solid #b4ad9e; border-radius: 50%; }
+                button strong, button span { grid-column: 2; }
+                button strong { margin-bottom: 4px; font-size: 16px; }
+                button span { color: #5e5a52; line-height: 1.5; }
+                .footnote { margin-bottom: 0; font-size: 13px; }
+                @media (max-width: 720px) { main { margin: 24px auto; padding: 24px 18px; border-radius: 14px; } .summary { grid-template-columns: 1fr; } }
+            </style>
+        </head>
+        <body>
+            <main>
+                <header>
+                    <p class="eyebrow">${escapedAccountName}</p>
+                    <h1>Email Preferences</h1>
+                    <p>Control the emails sent to ${escapedEmail}.</p>
+                </header>
+                <section class="summary" aria-label="Preference details">
+                    <div><span>Email address</span><strong>${escapedEmail}</strong></div>
+                    <div><span>Sender</span><strong>${escapedAccountName}</strong></div>
+                </section>
+                <p class="note">Choose what you would like to stop receiving from this sender.</p>
+                <form method="POST" action="/api/email/unsubscribe/${context.emailLog.trackingId}">
+                    <button type="submit" name="scope" value="MARKETING">
+                        <strong>Unsubscribe from marketing</strong>
+                        <span>Stop newsletters, sales campaigns, and product follow-ups. Keep receipts and important order updates.</span>
+                    </button>
+                    <button type="submit" name="scope" value="ALL">
+                        <strong>Unsubscribe from all email</strong>
+                        <span>Use this if you do not want any further email from this sender.</span>
+                    </button>
+                </form>
+                <p class="footnote">Changes apply to this email address only.</p>
+            </main>
+        </body>
+        </html>
     `;
 }
 
@@ -394,6 +458,11 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                             <p>This unsubscribe link is invalid or has expired.</p>
                         </body></html>
                     `);
+                }
+
+                if (context.wooPreferenceCenterUrl && context.emailLog.account?.wooUrl
+                    && await supportsWooPreferenceCenter(context.emailLog.account.wooUrl)) {
+                    return reply.code(302).redirect(context.wooPreferenceCenterUrl);
                 }
 
                 return reply.type('text/html').send(renderHostedPreferenceHtml(context));

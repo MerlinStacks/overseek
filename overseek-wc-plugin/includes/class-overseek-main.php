@@ -85,7 +85,7 @@ class OverSeek_Main
 
 			$frontend = new OverSeek_Frontend();
 			if (get_option('overseek_enable_chat') && $is_frontend_request) {
-				add_action('wp_head', [$frontend, 'print_scripts']);
+				add_action('wp_footer', [$frontend, 'print_scripts']);
 			}
 		}
 

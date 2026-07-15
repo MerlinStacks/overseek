@@ -672,6 +672,11 @@ export class FeedMappingService {
             });
 
         const rows = products.flatMap((product) => {
+            const productRawData = product.rawData as any;
+            const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
+            const isVariableProduct = String(productRawData?.type || '').includes('variable')
+                || (Array.isArray(productRawData?.variations) && productRawData.variations.length > 0)
+                || hasVariations;
             const overrides = getFeedOverrides(product.seoData, channel);
             const aiSuggestions = getFeedAiSuggestions(product.seoData, channel);
             const mapColumns = (valueReader: (sourceField: string) => string | null, overridePrefix?: string) => {
@@ -700,7 +705,7 @@ export class FeedMappingService {
             };
 
             const productRows: any[] = [];
-            if (includeParents) {
+            if (includeParents || !isVariableProduct) {
                 productRows.push({
                     rowType: 'parent',
                     rowId: `p:${product.wooId}`,
@@ -803,7 +808,12 @@ export class FeedMappingService {
 
         const rows = products.flatMap((product) => {
             const out: Array<{ rowId: string; wooId: number; variationWooId?: number }> = [];
-            if (includeParents) {
+            const productRawData = product.rawData as any;
+            const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
+            const isVariableProduct = String(productRawData?.type || '').includes('variable')
+                || (Array.isArray(productRawData?.variations) && productRawData.variations.length > 0)
+                || hasVariations;
+            if (includeParents || !isVariableProduct) {
                 out.push({ rowId: `p:${product.wooId}`, wooId: product.wooId });
             }
 

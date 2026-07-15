@@ -119,4 +119,49 @@ describe('emailDesignerV2', () => {
         expect(html).toContain('{{order.trackingNumber}}');
         expect(html).toContain('Track with AusPost');
     });
+
+    it('renders new products blocks as dynamic merge tags', () => {
+        const design = createDefaultEmailDesignV2({ title: 'New products test' });
+        design.document.sections = [{
+            id: 'section-new-products',
+            backgroundColor: '#ffffff',
+            columns: [{
+                id: 'column-new-products',
+                width: 100,
+                blocks: [{
+                    id: 'new-products-1',
+                    type: 'newProducts',
+                    props: {
+                        heading: 'Fresh arrivals',
+                        count: 4,
+                        columns: 2,
+                        showImage: true,
+                        showDescription: true,
+                        showPrice: true,
+                        showButton: true,
+                        buttonLabel: 'Shop now',
+                    },
+                }],
+            }],
+        }];
+
+        const html = compileEmailDesignV2(design);
+
+        expect(html).toContain('Fresh arrivals');
+        expect(html).toContain('{{new_products count:4 columns:2 showImage:true showDescription:true showPrice:true showButton:true buttonLabel:Shop%20now textColor:%230f172a mutedTextColor:%2364748b primaryColor:%234f46e5 borderRadius:14}}');
+    });
+
+    it('clamps new product counts to whole supported values', () => {
+        const design = createDefaultEmailDesignV2();
+        design.document.sections[0].columns[0].blocks = [{
+            id: 'new-products-clamped',
+            type: 'newProducts',
+            props: {
+                heading: '', count: 0, columns: 2, showImage: true,
+                showDescription: false, showPrice: true, showButton: true, buttonLabel: 'View',
+            },
+        }];
+
+        expect(compileEmailDesignV2(design)).toContain('{{new_products count:1 columns:2');
+    });
 });

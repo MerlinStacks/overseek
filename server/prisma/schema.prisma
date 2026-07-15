@@ -623,6 +623,9 @@ model WooProduct {
   wooId       Int
   name        String
   sku         String?
+  status      String?
+  catalogVisibility String?
+  dateCreated DateTime?
   price       Decimal? @db.Decimal(10, 2)
   stockStatus String? // "instock", "outofstock"
 
@@ -673,6 +676,7 @@ model WooProduct {
   @@unique([accountId, wooId])
   @@index([accountId, sku])                   // SKU search/lookup
   @@index([accountId, stockStatus])           // Stock filter (out of stock view)
+  @@index([accountId, status, catalogVisibility, dateCreated(sort: Desc)])
   @@index([accountId, updatedAt(sort: Desc)]) // Recent products list
 }
 

@@ -39,6 +39,7 @@ export const WooProductSchema = z.object({
     permalink: z.string().url().optional(),
     type: z.string().optional(),
     status: z.string().optional(),
+    catalog_visibility: z.string().optional(),
     sku: z.string().optional().nullable(),
     price: z.string().optional(),
     regular_price: z.string().optional(),
@@ -60,6 +61,7 @@ export const WooProductSchema = z.object({
         slug: z.string().optional()
     })).optional(),
     date_created: z.string().optional(),
+    date_created_gmt: z.string().optional(),
     date_modified: z.string().optional()
 }).passthrough();
 

@@ -44,6 +44,16 @@ describe('evaluateEmailPreflight', () => {
         expect(issues).toEqual([]);
     });
 
+    it('recognizes an enabled dynamic product button as a CTA', () => {
+        const issues = evaluateEmailPreflight({
+            html: '<p>New products</p>{{new_products count:3 showButton:true}}',
+            subject: 'New products',
+            emailCategory: 'TRANSACTIONAL',
+        });
+
+        expect(issues.some((issue) => issue.id === 'cta')).toBe(false);
+    });
+
     it('groups issues by severity', () => {
         const issues = evaluateEmailPreflight({
             html: '<p>Hi {{}}</p><img src="hero.jpg" />',

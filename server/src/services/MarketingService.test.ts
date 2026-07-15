@@ -16,6 +16,12 @@ const mocks = vi.hoisted(() => ({
             findMany: vi.fn(),
             count: vi.fn(),
         },
+        wooProduct: {
+            findMany: vi.fn(),
+        },
+        account: {
+            findFirst: vi.fn(),
+        },
         emailTemplate: {
             findMany: vi.fn(),
             update: vi.fn(),
@@ -91,8 +97,11 @@ describe('MarketingService Optimization', () => {
     beforeEach(() => {
         marketingService = new MarketingService();
         vi.clearAllMocks();
+        mocks.prisma.wooCustomer.findMany.mockReset();
         // Default: campaign.update resolves (called twice: SENDING + SENT)
         mocks.prisma.marketingCampaign.update.mockResolvedValue({});
+        mocks.prisma.account.findFirst.mockResolvedValue({ wooUrl: 'https://shop.test', domain: null, currency: 'GBP' });
+        mocks.prisma.wooProduct.findMany.mockResolvedValue([]);
     });
 
     it('should fetch customers in batches using pagination (Optimized)', async () => {
@@ -167,5 +176,23 @@ describe('MarketingService Optimization', () => {
 
         expect(mocks.segmentService.getSegmentCount).toHaveBeenCalledWith(accountId, segmentId);
         expect(mocks.segmentService.iterateCustomersInSegment).toHaveBeenCalledWith(accountId, segmentId, 1000);
+    });
+
+    it('loads dynamic products once for the whole campaign', async () => {
+        const accountId = 'acc-1';
+        mocks.prisma.marketingCampaign.findFirst.mockResolvedValue({
+            id: 'camp-products', accountId, segmentId: null, subject: 'New arrivals',
+            content: '{{new_products count:3 columns:1 showButton:true}}',
+        });
+        mocks.prisma.wooCustomer.count.mockResolvedValue(2);
+        mocks.prisma.wooCustomer.findMany.mockResolvedValueOnce([
+            { id: 'one', email: 'one@example.com' },
+            { id: 'two', email: 'two@example.com' },
+        ]);
+
+        await marketingService.sendCampaign('camp-products', accountId);
+
+        expect(mocks.prisma.wooProduct.findMany).toHaveBeenCalledTimes(1);
+        expect(mocks.emailService.sendEmail).toHaveBeenCalledTimes(2);
     });
 });

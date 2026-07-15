@@ -8,6 +8,7 @@
 import { normalizeOrderStatus } from '../constants/orderStatus';
 import { getInvoiceItemMeta } from '@overseek/core';
 import { extractOrderTracking, TrackingItem } from '../utils/orderTracking';
+import { prisma } from '../utils/prisma';
 
 interface MergeTagContext {
     order?: any;
@@ -28,7 +29,33 @@ interface MergeTagContext {
     preferences_url?: string;
     unsubscribeUrl?: string;
     unsubscribe_url?: string;
+    accountId?: string;
+    currency?: string;
 }
+
+interface NewProductsOptions {
+    count: number;
+    columns: number;
+    showImage: boolean;
+    showDescription: boolean;
+    showPrice: boolean;
+    showButton: boolean;
+    buttonLabel: string;
+    textColor: string;
+    mutedTextColor: string;
+    primaryColor: string;
+    borderRadius: number;
+    currency: string;
+}
+
+type DynamicProduct = {
+    name: string;
+    price: unknown;
+    permalink: string | null;
+    mainImage: string | null;
+    images: unknown;
+    rawData: unknown;
+};
 
 /**
  * Replace WooCommerce merge tags with actual order/customer data.
@@ -224,6 +251,43 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     }
 
     return replaceFallbackOnlyTags(result);
+}
+
+export async function loadDynamicEmailProducts(accountId: string): Promise<DynamicProduct[]> {
+    return prisma.wooProduct.findMany({
+        where: {
+            accountId,
+            status: 'publish',
+            catalogVisibility: { in: ['visible', 'catalog', 'search'] },
+            permalink: { not: null },
+        },
+        orderBy: { dateCreated: { sort: 'desc', nulls: 'last' } },
+        take: 6,
+        select: {
+            name: true,
+            price: true,
+            permalink: true,
+            mainImage: true,
+            images: true,
+            rawData: true,
+        }
+    });
+}
+
+export async function resolveMergeTagsWithDynamicProducts(
+    html: string,
+    context: MergeTagContext,
+    prefetchedProducts?: DynamicProduct[]
+): Promise<string> {
+    const resolved = resolveMergeTags(html, context);
+    if (!resolved.includes('{{new_products') || !context.accountId) return resolved;
+
+    const products = prefetchedProducts || await loadDynamicEmailProducts(context.accountId);
+
+    return resolved.replace(/\{\{\s*new_products([^}]*)\}\}/g, (_match, params) => {
+        const options = { ...parseNewProductsOptions(String(params || '')), currency: context.currency || 'USD' };
+        return renderNewProductsBlock(products.slice(0, options.count), options);
+    });
 }
 
 function getMergeTagName(tag: string): string {
@@ -526,6 +590,93 @@ function getProductImageUrl(product: any): string {
     if (typeof image === 'string') return image;
     if (image && typeof image === 'object') return image.src || image.url || '';
     return '';
+}
+
+function parseNewProductsOptions(params: string): NewProductsOptions {
+    const getParam = (name: string) => params.match(new RegExp(`${name}:([^\\s]+)`))?.[1];
+    const integerParam = (name: string, fallback: number, max: number) => {
+        const value = Number(getParam(name));
+        return Number.isFinite(value) ? Math.min(max, Math.max(1, Math.floor(value))) : fallback;
+    };
+    const decodeParam = (name: string, fallback: string) => {
+        try {
+            return decodeURIComponent(getParam(name) || fallback);
+        } catch {
+            return fallback;
+        }
+    };
+    const cssColorParam = (name: string, fallback: string) => {
+        const value = decodeParam(name, fallback);
+        return /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback;
+    };
+    const radiusValue = Number(getParam('borderRadius'));
+    const boolParam = (name: string, fallback: boolean) => {
+        const value = getParam(name);
+        if (value === 'true') return true;
+        if (value === 'false') return false;
+        return fallback;
+    };
+
+    return {
+        count: integerParam('count', 3, 6),
+        columns: integerParam('columns', 3, 3),
+        showImage: boolParam('showImage', true),
+        showDescription: boolParam('showDescription', false),
+        showPrice: boolParam('showPrice', true),
+        showButton: boolParam('showButton', true),
+        buttonLabel: decodeParam('buttonLabel', 'View Product'),
+        textColor: cssColorParam('textColor', '#0f172a'),
+        mutedTextColor: cssColorParam('mutedTextColor', '#64748b'),
+        primaryColor: cssColorParam('primaryColor', '#4f46e5'),
+        borderRadius: Number.isFinite(radiusValue) ? Math.min(40, Math.max(0, Math.floor(radiusValue))) : 8,
+        currency: 'USD',
+    };
+}
+
+function renderNewProductsBlock(products: any[], options: NewProductsOptions): string {
+    if (!products.length) return '';
+
+    const width = `${Math.floor(100 / options.columns)}%`;
+    const rows: string[] = [];
+    for (let index = 0; index < products.length; index += options.columns) {
+        const rowProducts = products.slice(index, index + options.columns);
+        rows.push(`<tr>${rowProducts.map((product) => renderNewProductCell(product, options, width)).join('')}${rowProducts.length < options.columns ? '<td class="os-mobile-hidden">&nbsp;</td>'.repeat(options.columns - rowProducts.length) : ''}</tr>`);
+    }
+
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;"><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function renderNewProductCell(product: any, options: NewProductsOptions, width: string): string {
+    const rawData = product.rawData && typeof product.rawData === 'object' ? product.rawData : {};
+    const name = String(product.name || rawData.name || 'New product');
+    const image = getProductImageUrl({ ...rawData, image: product.mainImage, images: product.images });
+    const url = getSafeProductUrl(product.permalink || rawData.permalink || rawData.url);
+    const description = stripHtml(String(rawData.short_description || rawData.description || '')).slice(0, 140);
+    const price = formatCurrency(product.price ?? rawData.price, options.currency);
+
+    return `<td class="os-mobile-block" width="${width}" valign="top" style="width:${width};padding:6px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:10px;"><tbody><tr><td style="padding:12px;text-align:center;">
+            ${options.showImage && image ? `<a href="${escapeHtml(url)}"><img src="${escapeHtml(image)}" alt="${escapeHtml(name)}" width="160" style="display:block;max-width:100%;height:auto;border:0;border-radius:8px;margin:0 auto 10px;" /></a>` : ''}
+            <p class="os-email-product-title" style="margin:0 0 6px;color:${options.textColor};font-size:15px;line-height:1.35;font-weight:700;">${escapeHtml(name)}</p>
+            ${options.showDescription && description ? `<p class="os-email-muted" style="margin:0 0 8px;color:${options.mutedTextColor};font-size:13px;line-height:1.45;">${escapeHtml(description)}</p>` : ''}
+            ${options.showPrice ? `<p style="margin:0 0 10px;color:${options.primaryColor};font-weight:700;">${escapeHtml(price)}</p>` : ''}
+            ${options.showButton ? `<a href="${escapeHtml(url)}" style="display:inline-block;background:${options.primaryColor};color:#ffffff;text-decoration:none;border-radius:${options.borderRadius}px;padding:8px 12px;font-size:13px;font-weight:700;">${escapeHtml(options.buttonLabel)}</a>` : ''}
+        </td></tr></tbody></table>
+    </td>`;
+}
+
+function getSafeProductUrl(value: unknown): string {
+    if (typeof value !== 'string') return '#';
+    try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : '#';
+    } catch {
+        return '#';
+    }
+}
+
+function stripHtml(value: string): string {
+    return value.replace(/<[^>]*>/g, '').trim();
 }
 
 function renderOrderReviewLinks(items: any[], storeUrl: string, prefill?: { name?: string; email?: string }): string {

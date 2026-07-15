@@ -85,6 +85,45 @@ describe('TikTokEventsService', () => {
         expect(body.data[0].user?.ttclid).toBe('tiktok-click-id-1');
     });
 
+    it('should use top-level click identity and hash the external ID', async () => {
+        const addToCartData = {
+            ...purchaseData,
+            type: 'add_to_cart',
+            clickId: 'top-level-ttclid',
+            clickPlatform: 'tiktok',
+            payload: {
+                total: 20,
+                currency: 'AUD',
+                externalId: 'visitor-123',
+            },
+        };
+
+        await service.sendEvent(accountId, config, addToCartData, null);
+
+        const user = JSON.parse((global.fetch as any).mock.calls[0][1].body).data[0].user;
+        expect(user.ttclid).toBe('top-level-ttclid');
+        expect(user.external_id).toHaveLength(64);
+        expect(user.external_id).not.toBe('visitor-123');
+        expect(user.email).toBe('');
+        expect(user.phone_number).toBe('');
+    });
+
+    it('should normalize phone numbers to E.164 before hashing', async () => {
+        const addToCartData = {
+            ...purchaseData,
+            type: 'add_to_cart',
+            payload: {
+                billingPhone: '0412 345 678',
+                billingCountry: 'AU',
+            },
+        };
+
+        await service.sendEvent(accountId, config, addToCartData, null);
+
+        const user = JSON.parse((global.fetch as any).mock.calls[0][1].body).data[0].user;
+        expect(user.phone_number).toBe('bc65da54a3ddbacfdc93a0400f0a2d78e41c2180c8255015e9616facfe56f58a');
+    });
+
     it('should include Access-Token header', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 

@@ -209,6 +209,7 @@ class OverSeek_Server_Tracking
 
         // Persist click ID from ad platforms (gclid, fbclid, etc.)
         OverSeek_Tracking_Attribution_Utils::persist_click_id(self::$click_id_params);
+        OverSeek_Tracking_Attribution_Utils::persist_meta_identifiers();
 
         // Persist landing page referrer (only if external)
         OverSeek_Tracking_Attribution_Utils::persist_landing_referrer();

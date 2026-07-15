@@ -82,6 +82,53 @@ describe('MetaCAPIService', () => {
         expect(userData.fbp).toBe('fb.1.456');
     });
 
+    it('should construct fbc from a top-level Facebook click ID', async () => {
+        const viewData = {
+            ...purchaseData,
+            type: 'product_view',
+            clickId: 'meta-click-id',
+            clickPlatform: 'facebook',
+            payload: { items: [{ id: 10, sku: 'SKU1', price: 20 }] },
+        };
+
+        await service.sendEvent(accountId, config, viewData, session);
+
+        const userData = JSON.parse((global.fetch as any).mock.calls[0][1].body).data[0].user_data;
+        expect(userData.fbc).toMatch(/^fb\.1\.\d+\.meta-click-id$/);
+    });
+
+    it('should include ViewContent identity and normalize phone before hashing', async () => {
+        const viewData = {
+            ...purchaseData,
+            type: 'product_view',
+            payload: {
+                externalId: 'visitor-123',
+                email: 'viewer@example.com',
+                billingPhone: '0412 345 678',
+                billingCountry: 'AU',
+                billingFirst: 'Jane',
+                billingLast: 'Doe',
+                billingCity: 'Sydney',
+                billingState: 'NSW',
+                billingZip: '2000',
+                items: [{ id: 10, sku: 'SKU1', price: 20 }],
+            },
+        };
+
+        await service.sendEvent(accountId, config, viewData, null);
+
+        const userData = JSON.parse((global.fetch as any).mock.calls[0][1].body).data[0].user_data;
+        expect(userData.em).toHaveLength(64);
+        expect(userData.ph).toBe('bc65da54a3ddbacfdc93a0400f0a2d78e41c2180c8255015e9616facfe56f58a');
+        expect(userData.external_id).toHaveLength(64);
+        expect(userData.fn).toHaveLength(64);
+        expect(userData.ln).toHaveLength(64);
+        expect(userData.ct).toHaveLength(64);
+        expect(userData.st).toHaveLength(64);
+        expect(userData.zp).toHaveLength(64);
+        expect(userData.country).toHaveLength(64);
+    });
+
     it('should include hashed external_id when customerId is in payload', async () => {
         const dataWithCustomer = {
             ...purchaseData,

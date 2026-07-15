@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Wifi, WifiOff, AlertCircle, Clock, X, Loader2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useSyncStatus } from '../../context/SyncStatusContext';
@@ -15,6 +16,7 @@ type SyncHealthState = 'OFFLINE' | 'SYNCING' | 'FAILED' | 'LAGGING' | 'HEALTHY';
  */
 export function SidebarSyncStatus({ collapsed }: SidebarSyncStatusProps) {
     const { isSyncing, logs, syncState, activeJobs, controlSync } = useSyncStatus();
+    const navigate = useNavigate();
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
     const [isHovered, setIsHovered] = useState(false);
 
@@ -111,6 +113,7 @@ export function SidebarSyncStatus({ collapsed }: SidebarSyncStatusProps) {
     const current = config[healthState];
     const Icon = current.icon;
     const hasActiveJobs = activeJobs && activeJobs.length > 0;
+    const opensSyncPage = healthState === 'FAILED';
 
     return (
         <div
@@ -120,10 +123,25 @@ export function SidebarSyncStatus({ collapsed }: SidebarSyncStatusProps) {
         >
             {/* Main Status Indicator */}
             <div className={cn(
-                "flex items-center gap-2 px-2 py-2 rounded-lg transition-colors cursor-pointer",
+                "flex items-center gap-2 px-2 py-2 rounded-lg transition-colors",
+                opensSyncPage && "cursor-pointer hover:ring-2 hover:ring-red-200",
                 current.bg,
                 current.text
-            )}>
+            )}
+                onClick={() => {
+                    if (opensSyncPage) navigate('/settings?tab=sync');
+                }}
+                role={opensSyncPage ? 'button' : undefined}
+                tabIndex={opensSyncPage ? 0 : undefined}
+                onKeyDown={(event) => {
+                    if (!opensSyncPage) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        navigate('/settings?tab=sync');
+                    }
+                }}
+                title={opensSyncPage ? 'Open sync logs' : undefined}
+            >
                 <div className="relative flex items-center justify-center shrink-0 w-8 h-8">
                     <div className="relative">
                         <div className={cn("absolute inset-0 opacity-20 rounded-full", isSyncing ? "animate-ping" : "animate-pulse", current.dot.replace('bg-', 'bg-'))} />

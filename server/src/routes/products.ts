@@ -8,6 +8,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { WooService } from '../services/woo';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { parseWooDate } from '../utils/wooDates';
 import { SeoScoringService } from '../services/SeoScoringService';
 import { MerchantCenterService } from '../services/MerchantCenterService';
 import { IndexingService } from '../services/search/IndexingService';
@@ -124,6 +125,9 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 update: {
                     name: created.name,
                     sku: created.sku,
+                    status: created.status || null,
+                    catalogVisibility: created.catalog_visibility || 'visible',
+                    dateCreated: parseWooDate(created.date_created_gmt || created.date_created),
                     price: created.price === '' ? null : created.price,
                     stockStatus: created.stock_status,
                     stockQuantity: created.stock_quantity ?? null,
@@ -138,6 +142,9 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     wooId: created.id,
                     name: created.name,
                     sku: created.sku,
+                    status: created.status || null,
+                    catalogVisibility: created.catalog_visibility || 'visible',
+                    dateCreated: parseWooDate(created.date_created_gmt || created.date_created),
                     price: created.price === '' ? null : created.price,
                     stockStatus: created.stock_status,
                     stockQuantity: created.stock_quantity ?? null,
@@ -235,10 +242,14 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 update: {
                     name: p.name,
                     sku: p.sku,
+                    status: p.status || null,
+                    catalogVisibility: p.catalog_visibility || 'visible',
+                    dateCreated: parseWooDate(p.date_created_gmt || p.date_created),
                     price: p.price === '' ? null : p.price,
                     stockStatus: p.stock_status,
                     stockQuantity: p.stock_quantity ?? null,
                     manageStock: p.manage_stock ?? false,
+                    permalink: p.permalink,
                     rawData: rawDataClean as any,
                     mainImage: p.images?.[0]?.src,
                     weight: p.weight ? parseFloat(p.weight) : null,
@@ -252,6 +263,9 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     wooId: p.id,
                     name: p.name,
                     sku: p.sku,
+                    status: p.status || null,
+                    catalogVisibility: p.catalog_visibility || 'visible',
+                    dateCreated: parseWooDate(p.date_created_gmt || p.date_created),
                     price: p.price === '' ? null : p.price,
                     stockStatus: p.stock_status,
                     stockQuantity: p.stock_quantity ?? null,

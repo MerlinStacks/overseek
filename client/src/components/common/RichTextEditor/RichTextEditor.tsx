@@ -2,7 +2,7 @@
  * RichTextEditor - Unified rich text editor component built on Lexical.
  * Supports multiple variants and configurable features.
  */
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Logger } from '../../../utils/logger';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
@@ -79,6 +79,9 @@ export function RichTextEditor({
     toolbarRightSlot,
     mergeTags,
 }: RichTextEditorProps) {
+    // External value hydration must not be reported as a user edit.
+    const externalUpdateRef = useRef(false);
+
     // Memoize features to prevent re-renders
     const enabledFeatures = useMemo(
         () => features || DEFAULT_FEATURES[variant],
@@ -138,8 +141,8 @@ export function RichTextEditor({
                 <HistoryPlugin />
                 <LinkPlugin />
                 <ListPlugin />
-                <OnChangePlugin onChange={handleChange} />
-                <InitialValuePlugin initialValue={value} />
+                <OnChangePlugin onChange={handleChange} externalUpdateRef={externalUpdateRef} />
+                <InitialValuePlugin initialValue={value} externalUpdateRef={externalUpdateRef} />
 
                 {/* Enter submit for compact variant */}
                 {variant === 'compact' && onSubmit && (

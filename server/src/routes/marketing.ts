@@ -10,7 +10,7 @@ import { prisma } from '../utils/prisma';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { cartRecoveryService } from '../services/CartRecoveryService';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
-import { applyPreviewText, resolveMergeTags } from '../services/MergeTagResolver';
+import { applyPreviewText, resolveMergeTags, resolveMergeTagsWithDynamicProducts } from '../services/MergeTagResolver';
 import { HTTP_LIMITS } from '../config/limits';
 
 const service = new MarketingService();
@@ -437,7 +437,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const emailAccount = await getDefaultEmailAccount(accountId);
             const account = await prisma.account.findFirst({
                 where: { id: accountId },
-                select: { wooUrl: true, domain: true }
+                select: { wooUrl: true, domain: true, currency: true }
             });
             const latestOrder = await prisma.wooOrder.findFirst({
                 where: { accountId },
@@ -484,13 +484,15 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                     permalink: firstLineItem.permalink
                 } : undefined,
                 store: { url: normalizedStoreUrl },
+                accountId,
+                currency: account?.currency || 'USD',
                 linkTriggerUrl: normalizedStoreUrl,
                 preferencesUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/my-account/edit-account/` : '',
                 unsubscribeUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/?unsubscribe=1` : ''
             };
 
             const resolvedSubject = resolveMergeTags(subject, testContext);
-            const resolvedContent = resolveMergeTags(content, testContext);
+            const resolvedContent = await resolveMergeTagsWithDynamicProducts(content, testContext);
             const resolvedPreviewText = resolveMergeTags(previewText || '', testContext);
             const contentWithPreviewText = applyPreviewText(resolvedContent, resolvedPreviewText);
 

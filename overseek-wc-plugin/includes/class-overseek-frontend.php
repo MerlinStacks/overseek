@@ -33,7 +33,7 @@ class OverSeek_Frontend
 	}
 
 	/**
-	 * Print scripts to the head if chat is enabled and within business hours.
+	 * Print scripts to the footer if chat is enabled and within business hours.
 	 * Analytics is handled server-side - no JavaScript needed.
 	 *
 	 * @return void
@@ -56,10 +56,10 @@ class OverSeek_Frontend
 
 		$api_url = untrailingslashit($api_url);
 
-		// Output chat widget script with modern loading attributes.
+		// Output after the body exists because the widget appends itself to document.body.
 		echo "<!-- OverSeek Live Chat Widget v" . esc_html(OVERSEEK_WC_VERSION) . " -->\n";
 		printf(
-			'<script src="%s/api/chat/widget.js?id=%s&v=%s" defer async crossorigin="anonymous"></script>%s',
+			'<script src="%s/api/chat/widget.js?id=%s&v=%s" defer crossorigin="anonymous"></script>%s',
 			esc_url($api_url),
 			esc_attr($account_id),
 			esc_attr(OVERSEEK_WC_VERSION),

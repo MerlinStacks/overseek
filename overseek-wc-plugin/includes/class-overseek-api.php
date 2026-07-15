@@ -1115,6 +1115,10 @@ class OverSeek_API {
 		return new WP_REST_Response( [
 			'success'            => true,
 			'plugin'             => 'overseek-wc',
+			'capabilities'       => [
+				'emailPreferenceCenter' => true,
+			],
+			'preferenceCenterReady' => ! empty( $account_id ) && ! empty( $api_url ),
 			'version'            => $show_sensitive ? OVERSEEK_WC_VERSION : null,
 			'configured'         => $show_sensitive ? ! empty( $account_id ) && ! empty( $api_url ) : null,
 			'accountId'          => $show_sensitive ? $account_id : null,

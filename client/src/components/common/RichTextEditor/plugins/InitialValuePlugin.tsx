@@ -6,12 +6,14 @@
  * or external (from props like canned response selection or clearing).
  */
 import { useEffect, useRef } from 'react';
+import type { RefObject } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
 import { $getRoot, $insertNodes, $createParagraphNode } from 'lexical';
 
 interface InitialValuePluginProps {
     initialValue: string;
+    externalUpdateRef: RefObject<boolean>;
 }
 
 /**
@@ -47,7 +49,7 @@ function preprocessValue(value: string): string {
         .replace(/\n/g, '<br>');
 }
 
-export function InitialValuePlugin({ initialValue }: InitialValuePluginProps) {
+export function InitialValuePlugin({ initialValue, externalUpdateRef }: InitialValuePluginProps) {
     const [editor] = useLexicalComposerContext();
     const lastExternalValueRef = useRef<string>('');
     const currentEditorValueRef = useRef<string>('');
@@ -78,6 +80,7 @@ export function InitialValuePlugin({ initialValue }: InitialValuePluginProps) {
         // Update the editor with the new external value
         lastExternalValueRef.current = initialValue || '';
 
+        externalUpdateRef.current = true;
         editor.update(() => {
             const root = $getRoot();
 
@@ -100,7 +103,7 @@ export function InitialValuePlugin({ initialValue }: InitialValuePluginProps) {
         });
 
         currentEditorValueRef.current = normalizedExternal;
-    }, [editor, initialValue]);
+    }, [editor, externalUpdateRef, initialValue]);
 
     return null;
 }

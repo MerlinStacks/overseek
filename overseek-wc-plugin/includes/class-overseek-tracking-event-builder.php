@@ -36,6 +36,7 @@ class OverSeek_Tracking_Event_Builder
             'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 
+        $payload = OverSeek_Tracking_Payload_Utils::attach_customer_identity($payload);
         $payload = OverSeek_Tracking_Payload_Utils::attach_platform_cookies(self::add_cart_totals($payload, $cart));
 
         // Include items array for CAPI services
@@ -212,6 +213,7 @@ class OverSeek_Tracking_Event_Builder
             'categories' => $categories,
             'productType' => $product->get_type(),
             'eventId' => OverSeek_Tracking_Payload_Utils::get_shared_product_view_event_id((int) $product->get_id(), $visitor_id),
+            'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 
         // Include items array for CAPI services — matches the format used by purchase/checkout events
@@ -226,6 +228,8 @@ class OverSeek_Tracking_Event_Builder
                 'categories' => $categories,
             ),
         );
+
+        $payload = OverSeek_Tracking_Payload_Utils::attach_customer_identity($payload);
 
         return OverSeek_Tracking_Payload_Utils::attach_platform_cookies($payload);
     }

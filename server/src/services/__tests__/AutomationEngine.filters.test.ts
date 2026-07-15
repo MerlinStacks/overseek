@@ -6,6 +6,9 @@ vi.mock('../../utils/prisma', () => ({
     prisma: {
         wooProduct: {
             findMany: vi.fn()
+        },
+        marketingAutomation: {
+            findMany: vi.fn()
         }
     }
 }));
@@ -46,6 +49,23 @@ describe('AutomationEngine trigger filters', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked((prisma as any).marketingAutomation.findMany).mockResolvedValue([]);
+    });
+
+    it('can target a specific lifecycle automation when processing no-purchase triggers', async () => {
+        await engine.processTrigger('account-1', 'NO_PURCHASE_IN_X_DAYS', {
+            automationId: 'automation-90-days',
+            email: 'customer@example.com'
+        });
+
+        expect((prisma as any).marketingAutomation.findMany).toHaveBeenCalledWith({
+            where: {
+                accountId: 'account-1',
+                triggerType: 'NO_PURCHASE_IN_X_DAYS',
+                isActive: true,
+                id: 'automation-90-days'
+            }
+        });
     });
 
     it('fails closed when category filtering is enabled without a category', async () => {

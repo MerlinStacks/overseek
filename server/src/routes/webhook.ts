@@ -7,6 +7,7 @@ import { FastifyPluginAsync } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { parseWooDate } from '../utils/wooDates';
 import { IndexingService } from '../services/search/IndexingService';
 import { WebhookDeliveryService } from '../services/WebhookDeliveryService';
 import { EventBus, EVENTS } from '../services/events';
@@ -271,12 +272,22 @@ export async function processWebhookPayload(
                 where: { accountId_wooId: { accountId, wooId: body.id as number } },
                 update: {
                     name: (body.name as string) || 'Unknown',
+                    status: (body.status as string) || null,
+                    catalogVisibility: (body.catalog_visibility as string) || 'visible',
+                    dateCreated: parseWooDate(body.date_created_gmt || body.date_created),
+                    permalink: (body.permalink as string) || null,
+                    mainImage: Array.isArray(body.images) && typeof body.images[0]?.src === 'string' ? body.images[0].src : null,
                     rawData: body as any
                 },
                 create: {
                     account: { connect: { id: accountId } },
                     wooId: body.id as number,
                     name: (body.name as string) || 'Unknown',
+                    status: (body.status as string) || null,
+                    catalogVisibility: (body.catalog_visibility as string) || 'visible',
+                    dateCreated: parseWooDate(body.date_created_gmt || body.date_created),
+                    permalink: (body.permalink as string) || null,
+                    mainImage: Array.isArray(body.images) && typeof body.images[0]?.src === 'string' ? body.images[0].src : null,
                     rawData: body as any
                 }
             });

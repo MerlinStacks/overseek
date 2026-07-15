@@ -91,6 +91,33 @@ class OverSeek_Tracking_Payload_Utils
         return $payload;
     }
 
+    /**
+     * Attach available WooCommerce customer identity to a server event.
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public static function attach_customer_identity(array $payload): array
+    {
+        $user = wp_get_current_user();
+        $customer = function_exists('WC') && WC() ? WC()->customer : null;
+        $email = ($user && $user->ID > 0) ? (string) $user->user_email : '';
+        if ($email === '' && $customer) {
+            $email = (string) $customer->get_billing_email();
+        }
+
+        $payload['email'] = strtolower(trim($email));
+        $payload['billingPhone'] = $customer ? trim((string) $customer->get_billing_phone()) : '';
+        $payload['billingFirst'] = $customer ? trim((string) $customer->get_billing_first_name()) : '';
+        $payload['billingLast'] = $customer ? trim((string) $customer->get_billing_last_name()) : '';
+        $payload['billingCity'] = $customer ? trim((string) $customer->get_billing_city()) : '';
+        $payload['billingState'] = $customer ? trim((string) $customer->get_billing_state()) : '';
+        $payload['billingZip'] = $customer ? trim((string) $customer->get_billing_postcode()) : '';
+        $payload['billingCountry'] = $customer ? strtoupper(trim((string) $customer->get_billing_country())) : '';
+
+        return $payload;
+    }
+
     public static function get_shared_product_view_event_id(int $product_id, ?string $visitor_id): string
     {
         $material = implode('|', array('overseek', 'product_view', (string) $product_id, (string) $visitor_id));

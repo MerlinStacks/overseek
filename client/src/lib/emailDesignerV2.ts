@@ -78,6 +78,7 @@ export type EmailBlock =
     | DividerBlock
     | SpacerBlock
     | ProductBlock
+    | NewProductsBlock
     | CartItemsBlock
     | CartLinkBlock
     | OrderSummaryBlock
@@ -193,6 +194,22 @@ export interface ProductBlock extends BaseBlock {
         showButton?: boolean;
         buttonLabel: string;
         buttonHref: string;
+    };
+}
+
+export interface NewProductsBlock extends BaseBlock {
+    type: 'newProducts';
+    props: {
+        heading?: string;
+        count: number;
+        columns?: 1 | 2 | 3;
+        showImage: boolean;
+        showDescription: boolean;
+        showPrice: boolean;
+        showButton?: boolean;
+        buttonLabel: string;
+        padding?: string;
+        align?: 'left' | 'center' | 'right';
     };
 }
 
@@ -778,6 +795,29 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         </div>`;
     }
 
+    if (block.type === 'newProducts') {
+        const props = block.props;
+        const rawCount = Number(props.count);
+        const rawColumns = Number(props.columns);
+        const params = [
+            `count:${Number.isFinite(rawCount) ? Math.min(6, Math.max(1, Math.floor(rawCount))) : 3}`,
+            `columns:${Number.isFinite(rawColumns) ? Math.min(3, Math.max(1, Math.floor(rawColumns))) : 3}`,
+            `showImage:${props.showImage !== false}`,
+            `showDescription:${props.showDescription === true}`,
+            `showPrice:${props.showPrice !== false}`,
+            `showButton:${props.showButton !== false}`,
+            `buttonLabel:${encodeURIComponent(props.buttonLabel || 'View Product')}`,
+            `textColor:${encodeURIComponent(theme.textColor)}`,
+            `mutedTextColor:${encodeURIComponent(theme.mutedTextColor)}`,
+            `primaryColor:${encodeURIComponent(theme.primaryColor)}`,
+            `borderRadius:${theme.borderRadius}`,
+        ].join(' ');
+        return `<div class="${blockClass}" style="padding:${props.padding || '18px 0'};text-align:${props.align || 'center'};">
+            ${props.heading ? `<h3 class="os-email-heading" style="margin:0 0 16px;color:${theme.textColor};font-size:20px;line-height:1.3;">${escapeHtml(props.heading)}</h3>` : ''}
+            {{new_products ${params}}}
+        </div>`;
+    }
+
     if (block.type === 'orderSummary') {
         const itemsTag = getOrderItemsMergeTag(block.props.itemsFormat);
         return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '12px 0'};text-align:${(block.props as { align?: string }).align || 'left'};"><h3 class="os-email-heading" style="margin:0 0 12px;color:${theme.textColor};font-size:18px;">${escapeHtml(block.props.heading || 'Order summary')}</h3>${itemsTag}${block.props.showTotals ? `<div class="os-email-text" style="margin:14px 0 0;text-align:right;color:${theme.textColor};"><p style="margin:0 0 4px;font-weight:600;">GST: {{order.taxTotal}}</p><p style="margin:0;font-weight:700;">Total: {{order.total}}</p></div>` : ''}</div>`;
@@ -964,6 +1004,7 @@ export function getEmailDesignV2BlockLabel(block: EmailBlock): string {
         divider: 'Divider',
         spacer: 'Spacer',
         product: 'Product',
+        newProducts: 'New Products',
         cartItems: 'Cart Items',
         cartLink: 'Cart Link',
         orderSummary: 'Order Summary',

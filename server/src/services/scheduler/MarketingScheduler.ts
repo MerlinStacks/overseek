@@ -296,6 +296,7 @@ export class MarketingScheduler {
                     }
 
                     await automationEngine.processTrigger(accountId, 'NO_PURCHASE_IN_X_DAYS', {
+                        automationId: automation.id,
                         email: customer.email,
                         wooCustomerId: customer.wooId,
                         customer: {

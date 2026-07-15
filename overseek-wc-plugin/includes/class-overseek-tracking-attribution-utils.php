@@ -73,6 +73,26 @@ class OverSeek_Tracking_Attribution_Utils
     }
 
     /**
+     * Persist Meta browser and click identifiers for same-request CAPI matching.
+     */
+    public static function persist_meta_identifiers(): void
+    {
+        $expires = time() + (90 * DAY_IN_SECONDS);
+        $created_at = (string) floor(microtime(true) * 1000);
+
+        if (empty($_COOKIE['_fbp'])) {
+            $fbp = 'fb.1.' . $created_at . '.' . wp_rand(1000000000, 2147483647);
+            OverSeek_Tracking_Request_Utils::set_cookie_safe('_fbp', $fbp, $expires);
+        }
+
+        if (!empty($_GET['fbclid'])) {
+            $fbclid = sanitize_text_field(wp_unslash((string) $_GET['fbclid']));
+            $fbc = 'fb.1.' . $created_at . '.' . $fbclid;
+            OverSeek_Tracking_Request_Utils::set_cookie_safe('_fbc', $fbc, $expires);
+        }
+    }
+
+    /**
      * Persist the first external landing referrer for the current session.
      */
     public static function persist_landing_referrer(): void

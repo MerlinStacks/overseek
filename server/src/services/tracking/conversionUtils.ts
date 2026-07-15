@@ -10,6 +10,11 @@
 
 import { createHash } from 'crypto';
 
+const COUNTRY_CALLING_CODES: Record<string, string> = {
+    AU: '61', CA: '1', DE: '49', ES: '34', FR: '33', GB: '44', IE: '353',
+    IN: '91', IT: '39', NL: '31', NZ: '64', SG: '65', US: '1', ZA: '27',
+};
+
 /** Event types that should be forwarded to ad platforms */
 const CONVERSION_EVENT_TYPES = new Set([
     'purchase',
@@ -135,6 +140,31 @@ export function hashSHA256(value: string | undefined | null, valueType?: 'email'
     if (!value || !value.trim()) return undefined;
     const normalised = valueType === 'email' ? normalizeGoogleEnhancedEmail(value) : value.trim().toLowerCase();
     return createHash('sha256').update(normalised).digest('hex');
+}
+
+/** Normalize a phone to E.164 when its country calling code can be determined. */
+export function normalizePhoneE164(phone?: string, country?: string): string | undefined {
+    if (!phone?.trim()) return undefined;
+
+    const trimmed = phone.trim();
+    let digits = trimmed.replace(/\D/g, '');
+    if (trimmed.startsWith('+')) {
+        return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : undefined;
+    }
+    if (digits.startsWith('00')) {
+        digits = digits.slice(2);
+        return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : undefined;
+    }
+
+    const countryCode = country?.trim().toUpperCase() || '';
+    const callingCode = COUNTRY_CALLING_CODES[countryCode];
+    if (!callingCode) return undefined;
+    if (digits.startsWith(callingCode) && digits.length >= 10) {
+        return digits.length <= 15 ? `+${digits}` : undefined;
+    }
+    if (countryCode !== 'IT') digits = digits.replace(/^0+/, '');
+    const normalized = `+${callingCode}${digits}`;
+    return digits && normalized.length >= 9 && normalized.length <= 16 ? normalized : undefined;
 }
 
 /**

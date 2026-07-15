@@ -12,7 +12,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderIdString } from '../../utils/orderIds';
-import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
+import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164 } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
@@ -79,7 +79,16 @@ export class MetaCAPIService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session, data.ipAddress);
+        const userData = extractUserData({
+            ...(data.payload || {}),
+            email: data.payload?.email || data.email,
+            customerId: data.payload?.customerId || data.customerId,
+            clickId: data.payload?.clickId || data.clickId,
+            clickPlatform: data.payload?.clickPlatform || data.clickPlatform,
+        }, session, data.ipAddress);
+        if (!userData.fbc && userData.clickPlatform === 'facebook' && userData.clickId) {
+            userData.fbc = `fb.1.${Date.now()}.${userData.clickId}`;
+        }
         const payload = this.buildPayload(eventName, eventId, data, userData, config, testEventCode);
         const payloadUserData = payload.data?.[0]?.user_data || {};
 
@@ -135,7 +144,7 @@ export class MetaCAPIService implements ConversionPlatformService {
             user_data: {
                 // Hash all PII fields — Meta requires SHA-256
                 em: hashSHA256(userData.email),
-                ph: hashSHA256(userData.phone),
+                ph: hashSHA256(normalizePhoneE164(userData.phone, userData.country)),
                 fn: hashSHA256(userData.firstName),
                 ln: hashSHA256(userData.lastName),
                 ct: hashSHA256(userData.city),

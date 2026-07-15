@@ -7,6 +7,7 @@ import { MerchantCenterService } from '../MerchantCenterService';
 import { EmbeddingService } from '../EmbeddingService';
 import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
+import { parseWooDate } from '../../utils/wooDates';
 import { WooProductSchema, WooProduct, safeParseVariations } from './wooSchemas';
 
 
@@ -80,6 +81,9 @@ export class ProductSync extends BaseSync {
                     update: {
                         name: p.name,
                         sku: p.sku,
+                        status: p.status || null,
+                        catalogVisibility: p.catalog_visibility || 'visible',
+                        dateCreated: parseWooDate(p.date_created_gmt || p.date_created),
                         price: parsedPrice,
                         stockStatus: p.stock_status, // Sync from WooCommerce to distinguish states
                         stockQuantity: p.stock_quantity ?? null,
@@ -98,6 +102,9 @@ export class ProductSync extends BaseSync {
                         wooId: p.id,
                         name: p.name,
                         sku: p.sku,
+                        status: p.status || null,
+                        catalogVisibility: p.catalog_visibility || 'visible',
+                        dateCreated: parseWooDate(p.date_created_gmt || p.date_created),
                         price: parsedPrice,
                         stockStatus: p.stock_status,
                         stockQuantity: p.stock_quantity ?? null,
