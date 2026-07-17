@@ -5,7 +5,7 @@
  * page component so it can focus on behaviour/presentation.
  */
 
-import { Mail, Globe, Facebook, Bell } from 'lucide-react';
+import { Mail, Globe, MessageCircle as Facebook, Bell } from 'lucide-react';
 import type { ElementType } from 'react';
 
 export interface FieldConfig {

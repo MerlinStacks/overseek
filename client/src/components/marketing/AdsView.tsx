@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { Plus, Facebook, Loader2, Trash2, ExternalLink, AlertCircle, RefreshCw, BarChart2 } from 'lucide-react';
+import { Plus, MessageCircle as Facebook, Loader2, Trash2, ExternalLink, AlertCircle, RefreshCw, BarChart2 } from 'lucide-react';
 import { GoogleAdsCampaigns } from './GoogleAdsCampaigns';
 import { navigateToSafeUrl } from '../../utils/url';
 

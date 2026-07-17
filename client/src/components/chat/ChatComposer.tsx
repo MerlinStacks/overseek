@@ -36,7 +36,7 @@ interface ChatComposerProps {
     // Send controls
     isSending: boolean;
     onSend: (e?: React.FormEvent, channel?: ConversationChannel) => void;
-    pendingSend: { content: string; timeout: NodeJS.Timeout } | null;
+    pendingSend: { content: string; timeout: ReturnType<typeof setTimeout> } | null;
     onCancelSend: () => void;
     UNDO_DELAY_MS: number;
     // Signature

@@ -26,7 +26,7 @@ export function useTypingIndicator({ conversationId, input }: UseTypingIndicator
     const [isCustomerTyping, setIsCustomerTyping] = useState(false);
 
     // Refs for managing debounce and timeout
-    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastTypingEmitRef = useRef<number>(0);
 
     // Listen for customer typing events

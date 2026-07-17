@@ -2,14 +2,14 @@
     "compilerOptions": {
         "target": "ES2022",
         "module": "commonjs",
+        "rootDir": "./src",
         "outDir": "./dist",
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
         "strict": false,
         "skipLibCheck": true,
-        "ignoreDeprecations": "5.0",
         "resolveJsonModule": true,
-        "moduleResolution": "node",
+        "moduleResolution": "bundler",
         "declaration": false,
         "noEmitOnError": false
     },

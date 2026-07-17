@@ -123,7 +123,7 @@ describe('tracking dashboard permissions and date windows', () => {
         } as any]);
         prismaMocks.analyticsSession.count.mockResolvedValue(1);
         prismaMocks.automationEnrollment.findMany.mockResolvedValue([{
-            triggerEntityId: 'cart-1',
+            triggerEntityId: 'visitor-1',
             conversionAt: new Date('2026-07-14T12:00:00Z'),
             convertedOrderId: '987',
             convertedRevenue: 125,
@@ -145,7 +145,7 @@ describe('tracking dashboard permissions and date windows', () => {
             where: expect.objectContaining({
                 accountId: 'acct-1',
                 triggerEntityType: 'CART',
-                triggerEntityId: { in: ['cart-1'] },
+                triggerEntityId: { in: ['cart-1', 'visitor-1'] },
             }),
         }));
         expect(res.json().items[0]).toMatchObject({

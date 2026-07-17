@@ -74,4 +74,30 @@ describe('event bus automation subscriptions', () => {
         });
         expect(automationEngine.processTrigger).not.toHaveBeenCalledWith('account-1', 'ORDER_CREATED', order);
     });
+
+    it('forwards artwork approval requests to the matching automation trigger', async () => {
+        const automationEngine = {
+            processTrigger: vi.fn().mockResolvedValue(undefined)
+        };
+        const chatService = {
+            handleIncomingEmail: vi.fn().mockResolvedValue(undefined)
+        };
+        const artwork = {
+            email: 'buyer@example.com',
+            orderId: 1001,
+            eventStatus: 'approval_requested',
+            proofVersion: 2
+        };
+
+        subscribeEventBus(chatService as any, automationEngine as any);
+        EventBus.emit(EVENTS.ARTWORK.APPROVAL_REQUESTED, { accountId: 'account-1', artwork });
+
+        await vi.waitFor(() => {
+            expect(automationEngine.processTrigger).toHaveBeenCalledWith(
+                'account-1',
+                'ARTWORK_APPROVAL_REQUESTED',
+                artwork
+            );
+        });
+    });
 });

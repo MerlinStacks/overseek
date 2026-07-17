@@ -9,7 +9,7 @@ import {
     ShoppingCart,
     ArrowRight,
     Shield,
-    Github,
+    Code2 as Github,
 } from 'lucide-react';
 
 const GITHUB_URL = 'https://github.com/MerlinStacks/overseek';

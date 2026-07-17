@@ -1,10 +1,14 @@
 import { User } from '@prisma/client';
-import { authenticator } from 'otplib';
+import { createGuardrails, generateSecret, generateURI, verifySync } from 'otplib';
 import * as qrcode from 'qrcode';
 import { generateToken } from '../utils/auth';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+
+// Otplib 12 generated 10-byte secrets; keep persisted enrollments valid while
+// new otplib 13 enrollments use its stronger 20-byte default.
+const LEGACY_TOTP_GUARDRAILS = createGuardrails({ MIN_SECRET_BYTES: 10 });
 
 export class SecurityService {
 
@@ -25,8 +29,12 @@ export class SecurityService {
     // -------------------
 
     static async generateTwoFactorSecret(user: User) {
-        const secret = authenticator.generateSecret();
-        const otpauth = authenticator.keyuri(user.email, process.env.APP_NAME || 'Commerce Platform', secret);
+        const secret = generateSecret();
+        const otpauth = generateURI({
+            issuer: process.env.APP_NAME || 'Commerce Platform',
+            label: user.email,
+            secret,
+        });
         const qrCodeUrl = await qrcode.toDataURL(otpauth);
 
         return {
@@ -36,7 +44,7 @@ export class SecurityService {
     }
 
     static verifyTwoFactorToken(token: string, secret: string): boolean {
-        return authenticator.check(token, secret);
+        return verifySync({ token, secret, guardrails: LEGACY_TOTP_GUARDRAILS }).valid;
     }
 
     static async enableTwoFactor(userId: string, secret: string) {

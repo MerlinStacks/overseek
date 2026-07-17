@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Facebook, Globe, Instagram, Loader2, Music2, Search, Youtube } from 'lucide-react';
+import { ArrowDown, ArrowUp, MessageCircle as Facebook, Globe, Camera as Instagram, Loader2, Music2, Search, CirclePlay as Youtube } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
 
 interface ReportsTableProps {

@@ -138,7 +138,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
                     where: {
                         accountId,
                         triggerEntityType: 'CART',
-                        triggerEntityId: { in: sessions.map((session) => session.id) },
+                        triggerEntityId: {
+                            in: sessions.flatMap((session) => [session.id, session.visitorId])
+                        },
                         automation: { triggerType: 'ABANDONED_CART' }
                     },
                     select: {
@@ -193,7 +195,9 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
 
             return {
                 items: sessions.map((session) => {
-                    const flowStatus = flowStatusByCartId.get(session.id);
+                    // Older scheduler enrollments used visitorId before cart session IDs were included.
+                    const flowStatus = flowStatusByCartId.get(session.id)
+                        || flowStatusByCartId.get(session.visitorId);
                     const customer = session.wooCustomerId ? customerByWooId.get(session.wooCustomerId) : null;
                     const cartItems = Array.isArray(session.cartItems)
                         ? session.cartItems.map((item: any) => ({

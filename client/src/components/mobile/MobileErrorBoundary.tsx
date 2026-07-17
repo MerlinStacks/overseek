@@ -79,7 +79,7 @@ export class MobileErrorBoundary extends Component<Props, State> {
                         </button>
                     </div>
 
-                    {process.env.NODE_ENV === 'development' && this.state.error && (
+                    {import.meta.env.DEV && this.state.error && (
                         <div className="mt-8 p-4 bg-gray-100 rounded-xl max-w-sm">
                             <p className="text-xs font-mono text-red-600 break-all">
                                 {this.state.error.message}

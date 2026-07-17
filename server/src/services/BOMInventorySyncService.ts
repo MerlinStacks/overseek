@@ -313,6 +313,8 @@ export class BOMInventorySyncService {
         let minBuildableUnits = Infinity;
 
         for (const bomItem of bom.items) {
+            // Supplier catalogue rows contribute cost only and do not constrain stock.
+            if (bomItem.supplierItemId && !bomItem.childProductId && !bomItem.internalProductId) continue;
             const waste = Number(bomItem.wasteFactor) || 0;
             const requiredQty = Number(bomItem.quantity) * (1 + waste);
             if (requiredQty <= 0) continue;
@@ -464,6 +466,25 @@ export class BOMInventorySyncService {
             }
         }
 
+        // Duplicate rows for the same stock leaf are cumulative requirements,
+        // not independent bottlenecks.
+        const aggregatedComponents = new Map<string, EffectiveStockResult['components'][number]>();
+        for (const component of components) {
+            const key = `${component.childProductId}:${component.childWooId}`;
+            const existing = aggregatedComponents.get(key);
+            if (existing) {
+                existing.requiredQty += component.requiredQty;
+                existing.buildableUnits = Math.floor(existing.childStock / existing.requiredQty);
+            } else {
+                aggregatedComponents.set(key, { ...component });
+            }
+        }
+        components.splice(0, components.length, ...aggregatedComponents.values());
+        minBuildableUnits = components.reduce(
+            (minimum, component) => Math.min(minimum, component.buildableUnits),
+            Infinity
+        );
+
         // If no valid components found
         if (components.length === 0 || minBuildableUnits === Infinity) {
             Logger.warn(`[BOMInventorySync] BOM has no valid components - returning null`, {
@@ -583,6 +604,7 @@ export class BOMInventorySyncService {
         let minBuildableUnits = Infinity;
 
         for (const bomItem of bom.items) {
+            if (bomItem.supplierItemId && !bomItem.childProductId && !bomItem.internalProductId) continue;
             const waste = Number(bomItem.wasteFactor) || 0;
             const requiredQty = Number(bomItem.quantity) * (1 + waste);
             if (requiredQty <= 0) continue;
@@ -634,6 +656,23 @@ export class BOMInventorySyncService {
                 minBuildableUnits = buildableUnits;
             }
         }
+
+        const aggregatedComponents = new Map<string, EffectiveStockResult['components'][number]>();
+        for (const component of components) {
+            const key = `${component.childProductId}:${component.childWooId}`;
+            const existing = aggregatedComponents.get(key);
+            if (existing) {
+                existing.requiredQty += component.requiredQty;
+                existing.buildableUnits = Math.floor(existing.childStock / existing.requiredQty);
+            } else {
+                aggregatedComponents.set(key, { ...component });
+            }
+        }
+        components.splice(0, components.length, ...aggregatedComponents.values());
+        minBuildableUnits = components.reduce(
+            (minimum, component) => Math.min(minimum, component.buildableUnits),
+            Infinity
+        );
 
         if (components.length === 0 || minBuildableUnits === Infinity) {
             return null;

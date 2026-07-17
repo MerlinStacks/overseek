@@ -35,7 +35,8 @@ const fastify = Fastify({
 const RATE_LIMIT_ALLOWLIST_PREFIXES = [
     '/api/auth/login', '/api/auth/refresh', '/api/auth/me',
     '/api/sync', '/api/webhooks', '/api/webhook/',
-    '/health', '/api/t/', '/api/tracking-email-events', '/wp-json/overseek/v1/tracking-email-events', '/api/artwork-events',
+    '/health', '/api/t/', '/api/tracking-email-events', '/wp-json/overseek/v1/tracking-email-events',
+    '/api/artwork-events', '/wp-json/overseek/v1/artwork-events',
     '/api/notifications', '/api/chat', '/api/fp/', '/api/dashboard',
     '/api/status-center'
 ];

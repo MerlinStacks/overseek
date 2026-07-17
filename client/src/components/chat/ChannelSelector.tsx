@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, MessageSquare, Facebook, Music, ChevronDown, Smartphone } from 'lucide-react';
+import { Mail, MessageSquare, MessageCircle as Facebook, Music, ChevronDown, Smartphone } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useClickOutside } from '../../hooks/useClickOutside';
 

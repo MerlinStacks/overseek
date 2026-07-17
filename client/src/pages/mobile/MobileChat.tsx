@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, Mail, MessageSquare, Instagram, Facebook, Music2, Sparkles, Loader2, Zap } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, MoreVertical, CheckCircle2, Ban, Mail, MessageSquare, Camera as Instagram, MessageCircle as Facebook, Music2, Sparkles, Loader2, Zap } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { useMobileChat, type MobileChatMessage } from './useMobileChat';
 

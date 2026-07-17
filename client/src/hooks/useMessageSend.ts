@@ -24,8 +24,8 @@ interface PendingSend {
     clientRequestId: string;
     content: string;
     createdAt: string;
-    timeout: NodeJS.Timeout;
-    countdownInterval: NodeJS.Timeout;
+    timeout: ReturnType<typeof setTimeout>;
+    countdownInterval: ReturnType<typeof setInterval>;
     remainingSeconds: number;
 }
 
@@ -97,7 +97,7 @@ export function useMessageSend({
     const [safetyIssues, setSafetyIssues] = useState<OutboundSafetyIssue[]>([]);
     const [requiresSafetyApproval, setRequiresSafetyApproval] = useState(false);
     const isDraftingRef = useRef(false);
-    const draftStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const draftStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Ref that always holds the latest pendingSend - avoids stale closure
     // when the conversation-switch effect fires.

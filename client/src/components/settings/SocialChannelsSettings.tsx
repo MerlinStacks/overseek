@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
-import { Facebook, Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, CheckCircle, MessageSquare, Save, Copy, ExternalLink } from 'lucide-react';
+import { MessageCircle as Facebook, Camera as Instagram, Music2, Link2, Unlink, Loader2, AlertCircle, CheckCircle, MessageSquare, Save, Copy, ExternalLink } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';

@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
     const [isLoading, setIsLoading] = useState(true);
-    const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const resumeRefreshInFlightRef = useRef(false);
     const tabIdRef = useRef(
         typeof crypto !== 'undefined' && 'randomUUID' in crypto

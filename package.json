@@ -27,15 +27,13 @@
   "workspaces": [
     "client",
     "server",
-    "packages/overseek-core",
-    "packages/overseek-mcp",
-    "packages/overseek-cli"
+    "packages/overseek-core"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
     "db:migrate": "cd server && npx prisma migrate deploy --config ./prisma/prisma.config.ts",
     "db:generate": "cd server && npx prisma generate --config ./prisma/prisma.config.ts",
-    "build:packages": "npm run build -w packages/overseek-core && npm run build -w packages/overseek-mcp && npm run build -w packages/overseek-cli",
+    "build:packages": "npm run build -w packages/overseek-core",
     "prepare": "node -e \"try { require('child_process').execSync('husky', {stdio:'ignore'}) } catch(e) {}\""
   },
   "devDependencies": {

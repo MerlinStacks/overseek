@@ -125,6 +125,9 @@ export class BOMConsumptionService {
             where: { accountId, orderId, status: { in: ['COMPLETED', 'EXECUTED'] } }
         });
         if (ledgerEntry) {
+            // EXECUTED means the local decrement and ledger row committed together,
+            // but the process may have died before WooCommerce was synchronized.
+            await this.syncExecutedLedgerEntries(accountId, orderId);
             // Re-set the Redis key so subsequent sync cycles don't hit DB again
             await redisClient.setex(consumedKey, this.CONSUMED_TTL_SECONDS, 'recovered');
             Logger.debug(`[BOMConsumption] Order ${order.id} already consumed (DB ledger), skipping`, { accountId });
@@ -151,12 +154,27 @@ export class BOMConsumptionService {
         try {
             // PHASE 1: PLANNING
             // Calculate all intended deductions without executing them yet
-            const deductionPlan: ComponentDeduction[] = [];
+            const plannedDeductions: ComponentDeduction[] = [];
 
             for (const item of lineItems) {
                 const plan = await this.planLineItemDeductions(accountId, item);
-                deductionPlan.push(...plan);
+                plannedDeductions.push(...plan);
             }
+
+            // The same leaf can appear in duplicate BOM rows or multiple order
+            // lines. Apply one atomic mutation and ledger row for the total.
+            const aggregated = new Map<string, ComponentDeduction>();
+            for (const deduction of plannedDeductions) {
+                const key = `${deduction.componentType}:${deduction.componentId}:${deduction.wooId ?? 0}`;
+                const existing = aggregated.get(key);
+                if (existing) {
+                    existing.quantityDeducted += deduction.quantityDeducted;
+                    existing.newStock = existing.previousStock - existing.quantityDeducted;
+                } else {
+                    aggregated.set(key, { ...deduction });
+                }
+            }
+            const deductionPlan = [...aggregated.values()];
 
             if (deductionPlan.length === 0) {
                 Logger.info(`[BOMConsumption] No BOM components to deduct for order ${order.id}`, { accountId });
@@ -169,72 +187,24 @@ export class BOMConsumptionService {
             await this.trackPendingDeduction(accountId, orderId, deductionPlan);
 
             // PHASE 3: EXECUTION
-            // Execute deductions one by one
+            // All local mutations and ledger rows commit together. A process
+            // crash can therefore leave either the whole order applied or none.
             const modifiedComponents: { productId: string; variationId?: number; isInternal?: boolean }[] = [];
-            const wooService = await WooService.forAccount(accountId);
+            const executedDeductions = await this.executeDeductionPlan(accountId, orderId, deductionPlan);
+            consumed.push(...executedDeductions);
 
-            // Stage ledger payloads — flushed as a single createMany after the loop.
-            // Why: N individual create() calls inside the loop cause N round-trips;
-            // createMany batches them into one INSERT for the price of one round-trip.
-            const ledgerRows: Array<{
-                accountId: string;
-                orderId: number;
-                componentType: string;
-                componentId: string;
-                componentName: string;
-                wooId?: number;
-                parentWooId?: number;
-                quantityDeducted: number;
-                previousStock: number;
-                newStock: number;
-            }> = [];
+            // Woo writes are absolute and resumable. A failure leaves EXECUTED
+            // rows for retry/recovery without another local decrement.
+            await this.syncExecutedLedgerEntries(accountId, orderId);
 
-            for (const deduction of deductionPlan) {
-                try {
-                    await this.executeDeduction(accountId, deduction, wooService);
-
-                    // Stage ledger entry — will be flushed below if all succeed
-                    ledgerRows.push({
-                        accountId,
-                        orderId,
-                        componentType: deduction.componentType,
-                        componentId: deduction.componentId,
-                        componentName: deduction.componentName,
-                        wooId: deduction.wooId,
-                        parentWooId: deduction.parentWooId,
-                        quantityDeducted: deduction.quantityDeducted,
-                        previousStock: deduction.previousStock,
-                        newStock: deduction.newStock
-                    });
-
-                    consumed.push(deduction);
-
-                    if (deduction.componentType === 'ProductVariation') {
-                        modifiedComponents.push({ productId: deduction.componentId, variationId: deduction.wooId });
-                    } else if (deduction.componentType === 'WooProduct') {
-                        modifiedComponents.push({ productId: deduction.componentId });
-                    } else if (deduction.componentType === 'InternalProduct') {
-                        // Internal products also need cascade — other BOM parents
-                        // using the same internal component need their effective stock recalculated.
-                        modifiedComponents.push({ productId: deduction.componentId, isInternal: true });
-                    }
-                } catch (err: any) {
-                    const errMsg = `Failed to execute deduction for ${deduction.componentName}: ${err.message}`;
-                    Logger.error(`[BOMConsumption] ${errMsg}`, { accountId, deduction });
-                    errors.push(errMsg);
-
-                    // CRITICAL: If an error occurs during execution, attempting rollback
-                    // Note: In case of PROCESS CRASH, the Recovery Job will handle this.
-                    // This block handles runtime errors (e.g. API 500).
-                    Logger.warn(`[BOMConsumption] Triggering immediate rollback due to error`, { accountId, orderId });
-                    await this.rollbackDeductions(accountId, consumed);
-                    throw err;
+            for (const deduction of executedDeductions) {
+                if (deduction.componentType === 'ProductVariation') {
+                    modifiedComponents.push({ productId: deduction.componentId, variationId: deduction.wooId });
+                } else if (deduction.componentType === 'WooProduct') {
+                    modifiedComponents.push({ productId: deduction.componentId });
+                } else if (deduction.componentType === 'InternalProduct') {
+                    modifiedComponents.push({ productId: deduction.componentId, isInternal: true });
                 }
-            }
-
-            // Flush all ledger entries in a single bulk INSERT — N→1 DB round-trip
-            if (ledgerRows.length > 0) {
-                await prisma.bOMDeductionLedger.createMany({ data: ledgerRows });
             }
 
             // PHASE 4: CASCADE SYNC
@@ -467,24 +437,16 @@ export class BOMConsumptionService {
                 const accountId = parts[1];
                 const orderId = parseInt(parts[2], 10);
 
-                const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${orderId}`;
-                const isConsumed = await redisClient.get(consumedKey);
-
-                if (isConsumed) {
-                    await redisClient.del(key);
-                    continue;
-                }
-
-                // Use ledger for deterministic recovery
-                await this.ledgerBasedRollback(accountId, orderId);
+                // Ledger state is authoritative. A Redis completion key must not
+                // promote an unsynchronized EXECUTED row.
+                await this.resumeExecutedDeductions(accountId, orderId);
                 await redisClient.del(key);
             } catch (err) {
                 Logger.error(`[BOMConsumption] Recovery failed for key ${key}`, { err });
             }
         }
 
-        // Phase 2: Ledger-only recovery — find orphaned EXECUTED entries
-        // (entries older than 30 min without a consumed key)
+        // Phase 2: Ledger-only recovery — find orphaned EXECUTED entries.
         const cutoff = new Date(Date.now() - 30 * 60 * 1000);
         const orphanedEntries = await prisma.bOMDeductionLedger.findMany({
             where: {
@@ -496,59 +458,19 @@ export class BOMConsumptionService {
         });
 
         for (const { accountId, orderId } of orphanedEntries) {
-            const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${orderId}`;
-            const isConsumed = await redisClient.get(consumedKey);
-            if (isConsumed) {
-                // Promote orphaned EXECUTED → COMPLETED so they're not re-processed
-                await prisma.bOMDeductionLedger.updateMany({
-                    where: { accountId, orderId, status: 'EXECUTED' },
-                    data: { status: 'COMPLETED' }
-                });
-                continue;
-            }
-
             try {
                 Logger.warn(`[BOMConsumption] Ledger-based recovery for stalled Order ${orderId}`, { accountId });
-                await this.ledgerBasedRollback(accountId, orderId);
+                await this.resumeExecutedDeductions(accountId, orderId);
             } catch (err) {
                 Logger.error(`[BOMConsumption] Ledger recovery failed`, { accountId, orderId, err });
             }
         }
     }
 
-    /**
-     * Deterministic rollback using the deduction ledger.
-     * Queries all EXECUTED entries for the order and rolls each one back.
-     * No stock-comparison heuristic needed — if it's in the ledger, it happened.
-     */
-    private static async ledgerBasedRollback(accountId: string, orderId: number) {
-        const entries = await prisma.bOMDeductionLedger.findMany({
-            where: { accountId, orderId, status: 'EXECUTED' }
-        });
-
-        if (entries.length === 0) return;
-
-        Logger.info(`[BOMConsumption] Ledger rollback: ${entries.length} deductions for Order ${orderId}`, { accountId });
-
-        // Convert ledger entries to ComponentDeduction format for rollback
-        const deductions: ComponentDeduction[] = entries.map(e => ({
-            componentType: e.componentType as ComponentDeduction['componentType'],
-            componentId: e.componentId,
-            componentName: e.componentName,
-            wooId: e.wooId ?? undefined,
-            parentWooId: e.parentWooId ?? undefined,
-            quantityDeducted: e.quantityDeducted,
-            previousStock: e.previousStock,
-            newStock: e.newStock
-        }));
-
-        await this.rollbackDeductions(accountId, deductions);
-
-        // Mark all entries as rolled back
-        await prisma.bOMDeductionLedger.updateMany({
-            where: { accountId, orderId, status: 'EXECUTED' },
-            data: { status: 'ROLLED_BACK', rolledBackAt: new Date() }
-        });
+    /** Resume absolute Woo synchronization without another local decrement. */
+    private static async resumeExecutedDeductions(accountId: string, orderId: number) {
+        Logger.info(`[BOMConsumption] Resuming pending Woo sync for Order ${orderId}`, { accountId });
+        await this.syncExecutedLedgerEntries(accountId, orderId);
     }
 
     // --- REFACTORED HELPERS ---
@@ -587,10 +509,14 @@ export class BOMConsumptionService {
         if (!bom || bom.items.length === 0) return [];
 
         for (const bomItem of bom.items) {
+            // Supplier catalogue rows contribute cost only and have no stock to consume.
+            if (bomItem.supplierItemId && !bomItem.childProductId && !bomItem.internalProductId) continue;
             // Why wasteFactor: accounts for material loss during manufacturing (e.g. 0.10 = 10% waste)
             const waste = Number(bomItem.wasteFactor) || 0;
             const quantityToDeduct = Number(bomItem.quantity) * (1 + waste) * item.quantity;
 
+            // Child BOM products remain stocked assemblies unless an explicit
+            // phantom-assembly setting is introduced and migrated separately.
             if (bomItem.internalProduct) {
                 const prev = bomItem.internalProduct.stockQuantity;
                 deductions.push({
@@ -640,66 +566,105 @@ export class BOMConsumptionService {
         return deductions;
     }
 
-    private static async executeDeduction(
-        _accountId: string,
-        deduction: ComponentDeduction,
-        wooService: any
-    ) {
-        // Why atomic decrement: using absolute SET races with concurrent PO receives.
-        // The planned newStock is still recorded in the ledger for audit purposes.
-        const qty = deduction.quantityDeducted;
+    private static async executeDeductionPlan(
+        accountId: string,
+        orderId: number,
+        deductions: ComponentDeduction[]
+    ): Promise<ComponentDeduction[]> {
+        return prisma.$transaction(async tx => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`bom-order:${accountId}:${orderId}`}, 0))`;
+            const existing = await tx.bOMDeductionLedger.findFirst({
+                where: { accountId, orderId, status: { in: ['EXECUTED', 'COMPLETED'] } },
+                select: { id: true }
+            });
+            if (existing) return [];
 
-        if (deduction.componentType === 'InternalProduct') {
-            const updated = await prisma.internalProduct.update({
-                where: { id: deduction.componentId },
-                data: { stockQuantity: { decrement: qty } },
-                select: { stockQuantity: true }
-            });
-            // Why floor: negative stock in WooCommerce confuses customers and order workflows.
-            if (updated.stockQuantity !== null && updated.stockQuantity < 0) {
-                Logger.warn('[BOM] Component stock went negative after deduction', {
-                    componentType: 'InternalProduct',
-                    componentId: deduction.componentId,
-                    newStock: updated.stockQuantity,
-                    deducted: qty
+            const executedDeductions: ComponentDeduction[] = [];
+
+            for (const deduction of deductions) {
+                const qty = deduction.quantityDeducted;
+                let newStock: number;
+
+                if (deduction.componentType === 'InternalProduct') {
+                    const updated = await tx.internalProduct.update({
+                        where: { id: deduction.componentId },
+                        data: { stockQuantity: { decrement: qty } },
+                        select: { stockQuantity: true }
+                    });
+                    newStock = updated.stockQuantity;
+                } else if (deduction.componentType === 'ProductVariation') {
+                    const updated = await tx.productVariation.update({
+                        where: { productId_wooId: { productId: deduction.componentId, wooId: deduction.wooId! } },
+                        data: { stockQuantity: { decrement: qty } },
+                        select: { stockQuantity: true }
+                    });
+                    newStock = updated.stockQuantity ?? 0;
+                } else {
+                    const updated = await tx.wooProduct.update({
+                        where: { id: deduction.componentId },
+                        data: { stockQuantity: { decrement: qty } },
+                        select: { stockQuantity: true }
+                    });
+                    newStock = updated.stockQuantity ?? 0;
+                }
+
+                const executed = {
+                    ...deduction,
+                    previousStock: newStock + qty,
+                    newStock
+                };
+                await tx.bOMDeductionLedger.create({
+                    data: {
+                        accountId,
+                        orderId,
+                        componentType: executed.componentType,
+                        componentId: executed.componentId,
+                        componentName: executed.componentName,
+                        wooId: executed.wooId,
+                        parentWooId: executed.parentWooId,
+                        quantityDeducted: executed.quantityDeducted,
+                        previousStock: executed.previousStock,
+                        newStock: executed.newStock,
+                        status: 'EXECUTED'
+                    }
                 });
+                executedDeductions.push(executed);
             }
-        } else if (deduction.componentType === 'ProductVariation') {
-            const updated = await prisma.productVariation.update({
-                where: { productId_wooId: { productId: deduction.componentId, wooId: deduction.wooId! } },
-                data: { stockQuantity: { decrement: qty } },
-                select: { stockQuantity: true, rawData: true }
-            });
-            const allowBackorders = allowsBackorders(updated.rawData);
-            const wooStock = allowBackorders ? (updated.stockQuantity ?? 0) : Math.max(0, updated.stockQuantity ?? 0);
-            if (updated.stockQuantity !== null && updated.stockQuantity < 0) {
-                Logger.warn('[BOM] Component stock went negative after deduction', {
-                    componentType: 'ProductVariation', wooId: deduction.wooId,
-                    dbStock: updated.stockQuantity, wooStock, deducted: qty, allowBackorders
+
+            return executedDeductions;
+        });
+    }
+
+    private static async syncExecutedLedgerEntries(accountId: string, orderId: number): Promise<void> {
+        const entries = await prisma.bOMDeductionLedger.findMany({
+            where: { accountId, orderId, status: 'EXECUTED' }
+        });
+        if (entries.length === 0) return;
+
+        const wooService = await WooService.forAccount(accountId);
+        for (const entry of entries) {
+            if (entry.componentType === 'InternalProduct') {
+                await prisma.bOMDeductionLedger.update({ where: { id: entry.id }, data: { status: 'COMPLETED' } });
+                continue;
+            }
+            if (entry.componentType === 'ProductVariation') {
+                const current = await prisma.productVariation.findUnique({
+                    where: { productId_wooId: { productId: entry.componentId, wooId: entry.wooId! } },
+                    select: { stockQuantity: true, rawData: true }
                 });
-            }
-            await withRetry(
-                () => wooService.updateProductVariation(deduction.parentWooId!, deduction.wooId!, { stock_quantity: wooStock, manage_stock: true }),
-                { context: `Update variation ${deduction.wooId}` }
-            );
-        } else if (deduction.componentType === 'WooProduct') {
-            const updated = await prisma.wooProduct.update({
-                where: { id: deduction.componentId },
-                data: { stockQuantity: { decrement: qty } },
-                select: { stockQuantity: true, rawData: true }
-            });
-            const allowBackorders = allowsBackorders(updated.rawData);
-            const wooStock = allowBackorders ? (updated.stockQuantity ?? 0) : Math.max(0, updated.stockQuantity ?? 0);
-            if (updated.stockQuantity !== null && updated.stockQuantity < 0) {
-                Logger.warn('[BOM] Component stock went negative after deduction', {
-                    componentType: 'WooProduct', wooId: deduction.wooId,
-                    dbStock: updated.stockQuantity, wooStock, deducted: qty, allowBackorders
+                if (!current) throw new Error(`Missing variation ${entry.wooId} while resuming BOM deduction`);
+                const stock = allowsBackorders(current.rawData) ? (current.stockQuantity ?? 0) : Math.max(0, current.stockQuantity ?? 0);
+                await withRetry(() => wooService.updateProductVariation(entry.parentWooId!, entry.wooId!, { stock_quantity: stock, manage_stock: true }));
+            } else {
+                const current = await prisma.wooProduct.findUnique({
+                    where: { id: entry.componentId },
+                    select: { stockQuantity: true, rawData: true }
                 });
+                if (!current) throw new Error(`Missing product ${entry.componentId} while resuming BOM deduction`);
+                const stock = allowsBackorders(current.rawData) ? (current.stockQuantity ?? 0) : Math.max(0, current.stockQuantity ?? 0);
+                await withRetry(() => wooService.updateProduct(entry.wooId!, { stock_quantity: stock, manage_stock: true }));
             }
-            await withRetry(
-                () => wooService.updateProduct(deduction.wooId!, { stock_quantity: wooStock, manage_stock: true }),
-                { context: `Update product ${deduction.wooId}` }
-            );
+            await prisma.bOMDeductionLedger.update({ where: { id: entry.id }, data: { status: 'COMPLETED' } });
         }
     }
 
@@ -815,8 +780,12 @@ export class BOMConsumptionService {
         accountId: string,
         componentProductId: string,
         _componentVariationId?: number,
-        componentType: 'wooProduct' | 'internalProduct' = 'wooProduct'
+        componentType: 'wooProduct' | 'internalProduct' = 'wooProduct',
+        visited: Set<string> = new Set()
     ): Promise<void> {
+        const visitKey = `${componentType}:${componentProductId}`;
+        if (visited.has(visitKey)) return;
+        visited.add(visitKey);
         // Why no variation filter: we must cascade to ALL parent BOMs that reference
         // this component, not just those using a specific variation. A stock change
         // in the component affects every parent's effective stock calculation.
@@ -855,6 +824,13 @@ export class BOMConsumptionService {
                     accountId,
                     item.bom.productId,
                     item.bom.variationId
+                );
+                await this.cascadeSyncAffectedProducts(
+                    accountId,
+                    item.bom.productId,
+                    item.bom.variationId,
+                    'wooProduct',
+                    visited
                 );
                 Logger.debug(`[BOMConsumption] Cascade synced ${item.bom.product.name}`, { accountId });
             } catch (err: any) {

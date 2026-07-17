@@ -14,11 +14,11 @@ import { MerchantCenterService } from '../services/MerchantCenterService';
 import { IndexingService } from '../services/search/IndexingService';
 import { SearchConsoleService } from '../services/search-console/SearchConsoleService';
 import { esClient } from '../utils/elastic';
-import { marked } from 'marked';
 import { z } from 'zod';
 import { REVENUE_STATUSES } from '../constants/orderStatus';
 import { AuditService } from '../services/AuditService';
 import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
+import { validateProductDescriptionHtml } from '../utils/productDescriptionHtml';
 
 const searchQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
@@ -805,19 +805,21 @@ Short Description: {{short_description}}
 Current Description:
 {{current_description}}
 
-Return ONLY the rewritten description in Markdown format. Do not include any conversational preamble.`;
+Return only the rewritten description. Do not include any conversational preamble.`;
 
             let promptContent = accountPromptConfig?.content || globalPromptConfig?.content || defaultPrompt;
 
             const resolvedFocusKeyword = focusKeyword || '';
 
-            let prompt = promptContent
+            const resolvedPrompt = promptContent
                 .replace(/\{\{product_name\}\}/g, productName || '')
                 .replace(/\{\{current_description\}\}/g, currentDescription || '')
                 .replace(/\{\{short_description\}\}/g, shortDescription || '')
                 .replace(/\{\{category\}\}/g, categories || '')
                 .replace(/\{\{focus_keyword\}\}/g, resolvedFocusKeyword)
                 .replace(/\{\{search_keywords\}\}/g, searchKeywordsBlock);
+
+            const prompt = `${resolvedPrompt}\n\nReturn ONLY valid HTML suitable for a WooCommerce product description. Use only <p>, <strong>, <em>, <u>, <a href="https://...">, <a href="/...">, <ul>, <ol>, <li>, and <br> tags. Do not use Markdown, code fences, scripts, styles, images, or any other tags or attributes.`;
 
             const model = account.aiModel || 'openai/gpt-4o';
 
@@ -867,8 +869,13 @@ Return ONLY the rewritten description in Markdown format. Do not include any con
                 return reply.code(500).send({ error: 'AI returned empty response' });
             }
 
-            // marked.parse returns a Promise in newer versions
-            const formattedDescription = await marked.parse(generatedDescription.trim());
+            let formattedDescription: string;
+            try {
+                formattedDescription = validateProductDescriptionHtml(generatedDescription);
+            } catch (error) {
+                Logger.warn('AI rewrite returned invalid HTML', { error });
+                return reply.code(502).send({ error: 'AI returned an invalid product description. Please try again.' });
+            }
 
             Logger.info('AI rewrite complete', {
                 formattedLength: formattedDescription?.length

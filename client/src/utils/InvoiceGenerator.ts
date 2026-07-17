@@ -145,7 +145,7 @@ export const generateInvoicePDF = async (
         });
 
         if (!ALLOW_VECTOR_FALLBACK) {
-            throw new Error(`Invoice generation failed in canonical renderer: ${msg}`);
+            throw new Error(`Invoice generation failed in canonical renderer: ${msg}`, { cause: err });
         }
 
         Logger.warn('Using non-canonical vector fallback for invoice PDF');
@@ -167,7 +167,7 @@ export const generateInvoicePDF = async (
                 vectorError: vectorMsg,
                 vectorStack: typedVectorError.stack
             });
-            throw new Error(`Invoice generation failed: ${vectorMsg}`);
+            throw new Error(`Invoice generation failed: ${vectorMsg}`, { cause: vectorError });
         }
     } finally {
         // Always cleanup: unmount React tree + remove container from DOM

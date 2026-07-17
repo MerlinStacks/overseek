@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare, Mail, Instagram, Facebook, Music2, Search, Archive, CheckCheck, Plus, Zap } from 'lucide-react';
+import { MessageSquare, Mail, Camera as Instagram, MessageCircle as Facebook, Music2, Search, Archive, CheckCheck, Plus, Zap } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useSocket } from '../../context/SocketContext';

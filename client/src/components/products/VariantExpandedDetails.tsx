@@ -200,7 +200,7 @@ function ProfitMarginDisplay({
     const hasBom = bomCogs !== null;
     const hasGold = goldCogs != null && goldCogs > 0;
 
-    let effectiveCogs = 0;
+    let effectiveCogs: number;
     let cogsSource: 'bom' | 'gold' | 'manual' | 'none' = 'none';
 
     if (hasBom) {

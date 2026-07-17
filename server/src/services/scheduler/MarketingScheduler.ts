@@ -75,9 +75,13 @@ export class MarketingScheduler {
             15 * 60 * 1000
         );
 
-        // Lifecycle automation scan (every 6 hours)
+        // Run lifecycle automations at startup as well as every 6 hours. Waiting for
+        // the first interval means this scan never runs in frequently restarted environments.
+        const runLifecycleScan = () => this.checkLifecycleAutomations()
+            .catch(e => Logger.error('Lifecycle Automation Check Error', { error: e }));
+        void runLifecycleScan();
         this.lifecycleInterval = setInterval(
-            () => this.checkLifecycleAutomations().catch(e => Logger.error('Lifecycle Automation Check Error', { error: e })),
+            runLifecycleScan,
             6 * 60 * 60 * 1000
         );
 
@@ -147,6 +151,7 @@ export class MarketingScheduler {
                         currency: session.currency,
                         checkoutUrl: session.currentPath
                     },
+                    sessionId: session.id,
                     visitorId: session.visitorId
                 });
 

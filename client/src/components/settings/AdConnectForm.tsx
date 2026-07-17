@@ -3,7 +3,7 @@
  * 
  * Form component for connecting new ad platforms.
  */
-import { Facebook, Lock } from 'lucide-react';
+import { MessageCircle as Facebook, Lock } from 'lucide-react';
 
 interface AdConnectFormProps {
     platform: string;

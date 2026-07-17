@@ -337,34 +337,28 @@ export class PurchaseOrderService {
      * Increments stockQuantity on linked products/variants and syncs to WooCommerce.
      */
     async receiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[]; updatedProductIds: string[] }> {
-        // Guard: prevent double-receive which would double stock counts
-        const currentStatus = await prisma.purchaseOrder.findFirst({
-            where: { id: poId, accountId },
-            select: { status: true }
-        });
-        if (currentStatus?.status === 'RECEIVED') {
-            Logger.warn('receiveStock called on already-RECEIVED PO, skipping', { poId });
-            return { updated: 0, errors: ['PO is already RECEIVED — stock not applied again'], updatedProductIds: [] };
-        }
+        const transactionResult = await prisma.$transaction(async tx => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`purchase-order:${accountId}:${poId}`}, 0))`;
 
-        const po = await prisma.purchaseOrder.findFirst({
-            where: { id: poId, accountId },
-            include: {
-                items: {
-                    include: {
-                        product: {
-                            include: {
-                                boms: {
-                                    select: {
-                                        id: true,
-                                        items: {
-                                            where: {
-                                                OR: [
-                                                    { childProductId: { not: null } },
-                                                    { internalProductId: { not: null } }
-                                                ]
-                                            },
-                                            select: { id: true }
+            const po = await tx.purchaseOrder.findFirst({
+                where: { id: poId, accountId },
+                include: {
+                    items: {
+                        include: {
+                            product: {
+                                include: {
+                                    boms: {
+                                        select: {
+                                            id: true,
+                                            items: {
+                                                where: {
+                                                    OR: [
+                                                        { childProductId: { not: null } },
+                                                        { internalProductId: { not: null } }
+                                                    ]
+                                                },
+                                                select: { id: true }
+                                            }
                                         }
                                     }
                                 }
@@ -372,103 +366,47 @@ export class PurchaseOrderService {
                         }
                     }
                 }
-            }
-        });
+            });
 
-        if (!po) {
-            throw new Error('Purchase Order not found');
-        }
-
-        const errors: string[] = [];
-        const updatedProductIds: string[] = [];
-        let updated = 0;
-
-        // Collect WooCommerce sync tasks to run in background after response
-        const wooSyncTasks: Array<() => Promise<void>> = [];
-
-        // Get WooService for syncing
-        let wooService: WooService | null = null;
-        try {
-            wooService = await WooService.forAccount(accountId);
-        } catch (err) {
-            Logger.warn('Unable to connect to WooCommerce for stock sync', { error: err, accountId });
-        }
-
-        // Pre-fetch all ProductVariation rows this PO touches in a single query.
-        // Why: avoids a separate findUnique per item inside the loop (N+1).
-        const variationWooIds = po.items
-            .filter(i => i.variationWooId != null)
-            .map(i => ({ productId: i.product!.id, wooId: i.variationWooId! }));
-
-        const variationRows = variationWooIds.length > 0
-            ? await prisma.productVariation.findMany({
-                where: {
-                    OR: variationWooIds.map(v => ({
-                        productId: v.productId,
-                        wooId: v.wooId
-                    }))
-                }
-            })
-            : [];
-
-        // Key: `${productId}:${wooId}` — unique per variation
-        const variationMap = new Map(
-            variationRows.map(v => [`${v.productId}:${v.wooId}`, v])
-        );
-
-        for (const item of po.items) {
-            if (!item.productId || !item.product) {
-                continue; // Skip items without linked product
+            if (!po) throw new Error('Purchase Order not found');
+            if (po.status === 'RECEIVED') {
+                return {
+                    skipped: true as const,
+                    updated: 0,
+                    errors: ['PO is already RECEIVED — stock not applied again'],
+                    updatedProductIds: [],
+                    syncTargets: []
+                };
             }
 
-            // Skip BOM products - their stock is derived from components
-            const hasBOM = item.product.boms?.some(bom => bom.items.length > 0) ?? false;
-            if (hasBOM) {
-                Logger.warn('Skipped stock update for BOM product', { productId: item.product.id, productName: item.product.name });
-                errors.push(`${item.product.name} is a BOM product - stock not updated`);
-                continue;
-            }
+            const errors: string[] = [];
+            const updatedProductIds: string[] = [];
+            const syncTargets: Array<{ productWooId: number; variationWooId?: number; stock: number }> = [];
+            let updated = 0;
+            const variationWooIds = po.items
+                .filter(i => i.variationWooId != null && i.product != null)
+                .map(i => ({ productId: i.product!.id, wooId: i.variationWooId! }));
+            const variationRows = variationWooIds.length > 0
+                ? await tx.productVariation.findMany({
+                    where: { OR: variationWooIds.map(v => ({ productId: v.productId, wooId: v.wooId })) }
+                })
+                : [];
+            const variationMap = new Map(variationRows.map(v => [`${v.productId}:${v.wooId}`, v]));
 
-            try {
+            for (const item of po.items) {
+                if (!item.productId || !item.product) continue;
                 const product = item.product;
+                const hasBOM = product.boms?.some(bom => bom.items.length > 0) ?? false;
+                if (hasBOM) {
+                    Logger.warn('Skipped stock update for BOM product', { productId: product.id, productName: product.name });
+                    errors.push(`${product.name} is a BOM product - stock not updated`);
+                    continue;
+                }
 
-                // Check if this item targets a specific variation
-                if (item.variationWooId) {
-                    // Look up variation from pre-fetched Map — no per-item DB query
-                    const variation = variationMap.get(`${product.id}:${item.variationWooId}`) ?? null;
-
-                    if (variation) {
-                        // Atomic increment + status in single query to prevent crash-induced drift
-                        const variationResult = await prisma.$queryRawUnsafe<Array<{ stock_quantity: number }>>(
-                            `UPDATE "ProductVariation" SET "stockQuantity" = "stockQuantity" + $1, "manageStock" = true, "stockStatus" = CASE WHEN "stockQuantity" + $1 > 0 THEN 'instock' ELSE 'outofstock' END WHERE "id" = $2 RETURNING "stockQuantity" AS stock_quantity`,
-                            item.quantity, variation.id
-                        );
-                        const newStock = variationResult[0]?.stock_quantity ?? 0;
-
-                        Logger.info('Stock received for variation', {
-                            productId: product.id,
-                            variationWooId: item.variationWooId,
-                            previousStock: (variation.stockQuantity ?? 0),
-                            addedQuantity: item.quantity,
-                            newStock
-                        });
-
-                        // Queue WooCommerce sync for background with retry
-                        if (wooService) {
-                            const woo = wooService;
-                            const pWooId = product.wooId;
-                            const vWooId = item.variationWooId;
-                            const stock = newStock;
-                            wooSyncTasks.push(() => wooRetry(
-                                () => woo.updateProductVariation(pWooId, vWooId, {
-                                    manage_stock: true,
-                                    stock_quantity: stock
-                                }),
-                                `receive variation ${vWooId} on product ${pWooId}`
-                            ));
-                        }
-                    } else {
-                        // Variation not found locally — this is an error, not safe to fall through to parent
+                let newStock: number;
+                if (item.variationWooId != null) {
+                    const variation = variationMap.get(`${product.id}:${item.variationWooId}`);
+                    if (!variation) {
                         Logger.error('Variation not found locally for stock receive', {
                             productId: product.id,
                             variationWooId: item.variationWooId
@@ -476,68 +414,81 @@ export class PurchaseOrderService {
                         errors.push(`${item.name}: Variation ${item.variationWooId} not found locally — sync products first`);
                         continue;
                     }
+                    const rows = await tx.$queryRaw<Array<{ stock_quantity: number }>>`
+                        UPDATE "ProductVariation"
+                        SET "stockQuantity" = COALESCE("stockQuantity", 0) + ${item.quantity},
+                            "manageStock" = true,
+                            "stockStatus" = CASE WHEN COALESCE("stockQuantity", 0) + ${item.quantity} > 0
+                                                 THEN 'instock' ELSE 'outofstock' END
+                        WHERE "id" = ${variation.id}
+                        RETURNING "stockQuantity" AS stock_quantity
+                    `;
+                    if (!rows[0]) throw new Error(`Variation ${item.variationWooId} disappeared during stock receive`);
+                    newStock = rows[0].stock_quantity;
+                    syncTargets.push({ productWooId: product.wooId, variationWooId: item.variationWooId, stock: newStock });
                 } else {
-                    // Simple product stock update
-                    // Variable products must have variationWooId specified — skip with error
                     const productRaw = product.rawData as any;
                     const isVariable = productRaw?.type?.includes('variable') || productRaw?.variations?.length > 0;
                     if (isVariable) {
                         errors.push(`${product.name}: Cannot set stock on variable parent — specify a variation`);
                         continue;
                     }
-
-                    const previousStock = product.stockQuantity ?? 0;
-
-                    // Atomic increment + status in single query to prevent crash-induced drift
-                    const productResult = await prisma.$queryRawUnsafe<Array<{ stock_quantity: number }>>(
-                        `UPDATE "WooProduct" SET "stockQuantity" = "stockQuantity" + $1, "manageStock" = true, "stockStatus" = CASE WHEN "stockQuantity" + $1 > 0 THEN 'instock' ELSE 'outofstock' END WHERE "id" = $2 RETURNING "stockQuantity" AS stock_quantity`,
-                        item.quantity, product.id
-                    );
-                    const newStock = productResult[0]?.stock_quantity ?? 0;
-
-                    Logger.info('Stock received for product', {
-                        productId: product.id,
-                        wooId: product.wooId,
-                        previousStock,
-                        addedQuantity: item.quantity,
-                        newStock
-                    });
-
-                    // Queue WooCommerce sync for background with retry
-                    if (wooService) {
-                        const woo = wooService;
-                        const pWooId = product.wooId;
-                        const stock = newStock;
-                        wooSyncTasks.push(() => wooRetry(
-                            () => woo.updateProduct(pWooId, {
-                                manage_stock: true,
-                                stock_quantity: stock
-                            }),
-                            `receive product ${pWooId}`
-                        ));
-                    }
+                    const rows = await tx.$queryRaw<Array<{ stock_quantity: number }>>`
+                        UPDATE "WooProduct"
+                        SET "stockQuantity" = COALESCE("stockQuantity", 0) + ${item.quantity},
+                            "manageStock" = true,
+                            "stockStatus" = CASE WHEN COALESCE("stockQuantity", 0) + ${item.quantity} > 0
+                                                 THEN 'instock' ELSE 'outofstock' END
+                        WHERE "id" = ${product.id}
+                        RETURNING "stockQuantity" AS stock_quantity
+                    `;
+                    if (!rows[0]) throw new Error(`Product ${product.id} disappeared during stock receive`);
+                    newStock = rows[0].stock_quantity;
+                    syncTargets.push({ productWooId: product.wooId, stock: newStock });
                 }
 
                 updated++;
-
-                // Track this product for cascade BOM sync + ES re-index
                 updatedProductIds.push(product.id);
-            } catch (err) {
-                const errorMsg = `Failed to update stock for item "${item.name}": ${(err as Error).message}`;
-                Logger.error('Error receiving stock for PO item', { error: err, itemId: item.id });
-                errors.push(errorMsg);
+                Logger.info('Stock received for PO item', {
+                    productId: product.id,
+                    itemName: item.name,
+                    quantity: item.quantity,
+                    variationWooId: item.variationWooId,
+                    newStock
+                });
             }
+
+            await tx.purchaseOrder.update({ where: { id: poId }, data: { status: 'RECEIVED' } });
+            return { skipped: false as const, updated, errors, updatedProductIds, syncTargets };
+        });
+
+        if (transactionResult.skipped) {
+            Logger.warn('receiveStock called on already-RECEIVED PO, skipping', { poId });
+            return transactionResult;
         }
 
-        // Transition PO to RECEIVED after all stock increments have been committed.
-        // Why: without this the double-receive guard (line 263) never triggers,
-        // allowing every call to re-apply stock — a data-corruption bug.
-        // TODO(improvement): Track wooSyncStatus separately (pending/complete/failed)
-        // so admins can retry just the WooCommerce push without unreceive+re-receive.
-        await prisma.purchaseOrder.update({
-            where: { id: poId },
-            data: { status: 'RECEIVED' }
-        });
+        const { updated, errors, updatedProductIds, syncTargets } = transactionResult;
+        const wooSyncTasks: Array<() => Promise<void>> = [];
+        let wooService: WooService | null = null;
+        try {
+            wooService = await WooService.forAccount(accountId);
+        } catch (err) {
+            Logger.warn('Unable to connect to WooCommerce for stock sync', { error: err, accountId });
+        }
+        if (wooService) {
+            for (const target of syncTargets) {
+                const woo = wooService;
+                wooSyncTasks.push(() => target.variationWooId != null
+                    ? wooRetry(() => woo.updateProductVariation(target.productWooId, target.variationWooId!, {
+                        manage_stock: true,
+                        stock_quantity: target.stock
+                    }), `receive variation ${target.variationWooId} on product ${target.productWooId}`)
+                    : wooRetry(() => woo.updateProduct(target.productWooId, {
+                        manage_stock: true,
+                        stock_quantity: target.stock
+                    }), `receive product ${target.productWooId}`));
+            }
+        }
 
         // Fire-and-forget: WooCommerce sync + BOM cascade run in background
         // Why: WooCommerce API calls take ~2s each — with 24 items that exceeds
@@ -582,34 +533,28 @@ export class PurchaseOrderService {
      * Reverses stock changes when a PO transitions away from RECEIVED.
      */
     async unreceiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[]; updatedProductIds: string[] }> {
-        // Guard: only unreceive POs that are currently RECEIVED
-        const currentStatus = await prisma.purchaseOrder.findFirst({
-            where: { id: poId, accountId },
-            select: { status: true }
-        });
-        if (currentStatus?.status !== 'RECEIVED') {
-            Logger.warn('unreceiveStock called on non-RECEIVED PO, skipping', { poId, status: currentStatus?.status });
-            return { updated: 0, errors: ['PO is not RECEIVED — nothing to unreceive'], updatedProductIds: [] };
-        }
+        const transactionResult = await prisma.$transaction(async tx => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`purchase-order:${accountId}:${poId}`}, 0))`;
 
-        const po = await prisma.purchaseOrder.findFirst({
-            where: { id: poId, accountId },
-            include: {
-                items: {
-                    include: {
-                        product: {
-                            include: {
-                                boms: {
-                                    select: {
-                                        id: true,
-                                        items: {
-                                            where: {
-                                                OR: [
-                                                    { childProductId: { not: null } },
-                                                    { internalProductId: { not: null } }
-                                                ]
-                                            },
-                                            select: { id: true }
+            const po = await tx.purchaseOrder.findFirst({
+                where: { id: poId, accountId },
+                include: {
+                    items: {
+                        include: {
+                            product: {
+                                include: {
+                                    boms: {
+                                        select: {
+                                            id: true,
+                                            items: {
+                                                where: {
+                                                    OR: [
+                                                        { childProductId: { not: null } },
+                                                        { internalProductId: { not: null } }
+                                                    ]
+                                                },
+                                                select: { id: true }
+                                            }
                                         }
                                     }
                                 }
@@ -617,139 +562,113 @@ export class PurchaseOrderService {
                         }
                     }
                 }
+            });
+            if (po?.status !== 'RECEIVED') {
+                return {
+                    skipped: true as const,
+                    status: po?.status,
+                    updated: 0,
+                    errors: ['PO is not RECEIVED — nothing to unreceive'],
+                    updatedProductIds: [],
+                    syncTargets: []
+                };
             }
-        });
 
-        if (!po) {
-            throw new Error('Purchase Order not found');
-        }
+            const errors: string[] = [];
+            const updatedProductIds: string[] = [];
+            const syncTargets: Array<{ productWooId: number; variationWooId?: number; stock: number }> = [];
+            let updated = 0;
+            const variationWooIds = po.items
+                .filter(i => i.variationWooId != null && i.product != null)
+                .map(i => ({ productId: i.product!.id, wooId: i.variationWooId! }));
+            const variationRows = variationWooIds.length > 0
+                ? await tx.productVariation.findMany({
+                    where: { OR: variationWooIds.map(v => ({ productId: v.productId, wooId: v.wooId })) }
+                })
+                : [];
+            const variationMap = new Map(variationRows.map(v => [`${v.productId}:${v.wooId}`, v]));
 
-        const errors: string[] = [];
-        const updatedProductIds: string[] = [];
-        let updated = 0;
-
-        // Collect WooCommerce sync tasks to run in background after response
-        const wooSyncTasks: Array<() => Promise<void>> = [];
-
-        let wooService: WooService | null = null;
-        try {
-            wooService = await WooService.forAccount(accountId);
-        } catch (err) {
-            Logger.warn('Unable to connect to WooCommerce for stock unreceive', { error: err, accountId });
-        }
-
-        // Pre-fetch all ProductVariation rows this PO touches in a single query.
-        // Why: avoids a separate findUnique per item inside the loop (N+1).
-        const unreceiveVariationIds = po.items
-            .filter(i => i.variationWooId != null && i.product != null)
-            .map(i => ({ productId: i.product!.id, wooId: i.variationWooId! }));
-
-        const unreceiveVariationRows = unreceiveVariationIds.length > 0
-            ? await prisma.productVariation.findMany({
-                where: {
-                    OR: unreceiveVariationIds.map(v => ({
-                        productId: v.productId,
-                        wooId: v.wooId
-                    }))
-                }
-            })
-            : [];
-
-        const unreceiveVariationMap = new Map(
-            unreceiveVariationRows.map(v => [`${v.productId}:${v.wooId}`, v])
-        );
-
-        for (const item of po.items) {
-            if (!item.productId || !item.product) continue;
-
-            const hasBOM = item.product.boms?.some(bom => bom.items.length > 0) ?? false;
-            if (hasBOM) continue;
-
-            try {
+            for (const item of po.items) {
+                if (!item.productId || !item.product) continue;
                 const product = item.product;
+                if (product.boms?.some(bom => bom.items.length > 0)) continue;
 
-                if (item.variationWooId) {
-                    // Look up variation from pre-fetched Map — no per-item DB query
-                    const variation = unreceiveVariationMap.get(`${product.id}:${item.variationWooId}`) ?? null;
-
-                    if (variation) {
-                        // Atomic decrement + status in single query to prevent crash-induced drift.
-                        // $queryRaw (tagged template) — Prisma parameterizes all values; eliminates
-                        // SQL injection risk vs $queryRawUnsafe with string interpolation.
-                        const variationResult = await prisma.$queryRaw<Array<{ stock_quantity: number }>>`
-                            UPDATE "ProductVariation"
-                            SET "stockQuantity" = "stockQuantity" - ${item.quantity},
-                                "stockStatus" = CASE WHEN "stockQuantity" - ${item.quantity} > 0
-                                                     THEN 'instock' ELSE 'outofstock' END
-                            WHERE "id" = ${variation.id}
-                            RETURNING "stockQuantity" AS stock_quantity
-                        `;
-                        const newStock = variationResult[0]?.stock_quantity ?? 0;
-
-                        // Queue WooCommerce sync for background with retry
-                        if (wooService) {
-                            const woo = wooService;
-                            const pWooId = product.wooId;
-                            const vWooId = item.variationWooId;
-                            const stock = newStock;
-                            wooSyncTasks.push(() => wooRetry(
-                                () => woo.updateProductVariation(pWooId, vWooId, {
-                                    stock_quantity: stock
-                                }),
-                                `unreceive variation ${vWooId} on product ${pWooId}`
-                            ));
-                        }
+                let newStock: number;
+                if (item.variationWooId != null) {
+                    const variation = variationMap.get(`${product.id}:${item.variationWooId}`);
+                    if (!variation) {
+                        errors.push(`${item.name}: Variation ${item.variationWooId} not found locally — sync products first`);
+                        continue;
                     }
+                    const rows = await tx.$queryRaw<Array<{ stock_quantity: number }>>`
+                        UPDATE "ProductVariation"
+                        SET "stockQuantity" = COALESCE("stockQuantity", 0) - ${item.quantity},
+                            "stockStatus" = CASE WHEN COALESCE("stockQuantity", 0) - ${item.quantity} > 0
+                                                 THEN 'instock' ELSE 'outofstock' END
+                        WHERE "id" = ${variation.id}
+                        RETURNING "stockQuantity" AS stock_quantity
+                    `;
+                    if (!rows[0]) throw new Error(`Variation ${item.variationWooId} disappeared during stock unreceive`);
+                    newStock = rows[0].stock_quantity;
+                    syncTargets.push({ productWooId: product.wooId, variationWooId: item.variationWooId, stock: newStock });
                 } else {
-                    // Simple product stock reversal
-                    // Variable products must have variationWooId specified — skip
                     const productRaw = product.rawData as any;
                     const isVariable = productRaw?.type?.includes('variable') || productRaw?.variations?.length > 0;
                     if (isVariable) {
                         errors.push(`${product.name}: Cannot reverse stock on variable parent — specify a variation`);
                         continue;
                     }
-
-                    // Atomic decrement + status in single query to prevent crash-induced drift.
-                    // $queryRaw (tagged template) — parameterized, no SQL injection risk.
-                    // No Math.max(0) clamping — keep local DB truthful so WooCommerce stays in sync.
-                    const productResult = await prisma.$queryRaw<Array<{ stock_quantity: number }>>`
+                    const rows = await tx.$queryRaw<Array<{ stock_quantity: number }>>`
                         UPDATE "WooProduct"
-                        SET "stockQuantity" = "stockQuantity" - ${item.quantity},
-                            "stockStatus" = CASE WHEN "stockQuantity" - ${item.quantity} > 0
+                        SET "stockQuantity" = COALESCE("stockQuantity", 0) - ${item.quantity},
+                            "stockStatus" = CASE WHEN COALESCE("stockQuantity", 0) - ${item.quantity} > 0
                                                  THEN 'instock' ELSE 'outofstock' END
                         WHERE "id" = ${product.id}
                         RETURNING "stockQuantity" AS stock_quantity
                     `;
-                    const newStock = productResult[0]?.stock_quantity ?? 0;
-
-                    // Queue WooCommerce sync for background with retry
-                    if (wooService) {
-                        const woo = wooService;
-                        const pWooId = product.wooId;
-                        const stock = newStock;
-                        wooSyncTasks.push(() => wooRetry(
-                            () => woo.updateProduct(pWooId, {
-                                stock_quantity: stock
-                            }),
-                            `unreceive product ${pWooId}`
-                        ));
-                    }
+                    if (!rows[0]) throw new Error(`Product ${product.id} disappeared during stock unreceive`);
+                    newStock = rows[0].stock_quantity;
+                    syncTargets.push({ productWooId: product.wooId, stock: newStock });
                 }
 
                 updated++;
                 updatedProductIds.push(product.id);
-
                 Logger.info('Stock unreceived for item', {
                     productId: product.id,
                     itemName: item.name,
                     quantity: item.quantity,
-                    variationWooId: item.variationWooId
+                    variationWooId: item.variationWooId,
+                    newStock
                 });
-            } catch (err) {
-                const errorMsg = `Failed to unreceive stock for "${item.name}": ${(err as Error).message}`;
-                Logger.error('Error unreceiving stock for PO item', { error: err, itemId: item.id });
-                errors.push(errorMsg);
+            }
+
+            await tx.purchaseOrder.update({ where: { id: poId }, data: { status: 'ORDERED' } });
+            return { skipped: false as const, status: po.status, updated, errors, updatedProductIds, syncTargets };
+        });
+
+        if (transactionResult.skipped) {
+            Logger.warn('unreceiveStock called on non-RECEIVED PO, skipping', { poId, status: transactionResult.status });
+            return transactionResult;
+        }
+
+        const { updated, errors, updatedProductIds, syncTargets } = transactionResult;
+        const wooSyncTasks: Array<() => Promise<void>> = [];
+        let wooService: WooService | null = null;
+        try {
+            wooService = await WooService.forAccount(accountId);
+        } catch (err) {
+            Logger.warn('Unable to connect to WooCommerce for stock unreceive', { error: err, accountId });
+        }
+        if (wooService) {
+            for (const target of syncTargets) {
+                const woo = wooService;
+                wooSyncTasks.push(() => target.variationWooId != null
+                    ? wooRetry(() => woo.updateProductVariation(target.productWooId, target.variationWooId!, {
+                        stock_quantity: target.stock
+                    }), `unreceive variation ${target.variationWooId} on product ${target.productWooId}`)
+                    : wooRetry(() => woo.updateProduct(target.productWooId, {
+                        stock_quantity: target.stock
+                    }), `unreceive product ${target.productWooId}`));
             }
         }
 
@@ -784,13 +703,6 @@ export class PurchaseOrderService {
             });
         }
 
-        // Why: always transition away from RECEIVED — even if all items errored,
-        // partial stock decrements may have occurred. Leaving the PO in RECEIVED
-        // would allow repeated unreceive attempts, compounding stock drift.
-        await prisma.purchaseOrder.update({
-            where: { id: poId },
-            data: { status: 'ORDERED' }
-        });
         Logger.info('PO status transitioned to ORDERED after unreceive', { poId, updated, errorCount: errors.length });
 
         return { updated, errors, updatedProductIds };
