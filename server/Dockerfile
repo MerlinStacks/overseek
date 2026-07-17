@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.npm \
     && npm config set fetch-retry-mintimeout 10000 \
     && npm config set fetch-retry-maxtimeout 120000 \
     && npm config set registry https://registry.npmjs.org/ \
-    && npm install --workspace=server --legacy-peer-deps --prefer-offline --no-audit
+    && npm install --workspace=server --workspace=@overseek/core --legacy-peer-deps --prefer-offline --no-audit
 
 # Copy shared core package source and build it for runtime imports
 COPY packages/overseek-core/ packages/overseek-core/

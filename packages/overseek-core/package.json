@@ -18,6 +18,9 @@
     "build:esm": "tsc -p tsconfig.esm.json",
     "dev": "tsc -p tsconfig.cjs.json --watch"
   },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  },
   "files": ["dist"],
   "license": "MIT"
 }
