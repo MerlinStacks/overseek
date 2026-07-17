@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, AlertTriangle, CheckCircle, Clock, Settings, Loader2 } from 'lucide-react';
-import ReactEChartsCore from 'echarts-for-react/lib/core';
+import ReactEChartsCore from 'echarts-for-react/esm/core';
 import { echarts, type EChartsOption } from '../utils/echarts';
 import { useApi } from '../hooks/useApi';
 

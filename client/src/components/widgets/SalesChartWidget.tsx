@@ -5,7 +5,7 @@ import { BarChart3 } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import ReactEChartsCore from 'echarts-for-react/lib/core';
+import ReactEChartsCore from 'echarts-for-react/esm/core';
 import { echarts, graphic, type EChartsOption, type SeriesOption } from '../../utils/echarts';
 import { WidgetLoadingState, WidgetEmptyState, WidgetErrorState } from './WidgetState';
 import { widgetCardClass, widgetTitleClass, widgetHeaderRowClass, widgetHeaderIconBadgeClass } from './widgetStyles';

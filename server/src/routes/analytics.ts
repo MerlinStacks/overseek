@@ -195,7 +195,7 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const query = request.query as { days?: string };
-            const days = parsePositiveInt(query.days, 30);
+            const days = Math.min(parsePositiveInt(query.days, 30), 365);
             return await SalesAnalytics.getSalesForecast(accountId, days);
         } catch (e) { Logger.error('Forecast Error', { error: e }); return reply.code(500).send({ error: 'Failed' }); }
     });

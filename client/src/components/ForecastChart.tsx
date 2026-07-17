@@ -3,9 +3,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import ReactEChartsCore from 'echarts-for-react/lib/core';
+import ReactEChartsCore from 'echarts-for-react/esm/core';
 import { echarts, graphic, type EChartsOption } from '../utils/echarts';
 import { AlertTriangle, Loader2, TrendingUp } from 'lucide-react';
+import { formatCurrency } from '../utils/format';
 
 
 interface ForecastData {
@@ -13,6 +14,8 @@ interface ForecastData {
     sales?: number;
     historySales?: number | null;
     forecastSales?: number | null;
+    forecastLower?: number | null;
+    forecastUpper?: number | null;
     isForecast?: boolean;
 }
 
@@ -24,12 +27,19 @@ interface SalesHistoryRow {
 interface ForecastRow {
     date: string;
     sales: number;
+    lower?: number;
+    upper?: number;
 }
 
 interface ForecastApiResponse {
     forecast?: ForecastRow[];
     confidence?: 'high' | 'medium' | 'low';
     warning?: string;
+    metadata?: {
+        method?: string;
+        backtestAccuracy?: number | null;
+        dataThrough?: string | null;
+    };
 }
 
 interface ForecastProps {
@@ -43,6 +53,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [warning, setWarning] = useState<string | null>(null);
     const [confidence, setConfidence] = useState<'high' | 'medium' | 'low' | null>(null);
+    const [metadata, setMetadata] = useState<ForecastApiResponse['metadata'] | null>(null);
 
     const fetchForecast = useCallback(async () => {
         setIsLoading(true);
@@ -69,6 +80,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                         : [];
                 const forecastWarning = Array.isArray(rawForecast) ? null : (rawForecast.warning || null);
                 const forecastConfidence = Array.isArray(rawForecast) ? null : (rawForecast.confidence || null);
+                const forecastMetadata = Array.isArray(rawForecast) ? null : (rawForecast.metadata || null);
 
                 const processed: ForecastData[] = history.map((d) => ({
                     date: d.date,
@@ -88,7 +100,9 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                         processed.push({
                             date: d.date,
                             historySales: null,
-                            forecastSales: d.sales
+                            forecastSales: d.sales,
+                            forecastLower: d.lower ?? null,
+                            forecastUpper: d.upper ?? null
                         });
                     }
                 });
@@ -96,16 +110,19 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                 setData(processed);
                 setWarning(forecastWarning);
                 setConfidence(forecastConfidence);
+                setMetadata(forecastMetadata);
             } else {
                 setData([]);
                 setWarning(null);
                 setConfidence(null);
+                setMetadata(null);
             }
 
         } catch (error) {
             Logger.error('An error occurred', { error: error });
             setWarning(null);
             setConfidence(null);
+            setMetadata(null);
         } finally {
             setIsLoading(false);
         }
@@ -121,7 +138,12 @@ export function ForecastChart({ dateRange }: ForecastProps) {
 
     const confidenceLabel = confidence
         ? `${confidence.charAt(0).toUpperCase()}${confidence.slice(1)} Confidence`
-        : 'AI Powered';
+        : 'Sales Forecast';
+    const methodLabel = metadata?.method === 'weekday-ewma-yoy-ensemble'
+        ? 'Weekday + recent trend + prior-year ensemble'
+        : metadata?.method === 'unavailable'
+            ? 'Forecast unavailable'
+            : 'Weekday + recent trend ensemble';
 
     useEffect(() => {
         if (currentAccount && token) {
@@ -136,6 +158,13 @@ export function ForecastChart({ dateRange }: ForecastProps) {
         });
         const historyValues = data.map(d => d.historySales ?? null);
         const forecastValues = data.map(d => d.forecastSales ?? null);
+        const forecastLowerValues = data.map(d => d.forecastLower ?? null);
+        const forecastRangeValues = data.map(d => (
+            d.forecastLower != null && d.forecastUpper != null
+                ? Math.max(0, d.forecastUpper - d.forecastLower)
+                : null
+        ));
+        const currency = currentAccount?.currency || 'USD';
 
         return {
             grid: { top: 10, right: 30, left: 50, bottom: 30 },
@@ -149,7 +178,10 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                 axisLabel: {
                     fontSize: 12,
                     color: '#6b7280',
-                    formatter: (value: number) => `$${value}`
+                    formatter: (value: number) => formatCurrency(value, currency, {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    })
                 },
                 splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } }
             },
@@ -174,17 +206,33 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                     connectNulls: false
                 },
                 {
+                    name: 'Forecast range baseline',
+                    type: 'line',
+                    data: forecastLowerValues,
+                    stack: 'forecast-range',
+                    lineStyle: { opacity: 0 },
+                    areaStyle: { opacity: 0 },
+                    symbol: 'none',
+                    connectNulls: false,
+                    tooltip: { show: false }
+                },
+                {
+                    name: 'Likely range',
+                    type: 'line',
+                    data: forecastRangeValues,
+                    stack: 'forecast-range',
+                    lineStyle: { opacity: 0 },
+                    areaStyle: { color: 'rgba(168, 85, 247, 0.18)' },
+                    symbol: 'none',
+                    connectNulls: false,
+                    tooltip: { show: false }
+                },
+                {
                     name: 'Forecast',
                     type: 'line',
                     smooth: true,
                     data: forecastValues,
                     lineStyle: { color: '#a855f7', width: 2, type: 'dashed' },
-                    areaStyle: {
-                        color: new graphic.LinearGradient(0, 0, 0, 1, [
-                            { offset: 0, color: 'rgba(168, 85, 247, 0.8)' },
-                            { offset: 1, color: 'rgba(168, 85, 247, 0)' }
-                        ])
-                    },
                     itemStyle: { color: '#a855f7' },
                     symbol: 'none',
                     connectNulls: false
@@ -201,6 +249,13 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                 <div>
                     <h3 className="text-lg font-bold text-gray-900">Sales Forecast</h3>
                     <p className="text-sm text-gray-500">Predicted sales for the next 30 days based on recent trends</p>
+                    {metadata && (
+                        <p className="mt-1 text-xs text-gray-400">
+                            {methodLabel}
+                            {metadata.backtestAccuracy != null && ` | ${metadata.backtestAccuracy}% backtest accuracy`}
+                            {metadata.dataThrough && ` | Data through ${metadata.dataThrough}`}
+                        </p>
+                    )}
                 </div>
                 <div className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${confidenceBadgeClass}`}>
                     <TrendingUp size={14} /> {confidenceLabel}
@@ -225,7 +280,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                 </div>
 
                 {/* Legend */}
-                <div className="flex justify-center mt-4 gap-6 text-sm">
+                <div className="flex flex-wrap justify-center mt-4 gap-x-6 gap-y-2 text-sm">
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
                         <span className="text-gray-600">Historical Sales</span>
@@ -233,6 +288,10 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
                         <span className="text-gray-600">Forecast (Projected)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-purple-200 rounded-full"></div>
+                        <span className="text-gray-600">Likely Range</span>
                     </div>
                 </div>
             </div>
