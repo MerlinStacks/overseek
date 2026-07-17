@@ -11,8 +11,10 @@ export class SyncService {
     async runSync(accountId: string, options: { types?: string[], incremental?: boolean, priority?: number, triggerSource?: 'SYSTEM' | 'MANUAL' | 'RETRY' } = {}) {
         const types = options.types || ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'];
         const incremental = options.incremental !== false; // Default true
-        const priority = options.priority || 10;
         const triggerSource = options.triggerSource || 'SYSTEM';
+        // BullMQ uses lower numbers for higher priority. User-requested work
+        // should not sit behind the recurring scheduler backlog.
+        const priority = options.priority ?? (triggerSource === 'SYSTEM' ? 10 : 1);
 
         Logger.info(`Dispatching Sync Jobs for Account ${accountId}`, { types, incremental });
 
@@ -41,8 +43,9 @@ export class SyncService {
 
             if (existingJob) {
                 const state = await existingJob.getState();
-                // If active, waiting, or delayed - we skip to prevent concurrency
-                if (['active', 'waiting', 'delayed'].includes(state)) {
+                // Jobs with a non-zero priority live in BullMQ's separate
+                // "prioritized" state, not "waiting".
+                if (['active', 'waiting', 'delayed', 'prioritized'].includes(state)) {
                     Logger.info(`Skipping ${queueName} for ${accountId} - Job ${existingJob.id} is ${state}`);
                     return;
                 }

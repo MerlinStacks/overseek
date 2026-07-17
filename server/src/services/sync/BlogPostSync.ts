@@ -15,6 +15,8 @@ export class BlogPostSync extends BaseSync {
         let totalProcessed = 0;
         let totalDeleted = 0;
         let totalSkipped = 0;
+        let validationFailures = 0;
+        let totalUpsertFailures = 0;
 
         while (hasMore) {
             const { data: rawPosts, totalPages } = await woo.getPosts({ page, after, per_page: 50 });
@@ -30,6 +32,7 @@ export class BlogPostSync extends BaseSync {
                     posts.push(result.data);
                 } else {
                     totalSkipped++;
+                    validationFailures++;
                     Logger.debug('Skipping invalid post', {
                         accountId, syncId, postId: (raw as any)?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
@@ -38,7 +41,14 @@ export class BlogPostSync extends BaseSync {
             }
 
             if (!posts.length) {
+                hasMore = this.hasMorePages(page, totalPages, rawPosts.length, 50);
+                if (job) {
+                    const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : (hasMore ? 0 : 100);
+                    await job.updateProgress(progress);
+                    if (!(await job.isActive())) throw new Error('Cancelled');
+                }
                 page++;
+                if (hasMore) await new Promise(r => setTimeout(r, 500));
                 continue;
             }
 
@@ -73,6 +83,7 @@ export class BlogPostSync extends BaseSync {
                         }
                     }).catch((err) => {
                         totalSkipped++;
+                        totalUpsertFailures++;
                         failedWooIds.push(p.id);
                         Logger.warn('Failed to upsert post', { accountId, syncId, wooId: p.id, error: err.message });
                     })
@@ -86,8 +97,8 @@ export class BlogPostSync extends BaseSync {
                 );
             }
 
-            totalProcessed += posts.length;
-            if (page >= totalPages) hasMore = false;
+            totalProcessed += posts.length - failedWooIds.length;
+            hasMore = this.hasMorePages(page, totalPages, rawPosts.length, 50);
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
@@ -99,7 +110,11 @@ export class BlogPostSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
-        if (!incremental && totalProcessed > 0) {
+        if (totalUpsertFailures > 0) {
+            throw new Error(`Blog post sync could not persist ${totalUpsertFailures} post(s); checkpoint was not advanced.`);
+        }
+
+        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
             const staleCount = await prisma.wooBlogPost.count({ where: { accountId, updatedAt: { lt: syncStartedAt } } });
             if (staleCount > 0) {
                 const localTotal = await prisma.wooBlogPost.count({ where: { accountId } });

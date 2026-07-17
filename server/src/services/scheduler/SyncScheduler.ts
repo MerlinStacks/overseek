@@ -189,8 +189,7 @@ export class SyncScheduler {
                     continue;
                 }
                 await service.runSync(acc.id, {
-                    incremental: true,
-                    priority: 1
+                    incremental: true
                 });
             } catch (err: any) {
                 Logger.error(`Orchestrator: Failed to dispatch sync for account ${acc.id}`, { error: err.message });
@@ -217,8 +216,7 @@ export class SyncScheduler {
                 }
                 await service.runSync(acc.id, {
                     types: ['orders'],
-                    incremental: true,
-                    priority: 1
+                    incremental: true
                 });
             } catch (err: any) {
                 Logger.error(`Fast Order Sync: Failed to dispatch for account ${acc.id}`, { error: err.message });

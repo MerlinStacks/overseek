@@ -26,7 +26,11 @@ export class ProductSync extends BaseSync {
         let totalProcessed = 0;
         let totalDeleted = 0;
         let totalSkipped = 0;
+        let validationFailures = 0;
+        let totalUpsertFailures = 0;
+        let variationFailures = 0;
         let totalVariationsSynced = 0;
+        const variationReconciliationParentIds = new Set<string>();
 
         const syncStartedAt = new Date();
 
@@ -45,6 +49,7 @@ export class ProductSync extends BaseSync {
                     products.push(result.data);
                 } else {
                     totalSkipped++;
+                    validationFailures++;
                     Logger.debug(`Skipping invalid product`, {
                         accountId, syncId, productId: raw?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
@@ -53,7 +58,14 @@ export class ProductSync extends BaseSync {
             }
 
             if (!products.length) {
+                hasMore = this.hasMorePages(page, totalPages, rawProducts.length, 50);
+                if (job) {
+                    const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : (hasMore ? 0 : 100);
+                    await job.updateProgress(progress);
+                    if (!(await job.isActive())) throw new Error('Cancelled');
+                }
                 page++;
+                if (hasMore) await new Promise(r => setTimeout(r, 500));
                 continue;
             }
 
@@ -131,6 +143,7 @@ export class ProductSync extends BaseSync {
                 const productSlice = products.slice(i, i + UPSERT_CHUNK);
                 await Promise.all(ops.map((op, idx) => op.catch((err) => {
                     totalSkipped++;
+                    totalUpsertFailures++;
                     failedProductWooIds.push(productSlice[idx].id);
                     Logger.warn('Failed to upsert product', { accountId, syncId, error: err.message });
                 })));
@@ -145,11 +158,14 @@ export class ProductSync extends BaseSync {
                 );
             }
 
+            const failedProductWooIdSet = new Set(failedProductWooIds);
+            const persistedProducts = products.filter(product => !failedProductWooIdSet.has(product.id));
+
             // Batch-fetch all upserted products once (avoids N+1 queries)
             const upsertedProducts = await prisma.wooProduct.findMany({
                 where: {
                     accountId,
-                    wooId: { in: products.map(p => p.id) }
+                    wooId: { in: persistedProducts.map(p => p.id) }
                 }
             });
             const productMap = new Map(upsertedProducts.map(p => [p.wooId, p]));
@@ -159,7 +175,7 @@ export class ProductSync extends BaseSync {
 
             // Score products and batch-collect update operations
             const scoreUpdateOperations = [];
-            for (const p of products) {
+            for (const p of persistedProducts) {
                 const upsertedProduct = productMap.get(p.id);
                 if (upsertedProduct) {
                     const currentSeoData = (upsertedProduct.seoData as any) || {};
@@ -200,8 +216,8 @@ export class ProductSync extends BaseSync {
 
             // Bulk index all products in one ES call
             const productsToIndex: any[] = [];
-            for (let i = 0; i < products.length; i++) {
-                const p = products[i];
+            for (let i = 0; i < persistedProducts.length; i++) {
+                const p = persistedProducts[i];
                 const upsertedProduct = productMap.get(p.id);
                 const scores = scoringResults[i] || { seoScore: 0, merchantCenterScore: 0 };
 
@@ -217,12 +233,19 @@ export class ProductSync extends BaseSync {
             } catch (error: any) {
                 Logger.warn('Bulk index products failed', { accountId, syncId, error: error.message });
             }
-            totalProcessed += products.length;
+            totalProcessed += persistedProducts.length;
 
             // Sync variations for variable products (parallelized in batches of 5)
-            const variableProducts = products.filter(p =>
+            const variableProducts = persistedProducts.filter(p =>
                 p.type === 'variable' || (p.type && p.type.includes('variable'))
             );
+            const variableProductIds = new Set(variableProducts.map(product => product.id));
+            for (const product of persistedProducts) {
+                if (!variableProductIds.has(product.id)) {
+                    const parentDbProduct = productMap.get(product.id);
+                    if (parentDbProduct) variationReconciliationParentIds.add(parentDbProduct.id);
+                }
+            }
 
             const VAR_BATCH_SIZE = 2;
             const VARIATION_UPSERT_CHUNK = 25;
@@ -230,13 +253,23 @@ export class ProductSync extends BaseSync {
                 const varBatch = variableProducts.slice(vi, vi + VAR_BATCH_SIZE);
                 await Promise.allSettled(varBatch.map(async (varProduct) => {
                     const parentDbProduct = productMap.get(varProduct.id);
-                    if (!parentDbProduct) return;
+                    if (!parentDbProduct) {
+                        variationFailures++;
+                        return;
+                    }
 
                     try {
                         const rawVariations = await woo.getProductVariations(varProduct.id);
                         const variations = safeParseVariations(rawVariations);
 
-                        if (variations.length === 0) return;
+                        if (variations.length !== rawVariations.length) {
+                            throw new Error(`${rawVariations.length - variations.length} variation payload(s) failed validation`);
+                        }
+
+                        if (variations.length === 0) {
+                            variationReconciliationParentIds.add(parentDbProduct.id);
+                            return;
+                        }
 
                         // Why no variationsData on parent: each variation's full JSON is
                         // already persisted in ProductVariation.rawData. Duplicating it
@@ -253,6 +286,10 @@ export class ProductSync extends BaseSync {
                                     stockStatus: v.stock_status,
                                     stockQuantity: v.stock_quantity ?? null,
                                     manageStock: v.manage_stock ?? (v as any).manage_stock ?? false,
+                                    weight: v.weight ? parseFloat(v.weight) : null,
+                                    length: v.dimensions?.length ? parseFloat(v.dimensions.length) : null,
+                                    width: v.dimensions?.width ? parseFloat(v.dimensions.width) : null,
+                                    height: v.dimensions?.height ? parseFloat(v.dimensions.height) : null,
                                     images: (v.image ? [v.image] : []) as any,
                                     rawData: v as any
                                 },
@@ -265,25 +302,39 @@ export class ProductSync extends BaseSync {
                                     stockStatus: v.stock_status,
                                     stockQuantity: v.stock_quantity ?? null,
                                     manageStock: v.manage_stock ?? (v as any).manage_stock ?? false,
+                                    weight: v.weight ? parseFloat(v.weight) : null,
+                                    length: v.dimensions?.length ? parseFloat(v.dimensions.length) : null,
+                                    width: v.dimensions?.width ? parseFloat(v.dimensions.width) : null,
+                                    height: v.dimensions?.height ? parseFloat(v.dimensions.height) : null,
                                     images: (v.image ? [v.image] : []) as any,
                                     rawData: v as any
                                 }
                             })
                         );
 
+                        let parentWriteFailures = 0;
                         for (let i = 0; i < variationOps.length; i += VARIATION_UPSERT_CHUNK) {
                             const chunk = variationOps.slice(i, i + VARIATION_UPSERT_CHUNK);
                             await Promise.all(chunk.map(op => op.catch((err) => {
+                                parentWriteFailures++;
                                 Logger.warn('Failed to upsert variation', { accountId, syncId, error: err.message });
                             })));
                             await new Promise<void>((resolve) => setImmediate(resolve));
                         }
+
+                        if (parentWriteFailures > 0) {
+                            variationFailures += parentWriteFailures;
+                            return;
+                        }
+
                         totalVariationsSynced += variations.length;
+                        variationReconciliationParentIds.add(parentDbProduct.id);
 
                         Logger.debug(`Synced ${variations.length} variations for product ${varProduct.name}`, {
                             accountId, syncId, productId: varProduct.id
                         });
                     } catch (error: any) {
+                        variationFailures++;
                         Logger.warn(`Failed to sync variations for product ${varProduct.id}`, {
                             accountId, syncId, error: error.message
                         });
@@ -292,8 +343,8 @@ export class ProductSync extends BaseSync {
                 await new Promise<void>((resolve) => setImmediate(resolve));
             }
 
-            Logger.info(`Synced batch of ${products.length} products (${totalVariationsSynced} variations)`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
-            if (page >= totalPages) hasMore = false;
+            Logger.info(`Synced batch of ${persistedProducts.length} products (${totalVariationsSynced} variations)`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
+            hasMore = this.hasMorePages(page, totalPages, rawProducts.length, 50);
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
@@ -307,10 +358,17 @@ export class ProductSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
+        if (totalUpsertFailures > 0) {
+            throw new Error(`Product sync could not persist ${totalUpsertFailures} product(s); checkpoint was not advanced.`);
+        }
+        if (variationFailures > 0) {
+            throw new Error(`Product sync could not fully persist ${variationFailures} variation payload(s); checkpoint was not advanced.`);
+        }
+
         // Reconciliation: remove products/variations not touched during this full sync.
         // Count-first pattern: evaluate the 30% safety cap via SQL count() rather
         // than loading every stale id/wooId into Node memory.
-        if (!incremental && totalProcessed > 0) {
+        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
             const staleProductCount = await prisma.wooProduct.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
@@ -353,11 +411,17 @@ export class ProductSync extends BaseSync {
 
             // Variation reconciliation: delete directly (no per-id ES calls needed,
             // variations aren't indexed in ES separately from their parent product).
-            const { count: staleVarCount } = await prisma.productVariation.deleteMany({
-                where: { product: { accountId }, updatedAt: { lt: syncStartedAt } }
-            });
-            if (staleVarCount > 0) {
-                Logger.info(`Reconciliation: Deleted ${staleVarCount} orphaned variations`, { accountId, syncId });
+            const reconciledParentIds = Array.from(variationReconciliationParentIds);
+            if (reconciledParentIds.length > 0) {
+                const { count: staleVarCount } = await prisma.productVariation.deleteMany({
+                    where: {
+                        productId: { in: reconciledParentIds },
+                        updatedAt: { lt: syncStartedAt }
+                    }
+                });
+                if (staleVarCount > 0) {
+                    Logger.info(`Reconciliation: Deleted ${staleVarCount} orphaned variations`, { accountId, syncId });
+                }
             }
         }
 

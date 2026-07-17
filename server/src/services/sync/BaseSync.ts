@@ -32,7 +32,13 @@ export abstract class BaseSync {
     protected abstract entityType: string;
 
     async perform(jobData: SyncJobData, job?: any): Promise<void> {
-        const { accountId, incremental } = jobData;
+        const { accountId } = jobData;
+        // SyncJobData.incremental has always been optional and older Redis jobs
+        // can survive a deployment. Preserve the documented default of true.
+        const incremental = jobData.incremental !== false;
+        // A successful checkpoint must never move beyond changes that occurred
+        // while this run was in progress.
+        const checkpointAt = new Date();
         const syncId = randomUUID().slice(0, 8); // Short correlation ID
         const retryCount = job?.attemptsMade || 0;
 
@@ -45,10 +51,10 @@ export abstract class BaseSync {
 
         try {
             const woo = await WooService.forAccount(accountId);
-            const result = await this.sync(woo, accountId, incremental || false, job, syncId);
+            const result = await this.sync(woo, accountId, incremental, job, syncId);
 
             await this.updateLog(log.id, 'SUCCESS', undefined, result.itemsProcessed, retryCount);
-            await this.updateState(accountId, this.entityType);
+            await this.updateState(accountId, this.entityType, checkpointAt);
             await this.clearReconnectFlag(accountId);
 
             Logger.info(`Sync Complete: ${this.entityType}`, {
@@ -162,11 +168,11 @@ export abstract class BaseSync {
         }
     }
 
-    protected async updateState(accountId: string, type: string) {
+    protected async updateState(accountId: string, type: string, checkpointAt: Date = new Date()) {
         await prisma.syncState.upsert({
             where: { accountId_entityType: { accountId, entityType: type } },
-            update: { lastSyncedAt: new Date(), updatedAt: new Date() },
-            create: { accountId, entityType: type, lastSyncedAt: new Date() }
+            update: { lastSyncedAt: checkpointAt, updatedAt: new Date() },
+            create: { accountId, entityType: type, lastSyncedAt: checkpointAt }
         });
     }
 
@@ -179,5 +185,9 @@ export abstract class BaseSync {
         // Add 5-minute buffer for incremental syncs to handle clock skew/API delays
         const bufferedDate = new Date(state.lastSyncedAt.getTime() - 5 * 60 * 1000);
         return bufferedDate.toISOString();
+    }
+
+    protected hasMorePages(page: number, totalPages: number, receivedCount: number, pageSize: number): boolean {
+        return totalPages > 0 ? page < totalPages : receivedCount === pageSize;
     }
 }

@@ -13,6 +13,7 @@ const mockPrisma = vi.hoisted(() => ({
         update: vi.fn().mockResolvedValue({}),
     },
     productVariation: {
+        upsert: vi.fn().mockResolvedValue({}),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     account: {
@@ -64,7 +65,7 @@ vi.mock('../../events', () => ({
     }
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../../utils/logger', () => ({
     Logger: {
         info: vi.fn(),
         warn: vi.fn(),
@@ -125,5 +126,38 @@ describe('ProductSync Reconciliation Performance', () => {
 
         // Verify IndexingService is still called for each product
         expect(IndexingService.deleteProduct).toHaveBeenCalledTimes(productCount);
+    });
+
+    it('does not reconcile variations when enumeration fails', async () => {
+        const remoteProduct = {
+            id: 999,
+            name: 'Variable Product',
+            type: 'variable',
+            price: '10.00'
+        };
+        const persistedProduct = {
+            id: 'product-db-1',
+            accountId,
+            wooId: 999,
+            name: remoteProduct.name,
+            rawData: remoteProduct,
+            seoData: null
+        };
+        const mockWooService = {
+            getProducts: vi.fn().mockResolvedValue({
+                data: [remoteProduct],
+                totalPages: 1
+            }),
+            getProductVariations: vi.fn().mockRejectedValue(new Error('store unavailable'))
+        };
+        mockPrisma.account.findUnique.mockResolvedValue(null);
+        mockPrisma.wooProduct.upsert.mockResolvedValue(persistedProduct);
+        mockPrisma.wooProduct.findMany.mockResolvedValue([persistedProduct]);
+
+        await expect(
+            (productSync as any).sync(mockWooService as any, accountId, false)
+        ).rejects.toThrow('checkpoint was not advanced');
+
+        expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
     });
 });

@@ -40,11 +40,13 @@ export class OrderSync extends BaseSync {
 
     protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult> {
         const after = incremental ? await this.getLastSync(accountId) : undefined;
+        const isBaselineSync = !after;
         let page = 1;
         let hasMore = true;
         let totalProcessed = 0;
         let totalDeleted = 0;
         let totalSkipped = 0;
+        let validationFailures = 0;
         let totalUpsertFailures = 0;
 
         const syncStartedAt = new Date();
@@ -79,6 +81,7 @@ export class OrderSync extends BaseSync {
                     orders.push(result.data);
                 } else {
                     totalSkipped++;
+                    validationFailures++;
                     Logger.debug(`Skipping invalid order`, {
                         accountId, syncId, orderId: raw?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
@@ -97,7 +100,14 @@ export class OrderSync extends BaseSync {
             }
 
             if (!orders.length) {
+                hasMore = this.hasMorePages(page, totalPages, rawOrders.length, 50);
+                if (job) {
+                    const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : (hasMore ? 0 : 100);
+                    await job.updateProgress(progress);
+                    if (!(await job.isActive())) throw new Error('Cancelled');
+                }
                 page++;
+                if (hasMore) await new Promise(r => setTimeout(r, 500));
                 continue;
             }
 
@@ -174,9 +184,12 @@ export class OrderSync extends BaseSync {
                 );
             }
 
+            const failedWooIdSet = new Set(failedWooIds);
+            const persistedOrders = orders.filter(order => !failedWooIdSet.has(order.id));
+
             let orderTagsMap: Map<number, string[]> | undefined;
             try {
-                orderTagsMap = await OrderTaggingService.extractTagsForOrders(accountId, orders);
+                orderTagsMap = await OrderTaggingService.extractTagsForOrders(accountId, persistedOrders);
             } catch (error: any) {
                 Logger.warn('Failed to batch extract tags, falling back to individual extraction', { accountId, syncId, error: error.message });
             }
@@ -186,7 +199,7 @@ export class OrderSync extends BaseSync {
             const tagMappings = await OrderTaggingService.getTagMappings(accountId);
             const finalTagsMap = new Map<number, string[]>();
 
-            for (const order of orders) {
+            for (const order of persistedOrders) {
                 const normalizedStatus = normalizeOrderStatus(order.status);
                 const existingStatus = existingMap.get(order.id);
                 const isNew = !existingStatus;
@@ -195,7 +208,7 @@ export class OrderSync extends BaseSync {
                 const orderDate = new Date(order.date_created_gmt || order.date_created || new Date());
                 const isRecent = (new Date().getTime() - orderDate.getTime()) < 24 * 60 * 60 * 1000;
 
-                if (isNew && isRecent) {
+                if (!isBaselineSync && isNew && isRecent) {
                     EventBus.emit(EVENTS.ORDER.CREATED, { accountId, order });
                 }
 
@@ -208,21 +221,23 @@ export class OrderSync extends BaseSync {
                     });
                 }
 
-                if ((normalizedStatus === 'processing' || normalizedStatus === 'on-hold') && (isNew || isStatusChanged)) {
+                const shouldEmitLifecycleChange = isStatusChanged || (isNew && !isBaselineSync);
+
+                if ((normalizedStatus === 'processing' || normalizedStatus === 'on-hold') && shouldEmitLifecycleChange) {
                     EventBus.emit(EVENTS.ORDER.PAID, { accountId, order });
                 }
 
-                if (normalizedStatus === 'completed' && (isNew || isStatusChanged)) {
+                if (normalizedStatus === 'completed' && shouldEmitLifecycleChange) {
                     EventBus.emit(EVENTS.ORDER.COMPLETED, { accountId, order });
                 }
 
-                if ((isNew || !existingStatus) && await this.isFirstOrderForCustomer(accountId, order)) {
+                if (isNew && !isBaselineSync && await this.isFirstOrderForCustomer(accountId, order)) {
                     EventBus.emit(EVENTS.ORDER.FIRST, { accountId, order });
                 }
 
                 // Why gated: emitting for every order on every sync cycle causes
                 // redundant BOM consumption checks. Only new/changed orders matter.
-                if (isNew || isStatusChanged) {
+                if (shouldEmitLifecycleChange) {
                     EventBus.emit(EVENTS.ORDER.SYNCED, { accountId, order });
                 }
 
@@ -239,17 +254,17 @@ export class OrderSync extends BaseSync {
 
             // Bulk index entire page in one ES call
             try {
-                await IndexingService.bulkIndexOrders(accountId, orders, finalTagsMap);
+                await IndexingService.bulkIndexOrders(accountId, persistedOrders, finalTagsMap);
             } catch (error: any) {
                 Logger.warn('Bulk index orders failed, skipping ES indexing for this page', { accountId, syncId, error: error.message });
             }
-            totalProcessed += orders.length;
+            totalProcessed += persistedOrders.length;
 
-            Logger.info(`Synced batch of ${orders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped, upsertFailures: totalUpsertFailures });
+            Logger.info(`Synced batch of ${persistedOrders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped, upsertFailures: totalUpsertFailures });
 
             // use WooCommerce's x-wp-totalpages header instead of checking batch size
             // (batch size is unreliable due to WC filtering and Zod validation skips)
-            if (page >= totalPages) hasMore = false;
+            hasMore = this.hasMorePages(page, totalPages, rawOrders.length, 50);
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
@@ -263,12 +278,16 @@ export class OrderSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
+        if (totalUpsertFailures > 0) {
+            throw new Error(`Order sync could not persist ${totalUpsertFailures} order(s); checkpoint was not advanced.`);
+        }
+
         // Reconciliation: remove orders not touched during this full sync.
         // Count-first pattern: we check the 30% safety cap via SQL count() before
         // loading any IDs into Node memory. Previously we loaded every stale wooId
         // (even just to evaluate the cap), which on a store with 100k stale rows
         // put ~10MB of objects on the heap for a decision that doesn't need them.
-        if (!incremental && totalProcessed > 0) {
+        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
             const staleCount = await prisma.wooOrder.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
@@ -313,13 +332,6 @@ export class OrderSync extends BaseSync {
                     Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned orders`, { accountId, syncId });
                 }
             }
-        }
-
-        // Summary log: makes incomplete syncs visible in logs
-        if (totalUpsertFailures > 0) {
-            Logger.warn(`Order sync had ${totalUpsertFailures} upsert failure(s) - some orders may be missing from the database`, {
-                accountId, syncId, totalUpsertFailures, totalProcessed
-            });
         }
 
         if (expectedTotal > 0 && totalProcessed < expectedTotal) {

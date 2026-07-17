@@ -11,6 +11,7 @@ import { IndexingService } from '../services/search/IndexingService';
 import { requireAuthFastify } from '../middleware/auth';
 import { mapSyncError } from '../services/sync/syncErrors';
 import { SyncScheduler } from '../services/scheduler/SyncScheduler';
+import { QUEUE_LIMITS } from '../config/limits';
 
 const syncService = new SyncService();
 
@@ -55,7 +56,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         if (!queueName || !syncQueues.includes(queueName as any)) return false;
 
         const queue = (await import('../services/queue/QueueFactory')).QueueFactory.getQueue(queueName);
-        const jobs = await queue.getJobs(['active', 'waiting', 'delayed']);
+        const jobs = await queue.getJobs(['active', 'waiting', 'delayed', 'prioritized']);
 
         return jobs.some((job) => job?.data?.accountId === accountId);
     };
@@ -92,13 +93,14 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
 
             for (const name of syncQueues) {
                 const queue = (await import('../services/queue/QueueFactory')).QueueFactory.getQueue(name);
-                const jobs = await queue.getActive();
+                const jobs = await queue.getJobs(['active', 'waiting', 'delayed', 'prioritized']);
 
                 for (const job of jobs) {
                     if (job?.data?.accountId === accountId) {
                         activeJobs.push({
                             id: job.id,
                             queue: name,
+                            state: await job.getState(),
                             progress: normalizeJobProgress(job.progress),
                             data: job.data
                         });
@@ -190,8 +192,8 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         if (!accountId) return reply.code(400).send({ error: 'accountId is required' });
 
         try {
-            const maxAttempts = 3;
-            const baseDelayMs = 2000;
+            const maxAttempts = QUEUE_LIMITS.MAX_RETRIES;
+            const baseDelayMs = QUEUE_LIMITS.RETRY_DELAY_MS;
             const recent = await prisma.syncLog.findMany({
                 where: { accountId: String(accountId) },
                 orderBy: { startedAt: 'desc' },
@@ -225,7 +227,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                 let nextRetryAt: string | null = null;
                 let willRetry = false;
 
-                if (log.status === 'FAILED' && log.retryCount < maxAttempts) {
+                if (log.status === 'FAILED' && log.retryCount + 1 < maxAttempts) {
                     const completedAt = log.completedAt || log.startedAt;
                     const backoffMultiplier = Math.pow(2, Math.max(log.retryCount - 1, 0));
                     const delayMs = baseDelayMs * backoffMultiplier;

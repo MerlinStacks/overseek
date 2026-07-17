@@ -77,11 +77,13 @@ export class ReviewSync extends BaseSync {
 
     protected async sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult> {
         const after = incremental ? await this.getLastSync(accountId) : undefined;
+        const isBaselineSync = !after;
         let page = 1;
         let hasMore = true;
         let totalProcessed = 0;
         let totalDeleted = 0;
         let totalSkipped = 0;
+        let validationFailures = 0;
 
         const syncStartedAt = new Date();
 
@@ -100,6 +102,7 @@ export class ReviewSync extends BaseSync {
                     reviews.push(result.data);
                 } else {
                     totalSkipped++;
+                    validationFailures++;
                     Logger.debug(`Skipping invalid review`, {
                         accountId, syncId, reviewId: raw?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
@@ -108,7 +111,14 @@ export class ReviewSync extends BaseSync {
             }
 
             if (!reviews.length) {
+                hasMore = this.hasMorePages(page, totalPages, rawReviews.length, 50);
+                if (job) {
+                    const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : (hasMore ? 0 : 100);
+                    await job.updateProgress(progress);
+                    if (!(await job.isActive())) throw new Error('Cancelled');
+                }
                 page++;
+                if (hasMore) await new Promise(r => setTimeout(r, 500));
                 continue;
             }
 
@@ -363,7 +373,7 @@ export class ReviewSync extends BaseSync {
                 // Detect "Review Left" for triggers
                 const isRecent = (new Date().getTime() - reviewDate.getTime()) < 24 * 60 * 60 * 1000;
 
-                if (isRecent && !existingWooIds.has(r.id)) {
+                if (!isBaselineSync && isRecent && !existingWooIds.has(r.id)) {
                     EventBus.emit(EVENTS.REVIEW.LEFT, { accountId, review: r });
                 }
 
@@ -384,7 +394,7 @@ export class ReviewSync extends BaseSync {
             Logger.info(`Synced batch of ${reviews.length} reviews`, { accountId, syncId, page, totalPages });
             // Use WooCommerce's x-wp-totalpages header instead of batch size
             // (batch size is unreliable when Zod validation skips records from a full page)
-            if (page >= totalPages) hasMore = false;
+            hasMore = this.hasMorePages(page, totalPages, rawReviews.length, 50);
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
@@ -400,7 +410,7 @@ export class ReviewSync extends BaseSync {
 
         // Reconciliation: remove reviews not touched during this full sync.
         // Uses updatedAt timestamps instead of accumulating all IDs in memory.
-        if (!incremental && totalProcessed > 0) {
+        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
             const staleCount = await prisma.wooReview.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
             });

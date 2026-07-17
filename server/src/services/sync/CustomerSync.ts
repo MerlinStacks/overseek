@@ -17,6 +17,8 @@ export class CustomerSync extends BaseSync {
         let totalProcessed = 0;
         let totalDeleted = 0;
         let totalSkipped = 0;
+        let validationFailures = 0;
+        let totalUpsertFailures = 0;
 
         const syncStartedAt = new Date();
 
@@ -37,6 +39,7 @@ export class CustomerSync extends BaseSync {
                     customers.push(result.data);
                 } else {
                     totalSkipped++;
+                    validationFailures++;
                     Logger.debug(`Skipping invalid customer`, {
                         accountId, syncId, customerId: raw?.id,
                         errors: result.error.issues.map(i => i.message).slice(0, 3)
@@ -45,7 +48,14 @@ export class CustomerSync extends BaseSync {
             }
 
             if (!customers.length) {
+                hasMore = this.hasMorePages(page, totalPages, rawCustomers.length, 50);
+                if (job) {
+                    const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : (hasMore ? 0 : 100);
+                    await job.updateProgress(progress);
+                    if (!(await job.isActive())) throw new Error('Cancelled');
+                }
                 page++;
+                if (hasMore) await new Promise(r => setTimeout(r, 500));
                 continue;
             }
 
@@ -106,6 +116,7 @@ export class CustomerSync extends BaseSync {
                                     });
                                 }).catch((mergeErr: any) => {
                                     totalSkipped++;
+                                    totalUpsertFailures++;
                                     failedWooIds.push(c.id);
                                     Logger.warn('Failed to merge placeholder customer during upsert', {
                                         accountId,
@@ -118,6 +129,7 @@ export class CustomerSync extends BaseSync {
                             }
 
                             totalSkipped++;
+                            totalUpsertFailures++;
                             failedWooIds.push(c.id);
                             Logger.warn('Failed to upsert customer', {
                                 accountId, syncId, wooId: c.id, error: err.message
@@ -136,18 +148,21 @@ export class CustomerSync extends BaseSync {
                 );
             }
 
+            const failedWooIdSet = new Set(failedWooIds);
+            const persistedCustomers = customers.filter(customer => !failedWooIdSet.has(customer.id));
+
             // Bulk index all customers in one ES call
             try {
-                await IndexingService.bulkIndexCustomers(accountId, customers);
+                await IndexingService.bulkIndexCustomers(accountId, persistedCustomers);
             } catch (error: any) {
                 Logger.warn('Bulk index customers failed', { accountId, syncId, error: error.message });
             }
-            totalProcessed += customers.length;
+            totalProcessed += persistedCustomers.length;
 
-            Logger.info(`Synced batch of ${customers.length} customers`, { accountId, syncId, page, totalPages });
+            Logger.info(`Synced batch of ${persistedCustomers.length} customers`, { accountId, syncId, page, totalPages });
             // Use WooCommerce's x-wp-totalpages header instead of batch size
             // (batch size is unreliable when Zod validation skips records from a full page)
-            if (page >= totalPages) hasMore = false;
+            hasMore = this.hasMorePages(page, totalPages, rawCustomers.length, 50);
 
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
@@ -161,10 +176,14 @@ export class CustomerSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
+        if (totalUpsertFailures > 0) {
+            throw new Error(`Customer sync could not persist ${totalUpsertFailures} customer(s); checkpoint was not advanced.`);
+        }
+
         // Reconciliation: remove customers not touched during this full sync.
         // Count-first pattern: evaluate the 30% safety cap via SQL count() rather
         // than loading every stale wooId into Node memory.
-        if (!incremental && totalProcessed > 0) {
+        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
             const staleCount = await prisma.wooCustomer.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
             });

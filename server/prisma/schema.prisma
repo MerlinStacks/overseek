@@ -614,6 +614,7 @@ model WooOrder {
   @@index([accountId, status, dateCreated(sort: Desc)])  // Order list with status filter
   @@index([accountId, billingEmail])                      // Customer email lookup
   @@index([accountId, wooCustomerId])                     // Customer ID lookup
+  @@index([accountId, updatedAt])                         // Full-sync reconciliation
 }
 
 model WooProduct {
@@ -721,6 +722,7 @@ model ProductVariation {
 
   @@unique([productId, wooId])
   @@index([productId, stockStatus])           // Variant inventory queries
+  @@index([productId, updatedAt])              // Full-sync reconciliation
 }
 
 // --------------------------------------
@@ -1288,6 +1290,7 @@ model WooCustomer {
 
   @@unique([accountId, wooId])
   @@index([accountId, email])
+  @@index([accountId, updatedAt])
 }
 
 model WooReview {
@@ -1328,6 +1331,7 @@ model WooReview {
   @@index([accountId, status])                 // Review moderation queries
   @@index([accountId, rating])                 // Star rating filters
   @@index([accountId, dateCreated(sort: Desc)]) // Recent reviews list
+  @@index([accountId, updatedAt])
 }
 
 model ReviewRequest {
@@ -1410,6 +1414,7 @@ model WooPage {
   @@unique([accountId, wooId])
   @@index([accountId, status])
   @@index([accountId, dateModified(sort: Desc)])
+  @@index([accountId, updatedAt])
 }
 
 model WooBlogPost {
@@ -1439,6 +1444,7 @@ model WooBlogPost {
   @@unique([accountId, wooId])
   @@index([accountId, status])
   @@index([accountId, dateModified(sort: Desc)])
+  @@index([accountId, updatedAt])
 }
 
 // --------------------------------------

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrderSync } from '../OrderSync';
 import { prisma } from '../../../utils/prisma';
 import { WooService } from '../../woo';
+import { EventBus } from '../../events';
 
 vi.mock('../../../utils/prisma', () => ({
     prisma: {
@@ -143,5 +144,31 @@ describe('OrderSync meta persistence', () => {
         expect(persistedMeta).toBe('Line 1\nLine 2 🫶🏼 cafe 你好');
         expect(persistedMeta.includes('\n')).toBe(true);
         expect(persistedMeta.includes('🫶🏼')).toBe(true);
+    });
+
+    it('does not emit lifecycle events during an initial baseline import', async () => {
+        const historicalOrder = {
+            id: 9002,
+            number: '9002',
+            status: 'processing',
+            currency: 'AUD',
+            total: '50.00',
+            customer_id: 0,
+            billing: { email: 'historical@example.com' },
+            line_items: [],
+            date_created_gmt: '2024-01-01T00:00:00Z',
+            date_modified_gmt: '2024-01-01T00:00:00Z'
+        };
+        mockWoo.getOrders = vi.fn().mockResolvedValue({
+            data: [historicalOrder],
+            totalPages: 1,
+            total: 1
+        });
+        (prisma.wooOrder.upsert as any).mockResolvedValue({});
+
+        const sync = new OrderSync();
+        await (sync as any).sync(mockWoo, accountId, true, undefined, syncId);
+
+        expect(EventBus.emit).not.toHaveBeenCalled();
     });
 });

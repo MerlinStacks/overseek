@@ -14,6 +14,9 @@ const mockPrisma = vi.hoisted(() => ({
         findMany: vi.fn(),
         updateMany: vi.fn()
     },
+    syncState: {
+        findUnique: vi.fn()
+    },
     $executeRawUnsafe: vi.fn()
 }));
 
@@ -46,6 +49,7 @@ describe('CustomerSync', () => {
         mockPrisma.conversation.updateMany.mockResolvedValue({ count: 0 });
         mockPrisma.wooCustomer.findMany.mockResolvedValue([]);
         mockPrisma.wooCustomer.deleteMany.mockResolvedValue({ count: 0 });
+        mockPrisma.syncState.findUnique.mockResolvedValue(null);
     });
 
     it('merges inbox placeholder customer when Woo customer upsert hits unique-email conflict', async () => {
@@ -103,5 +107,29 @@ describe('CustomerSync', () => {
                 ordersCount: 0
             })
         });
+    });
+
+    it('fails without advancing past a durable write failure', async () => {
+        const sync = new CustomerSync();
+        const mockWoo = {
+            getCustomers: vi.fn().mockResolvedValue({
+                data: [{
+                    id: 789,
+                    email: 'customer@example.com',
+                    first_name: 'Test',
+                    last_name: 'Customer',
+                    total_spent: '10.00',
+                    orders_count: 1
+                }],
+                totalPages: 1
+            })
+        };
+        mockPrisma.wooCustomer.upsert.mockRejectedValue(new Error('database unavailable'));
+
+        await expect(
+            (sync as any).sync(mockWoo, 'account-1', true)
+        ).rejects.toThrow('checkpoint was not advanced');
+
+        expect(mockPrisma.wooCustomer.deleteMany).not.toHaveBeenCalled();
     });
 });

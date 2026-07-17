@@ -8,7 +8,6 @@ import { appPromise, fastify } from './app';
 import { SchedulerService } from './services/scheduler';
 import { startWorkers } from './workers';
 import { IndexingService } from './services/search/IndexingService';
-import { esClient } from './utils/elastic';
 import { Logger } from './utils/logger';
 import { validateEnvironment } from './utils/env';
 import { initGracefulShutdown, onShutdown } from './utils/shutdown';
@@ -120,24 +119,10 @@ async function start() {
     await IndexingService.initializeIndices();
     Logger.info('[Startup] Elasticsearch indices initialized');
 
-    // Check if products index is empty (e.g. after mapping reset) and trigger sync
-    try {
-      const { count } = await esClient.count({ index: 'products' });
-      if (count === 0) {
-        Logger.info('[Startup] Products index is empty. Triggering initial sync...');
-        const { SyncService } = await import('./services/sync');
-        const syncService = new SyncService();
-        const { prisma } = await import('./utils/prisma');
-        const account = await prisma.account.findFirst();
-        if (account) {
-          // Run in background so server startup isn't blocked too long
-          syncService.runSync(account.id, { types: ['products'], incremental: false })
-            .catch(err => Logger.error('[Startup] Failed to trigger initial sync', { error: err }));
-        }
-      }
-    } catch (err) {
-      Logger.warn('[Startup] Failed to check product index count', { error: err });
-    }
+    // Run in the background so large multi-account index repairs do not delay
+    // API startup. The migration is versioned in Elasticsearch index metadata.
+    IndexingService.ensureProductDocumentIds()
+      .catch(err => Logger.error('[Startup] Failed to repair product document IDs', { error: err }));
 
   } catch (error) {
     Logger.error('[Startup] Failed to initialize Elasticsearch indices', { error });

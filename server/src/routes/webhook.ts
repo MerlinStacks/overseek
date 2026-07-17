@@ -267,8 +267,9 @@ export async function processWebhookPayload(
 
         // Why upsert first: indexing in ES without persisting to Postgres causes
         // data drift — ES shows data that the DB doesn't know about until next sync.
+        let persistedProduct: any = null;
         try {
-            await prisma.wooProduct.upsert({
+            persistedProduct = await prisma.wooProduct.upsert({
                 where: { accountId_wooId: { accountId, wooId: body.id as number } },
                 update: {
                     name: (body.name as string) || 'Unknown',
@@ -296,7 +297,9 @@ export async function processWebhookPayload(
         }
 
         try {
-            await IndexingService.indexProduct(accountId, body);
+            await IndexingService.indexProduct(accountId, persistedProduct
+                ? { ...body, id: persistedProduct.id, wooId: Number(body.id), rawData: body }
+                : body);
         } catch (err: any) {
             Logger.warn('[Webhook] Failed to index product in ES', { accountId, productId: body.id, error: err.message });
         }

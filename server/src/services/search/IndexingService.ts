@@ -4,6 +4,8 @@ import { normalizeOrderStatus } from '../../constants/orderStatus';
 
 export class IndexingService {
 
+    private static readonly PRODUCT_DOCUMENT_VERSION = 2;
+
     private static async createIndexIfNotExists(indexName: string, mapping: any) {
         try {
             const exists = await esClient.indices.exists({ index: indexName });
@@ -203,21 +205,22 @@ export class IndexingService {
     static async indexProduct(accountId: string, product: any, refresh: boolean = true) {
         // Handle both Prisma object (camelCase) and raw Woo object (snake_case)
         const rawData = product.rawData || product;
+        const externalId = product.wooId ?? product.id;
 
         await esClient.index({
             index: 'products',
-            id: `${accountId}_${product.id}`,
+            id: `${accountId}_${externalId}`,
             document: {
                 accountId,
                 id: product.id,
-                wooId: product.wooId || product.id,
+                wooId: externalId,
                 name: product.name,
                 sku: product.sku,
                 stock_status: product.stockStatus || product.stock_status,
                 stock_quantity: product.stockQuantity ?? product.stock_quantity ?? null,
                 low_stock_amount: product.low_stock_amount ?? 5,
                 price: parseFloat(product.price?.toString() || '0'),
-                date_created: product.createdAt || product.date_created,
+                date_created: product.dateCreated || product.createdAt || product.date_created,
                 mainImage: product.mainImage || product.images?.[0]?.src || null,
                 images: (Array.isArray(product.images) ? product.images : rawData.images)?.map((img: any) => ({ src: img.src })) || [],
                 categories: rawData.categories?.map((cat: any) => ({ name: cat.name })) || [],
@@ -226,7 +229,7 @@ export class IndexingService {
                 cogs: product.cogs ? parseFloat(product.cogs.toString()) : 0,
                 type: rawData.type || 'simple',
                 variations: product.variations?.map((v: any) => ({
-                    id: v.id,
+                    id: v.wooId ?? v.id,
                     stock_status: v.stockStatus || v.stock_status,
                     stock_quantity: v.stockQuantity ?? v.stock_quantity ?? null,
                     price: parseFloat(v.price?.toString() || '0'),
@@ -418,19 +421,20 @@ export class IndexingService {
 
         const operations = products.flatMap(product => {
             const rawData = product.rawData || product;
+            const externalId = product.wooId ?? product.id;
             return [
-                { index: { _index: 'products', _id: `${accountId}_${product.id}` } },
+                { index: { _index: 'products', _id: `${accountId}_${externalId}` } },
                 {
                     accountId,
                     id: product.id,
-                    wooId: product.wooId || product.id,
+                    wooId: externalId,
                     name: product.name,
                     sku: product.sku,
                     stock_status: product.stockStatus || product.stock_status,
                     stock_quantity: product.stockQuantity ?? product.stock_quantity ?? null,
                     low_stock_amount: product.low_stock_amount ?? 5,
                     price: parseFloat(product.price?.toString() || '0'),
-                    date_created: product.createdAt || product.date_created,
+                    date_created: product.dateCreated || product.createdAt || product.date_created,
                     mainImage: product.mainImage || product.images?.[0]?.src || null,
                     images: (Array.isArray(product.images) ? product.images : rawData.images)?.map((img: any) => ({ src: img.src })) || [],
                     categories: rawData.categories?.map((cat: any) => ({ name: cat.name })) || [],
@@ -439,7 +443,7 @@ export class IndexingService {
                     cogs: product.cogs ? parseFloat(product.cogs.toString()) : 0,
                     type: rawData.type || 'simple',
                     variations: product.variations?.map((v: any) => ({
-                        id: v.id,
+                        id: v.wooId ?? v.id,
                         stock_status: v.stockStatus || v.stock_status,
                         stock_quantity: v.stockQuantity ?? v.stock_quantity ?? null,
                         price: parseFloat(v.price?.toString() || '0'),
@@ -453,7 +457,77 @@ export class IndexingService {
         if (result.errors) {
             const failed = result.items.filter((item: any) => item.index?.error);
             Logger.warn(`Bulk index products: ${failed.length}/${products.length} failed`, { accountId });
+            throw new Error(`Bulk index products failed for ${failed.length}/${products.length} documents`);
         }
+    }
+
+    /**
+     * Rebuild one account's product projection from PostgreSQL.
+     * The database remains the source of truth and the public document payload
+     * keeps its existing internal `id`; only Elasticsearch's private `_id`
+     * changes to the stable WooCommerce ID.
+     */
+    static async rebuildProductsForAccount(accountId: string): Promise<number> {
+        const { prisma } = await import('../../utils/prisma');
+
+        await esClient.deleteByQuery({
+            index: 'products',
+            query: { term: { accountId } },
+            refresh: true,
+            conflicts: 'proceed'
+        });
+
+        const batchSize = 200;
+        let cursor: string | undefined;
+        let indexed = 0;
+
+        while (true) {
+            const products = await prisma.wooProduct.findMany({
+                where: { accountId },
+                include: { variations: true },
+                orderBy: { id: 'asc' },
+                take: batchSize,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+            });
+
+            if (products.length === 0) break;
+            await this.bulkIndexProducts(accountId, products);
+            indexed += products.length;
+            cursor = products[products.length - 1].id;
+            if (products.length < batchSize) break;
+        }
+
+        return indexed;
+    }
+
+    /** Run the document-key migration once per Elasticsearch products index. */
+    static async ensureProductDocumentIds(): Promise<void> {
+        if (!await isElasticsearchAvailable()) return;
+
+        const mappings = await esClient.indices.getMapping({ index: 'products' }) as any;
+        const currentMeta = mappings?.products?.mappings?._meta || {};
+        if (Number(currentMeta.overseekProductDocumentVersion || 0) >= this.PRODUCT_DOCUMENT_VERSION) {
+            return;
+        }
+
+        const { prisma } = await import('../../utils/prisma');
+        const accounts = await prisma.account.findMany({ select: { id: true } });
+
+        for (const account of accounts) {
+            const indexed = await this.rebuildProductsForAccount(account.id);
+            Logger.info('Rebuilt product index with stable document IDs', {
+                accountId: account.id,
+                indexed
+            });
+        }
+
+        await esClient.indices.putMapping({
+            index: 'products',
+            _meta: {
+                ...currentMeta,
+                overseekProductDocumentVersion: this.PRODUCT_DOCUMENT_VERSION
+            }
+        } as any);
     }
 
     /**

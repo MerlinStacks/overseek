@@ -4,6 +4,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { retryWithBackoff, isCredentialError, isMaintenanceMode, getRetryAfterSeconds } from '../utils/retryWithBackoff';
 import { registerRuntimeMetricsProvider } from '../utils/runtimeMetrics';
+import { HTTP_LIMITS } from '../config/limits';
 
 // Mock data removed - demo mode is currently disabled (see isDemo flag)
 type MockProduct = { id: number; name: string; price: string };
@@ -21,6 +22,13 @@ const MOCK_POSTS: MockPost[] = [];
 
 function cacheKeyPart(value: unknown): string {
     return encodeURIComponent(String(value ?? 'unknown'));
+}
+
+function getWooRequestTimeoutMs(): number {
+    const configured = Number.parseInt(process.env.WOO_REQUEST_TIMEOUT_MS || '', 10);
+    return Number.isFinite(configured) && configured > 0
+        ? configured
+        : HTTP_LIMITS.LONG_REQUEST_TIMEOUT_MS;
 }
 
 export interface WooProductData {
@@ -142,6 +150,7 @@ export class WooService {
 
         this.axiosConfig = {
             httpsAgent: WooService.getAgent(urlObj.hostname),
+            timeout: getWooRequestTimeoutMs(),
             // Prevent OOM when a WooCommerce store returns pathologically large
             // JSON payloads (e.g. products with huge meta_data). Axios buffers
             // the entire response body into memory before JSON.parse().
@@ -617,20 +626,82 @@ export class WooService {
                     });
                     await redisClient.del(cacheKey);
                 } else {
-                    return JSON.parse(cached);
+                    const parsed = JSON.parse(cached);
+                    // Version 1 cached only the first WooCommerce page. Never
+                    // reuse that legacy shape for reconciliation.
+                    if (parsed?.version === 2 && Array.isArray(parsed.data)) {
+                        return parsed.data;
+                    }
+                    await redisClient.del(cacheKey);
                 }
             }
         } catch {
             // Cache miss or Redis error — continue to API
         }
 
-        // WooCommerce has pagination for variations, fetch up to 100
-        const response = await this.requestWithRetry('get', `products/${productId}/variations`, { per_page: 100 });
-        const variations = response.data || [];
+        const variations: any[] = [];
+        const seenIds = new Set<number>();
+        const perPage = 100;
+        const maxPages = 1000;
+        let page = 1;
+
+        while (page <= maxPages) {
+            let response: { data: any[]; total: number; totalPages: number };
+            try {
+                response = await this.requestWithRetry('get', `products/${productId}/variations`, {
+                    page,
+                    per_page: perPage
+                });
+            } catch (error: any) {
+                const errorCode = String(error?.response?.data?.code || '');
+                // Some proxies strip total-page headers. In that case an exact
+                // multiple of 100 requires one final request, which WordPress
+                // reports as an invalid page rather than an empty array.
+                if (page > 1 && error?.response?.status === 400 && errorCode.includes('invalid_page_number')) {
+                    break;
+                }
+                throw error;
+            }
+
+            const pageData = Array.isArray(response.data) ? response.data : [];
+            if (pageData.length === 0) break;
+
+            let newIds = 0;
+            for (const variation of pageData) {
+                const id = Number(variation?.id);
+                if (Number.isFinite(id)) {
+                    if (seenIds.has(id)) continue;
+                    newIds++;
+                    seenIds.add(id);
+                }
+                variations.push(variation);
+            }
+
+            if (page > 1 && pageData.length === perPage && newIds === 0) {
+                throw new Error(`WooCommerce variation pagination repeated page data for product ${productId}.`);
+            }
+
+            if (response.totalPages > 0) {
+                if (page >= response.totalPages) break;
+            } else if (response.total > 0) {
+                if (variations.length >= response.total) break;
+            } else if (pageData.length < perPage) {
+                break;
+            }
+
+            page++;
+        }
+
+        if (page > maxPages) {
+            throw new Error(`WooCommerce variation pagination exceeded ${maxPages} pages for product ${productId}.`);
+        }
 
         // Cache the result for 30 seconds
         try {
-            await redisClient.setex(cacheKey, 30, JSON.stringify(variations));
+            const serialized = JSON.stringify({ version: 2, data: variations });
+            if (serialized.length <= 5 * 1024 * 1024) {
+                await redisClient.setex(cacheKey, 30, serialized);
+            }
         } catch {
             // Cache write failure is non-fatal
         }

@@ -68,14 +68,24 @@ export class QueueFactory {
      */
     static async enforceMaxQueueDepth(name: string): Promise<number> {
         const queue = this.getQueue(name);
-        const waitingCount = await queue.getWaitingCount();
+        const counts = await queue.getJobCounts('waiting', 'prioritized');
+        const waitingCount = (counts.waiting || 0) + (counts.prioritized || 0);
 
         if (waitingCount <= QUEUE_LIMITS.MAX_QUEUE_DEPTH) {
             return 0;
         }
 
         const excessCount = waitingCount - QUEUE_LIMITS.MAX_QUEUE_DEPTH;
-        const waitingJobs = await queue.getWaiting(0, excessCount);
+        // BullMQ stores priority > 0 jobs separately. Read enough oldest
+        // candidates from both states, then trim by creation time globally.
+        const rangeEnd = Math.max(0, excessCount - 1);
+        const [regularJobs, priorityJobs] = await Promise.all([
+            queue.getJobs(['waiting'], 0, rangeEnd, true),
+            queue.getJobs(['prioritized'], 0, rangeEnd, true)
+        ]);
+        const waitingJobs = [...regularJobs, ...priorityJobs]
+            .sort((a, b) => a.timestamp - b.timestamp)
+            .slice(0, excessCount);
 
         let removed = 0;
         for (const job of waitingJobs) {
