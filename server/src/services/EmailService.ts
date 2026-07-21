@@ -287,6 +287,7 @@ export class EmailService {
             inReplyTo?: string;
             references?: string;
             category?: 'MARKETING' | 'TRANSACTIONAL';
+            isInboxReply?: boolean;
             fromName?: string;
             fromEmail?: string;
             replyToEmail?: string;
@@ -352,17 +353,21 @@ export class EmailService {
             }
         }
 
-        // Suppress sends to unsubscribed recipients for this tenant.
-        const unsubscribe = await prisma.emailUnsubscribe.findFirst({
-            where: {
-                accountId,
-                email: { equals: to, mode: 'insensitive' },
-                ...(emailCategory === 'TRANSACTIONAL'
-                    ? { scope: 'ALL' }
-                    : { scope: { in: ['MARKETING', 'ALL'] } })
-            },
-            select: { id: true, scope: true }
-        });
+        // A human inbox reply answers a message initiated by the customer, so it is
+        // not an unsolicited send and must remain possible after an ALL opt-out.
+        const isInboxReply = options?.source?.toUpperCase() === 'INBOX' && options.isInboxReply === true;
+        const unsubscribe = isInboxReply
+            ? null
+            : await prisma.emailUnsubscribe.findFirst({
+                where: {
+                    accountId,
+                    email: { equals: to, mode: 'insensitive' },
+                    ...(emailCategory === 'TRANSACTIONAL'
+                        ? { scope: 'ALL' }
+                        : { scope: { in: ['MARKETING', 'ALL'] } })
+                },
+                select: { id: true, scope: true }
+            });
         if (unsubscribe) {
             await prisma.emailLog.create({
                 data: {
