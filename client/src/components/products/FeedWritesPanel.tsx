@@ -4,8 +4,10 @@ import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useApiMutation, useApiQuery } from '../../hooks/useApiQuery';
+import { FEEDS_UI_STATE_KEY, getStoredFeedVariationMode } from '../../utils/feedVariationMode';
 import {
     formatFeedFieldLabel,
+    getFeedWriteCharacterLimit,
     getFeedOverrideKey,
     isProductFeedWriteField,
     type FeedChannel,
@@ -25,6 +27,85 @@ interface GoogleProductCategoryOption {
     path: string;
 }
 
+interface GoogleProductCategoryInputProps {
+    id: string;
+    value: string;
+    options: GoogleProductCategoryOption[];
+    isLoading: boolean;
+    className: string;
+    onChange: (value: string) => void;
+}
+
+function GoogleProductCategoryInput({
+    id,
+    value,
+    options,
+    isLoading,
+    className,
+    onChange,
+}: GoogleProductCategoryInputProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const normalizedQuery = value.trim().toLowerCase();
+    const matchingOptions = options
+        .filter((option) => !normalizedQuery
+            || option.id.includes(normalizedQuery)
+            || option.path.toLowerCase().includes(normalizedQuery))
+        .slice(0, 50);
+    const listboxId = `${id}-options`;
+
+    return (
+        <div className="relative">
+            <input
+                id={id}
+                type="text"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls={listboxId}
+                aria-expanded={isOpen}
+                autoComplete="off"
+                value={value}
+                placeholder={isLoading ? 'Loading Google categories...' : 'Search Google category ID or name'}
+                disabled={isLoading || options.length === 0}
+                onFocus={() => setIsOpen(true)}
+                onBlur={() => setIsOpen(false)}
+                onKeyDown={(event) => {
+                    if (event.key === 'Escape') setIsOpen(false);
+                }}
+                onChange={(event) => {
+                    onChange(event.target.value);
+                    setIsOpen(true);
+                }}
+                className={className}
+            />
+            {isOpen && matchingOptions.length > 0 && (
+                <div
+                    id={listboxId}
+                    role="listbox"
+                    className="absolute left-0 right-0 z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-600 dark:bg-slate-900"
+                >
+                    {matchingOptions.map((option) => (
+                        <button
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={value === option.id || value === `${option.id} - ${option.path}`}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                                onChange(`${option.id} - ${option.path}`);
+                                setIsOpen(false);
+                            }}
+                            className="block w-full whitespace-normal px-3 py-2 text-left text-sm leading-5 text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 dark:text-slate-200 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-100"
+                        >
+                            <span className="font-semibold">{option.id}</span>
+                            <span> - {option.path}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 interface FeedWritesPanelProps {
     productWooId: number;
 }
@@ -34,6 +115,9 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
     const { currentAccount } = useAccount();
     const toast = useToast();
     const [activeChannel, setActiveChannel] = useState<FeedChannel>('google');
+    const [variationMode] = useState(() => getStoredFeedVariationMode(
+        typeof window === 'undefined' ? null : localStorage.getItem(FEEDS_UI_STATE_KEY),
+    ));
     const [drafts, setDrafts] = useState<Record<string, string>>({});
     const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
     const [optimizingKey, setOptimizingKey] = useState<string | null>(null);
@@ -45,10 +129,11 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
     };
 
     const { data, isLoading, error, refetch } = useApiQuery<ProductFeedRowsResponse>({
-        queryKey: ['product-feed-writes', currentAccount?.id, productWooId, activeChannel],
+        queryKey: ['product-feed-writes', currentAccount?.id, productWooId, activeChannel, variationMode],
         enabled: !!token && !!currentAccount?.id,
         queryFn: async () => {
-            const response = await fetch(`/api/feeds/${activeChannel}/products/${productWooId}`, { headers });
+            const params = new URLSearchParams({ variationMode });
+            const response = await fetch(`/api/feeds/${activeChannel}/products/${productWooId}?${params.toString()}`, { headers });
             const body = await response.json();
             if (!response.ok) throw new Error(body?.error || 'Failed to load feed writes');
             return body;
@@ -127,6 +212,10 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
             const result = await optimizeField({ row, field });
             const suggestion = result.suggestions?.[field]?.trim();
             if (!suggestion) throw new Error(`AI did not return a ${field} rewrite`);
+            const characterLimit = getFeedWriteCharacterLimit(field);
+            if (characterLimit && suggestion.length > characterLimit) {
+                throw new Error(`${formatFeedFieldLabel(field)} rewrite exceeds the ${characterLimit.toLocaleString()} character limit`);
+            }
             updateDraft(row, field, suggestion);
             toast.success(`${formatFeedFieldLabel(field)} rewritten with AI.`);
         } catch (rewriteError: any) {
@@ -138,6 +227,21 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
 
     const handleSave = async () => {
         if (!data || dirtyKeys.size === 0) return;
+
+        let invalidLengthField: string | undefined;
+        for (const row of data.rows) {
+            invalidLengthField = row.columns.find((column) => {
+                const characterLimit = getFeedWriteCharacterLimit(column.targetField);
+                const value = drafts[`${row.rowId}:${column.targetField}`];
+                return characterLimit != null && value != null && value.length > characterLimit;
+            })?.targetField;
+            if (invalidLengthField) break;
+        }
+        if (invalidLengthField) {
+            const characterLimit = getFeedWriteCharacterLimit(invalidLengthField)!;
+            toast.error(`${formatFeedFieldLabel(invalidLengthField)} must be ${characterLimit.toLocaleString()} characters or fewer.`);
+            return;
+        }
 
         const fields: Record<string, string | null> = {};
         data.rows.forEach((row) => {
@@ -258,9 +362,13 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
                                 const value = drafts[draftKey] ?? column.overrideValue ?? '';
                                 const isLongText = column.targetField === 'description' || value.length > 120;
                                 const canAiRewrite = column.targetField === 'title' || column.targetField === 'description';
+                                const characterLimit = getFeedWriteCharacterLimit(column.targetField);
+                                const isOverCharacterLimit = characterLimit != null && value.length > characterLimit;
                                 const isAiRewriting = optimizingKey === draftKey;
-                                const inputClasses = `mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-900 dark:text-slate-100 ${column.isMissingRequired
-                                    ? 'border-amber-400 dark:border-amber-600'
+                                const inputClasses = `mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-900 dark:text-slate-100 ${isOverCharacterLimit
+                                    ? 'border-red-500 dark:border-red-500'
+                                    : column.isMissingRequired
+                                        ? 'border-amber-400 dark:border-amber-600'
                                     : 'border-slate-300 dark:border-slate-600'
                                 }`;
 
@@ -285,21 +393,14 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
                                         </span>
                                         {column.targetField === 'google_product_category' ? (
                                             <>
-                                                <input
+                                                <GoogleProductCategoryInput
                                                     id={draftKey}
-                                                    type="text"
-                                                    list={`google-product-categories-${row.rowId}-${activeChannel}`}
                                                     value={value}
-                                                    placeholder={googleCategoriesLoading ? 'Loading Google categories...' : 'Search Google category ID or name'}
-                                                    disabled={googleCategoriesLoading || googleCategories.length === 0}
-                                                    onChange={(event) => updateDraft(row, column.targetField, event.target.value)}
+                                                    options={googleCategories}
+                                                    isLoading={googleCategoriesLoading}
+                                                    onChange={(nextValue) => updateDraft(row, column.targetField, nextValue)}
                                                     className={inputClasses}
                                                 />
-                                                <datalist id={`google-product-categories-${row.rowId}-${activeChannel}`}>
-                                                    {googleCategories.map((option) => (
-                                                        <option key={option.id} value={`${option.id} - ${option.path}`} />
-                                                    ))}
-                                                </datalist>
                                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                                                     Type to search official Google categories, then choose a result.
                                                 </p>
@@ -309,6 +410,7 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
                                                 id={draftKey}
                                                 rows={4}
                                                 value={value}
+                                                maxLength={characterLimit}
                                                 placeholder={column.aiSuggestedValue || column.mappedValue || 'No matched value'}
                                                 onChange={(event) => updateDraft(row, column.targetField, event.target.value)}
                                                 className={inputClasses}
@@ -318,6 +420,7 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
                                                 id={draftKey}
                                                 type="text"
                                                 value={value}
+                                                maxLength={characterLimit}
                                                 placeholder={column.aiSuggestedValue || column.mappedValue || 'No matched value'}
                                                 onChange={(event) => updateDraft(row, column.targetField, event.target.value)}
                                                 className={inputClasses}
@@ -327,6 +430,11 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
                                             <span className="truncate" title={column.mappedValue || undefined}>
                                                 Matched: {column.mappedValue || 'None'}
                                             </span>
+                                            {characterLimit != null && (
+                                                <span className={`shrink-0 ${isOverCharacterLimit ? 'text-red-600 dark:text-red-400' : ''}`}>
+                                                    {value.length.toLocaleString()}/{characterLimit.toLocaleString()} characters
+                                                </span>
+                                            )}
                                             {value && (
                                                 <button
                                                     type="button"

@@ -5,11 +5,11 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useToast } from '../context/ToastContext';
 import { useApiMutation, useApiQuery } from '../hooks/useApiQuery';
+import { FEEDS_UI_STATE_KEY, type FeedVariationMode as VariationMode } from '../utils/feedVariationMode';
 
 type FeedChannel = 'google' | 'meta' | 'pinterest' | 'similar';
 type FeedsViewTab = 'spreadsheet' | 'settings';
 type RefreshMode = 'manual' | 'auto_on_sync' | '1h' | '3h' | '12h' | '24h';
-type VariationMode = 'variable_parent' | 'all_variations' | 'default_variation' | 'first_variation' | 'last_variation' | 'variable_and_variations';
 
 interface FeedColumn {
     targetField: string;
@@ -55,7 +55,6 @@ interface GoogleProductCategoryOption {
 const CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
 const BULK_WARN_THRESHOLD = 1000;
 const BULK_HIGH_WARN_THRESHOLD = 10000;
-const FEEDS_UI_STATE_KEY = 'overseek:feeds:ui-state:v1';
 const FEEDS_EDIT_DRAFT_KEY = 'overseek:feeds:edit-draft:v1';
 const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
 const MIN_FEED_COLUMN_WIDTH = 120;

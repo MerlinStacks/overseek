@@ -5,6 +5,7 @@ import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 import { FeedMappingService, FEED_FEATURE_KEY } from '../services/feedMapping';
 import { Logger } from '../utils/logger';
 import { QueueFactory, QUEUES } from '../services/queue/QueueFactory';
+import { getFeedFieldLengthError } from '../utils/feedFieldLimits';
 
 const paramsSchema = z.object({
     channel: z.string().min(1),
@@ -41,6 +42,17 @@ const refsQuerySchema = z.object({
     ]).optional().default('all_variations'),
 });
 
+const productQuerySchema = z.object({
+    variationMode: z.enum([
+        'variable_parent',
+        'all_variations',
+        'default_variation',
+        'first_variation',
+        'last_variation',
+        'variable_and_variations',
+    ]).optional().default('variable_and_variations'),
+});
+
 const saveMappingsSchema = z.object({
     mappings: z.array(z.object({
         targetField: z.string().min(1),
@@ -52,6 +64,17 @@ const saveMappingsSchema = z.object({
 
 const saveOverridesSchema = z.object({
     fields: z.record(z.string(), z.string().nullable()),
+}).superRefine(({ fields }, context) => {
+    Object.entries(fields).forEach(([field, value]) => {
+        const message = getFeedFieldLengthError(field, value);
+        if (message) {
+            context.addIssue({
+                code: 'custom',
+                path: ['fields', field],
+                message,
+            });
+        }
+    });
 });
 
 const refreshModeBodySchema = z.object({
@@ -193,10 +216,11 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.get<{ Params: { channel: string; wooId: string } }>('/:channel/products/:wooId', async (request, reply) => {
+    fastify.get<{ Params: { channel: string; wooId: string }; Querystring: { variationMode?: string } }>('/:channel/products/:wooId', async (request, reply) => {
         try {
             const accountId = request.accountId!;
             const { channel, wooId } = rowParamsSchema.parse(request.params);
+            const { variationMode } = productQuerySchema.parse(request.query);
             const parsedChannel = FeedMappingService.parseChannel(channel);
             const result = await FeedMappingService.getFeedRows(
                 accountId,
@@ -204,7 +228,7 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
                 1,
                 1_000_000,
                 '',
-                'variable_and_variations',
+                variationMode,
                 wooId,
             );
 
@@ -250,7 +274,11 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const accountId = request.accountId!;
                 const { channel, wooId } = rowParamsSchema.parse(request.params);
-                const { fields } = saveOverridesSchema.parse(request.body);
+                const parsedBody = saveOverridesSchema.safeParse(request.body);
+                if (!parsedBody.success) {
+                    return reply.code(400).send({ error: parsedBody.error.issues[0]?.message || 'Invalid feed writes' });
+                }
+                const { fields } = parsedBody.data;
                 const parsedChannel = FeedMappingService.parseChannel(channel);
                 await FeedMappingService.saveRowOverrides(accountId, parsedChannel, wooId, fields as Record<string, string | null>);
                 return { success: true };

@@ -1,5 +1,14 @@
 export type FeedChannel = 'google' | 'meta' | 'pinterest' | 'similar';
 
+export const FEED_WRITE_CHARACTER_LIMITS: Readonly<Record<string, number>> = {
+    title: 150,
+    description: 5_000,
+};
+
+export function getFeedWriteCharacterLimit(field: string): number | undefined {
+    return FEED_WRITE_CHARACTER_LIMITS[field];
+}
+
 export interface FeedWriteColumn {
     targetField: string;
     mappedValue: string | null;

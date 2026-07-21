@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getFeedOverrideKey, isProductFeedWriteField, type FeedWriteRow } from './feedWrites';
+import {
+    getFeedOverrideKey,
+    getFeedWriteCharacterLimit,
+    isProductFeedWriteField,
+    type FeedWriteRow,
+} from './feedWrites';
 
 describe('product feed writes', () => {
     it.each([
@@ -28,5 +33,11 @@ describe('product feed writes', () => {
     it('uses the feed variation key format for variation writes', () => {
         const row = { wooId: 123, variationWooId: 456 } as FeedWriteRow;
         expect(getFeedOverrideKey(row, 'title')).toBe('123-456:title');
+    });
+
+    it('defines character limits for feed titles and descriptions', () => {
+        expect(getFeedWriteCharacterLimit('title')).toBe(150);
+        expect(getFeedWriteCharacterLimit('description')).toBe(5_000);
+        expect(getFeedWriteCharacterLimit('brand')).toBeUndefined();
     });
 });

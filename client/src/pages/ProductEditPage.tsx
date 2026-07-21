@@ -374,7 +374,7 @@ function ProductEditPageContent({
     };
 
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-20">
+        <div className="bg-gray-50/50 pb-20">
             {/* Header Sticky Bar */}
             <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-xs transition-all">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -412,13 +412,13 @@ function ProductEditPageContent({
                                             <span className="text-gray-400">30d</span>
                                         </span>
                                     )}
-                                    <span>•</span>
+                                    <span aria-hidden="true">&bull;</span>
                                     <a href={getSafeHref(product.permalink)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors">
                                         View on Store <ExternalLink size={12} />
                                     </a>
                                     {lastSyncLabel && (
                                         <>
-                                            <span>â€¢</span>
+                                            <span aria-hidden="true">&bull;</span>
                                             <span>{lastSyncLabel}</span>
                                         </>
                                     )}
@@ -525,7 +525,7 @@ function ProductEditPageContent({
 
 function ProductEditSkeleton() {
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-20">
+        <div className="bg-gray-50/50 pb-20">
             <div className="sticky top-0 z-30 border-b border-gray-200/50 bg-white/80 backdrop-blur-xl shadow-xs">
                 <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
                     <div className="h-4 w-48 animate-pulse rounded bg-gray-200" />

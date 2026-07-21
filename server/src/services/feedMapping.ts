@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { Logger } from '../utils/logger';
 import type { Job } from 'bullmq';
 import crypto from 'crypto';
+import { getFeedFieldCharacterLimit } from '../utils/feedFieldLimits';
 
 export const FEED_FEATURE_KEY = 'FEED_EXPORTS';
 
@@ -1018,6 +1019,7 @@ export class FeedMappingService {
         const prompt = [
             `Optimize product feed fields for ${channel}.`,
             'Rules: keep factual claims only, no emojis, concise, channel compliant.',
+            'Character limits: title 150, description 5000.',
             'Return valid JSON object with only requested fields as keys.',
             `Requested fields: ${fields.join(', ')}`,
             `Current values: ${JSON.stringify(rowData)}`,
@@ -1054,7 +1056,11 @@ export class FeedMappingService {
         for (const field of fields) {
             const value = parsed?.[field];
             if (typeof value === 'string' && value.trim()) {
-                cleanSuggestions[field] = value.trim();
+                const trimmedValue = value.trim();
+                const characterLimit = getFeedFieldCharacterLimit(field);
+                if (characterLimit == null || trimmedValue.length <= characterLimit) {
+                    cleanSuggestions[field] = trimmedValue;
+                }
             }
         }
 
