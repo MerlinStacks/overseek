@@ -206,23 +206,44 @@ const humanizePersonaliseItLabel = (value: unknown, fallback: string): string =>
   return label.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
 };
 
-const getPersonaliseItLayerValue = (layer: Record<string, unknown>): string => {
+const getPersonaliseItLayerMeta = (
+  layer: Record<string, unknown>,
+  label: string,
+): InvoiceItemMeta[] => {
   const type = String(layer.type || '').toLowerCase();
   const input = isRecord(layer.input) ? layer.input : layer;
+  const meta: InvoiceItemMeta[] = [];
 
   if (type === 'text' || type === 'textarea' || type === 'spotify') {
-    return stringifyInvoiceValue(input.value).trim();
+    const value = stringifyInvoiceValue(input.value).trim();
+    if (value) meta.push({ label, value });
+
+    if (type === 'text' || type === 'textarea') {
+      const fontName = stringifyInvoiceValue(input.fontName ?? input.font_name).trim();
+      const fontId = Number(input.fontId ?? input.font_id ?? 0);
+      const font = fontName || (fontId > 0 ? `Font #${fontId}` : '');
+      if (font) meta.push({ label: `${label} Font`, value: font });
+
+      const colour = stringifyInvoiceValue(
+        input.colorHex ?? input.colourHex ?? input.color ?? input.colour,
+      ).trim();
+      const colourName = stringifyInvoiceValue(input.colorName ?? input.colourName ?? input.color_name ?? input.colour_name).trim();
+      const colourValue = colourName && colour ? `${colourName} (${colour})` : (colourName || colour);
+      if (colourValue) meta.push({ label: `${label} Colour`, value: colourValue });
+    }
+
+    return meta;
   }
 
   if ((type === 'image' || type === 'clipmask') && Number(input.attachmentId || layer.artworkAttachmentId || 0) > 0) {
-    return 'Image uploaded';
+    return [{ label, value: 'Image uploaded' }];
   }
 
   if (type === 'clipart' && Number(input.clipartId || 0) > 0) {
-    return 'Clipart selected';
+    return [{ label, value: 'Clipart selected' }];
   }
 
-  return '';
+  return meta;
 };
 
 const addPersonaliseItMeta = (
@@ -267,11 +288,10 @@ export const getPersonaliseItItemMeta = (item: InvoiceLineItemLike): InvoiceItem
 
       area.layers.forEach((rawLayer) => {
         if (!isRecord(rawLayer)) return;
-        const value = getPersonaliseItLayerValue(rawLayer);
-        if (!value) return;
-
         const label = humanizePersonaliseItLabel(rawLayer.label, `Layer ${String(rawLayer.id || '').trim() || rawLayer.type || ''}`);
-        addPersonaliseItMeta(meta, seenEntries, label, value);
+        getPersonaliseItLayerMeta(rawLayer, label).forEach((entry) => {
+          addPersonaliseItMeta(meta, seenEntries, entry.label, entry.value);
+        });
       });
     });
 
@@ -282,13 +302,33 @@ export const getPersonaliseItItemMeta = (item: InvoiceLineItemLike): InvoiceItem
   if (layers) {
     Object.entries(layers).forEach(([layerId, rawLayer]) => {
       if (!isRecord(rawLayer)) return;
-      const value = getPersonaliseItLayerValue(rawLayer);
-      if (!value) return;
-
       const label = humanizePersonaliseItLabel(rawLayer.label, `Layer ${layerId}`);
-      addPersonaliseItMeta(meta, seenEntries, label, value);
+      getPersonaliseItLayerMeta(rawLayer, label).forEach((entry) => {
+        addPersonaliseItMeta(meta, seenEntries, entry.label, entry.value);
+      });
     });
+
+    if (meta.length > 0) return meta;
   }
+
+  Object.entries(customisation).forEach(([areaKey, rawArea]) => {
+    if (!isRecord(rawArea) || !('text' in rawArea)) return;
+
+    const areaLabel = humanizePersonaliseItLabel(areaKey, areaKey);
+    const label = `Personalisation (${areaLabel.charAt(0).toUpperCase()}${areaLabel.slice(1)})`;
+    const value = stringifyInvoiceValue(rawArea.text).trim();
+    if (value) addPersonaliseItMeta(meta, seenEntries, label, value);
+
+    const fontName = stringifyInvoiceValue(rawArea.fontName ?? rawArea.font_name).trim();
+    const fontId = Number(rawArea.fontId ?? rawArea.font_id ?? 0);
+    const font = fontName || (fontId > 0 ? `Font #${fontId}` : '');
+    if (font) addPersonaliseItMeta(meta, seenEntries, `${label} Font`, font);
+
+    const colour = stringifyInvoiceValue(rawArea.colorHex ?? rawArea.colourHex ?? rawArea.color ?? rawArea.colour).trim();
+    const colourName = stringifyInvoiceValue(rawArea.colorName ?? rawArea.colourName ?? rawArea.color_name ?? rawArea.colour_name).trim();
+    const colourValue = colourName && colour ? `${colourName} (${colour})` : (colourName || colour);
+    if (colourValue) addPersonaliseItMeta(meta, seenEntries, `${label} Colour`, colourValue);
+  });
 
   return meta;
 };
