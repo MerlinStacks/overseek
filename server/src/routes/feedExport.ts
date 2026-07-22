@@ -33,7 +33,13 @@ const feedExportRoutes: FastifyPluginAsync = async (fastify) => {
                     return reply.code(403).send({ error: 'Invalid feed export token' });
                 }
 
-                const xml = await FeedMappingService.getFeedExportXml(accountId, channel, variationMode);
+                const parsedChannel = FeedMappingService.parseChannel(channel);
+                if (parsedChannel === 'meta') {
+                    const csv = await FeedMappingService.getFeedExportCsv(accountId, parsedChannel, variationMode);
+                    return reply.type('text/csv; charset=utf-8').send(csv);
+                }
+
+                const xml = await FeedMappingService.getFeedExportXml(accountId, parsedChannel, variationMode);
                 return reply.type('application/xml; charset=utf-8').send(xml);
             } catch (error: any) {
                 Logger.error('Failed to export feed xml', { error: error?.message || error });

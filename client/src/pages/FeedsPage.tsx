@@ -625,7 +625,7 @@ export function FeedsPage() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Feeds</h1>
                     <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                        Configure feed channel settings and refresh behavior.
+                        Configure feed channels. Title and description rewrites apply to every platform.
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1056,7 +1056,7 @@ export function FeedsPage() {
                             }
                         }}
                     >
-                        Optimize Selected (Title + Description)
+                        Optimize Selected for All Platforms
                     </button>
                     <button
                         type="button"

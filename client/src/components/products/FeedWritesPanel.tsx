@@ -297,7 +297,7 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
                     <div>
                         <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Feed Writes</h2>
                         <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
-                            Override the matched feed fields for this product. Empty custom writes use the value matched on the Feeds page.
+                            Override matched feed fields for this product. Title and description writes are shared across every platform.
                         </p>
                     </div>
                     <button

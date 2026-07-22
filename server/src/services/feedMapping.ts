@@ -46,6 +46,8 @@ const DEFAULT_REFRESH_MODE: FeedRefreshMode = 'manual';
 const ALLOWED_REFRESH_MODES: FeedRefreshMode[] = ['manual', 'auto_on_sync', '1h', '3h', '12h', '24h'];
 const DEFAULT_MAX_BULK_OPTIMIZE_ROWS = 5000;
 const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
+const SHARED_REWRITE_FIELDS = new Set(['title', 'description']);
+const FEED_CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
 const GOOGLE_PRODUCT_TAXONOMY_URL = 'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt';
 const GOOGLE_PRODUCT_TAXONOMY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -84,7 +86,7 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'link', sourceField: 'permalink', required: true },
         { targetField: 'image_link', sourceField: 'mainImage', required: true },
         { targetField: 'additional_image_link', sourceField: 'additionalImages' },
-        { targetField: 'video_link', sourceField: 'videoLink' },
+        { targetField: 'video[0].url', sourceField: 'videoLink' },
         { targetField: 'price', sourceField: 'price', required: true },
         { targetField: 'sale_price', sourceField: 'salePrice' },
         { targetField: 'availability', sourceField: 'stockStatus' },
@@ -102,6 +104,7 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'link', sourceField: 'permalink', required: true },
         { targetField: 'image_link', sourceField: 'mainImage', required: true },
         { targetField: 'additional_image_link', sourceField: 'additionalImages' },
+        { targetField: 'video_link', sourceField: 'videoLink' },
         { targetField: 'price', sourceField: 'price', required: true },
         { targetField: 'sale_price', sourceField: 'salePrice' },
         { targetField: 'availability', sourceField: 'stockStatus' },
@@ -216,10 +219,15 @@ function getVideoLink(rawData: any): string | null {
 function mergeMappingsWithDefaults(channel: FeedChannel, mappings?: FeedFieldMapping[]): FeedFieldMapping[] {
     if (!mappings || mappings.length === 0) return DEFAULT_MAPPINGS[channel];
 
-    const savedByTarget = new Map(mappings.map((mapping) => [mapping.targetField, mapping]));
+    const normalizedMappings = mappings.map((mapping) => (
+        channel === 'meta' && mapping.targetField === 'video_link'
+            ? { ...mapping, targetField: 'video[0].url' }
+            : mapping
+    ));
+    const savedByTarget = new Map(normalizedMappings.map((mapping) => [mapping.targetField, mapping]));
     const merged = DEFAULT_MAPPINGS[channel].map((defaultMapping) => savedByTarget.get(defaultMapping.targetField) || defaultMapping);
     const defaultTargets = new Set(DEFAULT_MAPPINGS[channel].map((mapping) => mapping.targetField));
-    const customMappings = mappings.filter((mapping) => !defaultTargets.has(mapping.targetField));
+    const customMappings = normalizedMappings.filter((mapping) => !defaultTargets.has(mapping.targetField));
 
     return [...merged, ...customMappings];
 }
@@ -339,6 +347,12 @@ function getFeedOverrides(seoData: any, channel: FeedChannel): Record<string, st
     return channelOverrides as Record<string, string>;
 }
 
+function getSharedFeedOverrides(seoData: any): Record<string, string> {
+    if (!seoData || typeof seoData !== 'object') return {};
+    const overrides = seoData.feedOverrides?.shared;
+    return overrides && typeof overrides === 'object' ? overrides as Record<string, string> : {};
+}
+
 function getFeedAiSuggestions(seoData: any, channel: FeedChannel): Record<string, string> {
     if (!seoData || typeof seoData !== 'object') return {};
     const suggestions = seoData.feedAiSuggestions;
@@ -346,6 +360,12 @@ function getFeedAiSuggestions(seoData: any, channel: FeedChannel): Record<string
     const channelSuggestions = suggestions[channel];
     if (!channelSuggestions || typeof channelSuggestions !== 'object') return {};
     return channelSuggestions as Record<string, string>;
+}
+
+function getSharedFeedAiSuggestions(seoData: any): Record<string, string> {
+    if (!seoData || typeof seoData !== 'object') return {};
+    const suggestions = seoData.feedAiSuggestions?.shared;
+    return suggestions && typeof suggestions === 'object' ? suggestions as Record<string, string> : {};
 }
 
 export class FeedMappingService {
@@ -493,6 +513,28 @@ export class FeedMappingService {
             ' </channel>',
             '</rss>',
         ].join('\n');
+    }
+
+    static async getFeedExportCsv(
+        accountId: string,
+        channelInput: string,
+        variationMode: VariationMode = 'all_variations',
+    ): Promise<string> {
+        const channel = normalizeChannel(channelInput);
+        const { rows, mappings } = await this.getFeedRows(accountId, channel, 1, 1000000, '', variationMode);
+        const headers = mappings.map((mapping) => mapping.targetField);
+        const csvEscape = (value: string): string => `"${value.replace(/"/g, '""')}"`;
+        const lines = rows.map((row) => {
+            const values = new Map(
+                (row.columns as Array<{ targetField: string; finalValue: string | null }>).map((column) => [
+                    column.targetField,
+                    column.targetField === 'description' ? stripHtml(column.finalValue) || '' : column.finalValue || '',
+                ]),
+            );
+            return headers.map((header) => csvEscape(values.get(header) || '')).join(',');
+        });
+
+        return [headers.map(csvEscape).join(','), ...lines].join('\n');
     }
 
     static getRefreshModeOptions(): FeedRefreshMode[] {
@@ -737,14 +779,25 @@ export class FeedMappingService {
                 || hasVariations;
             const overrides = getFeedOverrides(product.seoData, channel);
             const aiSuggestions = getFeedAiSuggestions(product.seoData, channel);
+            const googleOverrides = channel === 'google' ? overrides : getFeedOverrides(product.seoData, 'google');
+            const googleAiSuggestions = channel === 'google' ? aiSuggestions : getFeedAiSuggestions(product.seoData, 'google');
+            const sharedOverrides = getSharedFeedOverrides(product.seoData);
+            const sharedAiSuggestions = getSharedFeedAiSuggestions(product.seoData);
             const mapColumns = (valueReader: (sourceField: string) => string | null, overridePrefix?: string) => {
                 return mappings.map((mapping) => {
                     const raw = valueReader(mapping.sourceField);
                     const fallback = mapping.fallbackSourceField ? valueReader(mapping.fallbackSourceField) : null;
                     const mapped = raw || fallback;
                     const overrideKey = overridePrefix ? `${overridePrefix}:${mapping.targetField}` : mapping.targetField;
-                    const override = overrides[overrideKey] || null;
-                    const aiSuggestedValue = aiSuggestions[overrideKey] || null;
+                    const isSharedRewrite = SHARED_REWRITE_FIELDS.has(mapping.targetField);
+                    const override = (isSharedRewrite ? sharedOverrides[overrideKey] : null)
+                        || overrides[overrideKey]
+                        || (isSharedRewrite ? googleOverrides[overrideKey] : null)
+                        || null;
+                    const aiSuggestedValue = (isSharedRewrite ? sharedAiSuggestions[overrideKey] : null)
+                        || aiSuggestions[overrideKey]
+                        || (isSharedRewrite ? googleAiSuggestions[overrideKey] : null)
+                        || null;
                     const finalValue = override || aiSuggestedValue || mapped;
 
                     return {
@@ -936,9 +989,18 @@ export class FeedMappingService {
         const seoData = (product.seoData || {}) as any;
         const feedOverrides = (seoData.feedOverrides || {}) as Record<string, any>;
         const currentChannelOverrides = (feedOverrides[channel] || {}) as Record<string, string>;
+        const sharedOverrides = (feedOverrides.shared || {}) as Record<string, string>;
 
         Object.entries(fields).forEach(([key, value]) => {
-            if (LOCKED_FEED_FIELDS.has(getBaseTargetField(key))) return;
+            const baseField = getBaseTargetField(key);
+            if (LOCKED_FEED_FIELDS.has(baseField)) return;
+
+            if (SHARED_REWRITE_FIELDS.has(baseField)) {
+                if (value == null || value.trim() === '') delete sharedOverrides[key];
+                else sharedOverrides[key] = value;
+                FEED_CHANNELS.forEach((feedChannel) => delete feedOverrides[feedChannel]?.[key]);
+                return;
+            }
 
             if (value == null || value.trim() === '') {
                 delete currentChannelOverrides[key];
@@ -948,6 +1010,7 @@ export class FeedMappingService {
         });
 
         feedOverrides[channel] = currentChannelOverrides;
+        feedOverrides.shared = sharedOverrides;
 
         await prisma.wooProduct.update({
             where: { accountId_wooId: { accountId, wooId } },
@@ -1017,8 +1080,8 @@ export class FeedMappingService {
             });
 
         const prompt = [
-            `Optimize product feed fields for ${channel}.`,
-            'Rules: keep factual claims only, no emojis, concise, channel compliant.',
+            'Optimize shared product feed fields for Google, Meta, Pinterest, and similar shopping platforms.',
+            'Rules: keep factual claims only, no emojis, concise, and compliant across every platform.',
             'Character limits: title 150, description 5000.',
             'Return valid JSON object with only requested fields as keys.',
             `Requested fields: ${fields.join(', ')}`,
@@ -1067,13 +1130,20 @@ export class FeedMappingService {
         const seoData = (product.seoData || {}) as any;
         const feedAiSuggestions = (seoData.feedAiSuggestions || {}) as Record<string, any>;
         const channelMap = (feedAiSuggestions[channel] || {}) as Record<string, string>;
+        const sharedMap = (feedAiSuggestions.shared || {}) as Record<string, string>;
 
         for (const [field, value] of Object.entries(cleanSuggestions)) {
             const key = rowPrefix ? `${rowPrefix}:${field}` : field;
-            channelMap[key] = value;
+            if (SHARED_REWRITE_FIELDS.has(field)) {
+                sharedMap[key] = value;
+                FEED_CHANNELS.forEach((feedChannel) => delete feedAiSuggestions[feedChannel]?.[key]);
+            } else {
+                channelMap[key] = value;
+            }
         }
 
         feedAiSuggestions[channel] = channelMap;
+        feedAiSuggestions.shared = sharedMap;
 
         await prisma.wooProduct.update({
             where: { accountId_wooId: { accountId, wooId } },

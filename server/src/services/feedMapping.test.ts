@@ -6,7 +6,7 @@ const mockPrisma = vi.hoisted(() => ({
         upsert: vi.fn(),
     },
     account: { findUnique: vi.fn() },
-    wooProduct: { findMany: vi.fn() },
+    wooProduct: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
 }));
 
 vi.mock('../utils/prisma', () => ({ prisma: mockPrisma }));
@@ -42,6 +42,51 @@ describe('FeedMappingService.getFeedExportXml', () => {
         expect(xml).not.toContain('<description>See our engagement gifts.</description>');
         expect(xml).not.toContain('<g:link>');
         expect(xml).not.toContain('<g:additional_image_link></g:additional_image_link>');
+        getFeedRows.mockRestore();
+    });
+
+    it('includes Pinterest product video links', async () => {
+        const getFeedRows = vi.spyOn(FeedMappingService, 'getFeedRows').mockResolvedValueOnce({
+            rows: [{
+                columns: [
+                    { targetField: 'link', finalValue: 'https://example.com/product' },
+                    { targetField: 'video_link', finalValue: 'https://example.com/product.mp4' },
+                ],
+            }],
+            total: 1,
+        } as any);
+
+        const xml = await FeedMappingService.getFeedExportXml('account-1', 'pinterest');
+
+        expect(xml).toContain('<g:video_link>https://example.com/product.mp4</g:video_link>');
+        getFeedRows.mockRestore();
+    });
+});
+
+describe('FeedMappingService.getFeedExportCsv', () => {
+    it('uses Meta catalog product video headers', async () => {
+        const getFeedRows = vi.spyOn(FeedMappingService, 'getFeedRows').mockResolvedValueOnce({
+            mappings: [
+                { targetField: 'id', sourceField: 'wooId' },
+                { targetField: 'description', sourceField: 'description' },
+                { targetField: 'video[0].url', sourceField: 'videoLink' },
+            ],
+            rows: [{
+                columns: [
+                    { targetField: 'id', finalValue: '61082' },
+                    { targetField: 'description', finalValue: '<p>Product, description</p>' },
+                    { targetField: 'video[0].url', finalValue: 'https://example.com/product.mp4' },
+                ],
+            }],
+            total: 1,
+        } as any);
+
+        const csv = await FeedMappingService.getFeedExportCsv('account-1', 'meta');
+
+        expect(csv).toBe([
+            '"id","description","video[0].url"',
+            '"61082","Product, description","https://example.com/product.mp4"',
+        ].join('\n'));
         getFeedRows.mockRestore();
     });
 });
@@ -111,5 +156,81 @@ describe('FeedMappingService product type category priority', () => {
                 },
             },
         }));
+    });
+
+    it('uses shared rewrites and maps videos to each platform field', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            id: 'product-1',
+            wooId: 61082,
+            name: 'Original title',
+            sku: 'RSG-1',
+            price: '39.95',
+            stockStatus: 'instock',
+            permalink: 'https://example.com/product',
+            mainImage: 'https://example.com/image.jpg',
+            variations: [],
+            seoData: {
+                feedOverrides: {
+                    shared: { title: 'One title for every platform' },
+                    google: { title: 'Old Google title' },
+                },
+            },
+            rawData: {
+                description: 'Description',
+                video_link: 'https://example.com/product.mp4',
+            },
+        }]);
+
+        const meta = await FeedMappingService.getFeedRows('account-1', 'meta', 1, 50, '', 'variable_parent');
+        const pinterest = await FeedMappingService.getFeedRows('account-1', 'pinterest', 1, 50, '', 'variable_parent');
+
+        expect(meta.rows[0].columns.find((column: any) => column.targetField === 'title').finalValue)
+            .toBe('One title for every platform');
+        expect(meta.rows[0].columns.find((column: any) => column.targetField === 'video[0].url').finalValue)
+            .toBe('https://example.com/product.mp4');
+        expect(pinterest.rows[0].columns.find((column: any) => column.targetField === 'video_link').finalValue)
+            .toBe('https://example.com/product.mp4');
+    });
+
+    it('reuses existing Google rewrites on other platforms', async () => {
+        const product = {
+            id: 'product-1',
+            wooId: 61082,
+            name: 'Original title',
+            sku: 'RSG-1',
+            price: '39.95',
+            stockStatus: 'instock',
+            permalink: 'https://example.com/product',
+            mainImage: 'https://example.com/image.jpg',
+            variations: [],
+            seoData: { feedOverrides: { google: { title: 'Existing Google rewrite' } } },
+            rawData: { description: 'Description' },
+        };
+        mockPrisma.wooProduct.findMany.mockResolvedValue([product]);
+
+        const meta = await FeedMappingService.getFeedRows('account-1', 'meta', 1, 50, '', 'variable_parent');
+
+        expect(meta.rows[0].columns.find((column: any) => column.targetField === 'title').finalValue)
+            .toBe('Existing Google rewrite');
+    });
+
+    it('saves title and description overrides once for every platform', async () => {
+        mockPrisma.wooProduct.findUnique.mockResolvedValue({
+            seoData: {
+                feedOverrides: {
+                    google: { title: 'Google title' },
+                    meta: { title: 'Meta title' },
+                },
+            },
+        });
+
+        await FeedMappingService.saveRowOverrides('account-1', 'google', 61082, {
+            title: 'Shared title',
+        });
+
+        const seoData = mockPrisma.wooProduct.update.mock.calls[0][0].data.seoData;
+        expect(seoData.feedOverrides.shared.title).toBe('Shared title');
+        expect(seoData.feedOverrides.google.title).toBeUndefined();
+        expect(seoData.feedOverrides.meta.title).toBeUndefined();
     });
 });
