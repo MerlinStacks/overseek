@@ -1008,7 +1008,11 @@ class OverSeek_API {
 		}
 
 		if ( isset( $params['pixels'] ) && is_array( $params['pixels'] ) ) {
-			update_option( 'overseek_storefront_pixel_config', $this->sanitize_storefront_config_array( $params['pixels'] ), false );
+			$pixel_config = $this->sanitize_storefront_config_array( $params['pixels'] );
+			update_option( 'overseek_storefront_pixel_config', $pixel_config, false );
+			update_option( 'overseek_storefront_pixel_config_updated_at', time(), false );
+			$config_version = isset( $params['version'] ) ? sanitize_text_field( (string) $params['version'] ) : hash( 'sha256', (string) wp_json_encode( $pixel_config ) );
+			update_option( 'overseek_storefront_pixel_config_version', $config_version, false );
 			$updated[] = 'pixels';
 		}
 

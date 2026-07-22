@@ -11,12 +11,13 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderIdString } from '../../utils/orderIds';
-import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
+import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164 } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
-const SNAPCHAT_API_URL = 'https://tr.snapchat.com/v3/conversion';
+const SNAPCHAT_API_BASE = 'https://tr.snapchat.com/v3';
 const MAX_RETRIES = 3;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export class SnapchatCAPIService implements ConversionPlatformService {
     readonly platform = 'SNAPCHAT';
@@ -37,11 +38,15 @@ export class SnapchatCAPIService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session, data.ipAddress);
-        const payload = this.buildPayload(pixelId, eventName, eventId, data, userData);
+        const userData = extractUserData({
+            ...data.payload,
+            clickId: data.payload?.clickId || data.clickId,
+            clickPlatform: data.payload?.clickPlatform || data.clickPlatform,
+        }, session, data.ipAddress);
+        const payload = this.buildPayload(eventName, eventId, data, userData);
 
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
-        await this.sendWithRetry(accessToken, payload, deliveryId);
+        await this.sendWithRetry(pixelId, accessToken, payload, deliveryId);
     }
 
     /**
@@ -49,72 +54,98 @@ export class SnapchatCAPIService implements ConversionPlatformService {
      * Spec: https://marketingapi.snapchat.com/docs/#conversions-api
      */
     private buildPayload(
-        pixelId: string,
         eventName: string,
         eventId: string,
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
     ): Record<string, any> {
+        const sourceTime = data.occurredAt
+            || (data.type === 'purchase' ? data.payload?.dateCreated : undefined);
+        const parsedTime = sourceTime ? new Date(sourceTime).getTime() : NaN;
+        const user: Record<string, any> = {};
         const event: Record<string, any> = {
-            pixel_id: pixelId,
-            event_type: eventName,
-            event_conversion_type: 'WEB',
-            timestamp: Math.floor(Date.now() / 1000).toString(),
-            event_tag: eventId, // Snap uses event_tag for deduplication
-            page_url: data.url,
+            event_name: eventName,
+            event_time: Number.isFinite(parsedTime) ? parsedTime : Date.now(),
+            event_id: eventId,
+            action_source: 'WEB',
+            event_source_url: data.url,
+            user_data: user,
         };
 
-        // Hashed user data for matching
-        if (userData.email) event.hashed_email = hashSHA256(userData.email);
-        if (userData.phone) event.hashed_phone_number = hashSHA256(userData.phone);
-        if (userData.ipAddress) event.hashed_ip_address = hashSHA256(userData.ipAddress);
-        if (userData.firstName) event.hashed_first_name_sha = hashSHA256(userData.firstName);
-        if (userData.lastName) event.hashed_last_name_sha = hashSHA256(userData.lastName);
-        if (userData.city) event.hashed_city_sha = hashSHA256(userData.city);
-        if (userData.state) event.hashed_state_sha = hashSHA256(userData.state);
-        if (userData.zip) event.hashed_zip = hashSHA256(userData.zip);
+        if (userData.email) user.em = [hashSHA256(userData.email)];
+        const normalizedPhone = normalizePhoneE164(userData.phone, userData.country)?.replace(/\D/g, '');
+        if (normalizedPhone) user.ph = [hashSHA256(normalizedPhone)];
+        if (userData.firstName) user.fn = [hashSHA256(userData.firstName)];
+        if (userData.lastName) user.ln = [hashSHA256(userData.lastName)];
+        if (userData.city) user.ct = [hashSHA256(userData.city.replace(/[\s\p{P}]/gu, ''))];
+        if (userData.state) user.st = [hashSHA256(userData.state.replace(/[\s\p{P}]/gu, ''))];
+        if (userData.zip) user.zp = [hashSHA256(userData.zip.replace(/[\s-]/g, ''))];
+        if (userData.country) user.country = [hashSHA256(userData.country)];
+        if (userData.userAgent) user.client_user_agent = userData.userAgent;
+        if (userData.ipAddress) user.client_ip_address = userData.ipAddress;
 
-        // User agent and IP for matching
-        if (userData.userAgent) event.user_agent = userData.userAgent;
-        if (userData.ipAddress) event.client_ip_address = userData.ipAddress;
-
-        // Snap click ID cookie
-        if (userData.sclid) event.click_id = userData.sclid;
+        const snapClickId = userData.clickPlatform === 'snapchat' ? userData.clickId : undefined;
+        if (snapClickId) user.sc_click_id = snapClickId;
+        if (userData.sclid) user.sc_cookie1 = userData.sclid;
+        if (userData.externalId) user.external_id = hashSHA256(userData.externalId);
 
         // Ecommerce data
         if (data.payload) {
-            if (data.payload.total !== undefined) event.price = String(data.payload.total);
-            if (data.payload.currency) event.currency = data.payload.currency;
+            const customData: Record<string, any> = {};
+            if (data.payload.total !== undefined) customData.value = Number(data.payload.total);
+            if (data.payload.currency) customData.currency = data.payload.currency;
             const orderId = getPayloadWooOrderIdString(data.payload);
-            if (orderId) event.transaction_id = orderId;
+            if (orderId) customData.order_id = orderId;
             if (Array.isArray(data.payload.items)) {
-                event.number_items = String(data.payload.items.length);
-                event.item_ids = JSON.stringify(data.payload.items.map((i: any) => String(i.contentId || i.id || i.sku || '')));
+                customData.num_items = String(data.payload.items.length);
+                customData.content_ids = data.payload.items
+                    .map((item: any) => String(item.productId || item.contentId || item.id || item.sku || ''))
+                    .filter(Boolean);
+                customData.contents = data.payload.items.map((item: any) => ({
+                    id: String(item.productId || item.contentId || item.id || item.sku || ''),
+                    quantity: String(item.quantity || 1),
+                    item_price: String(item.price || 0),
+                }));
             }
+            if (Object.keys(customData).length > 0) event.custom_data = customData;
         }
 
         return { data: [event] };
     }
 
     private async sendWithRetry(
+        pixelId: string,
         accessToken: string,
         payload: Record<string, any>,
         deliveryId: string,
     ): Promise<void> {
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                const response = await fetch(SNAPCHAT_API_URL, {
+                const url = `${SNAPCHAT_API_BASE}/${encodeURIComponent(pixelId)}/events?access_token=${encodeURIComponent(accessToken)}`;
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${accessToken}`,
                     },
                     body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 });
 
                 const responseBody = await response.text();
 
                 if (response.ok) {
+                    let status: string | undefined;
+                    try {
+                        status = JSON.parse(responseBody).status;
+                    } catch {
+                        status = undefined;
+                    }
+                    if (status !== 'VALID') {
+                        const error = responseBody || 'Snapchat returned an invalid success response';
+                        await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, error);
+                        Logger.error('[SnapchatCAPI] Event was not accepted', { status });
+                        return;
+                    }
                     await this.markDelivery(deliveryId, 'SENT', response.status, responseBody, attempt);
                     return;
                 }

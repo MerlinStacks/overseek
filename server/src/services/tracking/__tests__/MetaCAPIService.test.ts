@@ -23,7 +23,7 @@ global.fetch = vi.fn();
 describe('MetaCAPIService', () => {
     const service = new MetaCAPIService();
     const accountId = 'test-account';
-    const config = { pixelId: 'px-123', accessToken: 'tok-abc', testEventCode: 'TEST123' };
+    const config = { pixelId: 'px-123', accessToken: 'tok-abc', testEventCode: 'TEST123', advancedMatching: true };
     const session = { id: 'sess-1', email: 'user@example.com', ipAddress: '1.2.3.4', userAgent: 'Mozilla', country: 'AU' };
 
     const purchaseData: any = {
@@ -119,7 +119,8 @@ describe('MetaCAPIService', () => {
 
         const userData = JSON.parse((global.fetch as any).mock.calls[0][1].body).data[0].user_data;
         expect(userData.em).toHaveLength(64);
-        expect(userData.ph).toBe('bc65da54a3ddbacfdc93a0400f0a2d78e41c2180c8255015e9616facfe56f58a');
+        // Meta hashes the normalized phone without a leading plus sign.
+        expect(userData.ph).toBe('222e24d90b23ba2af558a2891bfa399f19a7eb9f33df34a7d6809b97c5a97246');
         expect(userData.external_id).toHaveLength(64);
         expect(userData.fn).toHaveLength(64);
         expect(userData.ln).toHaveLength(64);
@@ -164,6 +165,63 @@ describe('MetaCAPIService', () => {
 
         // Default format is 'sku', item has sku 'SKU1'
         expect(contents[0].id).toBe('SKU1');
+    });
+
+    it('should prefer canonical contentId over configured SKU formatting', async () => {
+        const data = {
+            ...purchaseData,
+            payload: { ...purchaseData.payload, items: [{ contentId: 'canonical-10', id: '10', sku: 'SKU1' }] },
+        };
+
+        await service.sendEvent(accountId, { ...config, contentIdPrefix: 'prefix-' }, data, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.data[0].custom_data.contents[0].id).toBe('canonical-10');
+    });
+
+    it('should use the immutable occurrence time for event_time and generated fbc', async () => {
+        const data = {
+            ...purchaseData,
+            occurredAt: '2025-02-03T04:05:06.000Z',
+            clickId: 'top-level-click',
+            clickPlatform: 'META',
+            payload: { ...purchaseData.payload, clickId: 'stale-click', clickPlatform: 'tiktok', fbc: undefined },
+        };
+
+        await service.sendEvent(accountId, config, data, session);
+
+        const event = JSON.parse((global.fetch as any).mock.calls[0][1].body).data[0];
+        expect(event.event_time).toBe(1738555506);
+        expect(event.user_data.fbc).toBe('fb.1.1738555506000.top-level-click');
+    });
+
+    it('should omit optional PII when advanced matching is disabled', async () => {
+        await service.sendEvent(accountId, { ...config, advancedMatching: false }, purchaseData, session);
+
+        const userData = JSON.parse((global.fetch as any).mock.calls[0][1].body).data[0].user_data;
+        expect(userData).toEqual({
+            client_ip_address: '1.2.3.4',
+            client_user_agent: 'Mozilla',
+            fbc: 'fb.1.123',
+            fbp: 'fb.1.456',
+        });
+    });
+
+    it('should apply Meta-only shipping and tax exclusions to server purchase value', async () => {
+        const data = {
+            ...purchaseData,
+            payload: { ...purchaseData.payload, total: 100, shipping: 10, tax: 15 },
+        };
+
+        await service.sendEvent(
+            accountId,
+            { ...config, excludeShipping: true, excludeTax: true },
+            data,
+            session,
+        );
+
+        const event = JSON.parse((global.fetch as any).mock.calls[0][1].body).data[0];
+        expect(event.custom_data.value).toBe(75);
     });
 
     it('should apply contentIdFormat=id with prefix/suffix from config', async () => {
@@ -270,5 +328,27 @@ describe('MetaCAPIService', () => {
                 data: expect.objectContaining({ status: 'FAILED', httpStatus: 400 }),
             })
         );
+    });
+
+    it('should mark a response-level Meta error as FAILED', async () => {
+        (global.fetch as any).mockResolvedValue({
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ error: { code: 100, message: 'Invalid parameter' } }),
+        });
+
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        expect(prisma.conversionDelivery.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({ status: 'FAILED', lastError: 'Invalid parameter' }),
+            }),
+        );
+    });
+
+    it('should attach a request timeout signal', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+
+        expect((global.fetch as any).mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
     });
 });

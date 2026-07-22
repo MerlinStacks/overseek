@@ -175,6 +175,15 @@ class OverSeek_Tracking_Transport
             $data['_retry_count'] = 0;
         }
 
+        $event_id = isset($data['payload']['eventId']) ? (string) $data['payload']['eventId'] : '';
+        if ($event_id !== '') {
+            foreach ($failed_events as $failed_event) {
+                if (($failed_event['payload']['eventId'] ?? '') === $event_id) {
+                    return;
+                }
+            }
+        }
+
         if ($data['_retry_count'] < 3) {
             $data['_retry_count']++;
             $data['_retry_after'] = time() + (30 * pow(4, $data['_retry_count'] - 1));

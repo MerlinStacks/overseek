@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hashSHA256, isConversionEvent, mapEventName, extractUserData, getSupportedPlatforms, normalizePhoneE164 } from '../conversionUtils';
+import { hashSHA256, isConversionEvent, mapEventName, extractUserData, getSupportedPlatforms, normalizePhoneE164, resolveConversionEventDate } from '../conversionUtils';
 
 describe('conversionUtils', () => {
     describe('hashSHA256', () => {
@@ -35,6 +35,23 @@ describe('conversionUtils', () => {
 
         it('should reject a national number without a known country', () => {
             expect(normalizePhoneE164('0412 345 678')).toBeUndefined();
+        });
+    });
+
+    describe('resolveConversionEventDate', () => {
+        it('should prefer occurredAt and accept Unix seconds', () => {
+            expect(resolveConversionEventDate(1738555506, { dateCreated: '2020-01-01' }).toISOString())
+                .toBe('2025-02-03T04:05:06.000Z');
+        });
+
+        it('should skip invalid dates and safely use the next immutable order timestamp', () => {
+            expect(resolveConversionEventDate('invalid', { dateCreated: 'also-invalid', orderDate: '2025-02-03T04:05:06Z' }).toISOString())
+                .toBe('2025-02-03T04:05:06.000Z');
+        });
+
+        it('should use the supplied fallback when no event timestamp is valid', () => {
+            const fallback = new Date('2025-01-01T00:00:00.000Z');
+            expect(resolveConversionEventDate(undefined, {}, fallback)).toEqual(fallback);
         });
     });
 

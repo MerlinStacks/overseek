@@ -14,6 +14,7 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { isConversionEvent } from './conversionUtils';
 import { randomUUID } from 'crypto';
+import { decryptCapiConfig, encryptLegacyCapiConfig } from '../../utils/capiConfig';
 
 import type { TrackingEventPayload } from './EventProcessor';
 
@@ -41,6 +42,26 @@ export interface ConversionPlatformService {
             sessionStartAt?: number | null;
         } | null,
     ): Promise<void>;
+    /**
+     * Optional direct replay for transports that cannot use the shared raw HTTP helper
+     * (for example, OAuth-backed APIs). It must send delivery.payload unchanged and
+     * must not create or update a ConversionDelivery row.
+     */
+    retryStoredDelivery?(delivery: StoredConversionDelivery): Promise<StoredDeliveryRetryResult>;
+}
+
+export interface StoredConversionDelivery {
+    id: string;
+    accountId: string;
+    platform: string;
+    payload: unknown;
+}
+
+export interface StoredDeliveryRetryResult {
+    status: 'SENT' | 'FAILED';
+    httpStatus: number | null;
+    response: string | null;
+    lastError: string | null;
 }
 
 /** Cached platform config entry */
@@ -99,6 +120,27 @@ export class ConversionForwarder {
         configCache.delete(accountId);
     }
 
+    static retryStoredDelivery(delivery: StoredConversionDelivery): Promise<StoredDeliveryRetryResult> | null {
+        return platformServices.get(delivery.platform)?.retryStoredDelivery?.(delivery) || null;
+    }
+
+    static hasStoredDeliveryRetry(platform: string): boolean {
+        return typeof platformServices.get(platform)?.retryStoredDelivery === 'function';
+    }
+
+    /** Send through exactly one registered destination, primarily for management tests. */
+    static async forwardToPlatform(
+        platform: string,
+        accountId: string,
+        config: Record<string, any>,
+        data: TrackingEventPayload,
+        session: Parameters<ConversionPlatformService['sendEvent']>[3],
+    ): Promise<void> {
+        const service = platformServices.get(platform.toUpperCase());
+        if (!service) throw new Error(`No service registered for platform: ${platform}`);
+        await service.sendEvent(accountId, decryptCapiConfig(config), data, session);
+    }
+
     /**
      * Main entry point — called from EventProcessor after event persistence.
      * Checks if the event is a conversion type, then forwards to all enabled platforms.
@@ -119,6 +161,9 @@ export class ConversionForwarder {
     ): Promise<void> {
         try {
             if (!isConversionEvent(data.type)) return;
+
+            // A configured destination never overrides the visitor's explicit denial.
+            if (data.consentState === 'denied') return;
 
             // Generate fallback eventId if plugin didn't provide one (old plugin versions)
             if (!data.eventId) {
@@ -217,6 +262,7 @@ export class ConversionForwarder {
                     isEnabled: true,
                 },
                 select: {
+                    id: true,
                     featureKey: true,
                     config: true,
                 },
@@ -224,10 +270,22 @@ export class ConversionForwarder {
 
             const configs = features
                 .filter((f) => f.config && typeof f.config === 'object')
-                .map((f) => ({
-                    platform: featureKeyToPlatform[f.featureKey] || f.featureKey,
-                    config: f.config as Record<string, any>,
-                }));
+                .map((f) => {
+                    const secured = encryptLegacyCapiConfig(f.config);
+                    if (secured.changed) {
+                        void prisma.accountFeature.update({
+                            where: { id: f.id },
+                            data: { config: secured.config },
+                        }).catch((error) => Logger.warn('[ConversionForwarder] Failed to encrypt legacy CAPI credentials', {
+                            featureId: f.id,
+                            error: error instanceof Error ? error.message : String(error),
+                        }));
+                    }
+                    return {
+                        platform: featureKeyToPlatform[f.featureKey] || f.featureKey,
+                        config: decryptCapiConfig(secured.config),
+                    };
+                });
 
             configCache.set(accountId, { configs, createdAt: now });
             return configs;

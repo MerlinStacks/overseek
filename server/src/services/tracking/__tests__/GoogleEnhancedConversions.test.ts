@@ -182,13 +182,94 @@ describe('GoogleEnhancedConversionsService', () => {
         expect(emailIdentifier.hashedEmail).toBe('338abf9ef1c8793cadc7bcf51ed595338eb727ed9e06ce3d91d566d60b975937');
     });
 
-    it('should include gclid when click platform is google', async () => {
+    it('should identify purchase enhancements by orderId only', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
         const adjustment = body.conversionAdjustments[0];
 
-        expect(adjustment.gclidDateTimePair.gclid).toBe('gclid-abc123');
+        expect(adjustment.orderId).toBe('300');
+        expect(adjustment.gclidDateTimePair).toBeUndefined();
+        expect(adjustment.restatementValue).toBeUndefined();
+    });
+
+    it('should use top-level Google click attribution for click conversions', async () => {
+        const configWithAtc = { ...config, conversionActionIdAddToCart: 'atc-action-456' };
+        const addToCartData = {
+            ...purchaseData,
+            type: 'add_to_cart',
+            clickId: 'top-level-gclid',
+            clickPlatform: 'google',
+            payload: {
+                ...purchaseData.payload,
+                clickId: undefined,
+                clickPlatform: undefined,
+            },
+        };
+
+        await service.sendEvent(accountId, configWithAtc, addToCartData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.conversions[0].gclid).toBe('top-level-gclid');
+    });
+
+    it('should normalize phone numbers to E.164 before hashing', async () => {
+        const phoneData = {
+            ...purchaseData,
+            payload: {
+                ...purchaseData.payload,
+                billingPhone: '0412 345 678',
+                billingCountry: 'AU',
+            },
+        };
+
+        await service.sendEvent(accountId, config, phoneData, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        const phoneIdentifier = body.conversionAdjustments[0].userIdentifiers.find((u: any) => u.hashedPhoneNumber);
+        expect(phoneIdentifier.hashedPhoneNumber).toBe('bc65da54a3ddbacfdc93a0400f0a2d78e41c2180c8255015e9616facfe56f58a');
+    });
+
+    it('should sanitize stored enhancement payloads before retrying them', () => {
+        const storedPayload = {
+            conversionAdjustments: [{
+                adjustmentType: 'ENHANCEMENT',
+                orderId: '300',
+                gclidDateTimePair: { gclid: 'gclid-abc123', conversionDateTime: '2026-07-16 10:00:00+00:00' },
+                restatementValue: { adjustedValue: 250, currencyCode: 'AUD' },
+            }],
+            partialFailure: true,
+        };
+
+        const sanitized = (service as any).sanitizeEnhancementPayload(storedPayload);
+
+        expect(sanitized.conversionAdjustments[0].gclidDateTimePair).toBeUndefined();
+        expect(sanitized.conversionAdjustments[0].restatementValue).toBeUndefined();
+        expect(storedPayload.conversionAdjustments[0].gclidDateTimePair).toBeDefined();
+    });
+
+    it('should replay a stored enhancement through the direct retry contract', async () => {
+        const result = await service.retryStoredDelivery({
+            id: 'delivery-1',
+            accountId,
+            platform: 'GOOGLE',
+            payload: {
+                conversionAdjustments: [{
+                    conversionAction: 'customers/1234567890/conversionActions/conv-123',
+                    adjustmentType: 'ENHANCEMENT',
+                    orderId: '300',
+                    gclidDateTimePair: { gclid: 'gclid-abc123', conversionDateTime: '2026-07-16 10:00:00+00:00' },
+                    restatementValue: { adjustedValue: 250, currencyCode: 'AUD' },
+                    userIdentifiers: [{ hashedEmail: 'a'.repeat(64) }],
+                }],
+                partialFailure: true,
+            },
+        });
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(result.status).toBe('SENT');
+        expect(body.conversionAdjustments[0].gclidDateTimePair).toBeUndefined();
+        expect(body.conversionAdjustments[0].restatementValue).toBeUndefined();
     });
 
     it('should use order_id for orderId in adjustment', async () => {

@@ -61,6 +61,7 @@ class OverSeek_Pixels {
 
 		add_filter( 'woocommerce_loop_add_to_cart_args', array( $this, 'add_loop_content_id' ), 10, 2 );
 		add_filter( 'woocommerce_available_variation', array( $this, 'add_variation_content_id' ), 10, 3 );
+		add_filter( 'woocommerce_cart_item_remove_link', array( $this, 'add_remove_link_content_id' ), 10, 2 );
 		add_action( 'woocommerce_before_add_to_cart_button', array( $this, 'render_add_to_cart_content_id' ) );
 
 		if ( is_admin() || defined( 'REST_REQUEST' ) || wp_doing_ajax() ) {
@@ -128,6 +129,20 @@ class OverSeek_Pixels {
 	}
 
 	/**
+	 * Add the canonical catalog ID to classic cart removal links.
+	 */
+	public function add_remove_link_content_id( string $link, string $cart_item_key ): string {
+		$cart = function_exists( 'WC' ) && WC() ? WC()->cart : null;
+		$item = $cart ? $cart->get_cart_item( $cart_item_key ) : null;
+		$product = is_array( $item ) ? ( $item['data'] ?? null ) : null;
+		if ( ! $product instanceof WC_Product ) {
+			return $link;
+		}
+
+		return str_replace( '<a ', '<a data-overseek-content-id="' . esc_attr( OverSeek_Pixel_Matching_Utils::get_content_id( $product, $this->get_pixel_config() ) ) . '" ', $link );
+	}
+
+	/**
 	 * WP-Cron callback: refresh pixel config in the background (non-blocking).
 	 *
 	 * @param string $account_id Optional account ID override.
@@ -171,20 +186,19 @@ class OverSeek_Pixels {
 				$init_params['external_id'] = hash( 'sha256', strtolower( trim( $external_id ) ) );
 			}
 
-			echo "<script>!function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];f.overseekLoadTrackingScript&&f.overseekLoadTrackingScript('https://connect.facebook.net/en_US/fbevents.js')}(window);";
+			echo "<script>overseekRunWithAdvertisingConsent(function(){!function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];f.overseekLoadTrackingScript&&f.overseekLoadTrackingScript('https://connect.facebook.net/en_US/fbevents.js')}(window);";
 			if ( ! empty( $init_params ) ) {
 				echo "fbq('init','{$pixel_id}'," . wp_json_encode( $init_params ) . ');';
 			} else {
 				echo "fbq('init','{$pixel_id}');";
 			}
-			echo "</script>\n";
-			echo '<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=' . esc_attr( $pixel_id ) . '&ev=PageView&noscript=1"/></noscript>' . "\n";
+			echo "});</script>\n";
 		}
 
 		// ─── TikTok Pixel + Advanced Matching ───────────────────────────.
 		if ( ! empty( $config['tiktok']['pixelCode'] ) ) {
 			$pixel_code = esc_js( $config['tiktok']['pixelCode'] );
-			echo "<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js',o=n&&n.partner;ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;ttq._t=ttq._t||{};ttq._t[e+\"_\"+o]=1;w.overseekLoadTrackingScript&&w.overseekLoadTrackingScript(r+'?sdkid='+e+'&lib='+t)};ttq.load('{$pixel_code}');ttq.page();";
+			echo "<script>overseekRunWithAdvertisingConsent(function(){!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js',o=n&&n.partner;ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;ttq._t=ttq._t||{};ttq._t[e+\"_\"+o]=1;w.overseekLoadTrackingScript&&w.overseekLoadTrackingScript(r+'?sdkid='+e+'&lib='+t)};ttq.load('{$pixel_code}');";
 
 			// TikTok Advanced Matching — send hashed PII for better match rates.
 			if ( ! empty( $config['tiktok']['advancedMatching'] ) ) {
@@ -193,7 +207,7 @@ class OverSeek_Pixels {
 					echo 'ttq.identify(' . wp_json_encode( $tt_identify ) . ');';
 				}
 			}
-			echo "}(window,document,'ttq');</script>\n";
+			echo "}(window,document,'ttq');});</script>\n";
 		}
 
 		// ─── Google Analytics 4 + Google Ads (shared gtag.js) ───────────.
@@ -220,26 +234,25 @@ class OverSeek_Pixels {
 		// ─── Pinterest Tag ──────────────────────────────────────────────.
 		if ( ! empty( $config['pinterest']['tagId'] ) ) {
 			$tag_id = esc_js( $config['pinterest']['tagId'] );
-			echo "<script>!function(e){if(!window.pintrk){window.pintrk=function(){window.pintrk.queue.push(Array.prototype.slice.call(arguments))};var n=window.pintrk;n.queue=[],n.version='3.0';var t=document.createElement('script');t.async=!0,t.src=e;var r=document.getElementsByTagName('script')[0];r.parentNode.insertBefore(t,r)}}('https://s.pinimg.com/ct/core.js');pintrk('load','{$tag_id}');pintrk('page');</script>\n";
-			echo '<noscript><img height="1" width="1" style="display:none" src="https://ct.pinterest.com/v3/?event=init&tid=' . esc_attr( $tag_id ) . '&noscript=1"/></noscript>' . "\n";
+			echo "<script>overseekRunWithAdvertisingConsent(function(){!function(e){if(!window.pintrk){window.pintrk=function(){window.pintrk.queue.push(Array.prototype.slice.call(arguments))};var n=window.pintrk;n.queue=[],n.version='3.0';var t=document.createElement('script');t.async=!0,t.src=e;var r=document.getElementsByTagName('script')[0];r.parentNode.insertBefore(t,r)}}('https://s.pinimg.com/ct/core.js');pintrk('load','{$tag_id}');});</script>\n";
 		}
 
 		// ─── Snapchat Pixel ─────────────────────────────────────────────.
 		if ( ! empty( $config['snapchat']['pixelId'] ) ) {
 			$snap_id = esc_js( $config['snapchat']['pixelId'] );
-			echo "<script>(function(e,t,n){if(e.snaptr)return;var a=e.snaptr=function(){a.handleRequest?a.handleRequest.apply(a,arguments):a.queue.push(arguments)};a.queue=[];var s='script';var r=t.createElement(s);r.async=!0;r.src=n;var u=t.getElementsByTagName(s)[0];u.parentNode.insertBefore(r,u);})(window,document,'https://sc-static.net/scevent.min.js');snaptr('init','{$snap_id}',{});snaptr('track','PAGE_VIEW');</script>\n";
+			echo "<script>overseekRunWithAdvertisingConsent(function(){(function(e,t,n){if(e.snaptr)return;var a=e.snaptr=function(){a.handleRequest?a.handleRequest.apply(a,arguments):a.queue.push(arguments)};a.queue=[];var s='script';var r=t.createElement(s);r.async=!0;r.src=n;var u=t.getElementsByTagName(s)[0];u.parentNode.insertBefore(r,u);})(window,document,'https://sc-static.net/scevent.min.js');snaptr('init','{$snap_id}',{});});</script>\n";
 		}
 
 		// ─── Microsoft/Bing UET Tag ─────────────────────────────────────.
 		if ( ! empty( $config['microsoft']['tagId'] ) ) {
 			$uet_id = esc_js( $config['microsoft']['tagId'] );
-			echo "<script>(function(w,d,t,r,u){var f,n,i;w[u]=w[u]||[],f=function(){var o={ti:\"{$uet_id}\",enableAutoSpaTracking:true};o.q=w[u],w[u]=new UET(o),w[u].push(\"pageLoad\")},n=d.createElement(t),n.src=r,n.async=1,n.onload=n.onreadystatechange=function(){var s=this.readyState;s&&s!==\"loaded\"&&s!==\"complete\"||(f(),n.onload=n.onreadystatechange=null)},i=d.getElementsByTagName(t)[0],i.parentNode.insertBefore(n,i)})(window,document,\"script\",\"//bat.bing.com/bat.js\",\"uetq\");</script>\n";
+			echo "<script>overseekRunWithAdvertisingConsent(function(){(function(w,d,t,r,u){var f,n,i;w[u]=w[u]||[],f=function(){var o={ti:\"{$uet_id}\",enableAutoSpaTracking:true};o.q=w[u],w[u]=new UET(o)},n=d.createElement(t),n.src=r,n.async=1,n.onload=n.onreadystatechange=function(){var s=this.readyState;s&&s!==\"loaded\"&&s!==\"complete\"||(f(),n.onload=n.onreadystatechange=null)},i=d.getElementsByTagName(t)[0],i.parentNode.insertBefore(n,i)})(window,document,\"script\",\"//bat.bing.com/bat.js\",\"uetq\");});</script>\n";
 		}
 
 		// ─── Twitter/X Pixel ────────────────────────────────────────────.
 		if ( ! empty( $config['twitter']['pixelId'] ) ) {
 			$twtr_id = esc_js( $config['twitter']['pixelId'] );
-			echo "<script>!function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);},s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');twq('config','{$twtr_id}');</script>\n";
+			echo "<script>overseekRunWithAdvertisingConsent(function(){!function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);},s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');twq('config','{$twtr_id}');});</script>\n";
 		}
 
 		echo "<!-- OverSeek Tracking Pixels End -->\n";
@@ -269,12 +282,9 @@ class OverSeek_Pixels {
 	 * @param array<string, mixed> $config Pixel configuration.
 	 */
 	private function inject_consent_mode( array $config ): void {
-		// Check for consent config in the global settings.
-		$consent_config = $config['_consent'] ?? array();
-		$auto_accept    = ! empty( $consent_config['autoAccept'] );
-
-		// Default: deny all (GDPR-compliant). Auto-accept: grant all (for AU, etc.).
-		$default_state = $auto_accept ? 'granted' : 'denied';
+		$auto_accept      = ! empty( $config['_consent']['autoAccept'] );
+		$consent_required = ! $auto_accept && (bool) apply_filters( 'overseek_require_consent', get_option( 'overseek_require_consent', false ) );
+		$default_state    = $consent_required ? 'denied' : 'granted';
 
 		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.EnqueuedResources.NonEnqueuedScript
 		echo '<script>';
@@ -287,9 +297,13 @@ class OverSeek_Pixels {
 		echo "'wait_for_update':500";
 		echo '});';
 
-		// If auto-accept is on, immediately grant (no banner needed).
-		if ( $auto_accept ) {
-			echo "gtag('consent','update',{'ad_storage':'granted','analytics_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});";
+		echo 'window.overseekAdvertisingConsentGranted=' . ( $consent_required ? 'false' : 'true' ) . ';';
+		echo 'window.__overseekConsentQueue=[];window.overseekRunWithAdvertisingConsent=function(fn){if(window.overseekAdvertisingConsentGranted){fn();}else{window.__overseekConsentQueue.push(fn);}};';
+		echo 'window.overseekSetAdvertisingConsent=function(granted){granted=!!granted;if(window.overseekAdvertisingConsentGranted===granted){return;}window.overseekAdvertisingConsentGranted=granted;gtag("consent","update",{ad_storage:granted?"granted":"denied",analytics_storage:granted?"granted":"denied",ad_user_data:granted?"granted":"denied",ad_personalization:granted?"granted":"denied"});if(granted){var q=window.__overseekConsentQueue.splice(0);q.forEach(function(fn){fn();});if(window.fbq){fbq("consent","grant");}if(window.ttq&&ttq.grantConsent){ttq.grantConsent();}if(window.pintrk){pintrk("set","consent",true);}if(window.uetq&&window.uetq.push){window.uetq.push("consent","update",{ad_storage:"granted"});}}else{if(window.fbq){fbq("consent","revoke");}if(window.ttq&&ttq.revokeConsent){ttq.revokeConsent();}if(window.pintrk){pintrk("set","consent",false);}if(window.uetq&&window.uetq.push){window.uetq.push("consent","update",{ad_storage:"denied"});}}};';
+		echo 'window.overseekTakeProductViewEventId=function(productId){var match=document.cookie.match(/(?:^|; )_os_pv_eid=([^;]*)/),value=match?decodeURIComponent(match[1]):"",parts=value.split("|");document.cookie="_os_pv_eid=; Max-Age=0; path=/; SameSite=Lax";return Number(parts[0])===Number(productId)&&parts[1]?parts[1]:"os_pv_"+(window.crypto&&crypto.randomUUID?crypto.randomUUID().replace(/-/g,""):Date.now().toString(36)+Math.random().toString(36).slice(2));};';
+		echo 'window.overseekGetCheckoutEventId=function(){var key="overseek_checkout_event_id",id="";try{id=sessionStorage.getItem(key)||"";}catch(e){}if(!id){id=window.crypto&&crypto.randomUUID?crypto.randomUUID():"os_checkout_"+Date.now().toString(36)+Math.random().toString(36).slice(2);try{sessionStorage.setItem(key,id);}catch(e){}}document.cookie=key+"="+encodeURIComponent(id)+"; path=/; SameSite=Lax";return id;};';
+		if ( $consent_required ) {
+			echo 'var overseekSyncConsent=function(e){var granted=typeof window.wp_has_consent==="function"?window.wp_has_consent("marketing"):false;if(e&&e.detail&&e.detail.changedConsentCategory==="marketing"){granted=e.detail.newConsentStatus==="allow"||e.detail.newConsentStatus==="granted";}window.overseekSetAdvertisingConsent(granted);};document.addEventListener("wp_listen_for_consent_change",overseekSyncConsent);if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",overseekSyncConsent,{once:true});}else{overseekSyncConsent();}';
 		}
 
 		echo "</script>\n";
@@ -359,7 +373,10 @@ class OverSeek_Pixels {
 		}
 
 		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.EnqueuedResources.NonEnqueuedScript
-		echo "\n<script>/* OverSeek Pixel Events */\n{$js}\n</script>\n";
+		if ( is_order_received_page() ) {
+			echo "\n<script>try{sessionStorage.removeItem('overseek_checkout_event_id');}catch(e){}document.cookie='overseek_checkout_event_id=; Max-Age=0; path=/; SameSite=Lax';</script>\n";
+		}
+		echo "\n<script>/* OverSeek Pixel Events */\noverseekRunWithAdvertisingConsent(function(){\n{$js}\n});</script>\n";
 		// phpcs:enable WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.EnqueuedResources.NonEnqueuedScript
 	}
 
@@ -373,10 +390,21 @@ class OverSeek_Pixels {
 	 */
 	private function build_pageview_events( array $config ): string {
 		$js = '';
-		if ( ! empty( $config['meta']['pixelId'] ) ) {
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'meta', 'pageView' ) ) {
 			$js .= "fbq('track','PageView');";
 		}
-		// TikTok, Pinterest, Snap, Bing, X fire page view in base code.
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'tiktok', 'pageView' ) ) {
+			$js .= "ttq.page();";
+		}
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'pinterest', 'pageView' ) ) {
+			$js .= "pintrk('page');";
+		}
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'snapchat', 'pageView' ) ) {
+			$js .= "snaptr('track','PAGE_VIEW');";
+		}
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'microsoft', 'pageView' ) ) {
+			$js .= "window.uetq=window.uetq||[];window.uetq.push('event','page_view',{});";
+		}
 		return $js;
 	}
 
@@ -392,15 +420,15 @@ class OverSeek_Pixels {
 		$google_conv_id   = $config['google']['conversionId'] ?? '';
 		$platforms        = wp_json_encode(
 			array(
-				'meta'         => ! empty( $config['meta']['pixelId'] ),
-				'tiktok'       => ! empty( $config['tiktok']['pixelCode'] ),
-				'pinterest'    => ! empty( $config['pinterest']['tagId'] ),
-				'snapchat'     => ! empty( $config['snapchat']['pixelId'] ),
-				'ga4'          => ! empty( $config['ga4']['measurementId'] ),
-				'googleAds'    => ! empty( $config['google']['conversionId'] ),
-				'googleAdsAtc' => ( ! empty( $google_conv_id ) && ! empty( $google_atc_label ) ) ? esc_js( $google_conv_id . '/' . $google_atc_label ) : false,
-				'bing'         => ! empty( $config['microsoft']['tagId'] ),
-				'twitter'      => ! empty( $config['twitter']['pixelId'] ),
+				'meta'         => OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'meta', 'addToCart' ),
+				'tiktok'       => OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'tiktok', 'addToCart' ),
+				'pinterest'    => OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'pinterest', 'addToCart' ),
+				'snapchat'     => OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'snapchat', 'addToCart' ),
+				'ga4'          => OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'ga4', 'addToCart' ),
+				'googleAds'    => OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'google', 'addToCart' ),
+				'googleAdsAtc' => ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'google', 'addToCart' ) && ! empty( $google_atc_label ) ) ? esc_js( $google_conv_id . '/' . $google_atc_label ) : false,
+				'bing'         => OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'microsoft', 'addToCart' ),
+				'twitter'      => OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'twitter', 'addToCart' ) ? ( $config['twitter']['eventIdAddToCart'] ?? false ) : false,
 			)
 		);
 
@@ -429,14 +457,14 @@ class OverSeek_Pixels {
     }
     function fireATC(productName,productId,value,currency,eid){
         eid=eid||makeEid();
-        if(p.meta&&window.fbq) fbq('track','AddToCart',{content_ids:[productId],content_type:'product',content_name:productName,value:value,currency:currency},{eventID:eid});
-        if(p.tiktok&&window.ttq) ttq.track('AddToCart',{content_id:productId,content_type:'product',value:value,currency:currency},{event_id:eid});
-        if(p.pinterest&&window.pintrk) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency,event_id:eid});
-        if(p.snapchat&&window.snaptr) snaptr('track','ADD_CART',{item_ids:[productId],price:value,currency:currency,event_tag:eid});
+        if(p.meta&&window.overseekAdvertisingConsentGranted&&window.fbq) fbq('track','AddToCart',{content_ids:[productId],content_type:'product',content_name:productName,value:value,currency:currency},{eventID:eid});
+        if(p.tiktok&&window.overseekAdvertisingConsentGranted&&window.ttq) ttq.track('AddToCart',{content_id:productId,content_type:'product',value:value,currency:currency},{event_id:eid});
+        if(p.pinterest&&window.overseekAdvertisingConsentGranted&&window.pintrk) pintrk('track','addtocart',{product_id:productId,value:value,currency:currency,event_id:eid});
+        if(p.snapchat&&window.overseekAdvertisingConsentGranted&&window.snaptr) snaptr('track','ADD_CART',{item_ids:[productId],price:value,currency:currency,event_tag:eid});
         if(p.ga4&&window.gtag) gtag('event','add_to_cart',{items:[{item_id:productId,item_name:productName,price:value}],value:value,currency:currency});
         if(p.googleAdsAtc&&window.gtag) gtag('event','conversion',{send_to:p.googleAdsAtc,value:value,currency:currency,items:[{id:String(productId),quantity:1,price:value}]});
-        if(p.bing){window.uetq=window.uetq||[];window.uetq.push('event','add_to_cart',{ecomm_prodid:productId,revenue_value:value,currency:currency,event_id:eid});}
-        if(p.twitter&&window.twq) twq('event','tw-atc-event',{value:value,currency:currency,num_items:1,event_id:eid});
+        if(p.bing&&window.overseekAdvertisingConsentGranted){window.uetq=window.uetq||[];window.uetq.push('event','add_to_cart',{ecomm_prodid:productId,revenue_value:value,currency:currency,event_id:eid});}
+        if(p.twitter&&window.overseekAdvertisingConsentGranted&&window.twq) twq('event',p.twitter,{value:value,currency:currency,num_items:1,conversion_id:eid});
     }
     jQuery(document).on('click','.add_to_cart_button, .ajax_add_to_cart',function(){
         ensureButtonEid(this);
@@ -478,7 +506,7 @@ JS;
 	 * @return string
 	 */
 	private function build_remove_from_cart_listener( array $config ): string {
-		if ( empty( $config['ga4']['measurementId'] ) ) {
+		if ( ! OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'ga4', 'addToCart' ) ) {
 			return '';
 		}
 
@@ -488,7 +516,7 @@ if(!window.jQuery||!window.gtag){return;}
 var jQuery=window.jQuery;
 jQuery(document.body).on('removed_from_cart',function(e,fragments,hash,btn){
     var name=btn&&btn.data('product_name')||'';
-    var id=btn&&btn.data('product_id')||'';
+    var id=btn&&(btn.attr('data-overseek-content-id')||btn.data('product_id'))||'';
     gtag('event','remove_from_cart',{items:[{item_id:String(id),item_name:name}]});
 });
 })();
@@ -504,7 +532,7 @@ JS;
 	 * @return string
 	 */
 	private function build_checkout_step_listeners( array $config ): string {
-		if ( empty( $config['ga4']['measurementId'] ) ) {
+		if ( ! OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'ga4', 'initiateCheckout' ) ) {
 			return '';
 		}
 
@@ -545,20 +573,32 @@ JS;
 	 */
 	private function build_search_events( array $config ): string {
 		$query = get_search_query();
-		$js    = '';
-		if ( ! empty( $config['meta']['pixelId'] ) ) {
-			$js .= "fbq('track','Search'," . wp_json_encode( array( 'search_string' => $query ) ) . ');';
+		OverSeek_Tracking_Payload_Utils::issue_search_event_id( $query );
+		$query_key = md5( strtolower( trim( $query ) ) );
+		$js        = "(function(){var m=document.cookie.match(/(?:^|; )_os_search_eid=([^;]+)/),v=m?decodeURIComponent(m[1]):'',p=v.split('|'),eid=(p[0]==='" . esc_js( $query_key ) . "'&&p[1])?p[1]:((window.crypto&&crypto.randomUUID)?crypto.randomUUID():'os_search_'+Date.now().toString(36)+Math.random().toString(36).slice(2));document.cookie='_os_search_eid=; Max-Age=0; path=/; SameSite=Lax';";
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'meta', 'search' ) ) {
+			$js .= "fbq('track','Search'," . wp_json_encode( array( 'search_string' => $query ) ) . ",{eventID:eid});";
 		}
-		if ( ! empty( $config['tiktok']['pixelCode'] ) ) {
-			$js .= "ttq.track('Search'," . wp_json_encode( array( 'query' => $query ) ) . ');';
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'tiktok', 'search' ) ) {
+			$js .= "ttq.track('Search'," . wp_json_encode( array( 'query' => $query ) ) . ",{event_id:eid});";
 		}
-		if ( ! empty( $config['snapchat']['pixelId'] ) ) {
-			$js .= "snaptr('track','SEARCH'," . wp_json_encode( array( 'search_string' => $query ) ) . ');';
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'pinterest', 'search' ) ) {
+			$js .= "pintrk('track','search',{search_query:" . wp_json_encode( $query ) . ",event_id:eid});";
 		}
-		if ( ! empty( $config['ga4']['measurementId'] ) ) {
-			$js .= "gtag('event','search'," . wp_json_encode( array( 'search_term' => $query ) ) . ');';
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'snapchat', 'search' ) ) {
+			$js .= "snaptr('track','SEARCH',{search_string:" . wp_json_encode( $query ) . ",event_tag:eid});";
 		}
-		return $js;
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'ga4', 'search' ) ) {
+			$js .= "gtag('event','search',{search_term:" . wp_json_encode( $query ) . ",event_id:eid});";
+		}
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'microsoft', 'search' ) ) {
+			$js .= "window.uetq=window.uetq||[];window.uetq.push('event','search',{search_term:" . wp_json_encode( $query ) . ",event_id:eid});";
+		}
+		$twitter_search_event_id = $config['twitter']['eventIdSearch'] ?? '';
+		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'twitter', 'search' ) && ! empty( $twitter_search_event_id ) ) {
+			$js .= "if(window.twq){twq('event','" . esc_js( $twitter_search_event_id ) . "',{conversion_id:eid});}";
+		}
+		return $js . '})();';
 	}
 
 	// ─── Helpers ────────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ import * as CrawlerService from './CrawlerService';
 import { automationEnrollmentService } from '../AutomationEnrollmentService';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderId, getPayloadWooOrderIdString } from '../../utils/orderIds';
+import { isConversionEvent, resolveConversionEventDate } from './conversionUtils';
 
 const UAParser = require('ua-parser-js');
 
@@ -56,6 +57,9 @@ export interface TrackingEventPayload {
     // CAPI deduplication key — matches browser pixel event_id
     eventId?: string;
 
+    // Validated event time supplied by the source. It is never rewritten during processing.
+    readonly occurredAt?: Date | string | number;
+
     // Session enrichment from logged-in users (for session stitching)
     customerId?: number;
     email?: string;
@@ -80,6 +84,49 @@ export interface TrackingEventPayload {
  * @returns The upserted session, or null if filtered (bot traffic)
  */
 export async function processEvent(data: TrackingEventPayload) {
+    if (!data.eventId || !isConversionEvent(data.type)) {
+        return processEventOnce(data);
+    }
+
+    try {
+        await prisma.conversionEventReceipt.create({
+            data: {
+                accountId: data.accountId,
+                eventId: data.eventId,
+                eventType: data.type,
+                occurredAt: resolveConversionEventDate(data.occurredAt, data.payload),
+            },
+        });
+    } catch (error: any) {
+        if (error?.code !== 'P2002') throw error;
+
+        Logger.info('[EventProcessor] Duplicate conversion event ignored', {
+            accountId: data.accountId,
+            eventId: data.eventId,
+            type: data.type,
+        });
+        return prisma.analyticsSession.findUnique({
+            where: {
+                accountId_visitorId: {
+                    accountId: data.accountId,
+                    visitorId: data.visitorId,
+                },
+            },
+        });
+    }
+
+    try {
+        return await processEventOnce(data);
+    } catch (error) {
+        // A failed ingestion must remain retryable with the same source event ID.
+        await prisma.conversionEventReceipt.delete({
+            where: { accountId_eventId: { accountId: data.accountId, eventId: data.eventId } },
+        }).catch(() => undefined);
+        throw error;
+    }
+}
+
+async function processEventOnce(data: TrackingEventPayload) {
     const payload = data.payload && typeof data.payload === 'object' ? data.payload as Record<string, any> : {};
 
     // Filter out bots/crawlers - they shouldn't be tracked
@@ -421,6 +468,7 @@ export async function processEvent(data: TrackingEventPayload) {
         select: {
             id: true,
             visitNumber: true,
+            startedAt: true,
             endedAt: true,
             pageviews: true,
             actions: true
@@ -456,6 +504,7 @@ export async function processEvent(data: TrackingEventPayload) {
             select: {
                 id: true,
                 visitNumber: true,
+                startedAt: true,
                 endedAt: true,
                 pageviews: true,
                 actions: true
@@ -491,7 +540,8 @@ export async function processEvent(data: TrackingEventPayload) {
                 url: data.url,
                 pageTitle: data.pageTitle,
                 orderId: eventOrderId,
-                payload: eventPayload
+                payload: eventPayload,
+                occurredAt: resolveConversionEventDate(data.occurredAt, payload),
             }
         });
     } catch (eventError: any) {
@@ -523,8 +573,8 @@ export async function processEvent(data: TrackingEventPayload) {
             country: session.country,
             referrer: session.referrer,
             // FIX: sessionStartAt enables GA4 session_id generation
-            sessionStartAt: session.firstTouchAt
-                ? Math.floor(new Date(session.firstTouchAt).getTime() / 1000)
+            sessionStartAt: currentVisit.startedAt
+                ? Math.floor(new Date(currentVisit.startedAt).getTime() / 1000)
                 : null,
         };
         void ConversionForwarder.forwardIfConversion(data, capiSession);

@@ -119,16 +119,21 @@ class OverSeek_Tracking_Guard_Utils
     }
 
     /**
-     * Check if the current visitor has consent for statistics tracking.
+     * Check if the current visitor has consent for advertising tracking.
      */
     public static function has_tracking_consent(): bool
     {
+        $pixel_config = get_option('overseek_storefront_pixel_config', array());
+        if (is_array($pixel_config) && !empty($pixel_config['_consent']['autoAccept'])) {
+            return true;
+        }
+
         if (!apply_filters('overseek_require_consent', get_option('overseek_require_consent', false))) {
             return true;
         }
 
         if (function_exists('wp_has_consent')) {
-            return wp_has_consent('statistics');
+            return wp_has_consent('marketing');
         }
 
         return false;

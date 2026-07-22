@@ -89,7 +89,7 @@ describe('tracking ingestion auth', () => {
         expect(TrackingService.processEvent).not.toHaveBeenCalled();
     });
 
-    it('accepts unsigned Woo purchase events with an order ID', async () => {
+    it('rejects unsigned Woo purchase events with an order ID', async () => {
         const res = await app.inject({
             method: 'POST',
             url: '/events',
@@ -102,13 +102,25 @@ describe('tracking ingestion auth', () => {
             },
         });
 
-        expect(res.statusCode).toBe(200);
-        expect(TrackingService.processEvent).toHaveBeenCalledWith(expect.objectContaining({
-            accountId: ACCOUNT_ID,
-            visitorId: 'visitor-1',
-            type: 'purchase',
-            payload: { orderId: 123, total: 49.95 },
-        }));
+        expect(res.statusCode).toBe(401);
+        expect(TrackingService.processEvent).not.toHaveBeenCalled();
+    });
+
+    it('rejects unsigned product views because they are conversion-forwarded', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/e',
+            payload: {
+                accountId: ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'product_view',
+                url: 'https://shop.example.com/product/example',
+                payload: { productId: 123 },
+            },
+        });
+
+        expect(res.statusCode).toBe(401);
+        expect(TrackingService.processEvent).not.toHaveBeenCalled();
     });
 
     it('accepts unsigned conversion events for accounts without a webhook secret', async () => {
@@ -155,5 +167,44 @@ describe('tracking ingestion auth', () => {
             type: 'purchase',
             payload: { total: 49.95 },
         }));
+    });
+
+    it('validates and passes an immutable source event timestamp', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/events',
+            headers: { authorization: 'Bearer valid-secret' },
+            payload: {
+                accountId: ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'purchase',
+                url: 'https://shop.example.com/order',
+                eventId: 'event-1',
+                occurredAt: '2026-07-21T10:11:12.000Z',
+            },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(TrackingService.processEvent).toHaveBeenCalledWith(expect.objectContaining({
+            occurredAt: new Date('2026-07-21T10:11:12.000Z'),
+        }));
+    });
+
+    it('rejects malformed source event timestamps', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/events',
+            headers: { authorization: 'Bearer valid-secret' },
+            payload: {
+                accountId: ACCOUNT_ID,
+                visitorId: 'visitor-1',
+                type: 'purchase',
+                url: 'https://shop.example.com/order',
+                occurredAt: 'yesterday',
+            },
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(TrackingService.processEvent).not.toHaveBeenCalled();
     });
 });

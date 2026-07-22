@@ -83,7 +83,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
             if (stateData.reconnectId) {
                 await AdsService.updateAccountTokens(stateData.reconnectId, {
                     accessToken: tokens.accessToken,
-                    refreshToken: tokens.refreshToken || ''
+                    ...(tokens.refreshToken ? { refreshToken: tokens.refreshToken } : {}),
                 });
                 return reply.redirect(buildFrontendUrl(safeRedirect, { success: 'google_reconnected' }));
             }

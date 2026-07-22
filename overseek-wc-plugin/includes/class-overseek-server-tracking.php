@@ -310,6 +310,14 @@ class OverSeek_Server_Tracking
             return;
         }
 
+        if ('purchase' === $type && !empty($payload['eventId'])) {
+            foreach ($this->event_queue as $queued_event) {
+                if ('purchase' === ($queued_event['type'] ?? '') && ($queued_event['payload']['eventId'] ?? '') === $payload['eventId']) {
+                    return;
+                }
+            }
+        }
+
         $visitor_id = $this->get_visitor_id();
         $visitor_ip = OverSeek_Tracking_Request_Utils::resolve_visitor_ip();
         $referrer_data = OverSeek_Tracking_Request_Utils::get_referrer_data();
@@ -318,6 +326,7 @@ class OverSeek_Server_Tracking
             'accountId' => $this->account_id,
             'visitorId' => $visitor_id,
             'type' => $type,
+            'occurredAt' => gmdate('c'),
             'url' => $url_override ?: OverSeek_Tracking_Request_Utils::get_sanitized_current_url(),
             'pageTitle' => wp_get_document_title(),
             'referrer' => $referrer_data['referrer'],
@@ -381,6 +390,20 @@ class OverSeek_Server_Tracking
 
         // Merge retry events with current queue
         $all_events = array_merge($retry_events, $this->event_queue);
+        $seen_purchase_ids = array();
+        $all_events = array_values(array_filter($all_events, static function (array $event) use (&$seen_purchase_ids): bool {
+            if ('purchase' !== ($event['type'] ?? '')) {
+                return true;
+            }
+
+            $event_id = (string) ($event['payload']['eventId'] ?? '');
+            if ('' === $event_id || !isset($seen_purchase_ids[$event_id])) {
+                $seen_purchase_ids[$event_id] = true;
+                return true;
+            }
+
+            return false;
+        }));
 
         if (empty($all_events)) {
             return array();
@@ -456,9 +479,10 @@ class OverSeek_Server_Tracking
         $payload = OverSeek_Tracking_Event_Builder::build_checkout_start_payload(
             $email,
             $cart,
-            'os_store_api_' . time() . '_' . wp_generate_password(6, false, false),
+            $this->get_request_event_id() ?: wp_generate_uuid4(),
             null,
-            'store_api_checkout'
+            'store_api_checkout',
+            $this->get_pixel_meta_config()
         );
         $this->queue_event('checkout_start', $payload);
 
@@ -547,6 +571,13 @@ class OverSeek_Server_Tracking
         }
 
         $this->queue_event('pageview', $payload, $is_404);
+        if (is_search()) {
+            $search_payload = array(
+                'searchQuery' => get_search_query(),
+                'eventId'     => OverSeek_Tracking_Payload_Utils::issue_search_event_id(get_search_query()),
+            );
+            $this->queue_event('search', $search_payload);
+        }
     }
 
     /**
@@ -554,7 +585,7 @@ class OverSeek_Server_Tracking
      */
     public function track_add_to_cart($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data)
     {
-        $product = $this->get_product_safely($product_id);
+        $product = $this->get_product_safely($variation_id ?: $product_id);
         $request_event_id = $this->get_request_event_id();
 
         $payload = OverSeek_Tracking_Event_Builder::build_add_to_cart_payload(
@@ -563,7 +594,8 @@ class OverSeek_Server_Tracking
             (int) $quantity,
             $product,
             $this->get_cart_safely(),
-            $request_event_id ?: wp_generate_uuid4()
+            $request_event_id ?: wp_generate_uuid4(),
+            $this->get_pixel_meta_config()
         );
 
         $this->queue_event('add_to_cart', $payload);
@@ -576,8 +608,9 @@ class OverSeek_Server_Tracking
     {
         $removed_item = $cart->removed_cart_contents[$cart_item_key] ?? null;
 
-        $product = $removed_item ? $this->get_product_safely($removed_item['product_id']) : null;
-        $payload = OverSeek_Tracking_Event_Builder::build_remove_from_cart_payload($removed_item, $product, $this->get_cart_safely());
+        $removed_product_id = $removed_item ? ($removed_item['variation_id'] ?: $removed_item['product_id']) : 0;
+        $product = $removed_product_id ? $this->get_product_safely($removed_product_id) : null;
+        $payload = OverSeek_Tracking_Event_Builder::build_remove_from_cart_payload($removed_item, $product, $this->get_cart_safely(), $this->get_pixel_meta_config());
 
         $this->queue_event('remove_from_cart', $payload);
     }
@@ -600,7 +633,9 @@ class OverSeek_Server_Tracking
             $email,
             $cart,
             $request_event_id ?: wp_generate_uuid4(),
-            $fp_score
+            $fp_score,
+            '',
+            $this->get_pixel_meta_config()
         );
 
         $this->queue_event('checkout_start', $payload);
@@ -612,8 +647,7 @@ class OverSeek_Server_Tracking
             return;
         }
 
-        $visitor_id = $this->get_visitor_id();
-        if (empty($visitor_id)) {
+        if (!OverSeek_Tracking_Guard_Utils::has_tracking_consent()) {
             return;
         }
 
@@ -651,7 +685,8 @@ class OverSeek_Server_Tracking
                 const body = new URLSearchParams({
                     action: 'overseek_checkout_email_capture',
                     nonce,
-                    email: normalized
+                    email: normalized,
+                    overseek_event_id: window.overseekGetCheckoutEventId ? window.overseekGetCheckoutEventId() : ''
                 });
 
                 fetch(endpoint, {
@@ -759,9 +794,10 @@ class OverSeek_Server_Tracking
         $payload = OverSeek_Tracking_Event_Builder::build_checkout_start_payload(
             strtolower($email),
             $cart,
-            'os_checkout_capture_' . time() . '_' . wp_generate_password(8, false, false),
+            $this->get_request_event_id() ?: wp_generate_uuid4(),
             null,
-            'checkout_email_capture'
+            'checkout_email_capture',
+            $this->get_pixel_meta_config()
         );
 
         $checkout_url = function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/checkout/');
@@ -891,7 +927,7 @@ class OverSeek_Server_Tracking
         $pixel_config = OverSeek_Pixel_Config_Provider::get_config($this->api_url, $this->account_id);
         $meta_config = isset($pixel_config['meta']) && is_array($pixel_config['meta']) ? $pixel_config['meta'] : array();
 
-        $payload = OverSeek_Tracking_Event_Builder::build_product_view_payload($product, $categories, $this->get_visitor_id(), $meta_config);
+        $payload = OverSeek_Tracking_Event_Builder::build_product_view_payload($product, $categories, $meta_config);
 
         $this->queue_event('product_view', $payload);
     }
@@ -928,7 +964,7 @@ class OverSeek_Server_Tracking
             header('X-OverSeek-NoCache: 1', false);
         }
 
-        $payload = OverSeek_Tracking_Event_Builder::build_cart_view_payload($this->get_cart_safely());
+        $payload = OverSeek_Tracking_Event_Builder::build_cart_view_payload($this->get_cart_safely(), $this->get_pixel_meta_config());
 
         $this->queue_event('cart_view', $payload);
     }
@@ -1018,6 +1054,10 @@ class OverSeek_Server_Tracking
             $raw = OverSeek_Tracking_Request_Utils::get_request_param_value('os_eid');
         }
 
+        if (empty($raw) && isset($_COOKIE['overseek_checkout_event_id'])) {
+            $raw = sanitize_text_field(wp_unslash((string) $_COOKIE['overseek_checkout_event_id']));
+        }
+
         if (empty($raw)) {
             return '';
         }
@@ -1028,6 +1068,18 @@ class OverSeek_Server_Tracking
         }
 
         return '';
+    }
+
+    /**
+     * Get cached catalog matching settings without a render-time HTTP request.
+     *
+     * @return array<string, mixed>
+     */
+    private function get_pixel_meta_config(): array
+    {
+        $config = OverSeek_Pixel_Config_Provider::get_config($this->api_url, $this->account_id);
+
+        return isset($config['meta']) && is_array($config['meta']) ? $config['meta'] : array();
     }
 
 }

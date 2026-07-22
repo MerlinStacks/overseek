@@ -10,6 +10,7 @@ import { Logger } from '../utils/logger';
  * - Notifications > 30 days (read only)
  * - Sync logs > 30 days
  * - Conversion deliveries: SENT > 30 days, FAILED > 90 days
+ * - Conversion idempotency receipts > 90 days
  */
 export class JanitorService {
 
@@ -39,6 +40,9 @@ export class JanitorService {
 
             // 6. Prune CAPI conversion delivery logs (SENT > 30 days, FAILED > 90 days)
             deleted.conversionDeliveries = await this.pruneConversionDeliveries(30, 90);
+
+            // 7. Keep receipts for the full analytics retention window, then prune them.
+            deleted.conversionEventReceipts = await this.pruneConversionEventReceipts(90);
 
             Logger.info('Janitor cleanup complete', { deleted });
         } catch (error) {
@@ -193,5 +197,14 @@ export class JanitorService {
         Logger.debug(`Pruned ${total} conversion deliveries (${sent.count} sent, ${failed.count} failed, ${pending.count} stale pending)`);
         return total;
     }
-}
 
+    private static async pruneConversionEventReceipts(daysOld: number): Promise<number> {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - daysOld);
+        const result = await prisma.conversionEventReceipt.deleteMany({
+            where: { createdAt: { lt: cutoff } },
+        });
+        Logger.debug(`Pruned ${result.count} conversion idempotency receipts older than ${daysOld} days`);
+        return result.count;
+    }
+}

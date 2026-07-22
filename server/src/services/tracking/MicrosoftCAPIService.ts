@@ -11,12 +11,13 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderIdString } from '../../utils/orderIds';
-import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
+import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164 } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
 const BING_API_URL = 'https://bat.bing.com/api/v2/conversion/event';
 const MAX_RETRIES = 3;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export class MicrosoftCAPIService implements ConversionPlatformService {
     readonly platform = 'MICROSOFT';
@@ -37,7 +38,11 @@ export class MicrosoftCAPIService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session, data.ipAddress);
+        const userData = extractUserData({
+            ...data.payload,
+            clickId: data.payload?.clickId || data.clickId,
+            clickPlatform: data.payload?.clickPlatform || data.clickPlatform,
+        }, session, data.ipAddress);
         const payload = this.buildPayload(tagId, eventName, eventId, data, userData);
 
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
@@ -51,18 +56,22 @@ export class MicrosoftCAPIService implements ConversionPlatformService {
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
     ): Record<string, any> {
+        const sourceTime = data.occurredAt
+            || (data.type === 'purchase' ? data.payload?.dateCreated : undefined);
+        const parsedTime = sourceTime ? new Date(sourceTime).getTime() : NaN;
         const event: Record<string, any> = {
             tag_id: tagId,
             event_type: eventName,
             event_id: eventId,
-            timestamp: new Date().toISOString(),
+            timestamp: new Date(Number.isFinite(parsedTime) ? parsedTime : Date.now()).toISOString(),
             page_url: data.url,
         };
 
         // Enhanced conversions — hashed PII for matching
         const enhancedConversions: Record<string, any> = {};
         if (userData.email) enhancedConversions.hashed_email = hashSHA256(userData.email);
-        if (userData.phone) enhancedConversions.hashed_phone_number = hashSHA256(userData.phone);
+        const normalizedPhone = normalizePhoneE164(userData.phone, userData.country);
+        if (normalizedPhone) enhancedConversions.hashed_phone_number = hashSHA256(normalizedPhone);
         if (Object.keys(enhancedConversions).length > 0) {
             event.enhanced_conversions = [enhancedConversions];
         }
@@ -103,6 +112,7 @@ export class MicrosoftCAPIService implements ConversionPlatformService {
                         'Authorization': `SharedAccessSignature ${accessToken}`,
                     },
                     body: JSON.stringify({ events: [payload] }),
+                    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 });
 
                 const responseBody = await response.text();

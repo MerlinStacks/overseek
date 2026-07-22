@@ -23,7 +23,7 @@ class OverSeek_Tracking_Event_Builder
      * @param object|null $cart WooCommerce cart instance.
      * @return array<string, mixed>
      */
-    public static function build_add_to_cart_payload(int $product_id, int $variation_id, int $quantity, $product, $cart, string $event_id): array
+    public static function build_add_to_cart_payload(int $product_id, int $variation_id, int $quantity, $product, $cart, string $event_id, array $meta_config = array()): array
     {
         $payload = array(
             'productId' => $product_id,
@@ -33,6 +33,7 @@ class OverSeek_Tracking_Event_Builder
             'price' => ($product && is_object($product)) ? floatval($product->get_price()) : 0,
             'currency' => self::get_currency(),
             'eventId' => $event_id,
+            'contentId' => ($product instanceof WC_Product) ? OverSeek_Pixel_Matching_Utils::get_content_id($product, array('meta' => $meta_config)) : (string) ($variation_id ?: $product_id),
             'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 
@@ -42,7 +43,10 @@ class OverSeek_Tracking_Event_Builder
         // Include items array for CAPI services
         $payload['items'] = array(
             array(
-                'id' => $product_id,
+                'id' => $variation_id ?: $product_id,
+                'productId' => $product_id,
+                'variationId' => $variation_id,
+                'contentId' => ($product instanceof WC_Product) ? OverSeek_Pixel_Matching_Utils::get_content_id($product, array('meta' => $meta_config)) : (string) ($variation_id ?: $product_id),
                 'sku' => ($product && is_object($product) && method_exists($product, 'get_sku')) ? $product->get_sku() : '',
                 'name' => ($product && is_object($product)) ? $product->get_name() : '',
                 'quantity' => $quantity,
@@ -59,13 +63,14 @@ class OverSeek_Tracking_Event_Builder
      * @param object|null $cart WooCommerce cart instance.
      * @return array<string, mixed>
      */
-    public static function build_remove_from_cart_payload(?array $removed_item, $product, $cart): array
+    public static function build_remove_from_cart_payload(?array $removed_item, $product, $cart, array $meta_config = array()): array
     {
         $payload = array();
 
         if (is_array($removed_item)) {
             $payload['productId'] = isset($removed_item['product_id']) ? absint($removed_item['product_id']) : 0;
             $payload['variationId'] = isset($removed_item['variation_id']) ? absint($removed_item['variation_id']) : 0;
+            $payload['contentId'] = ($product instanceof WC_Product) ? OverSeek_Pixel_Matching_Utils::get_content_id($product, array('meta' => $meta_config)) : (string) ($payload['variationId'] ?: $payload['productId']);
             $payload['quantity'] = isset($removed_item['quantity']) ? absint($removed_item['quantity']) : 1;
             $payload['name'] = ($product && is_object($product)) ? $product->get_name() : '';
             $payload['sku'] = ($product && is_object($product) && method_exists($product, 'get_sku')) ? $product->get_sku() : '';
@@ -80,7 +85,7 @@ class OverSeek_Tracking_Event_Builder
      * @param object|null $cart WooCommerce cart instance.
      * @return array<string, mixed>
      */
-    public static function build_checkout_start_payload(string $email, $cart, string $event_id, ?float $fp_score = null, string $source = ''): array
+    public static function build_checkout_start_payload(string $email, $cart, string $event_id, ?float $fp_score = null, string $source = '', array $meta_config = array()): array
     {
         $payload = array(
             'email' => $email,
@@ -93,7 +98,7 @@ class OverSeek_Tracking_Event_Builder
             $payload['source'] = $source;
         }
 
-        $payload = self::add_cart_totals($payload, $cart, true);
+        $payload = self::add_cart_totals($payload, $cart, true, $meta_config);
 
         if ($fp_score !== null) {
             $payload['fpScore'] = $fp_score;
@@ -129,27 +134,35 @@ class OverSeek_Tracking_Event_Builder
 
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
+            $product_id = method_exists($item, 'get_product_id') ? (int) $item->get_product_id() : ($product ? (int) $product->get_id() : 0);
+            $variation_id = method_exists($item, 'get_variation_id') ? (int) $item->get_variation_id() : 0;
             $items[] = array(
-                'id' => $product ? $product->get_id() : 0,
+                'id' => $variation_id ?: $product_id,
+                'productId' => $product_id,
+                'variationId' => $variation_id,
                 'sku' => $product ? $product->get_sku() : '',
                 'name' => $item->get_name(),
                 'quantity' => $item->get_quantity(),
-                'price' => floatval($item->get_total()),
+                'price' => floatval($order->get_item_total($item)),
+                'total' => floatval($item->get_total()),
             );
         }
 
         // Add formatted contentId to each item if pixel config is available
         $content_config = array('meta' => $meta_config);
         foreach ($items as &$item) {
-            $product_for_id = wc_get_product((int) $item['id']);
+            $product_for_id = wc_get_product((int) ($item['variationId'] ?: $item['productId']));
             if ($product_for_id) {
                 $item['contentId'] = OverSeek_Pixel_Matching_Utils::get_content_id($product_for_id, $content_config);
             }
         }
         unset($item);
 
+        $date_created = $order->get_date_created();
+
         $payload = array(
             'orderId' => $order_id,
+            'dateCreated' => $date_created ? $date_created->date('c') : null,
             'total' => floatval($order->get_total()),
             'subtotal' => floatval($order->get_subtotal()),
             'tax' => floatval($order->get_total_tax()),
@@ -192,7 +205,7 @@ class OverSeek_Tracking_Event_Builder
      * @param array<string, mixed> $meta_config Meta pixel config (contentIdFormat, contentIdPrefix, contentIdSuffix)
      * @return array<string, mixed>
      */
-    public static function build_product_view_payload($product, array $categories, ?string $visitor_id, array $meta_config = array()): array
+    public static function build_product_view_payload($product, array $categories, array $meta_config = array()): array
     {
         $sku = $product->get_sku();
         $product_id = $product->get_id();
@@ -212,7 +225,8 @@ class OverSeek_Tracking_Event_Builder
             'inStock' => $product->is_in_stock(),
             'categories' => $categories,
             'productType' => $product->get_type(),
-            'eventId' => OverSeek_Tracking_Payload_Utils::get_shared_product_view_event_id((int) $product->get_id(), $visitor_id),
+            'contentId' => $content_id,
+            'eventId' => OverSeek_Tracking_Payload_Utils::issue_product_view_event_id((int) $product->get_id()),
             'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 
@@ -238,7 +252,7 @@ class OverSeek_Tracking_Event_Builder
      * @param object|null $cart WooCommerce cart instance.
      * @return array<string, mixed>
      */
-    public static function build_cart_view_payload($cart): array
+    public static function build_cart_view_payload($cart, array $meta_config = array()): array
     {
         $payload = array();
 
@@ -251,11 +265,19 @@ class OverSeek_Tracking_Event_Builder
 
         foreach ($cart->get_cart() as $cart_item) {
             $product = $cart_item['data'] ?? null;
+            $product_id = isset($cart_item['product_id']) ? absint($cart_item['product_id']) : 0;
+            $variation_id = isset($cart_item['variation_id']) ? absint($cart_item['variation_id']) : 0;
+            $quantity = isset($cart_item['quantity']) ? max(1, absint($cart_item['quantity'])) : 1;
+            $line_total = isset($cart_item['line_total']) ? floatval($cart_item['line_total']) : 0;
             $items[] = array(
-                'productId' => isset($cart_item['product_id']) ? absint($cart_item['product_id']) : 0,
+                'id' => $variation_id ?: $product_id,
+                'productId' => $product_id,
+                'variationId' => $variation_id,
+                'contentId' => ($product instanceof WC_Product) ? OverSeek_Pixel_Matching_Utils::get_content_id($product, array('meta' => $meta_config)) : (string) ($variation_id ?: $product_id),
                 'name' => ($product && is_object($product)) ? $product->get_name() : '',
-                'quantity' => isset($cart_item['quantity']) ? absint($cart_item['quantity']) : 1,
-                'price' => isset($cart_item['line_total']) ? floatval($cart_item['line_total']) : 0,
+                'quantity' => $quantity,
+                'price' => $quantity > 0 ? $line_total / $quantity : 0,
+                'total' => $line_total,
             );
         }
 
@@ -278,7 +300,7 @@ class OverSeek_Tracking_Event_Builder
      * @param object|null $cart WooCommerce cart instance.
      * @return array<string, mixed>
      */
-    private static function add_cart_totals(array $payload, $cart, bool $include_snapshot = false): array
+    private static function add_cart_totals(array $payload, $cart, bool $include_snapshot = false, array $meta_config = array()): array
     {
         if (!$cart) {
             return $payload;
@@ -289,7 +311,7 @@ class OverSeek_Tracking_Event_Builder
         $payload['currency'] = self::get_currency();
 
         if ($include_snapshot) {
-            $payload['items'] = OverSeek_Tracking_Payload_Utils::get_cart_items_snapshot($cart);
+            $payload['items'] = OverSeek_Tracking_Payload_Utils::get_cart_items_snapshot($cart, $meta_config);
         }
 
         return $payload;

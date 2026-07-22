@@ -6,6 +6,7 @@ vi.mock('../../../utils/prisma', () => ({
     prisma: {
         accountFeature: {
             findMany: vi.fn(),
+            update: vi.fn().mockResolvedValue({}),
         },
     },
 }));
@@ -21,6 +22,7 @@ vi.mock('../../../utils/logger', () => ({
 }));
 
 import { prisma } from '../../../utils/prisma';
+import { encrypt } from '../../../utils/encryption';
 
 /** Helper: create a mock platform service */
 function createMockService(platform: string): ConversionPlatformService & { sendEvent: ReturnType<typeof vi.fn> } {
@@ -87,6 +89,20 @@ describe('ConversionForwarder', () => {
 
         expect(metaService.sendEvent).not.toHaveBeenCalled();
         expect(tiktokService.sendEvent).not.toHaveBeenCalled();
+    });
+
+    it('should NOT forward conversions when consent is explicitly denied', async () => {
+        (prisma.accountFeature.findMany as any).mockResolvedValue([
+            { featureKey: 'META_CAPI', config: { pixelId: 'px123', accessToken: 'tok' } },
+        ]);
+
+        await ConversionForwarder.forwardIfConversion(
+            { ...baseData, consentState: 'denied' } as any,
+            mockSession,
+        );
+
+        expect(metaService.sendEvent).not.toHaveBeenCalled();
+        expect(prisma.accountFeature.findMany).not.toHaveBeenCalled();
     });
 
     it('should NOT forward when no platforms are enabled', async () => {
@@ -170,5 +186,34 @@ describe('ConversionForwarder', () => {
 
         expect(metaService.sendEvent).not.toHaveBeenCalled();
         expect(tiktokService.sendEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it('decrypts stored credentials before forwarding', async () => {
+        (prisma.accountFeature.findMany as any).mockResolvedValue([
+            { featureKey: 'META_CAPI', config: { pixelId: 'px123', accessToken: encrypt('secret-token') } },
+        ]);
+
+        await ConversionForwarder.forwardIfConversion(baseData as any, mockSession);
+
+        expect(metaService.sendEvent).toHaveBeenCalledWith(
+            'test-account',
+            expect.objectContaining({ accessToken: 'secret-token' }),
+            baseData,
+            mockSession,
+        );
+    });
+
+    it('forwards a management test only to the selected registered service', async () => {
+        await ConversionForwarder.forwardToPlatform(
+            'META',
+            'test-account',
+            { pixelId: 'px123', accessToken: encrypt('secret-token') },
+            baseData as any,
+            mockSession,
+        );
+
+        expect(metaService.sendEvent).toHaveBeenCalledTimes(1);
+        expect(metaService.sendEvent.mock.calls[0][1].accessToken).toBe('secret-token');
+        expect(tiktokService.sendEvent).not.toHaveBeenCalled();
     });
 });

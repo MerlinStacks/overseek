@@ -12,7 +12,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderIdString } from '../../utils/orderIds';
-import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164 } from './conversionUtils';
+import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164, resolveConversionEventDate } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
@@ -21,6 +21,7 @@ const GRAPH_API_BASE = `https://graph.facebook.com/${API_VERSION}`;
 
 /** Max retry attempts for transient failures */
 const MAX_RETRIES = 3;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Normalise an IP address by stripping IPv6-mapped prefix.
@@ -79,17 +80,21 @@ export class MetaCAPIService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
+        const topLevelData = data as TrackingEventPayload & Record<string, any>;
         const userData = extractUserData({
             ...(data.payload || {}),
-            email: data.payload?.email || data.email,
-            customerId: data.payload?.customerId || data.customerId,
-            clickId: data.payload?.clickId || data.clickId,
-            clickPlatform: data.payload?.clickPlatform || data.clickPlatform,
+            email: data.email ?? data.payload?.email,
+            customerId: data.customerId ?? data.payload?.customerId,
+            clickId: data.clickId ?? data.payload?.clickId,
+            clickPlatform: String(data.clickPlatform ?? data.payload?.clickPlatform ?? '').trim().toLowerCase() || undefined,
+            fbc: topLevelData.fbc ?? data.payload?.fbc,
+            fbp: topLevelData.fbp ?? data.payload?.fbp,
         }, session, data.ipAddress);
-        if (!userData.fbc && userData.clickPlatform === 'facebook' && userData.clickId) {
-            userData.fbc = `fb.1.${Date.now()}.${userData.clickId}`;
+        const occurrenceDate = resolveConversionEventDate(topLevelData.occurredAt, data.payload);
+        if (!userData.fbc && (userData.clickPlatform === 'facebook' || userData.clickPlatform === 'meta') && userData.clickId) {
+            userData.fbc = `fb.1.${occurrenceDate.getTime()}.${userData.clickId}`;
         }
-        const payload = this.buildPayload(eventName, eventId, data, userData, config, testEventCode);
+        const payload = this.buildPayload(eventName, eventId, data, userData, config, occurrenceDate, testEventCode);
         const payloadUserData = payload.data?.[0]?.user_data || {};
 
         if (!this.hasSufficientMatchData(payloadUserData)) {
@@ -124,6 +129,7 @@ export class MetaCAPIService implements ConversionPlatformService {
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
         config: Record<string, any>,
+        occurrenceDate: Date,
         testEventCode?: string,
     ): Record<string, any> {
         const contentIdFormat = config.contentIdFormat || 'sku';
@@ -131,33 +137,38 @@ export class MetaCAPIService implements ConversionPlatformService {
         const contentIdSuffix = config.contentIdSuffix || '';
 
         const getContentId = (item: any): string => {
-            if (item.contentId) return String(item.contentId);
+            if (item.contentId !== undefined && item.contentId !== null && String(item.contentId).trim() !== '') {
+                return String(item.contentId);
+            }
             const raw = contentIdFormat === 'id' ? String(item.id || '') : String(item.sku || item.id || '');
             return `${contentIdPrefix}${raw}${contentIdSuffix}` || raw;
         };
+        const advancedMatching = config.advancedMatching === true;
+        const metaPhone = normalizePhoneE164(userData.phone, userData.country)?.replace(/\D/g, '');
         const eventData: Record<string, any> = {
             event_name: eventName,
-            event_time: Math.floor(Date.now() / 1000),
+            event_time: Math.floor(occurrenceDate.getTime() / 1000),
             event_id: eventId,
             action_source: 'website',
             event_source_url: data.url,
             user_data: {
                 // Hash all PII fields — Meta requires SHA-256
-                em: hashSHA256(userData.email),
-                ph: hashSHA256(normalizePhoneE164(userData.phone, userData.country)),
-                fn: hashSHA256(userData.firstName),
-                ln: hashSHA256(userData.lastName),
-                ct: hashSHA256(userData.city),
-                st: hashSHA256(userData.state),
-                zp: hashSHA256(userData.zip),
-                country: hashSHA256(userData.country),
+                ...(advancedMatching ? {
+                    em: hashSHA256(userData.email),
+                    ph: hashSHA256(metaPhone),
+                    fn: hashSHA256(userData.firstName),
+                    ln: hashSHA256(userData.lastName),
+                    ct: hashSHA256(userData.city),
+                    st: hashSHA256(userData.state),
+                    zp: hashSHA256(userData.zip),
+                    country: hashSHA256(userData.country),
+                    ...(userData.externalId ? { external_id: hashSHA256(userData.externalId) } : {}),
+                } : {}),
                 // Non-hashed fields — only include IP if public (Meta rejects private IPs)
-                ...(isPublicIp(userData.ipAddress) ? { client_ip_address: userData.ipAddress } : {}),
+                ...(isPublicIp(userData.ipAddress) ? { client_ip_address: normaliseIp(userData.ipAddress!.trim()) } : {}),
                 client_user_agent: userData.userAgent,
                 fbc: userData.fbc,
                 fbp: userData.fbp,
-                // External ID for dedup/match quality (e.g. "wc_123") — hashed per Meta spec
-                ...(userData.externalId ? { external_id: hashSHA256(userData.externalId) } : {}),
             },
         };
 
@@ -171,7 +182,10 @@ export class MetaCAPIService implements ConversionPlatformService {
             const customData: Record<string, any> = {};
 
             if (data.payload.total !== undefined) {
-                customData.value = data.payload.total;
+                let value = Number(data.payload.total);
+                if (config.excludeShipping) value -= Number(data.payload.shipping || 0);
+                if (config.excludeTax) value -= Number(data.payload.tax || 0);
+                customData.value = Math.max(0, Math.round(value * 100) / 100);
             }
             if (data.payload.currency) {
                 customData.currency = data.payload.currency;
@@ -233,17 +247,36 @@ export class MetaCAPIService implements ConversionPlatformService {
                         Authorization: `Bearer ${accessToken}`,
                     },
                     body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 });
 
                 const responseBody = await response.text();
+                let parsed: any;
+                try {
+                    parsed = JSON.parse(responseBody);
+                } catch {
+                    parsed = null;
+                }
 
                 if (response.ok) {
-                    await this.markDelivery(deliveryId, 'SENT', response.status, responseBody, attempt);
+                    if (parsed && !parsed.error && Number(parsed.events_received) > 0) {
+                        await this.markDelivery(deliveryId, 'SENT', response.status, responseBody, attempt);
+                        return;
+                    }
+
+                    const message = parsed?.error?.message || 'Invalid Meta CAPI success response';
+                    if (this.isTransientError(response.status, parsed, message) && attempt < MAX_RETRIES) {
+                        await this.backoff(attempt);
+                        continue;
+                    }
+                    await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, message);
+                    Logger.warn('[MetaCAPI] Response-level failure', { pixelId, response: responseBody.substring(0, 500) });
                     return;
                 }
 
-                // Retry on 429 (rate limited) or 5xx (server error)
-                if (response.status === 429 || response.status >= 500) {
+                // Retry rate limits, server errors, and explicit transient Graph errors.
+                const responseMessage = parsed?.error?.message || responseBody;
+                if (this.isTransientError(response.status, parsed, responseMessage)) {
                     Logger.warn('[MetaCAPI] Retryable error', {
                         attempt,
                         status: response.status,
@@ -273,6 +306,13 @@ export class MetaCAPIService implements ConversionPlatformService {
                 await this.backoff(attempt);
             }
         }
+    }
+
+    private isTransientError(status: number, parsed: any, message: string): boolean {
+        if (status === 429 || status >= 500 || parsed?.error?.is_transient === true) return true;
+        const code = Number(parsed?.error?.code);
+        if ([1, 2, 4, 17, 32, 341, 613].includes(code)) return true;
+        return /rate.?limit|timeout|temporar|try again|service unavailable|internal error/i.test(message);
     }
 
     /** Exponential backoff: 2^attempt * 1000ms */

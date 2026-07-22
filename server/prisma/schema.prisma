@@ -313,6 +313,8 @@ model ConversionDelivery {
   lastError   String?  @db.Text
   /// When the event was successfully sent
   sentAt      DateTime?
+  /// Scheduler claim timestamp; used to recover interrupted PENDING retries
+  lastAttemptAt DateTime?
   createdAt   DateTime @default(now())
 
   // Note: intentionally no Account relation — adding a FK retroactively
@@ -322,6 +324,19 @@ model ConversionDelivery {
   @@index([accountId, status])
   @@index([accountId, platform, createdAt])
   @@index([eventId])
+}
+
+/// Atomic ingestion claim for conversion event idempotency across visitors and sessions.
+model ConversionEventReceipt {
+  id         String   @id @default(uuid())
+  accountId  String
+  eventId    String
+  eventType  String
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([accountId, eventId])
+  @@index([createdAt])
 }
 
 // --------------------------------------
@@ -2098,6 +2113,7 @@ model AnalyticsEvent {
   pageTitle String? // Human readable title
   orderId   Int?    // Denormalized Woo order ID for purchase events (avoids O(N×M) payload scans)
   payload   Json? // e.g. { query: "blue shoes" } for search
+  occurredAt DateTime @default(now())
 
   createdAt DateTime @default(now())
 

@@ -25,7 +25,7 @@ const SAFE_PIXEL_FIELDS: Record<string, string[]> = {
     PINTEREST_CAPI: ['tagId', 'events'],
     SNAPCHAT_CAPI: ['pixelId', 'events'],
     MICROSOFT_CAPI: ['tagId', 'events'],
-    TWITTER_CAPI: ['pixelId', 'events'],
+    TWITTER_CAPI: ['pixelId', 'events', 'eventIdPageView', 'eventIdViewContent', 'eventIdAddToCart', 'eventIdInitiateCheckout', 'eventIdPurchase', 'eventIdSearch'],
     CONSENT_MODE: ['autoAccept'],
 };
 

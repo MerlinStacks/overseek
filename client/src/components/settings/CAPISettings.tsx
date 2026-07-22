@@ -48,6 +48,8 @@ const EVENT_TOGGLES = [
     { key: 'search', label: 'Search', help: 'Search results page' },
 ];
 
+const SECRET_MASK = '********';
+
 /** Platform definitions — drives the dynamic form rendering */
 const PLATFORMS: PlatformDef[] = [
     {
@@ -145,6 +147,11 @@ const PLATFORMS: PlatformDef[] = [
         color: 'bg-slate-800',
         fields: [
             { name: 'pixelId', label: 'X Pixel ID', type: 'text', placeholder: 'xxxxxxx', section: 'pixel' },
+            { name: 'eventIdPurchase', label: 'Purchase Event ID', type: 'text', placeholder: 'From X Events Manager', section: 'pixel' },
+            { name: 'eventIdAddToCart', label: 'Add to Cart Event ID', type: 'text', placeholder: 'From X Events Manager', section: 'pixel' },
+            { name: 'eventIdInitiateCheckout', label: 'Checkout Event ID', type: 'text', placeholder: 'From X Events Manager', section: 'pixel' },
+            { name: 'eventIdViewContent', label: 'View Content Event ID', type: 'text', placeholder: 'From X Events Manager', section: 'pixel' },
+            { name: 'eventIdSearch', label: 'Search Event ID', type: 'text', placeholder: 'From X Events Manager', section: 'pixel' },
             { name: 'accessToken', label: 'CAPI Access Token', type: 'password', placeholder: 'Bearer token', section: 'capi' },
         ],
     },
@@ -222,11 +229,15 @@ export function CAPISettings() {
 
         setSaving(platformKey);
         try {
-            await put(`/api/capi/config/${platformKey}`, {
+            const result = await put<{ success: boolean; config: Record<string, unknown> }>(`/api/capi/config/${platformKey}`, {
                 accountId,
                 enabled: platformConfig.enabled,
                 config: platformConfig.config,
             });
+            setConfigs(prev => ({
+                ...prev,
+                [platformKey]: { ...prev[platformKey], config: result.config },
+            }));
         } catch { /* error handled by api layer */ }
         finally { setSaving(null); }
     };
@@ -434,8 +445,13 @@ export function CAPISettings() {
                                                             <div className="relative">
                                                                 <input
                                                                     type={field.type === 'password' && !showPasswords[`${platform.key}-${field.name}`] ? 'password' : 'text'}
-                                                                    value={getStringValue(config.config[field.name])}
-                                                                    onChange={(e) => updateField(platform.key, field.name, e.target.value)}
+                                                                     value={getStringValue(config.config[field.name])}
+                                                                     onChange={(e) => updateField(platform.key, field.name, e.target.value)}
+                                                                     onFocus={() => {
+                                                                         if (field.type === 'password' && config.config[field.name] === SECRET_MASK) {
+                                                                             updateField(platform.key, field.name, '');
+                                                                         }
+                                                                     }}
                                                                     placeholder={field.placeholder}
                                                                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-slate-100 font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10"
                                                                 />

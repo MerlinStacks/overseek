@@ -10,12 +10,21 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderIdString } from '../../utils/orderIds';
-import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
+import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164 } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
-const TWITTER_API_BASE = 'https://ads-api.twitter.com/12/measurement/conversions';
+const TWITTER_API_BASE = 'https://ads-api.x.com/12/measurement/conversions';
 const MAX_RETRIES = 3;
+const REQUEST_TIMEOUT_MS = 10_000;
+const KNOWN_EVENT_ID_PLACEHOLDERS = /^(?:ol288|23294827|event[-_ ]?id|your[-_ ]?event[-_ ]?id|placeholder)$/i;
+const EVENT_ID_CONFIG_KEY: Record<string, string> = {
+    purchase: 'eventIdPurchase',
+    add_to_cart: 'eventIdAddToCart',
+    checkout_start: 'eventIdInitiateCheckout',
+    product_view: 'eventIdViewContent',
+    search: 'eventIdSearch',
+};
 
 export class TwitterCAPIService implements ConversionPlatformService {
     readonly platform = 'TWITTER';
@@ -35,23 +44,45 @@ export class TwitterCAPIService implements ConversionPlatformService {
         const eventName = mapEventName(data.type, 'TWITTER');
         if (!eventName) return;
 
+        const flatEventId = config[EVENT_ID_CONFIG_KEY[data.type]];
+        const configuredEventId = typeof flatEventId === 'string'
+            ? flatEventId.trim()
+            : typeof config.eventIds?.[data.type] === 'string'
+                ? config.eventIds[data.type].trim()
+                : '';
+        if (!configuredEventId || KNOWN_EVENT_ID_PLACEHOLDERS.test(configuredEventId)) {
+            Logger.warn('[TwitterCAPI] Missing valid Events Manager event ID; skipping event', {
+                accountId,
+                eventType: data.type,
+            });
+            return;
+        }
+
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session, data.ipAddress);
-        const payload = this.buildPayload(eventName, eventId, data, userData);
+        const userData = extractUserData({
+            ...data.payload,
+            clickId: data.payload?.clickId || data.clickId,
+            clickPlatform: data.payload?.clickPlatform || data.clickPlatform,
+        }, session, data.ipAddress);
+        const payload = this.buildPayload(configuredEventId, eventId, data, userData);
 
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
         await this.sendWithRetry(pixelId, accessToken, payload, deliveryId);
     }
 
     private buildPayload(
-        _eventName: string,
-        eventId: string,
+        configuredEventId: string,
+        conversionId: string,
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
     ): Record<string, any> {
+        const sourceTime = data.occurredAt
+            || (data.type === 'purchase' ? data.payload?.dateCreated : undefined);
+        const parsedTime = sourceTime ? new Date(sourceTime).getTime() : NaN;
         const conversion: Record<string, any> = {
-            conversion_time: new Date().toISOString(),
-            event_id: eventId,
+            conversion_time: new Date(Number.isFinite(parsedTime) ? parsedTime : Date.now()).toISOString(),
+            event_id: configuredEventId,
+            conversion_id: conversionId,
             identifiers: [],
         };
 
@@ -61,9 +92,10 @@ export class TwitterCAPIService implements ConversionPlatformService {
                 hashed_email: hashSHA256(userData.email),
             });
         }
-        if (userData.phone) {
+        const normalizedPhone = normalizePhoneE164(userData.phone, userData.country);
+        if (normalizedPhone) {
             conversion.identifiers.push({
-                hashed_phone_number: hashSHA256(userData.phone),
+                hashed_phone_number: hashSHA256(normalizedPhone),
             });
         }
 
@@ -72,6 +104,12 @@ export class TwitterCAPIService implements ConversionPlatformService {
             || (userData.clickId && userData.clickPlatform === 'twitter' ? userData.clickId : undefined);
         if (twclid) {
             conversion.identifiers.push({ twclid });
+        }
+        if (userData.ipAddress && userData.userAgent) {
+            conversion.identifiers.push({
+                ip_address: userData.ipAddress.trim(),
+                user_agent: userData.userAgent.trim(),
+            });
         }
 
         // Revenue
@@ -107,11 +145,24 @@ export class TwitterCAPIService implements ConversionPlatformService {
                         'Authorization': `Bearer ${accessToken}`,
                     },
                     body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 });
 
                 const responseBody = await response.text();
 
                 if (response.ok) {
+                    let processed = 0;
+                    try {
+                        processed = Number(JSON.parse(responseBody)?.data?.conversions_processed || 0);
+                    } catch {
+                        processed = 0;
+                    }
+                    if (processed < 1) {
+                        const error = responseBody || 'X returned an invalid success response';
+                        await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, error);
+                        Logger.error('[TwitterCAPI] Conversion was not processed');
+                        return;
+                    }
                     await this.markDelivery(deliveryId, 'SENT', response.status, responseBody, attempt);
                     return;
                 }

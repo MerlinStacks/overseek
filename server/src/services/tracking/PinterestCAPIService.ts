@@ -11,12 +11,13 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderIdString } from '../../utils/orderIds';
-import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
+import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164 } from './conversionUtils';
 import type { ConversionPlatformService } from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
 const PINTEREST_API_BASE = 'https://api.pinterest.com/v5';
 const MAX_RETRIES = 3;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export class PinterestCAPIService implements ConversionPlatformService {
     readonly platform = 'PINTEREST';
@@ -37,7 +38,11 @@ export class PinterestCAPIService implements ConversionPlatformService {
         if (!eventName) return;
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session, data.ipAddress);
+        const userData = extractUserData({
+            ...data.payload,
+            clickId: data.payload?.clickId || data.clickId,
+            clickPlatform: data.payload?.clickPlatform || data.clickPlatform,
+        }, session, data.ipAddress);
         const payload = this.buildPayload(eventName, eventId, data, userData);
 
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
@@ -54,15 +59,19 @@ export class PinterestCAPIService implements ConversionPlatformService {
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
     ): Record<string, any> {
+        const sourceTime = data.occurredAt
+            || (data.type === 'purchase' ? data.payload?.dateCreated : undefined);
+        const parsedTime = sourceTime ? new Date(sourceTime).getTime() : NaN;
+        const normalizedPhone = normalizePhoneE164(userData.phone, userData.country)?.replace(/\D/g, '');
         const eventData: Record<string, any> = {
             event_name: eventName,
             action_source: 'web',
-            event_time: Math.floor(Date.now() / 1000),
+            event_time: Math.floor((Number.isFinite(parsedTime) ? parsedTime : Date.now()) / 1000),
             event_id: eventId,
             event_source_url: data.url,
             user_data: {
                 em: userData.email ? [hashSHA256(userData.email)] : undefined,
-                ph: userData.phone ? [hashSHA256(userData.phone)] : undefined,
+                ph: normalizedPhone ? [hashSHA256(normalizedPhone)] : undefined,
                 fn: userData.firstName ? [hashSHA256(userData.firstName)] : undefined,
                 ln: userData.lastName ? [hashSHA256(userData.lastName)] : undefined,
                 ct: userData.city ? [hashSHA256(userData.city)] : undefined,
@@ -143,6 +152,7 @@ export class PinterestCAPIService implements ConversionPlatformService {
                         'Authorization': `Bearer ${accessToken}`,
                     },
                     body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 });
 
                 const responseBody = await response.text();

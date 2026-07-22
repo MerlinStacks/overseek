@@ -12,6 +12,13 @@ import { ConversionForwarder } from '../services/tracking/ConversionForwarder';
 import { requireAuthFastify } from '../middleware/auth';
 import { getRouteAccountIdOrReply } from './routeHelpers';
 import { syncStorefrontConfigToWoo } from '../services/StorefrontConfigSync';
+import {
+    decryptCapiConfig,
+    maskCapiConfig,
+    prepareCapiConfigForStorage,
+    redactCapiText,
+    validateCapiConfig,
+} from '../utils/capiConfig';
 
 /** Maps URL platform param → AccountFeature.featureKey */
 const PLATFORM_FEATURE_KEY: Record<string, string> = {
@@ -71,7 +78,7 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
             }
             platforms[urlKey] = {
                 enabled: feature?.isEnabled || false,
-                config: feature?.config || {},
+                config: maskCapiConfig(feature?.config),
                 updatedAt: feature?.updatedAt || null,
             };
         }
@@ -86,7 +93,7 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
         const { platform } = request.params as { platform: string };
         const accountId = getRouteAccountIdOrReply(request, reply);
         if (!accountId) return;
-        const { enabled, config } = request.body as {
+        const { enabled, config } = (request.body || {}) as {
             enabled: boolean;
             config: Record<string, any>;
         };
@@ -94,17 +101,40 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
         const featureKey = getFeatureKeyOrReply(platform, reply);
         if (!featureKey) return;
 
+        if (platform === '_consent') {
+            if (typeof enabled !== 'boolean' || !config || typeof config !== 'object' || Array.isArray(config) || typeof config.autoAccept !== 'boolean') {
+                return reply.code(400).send({ error: 'Invalid consent config: enabled and autoAccept must be booleans' });
+            }
+        } else if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            return reply.code(400).send({ error: 'Invalid platform config', details: ['config must be an object'] });
+        }
+
+        const existingFeature = await prisma.accountFeature.findUnique({
+            where: { accountId_featureKey: { accountId, featureKey } },
+            select: { config: true },
+        });
+        const configToStore = platform === '_consent'
+            ? config
+            : prepareCapiConfigForStorage(config, existingFeature?.config);
+
+        if (platform !== '_consent') {
+            const validationErrors = validateCapiConfig(platform, enabled, configToStore);
+            if (validationErrors.length) {
+                return reply.code(400).send({ error: 'Invalid platform config', details: validationErrors });
+            }
+        }
+
         await prisma.accountFeature.upsert({
             where: { accountId_featureKey: { accountId, featureKey } },
             create: {
                 accountId,
                 featureKey,
                 isEnabled: enabled,
-                config: config as object,
+                config: configToStore as object,
             },
             update: {
                 isEnabled: enabled,
-                config: config as object,
+                config: configToStore as object,
             },
         });
 
@@ -113,7 +143,7 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
         void syncStorefrontConfigToWoo(accountId, ['pixels']);
 
         Logger.info('[CAPI] Platform config updated', { accountId, platform, enabled });
-        return { success: true };
+        return { success: true, config: platform === '_consent' ? configToStore : maskCapiConfig(configToStore) };
     });
 
     /**
@@ -159,6 +189,12 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: `Platform ${platform} is not configured` });
         }
 
+        if (platform === 'google') {
+            return reply.code(400).send({
+                error: 'Google Enhanced Conversions cannot be tested with a synthetic purchase. It enhances a real Google Ads conversion and requires its matching transaction/click context.',
+            });
+        }
+
         // Send a test purchase event through the ConversionForwarder
         const testData = {
             accountId,
@@ -176,11 +212,43 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
         };
 
         try {
-            await ConversionForwarder.forwardIfConversion(testData as any, null);
-            return { success: true, message: `Test event sent to ${platform}. Check your platform's event debugger.` };
+            await ConversionForwarder.forwardToPlatform(
+                platform.toUpperCase(),
+                accountId,
+                feature.config as Record<string, any>,
+                testData as any,
+                null,
+            );
+
+            const delivery = await prisma.conversionDelivery.findFirst({
+                where: { accountId, platform: platform.toUpperCase(), eventId: testData.eventId },
+                orderBy: { createdAt: 'desc' },
+                select: { id: true, platform: true, eventName: true, eventId: true, status: true, httpStatus: true, attempts: true, lastError: true, sentAt: true, createdAt: true },
+            });
+            if (!delivery) {
+                return reply.code(502).send({
+                    success: false,
+                    error: `The ${platform} service did not create a delivery. Verify that the selected event and configuration are supported.`,
+                });
+            }
+
+            const safeDelivery = {
+                ...delivery,
+                lastError: redactCapiText(delivery.lastError, decryptCapiConfig(feature.config)),
+            };
+            if (delivery.status === 'SENT') {
+                return { success: true, message: `Test event delivered to ${platform}.`, delivery: safeDelivery };
+            }
+            const statusCode = delivery.status === 'PENDING' ? 202 : 502;
+            return reply.code(statusCode).send({
+                success: false,
+                message: `Test delivery to ${platform} is ${delivery.status.toLowerCase()}.`,
+                error: safeDelivery.lastError || `Platform returned HTTP ${delivery.httpStatus || 'unknown'}`,
+                delivery: safeDelivery,
+            });
         } catch (error: any) {
             Logger.error('[CAPI] Test event failed', { platform, error: error.message });
-            return reply.code(500).send({ error: `Test event failed: ${error.message}` });
+            return reply.code(500).send({ error: `Test event failed: ${redactCapiText(error.message, decryptCapiConfig(feature.config))}` });
         }
     });
 
@@ -219,8 +287,6 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
                     httpStatus: true,
                     attempts: true,
                     lastError: true,
-                    response: true,
-                    payload: true,
                     sentAt: true,
                     createdAt: true,
                 },
@@ -229,7 +295,10 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
         ]);
 
         return {
-            deliveries,
+            deliveries: deliveries.map(delivery => ({
+                ...delivery,
+                lastError: redactCapiText(delivery.lastError),
+            })),
             total,
             page: parseInt(page, 10) || 1,
             totalPages: Math.ceil(total / take),
@@ -314,7 +383,10 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
                 status: r.status,
                 count: r._count._all,
             })),
-            recentFailures,
+            recentFailures: recentFailures.map(delivery => ({
+                ...delivery,
+                lastError: redactCapiText(delivery.lastError),
+            })),
             range,
         };
     });

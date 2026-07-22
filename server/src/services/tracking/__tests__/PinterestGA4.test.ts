@@ -78,6 +78,20 @@ describe('PinterestCAPIService', () => {
         expect(body.data[0].user_data.click_id).toBe('pinterest-epik-123');
     });
 
+    it('should merge top-level Pinterest click attribution and preserve occurredAt', async () => {
+        await service.sendEvent(accountId, config, {
+            ...purchaseData,
+            occurredAt: '2026-07-19T12:30:00.000Z',
+            clickId: 'top-level-epik',
+            clickPlatform: 'pinterest',
+            payload: { ...purchaseData.payload, clickId: undefined, clickPlatform: undefined },
+        }, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.data[0].user_data.click_id).toBe('top-level-epik');
+        expect(body.data[0].event_time).toBe(1784464200);
+    });
+
     it('should include hashed external_id for match quality', async () => {
         await service.sendEvent(accountId, config, {
             ...purchaseData,
@@ -240,15 +254,21 @@ describe('GA4MeasurementService', () => {
         expect(body.timestamp_micros).toBeGreaterThan(Date.now() * 1000 - 10000000);
     });
 
-    it('should include consent object with GRANTED values', async () => {
-        await service.sendEvent(accountId, config, purchaseData, session);
+    it('should map denied consent from the event instead of forcing granted', async () => {
+        await service.sendEvent(accountId, config, { ...purchaseData, consentState: 'denied' }, session);
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
         expect(body.consent).toEqual({
-            ad_user_data: 'GRANTED',
-            ad_personalization: 'GRANTED',
-            analytics_storage: 'GRANTED',
+            ad_user_data: 'DENIED',
+            ad_personalization: 'DENIED',
         });
+        expect(body.non_personalized_ads).toBe(true);
+    });
+
+    it('should omit consent when no actual consent state was supplied', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.consent).toBeUndefined();
     });
 
     it('should include engagement_time_msec as a number', async () => {
@@ -258,6 +278,16 @@ describe('GA4MeasurementService', () => {
         const event = body.events[0];
         expect(typeof event.params.engagement_time_msec).toBe('number');
         expect(event.params.engagement_time_msec).toBe(100);
+    });
+
+    it('should use occurredAt as the immutable GA4 event timestamp', async () => {
+        await service.sendEvent(accountId, config, {
+            ...purchaseData,
+            occurredAt: '2026-07-18T03:04:05.000Z',
+        }, session);
+
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.timestamp_micros).toBe(new Date('2026-07-18T03:04:05.000Z').getTime() * 1000);
     });
 
     it('should include page_title when available', async () => {
@@ -276,23 +306,11 @@ describe('GA4MeasurementService', () => {
         expect(event.params.page_referrer).toBe('https://google.com');
     });
 
-    it('should generate deterministic session_id from visitorId when sessionStartAt is missing', async () => {
+    it('should omit session_id when service-level session timing is missing', async () => {
         const sessionWithoutStart = { ...session, sessionStartAt: null };
         await service.sendEvent(accountId, config, purchaseData, sessionWithoutStart);
 
         const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-        const event = body.events[0];
-        expect(typeof event.params.session_id).toBe('number');
-        // Should be deterministic for same visitorId
-        const firstSessionId = event.params.session_id;
-
-        vi.clearAllMocks();
-        (global.fetch as any).mockResolvedValue({
-            ok: true, status: 204, text: async () => '',
-        });
-
-        await service.sendEvent(accountId, config, purchaseData, sessionWithoutStart);
-        const body2 = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-        expect(body2.events[0].params.session_id).toBe(firstSessionId);
+        expect(body.events[0].params.session_id).toBeUndefined();
     });
 });

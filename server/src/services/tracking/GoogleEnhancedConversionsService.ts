@@ -19,10 +19,14 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { redisClient } from '../../utils/redis';
 import { getPayloadWooOrderIdString } from '../../utils/orderIds';
-import { hashSHA256, mapEventName, extractUserData } from './conversionUtils';
+import { hashSHA256, mapEventName, extractUserData, normalizePhoneE164 } from './conversionUtils';
 import { getCredentials } from '../ads/types';
 import { ensureGoogleAdsAccessToken } from '../ads/GoogleAdsClient';
-import type { ConversionPlatformService } from './ConversionForwarder';
+import type {
+    ConversionPlatformService,
+    StoredConversionDelivery,
+    StoredDeliveryRetryResult,
+} from './ConversionForwarder';
 import type { TrackingEventPayload } from './EventProcessor';
 
 const MAX_RETRIES = 3;
@@ -32,6 +36,7 @@ const QUOTA_COOLDOWN_FALLBACK_MS = 60 * 60 * 1000;
 const QUOTA_COOLDOWN_REDIS_PREFIX = 'tracking:google:quota-cooldown-until';
 const REQUEST_PACING_REDIS_PREFIX = 'tracking:google:request-next-allowed-ms';
 const REQUEST_PACING_INTERVAL_MS = 1500;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 type NormalizedBasketItem = {
     productId: string;
@@ -78,14 +83,22 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         }
 
         const eventId = data.eventId || crypto.randomUUID();
-        const userData = extractUserData(data.payload, session, data.ipAddress);
+        const userData = extractUserData({
+            ...data.payload,
+            clickId: data.payload?.clickId || data.clickId,
+            clickPlatform: data.payload?.clickPlatform || data.clickPlatform,
+        }, session, data.ipAddress);
 
-        // Must have gclid or email for matching — skip if neither available
+        const isPurchase = data.type === 'purchase';
         const hasGclid = userData.clickPlatform === 'google' && userData.clickId;
-        const hasEmail = !!userData.email;
+        const hasUserIdentifier = !!userData.email
+            || !!normalizePhoneE164(userData.phone, userData.country)
+            || !!(userData.firstName && userData.lastName && userData.country && userData.zip);
 
-        if (!hasGclid && !hasEmail) {
-            Logger.debug('[GoogleEnhanced] Skipping — no gclid or email for matching', { accountId });
+        // Purchase enhancements require hashed user data. Click conversions can
+        // also be matched directly with a Google click ID.
+        if (!hasUserIdentifier && (isPurchase || !hasGclid)) {
+            Logger.debug('[GoogleEnhanced] Skipping — no valid user identifier or gclid for matching', { accountId });
             return;
         }
 
@@ -105,9 +118,8 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             return;
         }
 
-        const isPurchase = data.type === 'purchase';
         const payload = isPurchase
-            ? this.buildEnhancementPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid)
+            ? this.buildEnhancementPayload(conversionActionId, customerId, eventId, data, userData)
             : this.buildConversionPayload(conversionActionId, customerId, eventId, data, userData, !!hasGclid);
 
         const cooldownUntil = await this.getActiveQuotaCooldownUntil(customerId);
@@ -191,7 +203,6 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         eventId: string,
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
-        hasGclid: boolean,
     ): Record<string, any> {
         // Use the order's actual creation time if provided by the plugin.
         // Falling back to now is acceptable for real-time events but the
@@ -213,17 +224,6 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             userIdentifiers: [],
         };
 
-        // Add gclid if available — strongest matching signal.
-        // conversionDateTime must match when the Google Ads tag originally
-        // recorded the conversion (i.e. when the order was placed), not when
-        // this API call is made.
-        if (hasGclid && userData.clickId) {
-            adjustment.gclidDateTimePair = {
-                gclid: userData.clickId,
-                conversionDateTime: conversionTime,
-            };
-        }
-
         // Add hashed email — SHA-256, lowercase, trimmed
         if (userData.email) {
             adjustment.userIdentifiers.push({
@@ -232,37 +232,113 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         }
 
         // Add hashed phone if available
-        if (userData.phone) {
+        const normalizedPhone = normalizePhoneE164(userData.phone, userData.country);
+        if (normalizedPhone) {
             adjustment.userIdentifiers.push({
-                hashedPhoneNumber: hashSHA256(userData.phone),
+                hashedPhoneNumber: hashSHA256(normalizedPhone),
             });
         }
 
-        // Add address info if available
-        if (userData.firstName || userData.lastName) {
-            const addressInfo: Record<string, any> = {};
-            if (userData.firstName) addressInfo.hashedFirstName = hashSHA256(userData.firstName);
-            if (userData.lastName) addressInfo.hashedLastName = hashSHA256(userData.lastName);
+        // Google requires the full name, country, and postal code for address matching.
+        if (userData.firstName && userData.lastName && userData.country && userData.zip) {
+            const addressInfo: Record<string, any> = {
+                hashedFirstName: hashSHA256(userData.firstName),
+                hashedLastName: hashSHA256(userData.lastName),
+                postalCode: userData.zip,
+                countryCode: userData.country,
+            };
             if (userData.city) addressInfo.city = userData.city;
             if (userData.state) addressInfo.state = userData.state;
-            if (userData.zip) addressInfo.postalCode = userData.zip;
-            if (userData.country) addressInfo.countryCode = userData.country;
 
             adjustment.userIdentifiers.push({ addressInfo });
-        }
-
-        // Restatement value (conversion value)
-        if (data.payload?.total !== undefined) {
-            adjustment.restatementValue = {
-                adjustedValue: data.payload.total,
-                currencyCode: data.payload.currency || 'USD',
-            };
         }
 
         return {
             conversionAdjustments: [adjustment],
             partialFailure: true,
         };
+    }
+
+    private sanitizeEnhancementPayload(payload: Record<string, any>): Record<string, any> {
+        const sanitized = structuredClone(payload);
+        for (const adjustment of sanitized.conversionAdjustments || []) {
+            if (adjustment.adjustmentType === 'ENHANCEMENT') {
+                delete adjustment.restatementValue;
+            }
+            if (adjustment.orderId) {
+                delete adjustment.gclidDateTimePair;
+            }
+        }
+        return sanitized;
+    }
+
+    async retryStoredDelivery(delivery: StoredConversionDelivery): Promise<StoredDeliveryRetryResult> {
+        const storedPayload = delivery.payload as Record<string, any>;
+        const isEnhancement = Array.isArray(storedPayload?.conversionAdjustments);
+        const payload = isEnhancement
+            ? this.sanitizeEnhancementPayload(storedPayload)
+            : structuredClone(storedPayload);
+        const conversion = payload.conversionAdjustments?.[0] || payload.conversions?.[0];
+        const customerId = String(conversion?.conversionAction || '').match(/^customers\/(\d+)\/conversionActions\//)?.[1];
+
+        if (!customerId) {
+            return { status: 'FAILED', httpStatus: null, response: null, lastError: 'Stored Google payload has no valid customer ID' };
+        }
+
+        const adAccount = await prisma.adAccount.findFirst({
+            where: { accountId: delivery.accountId, platform: 'GOOGLE', externalId: customerId },
+            select: { id: true, accessToken: true, refreshToken: true, updatedAt: true },
+        });
+        if (!adAccount?.refreshToken) {
+            return { status: 'FAILED', httpStatus: null, response: null, lastError: 'Google Ads OAuth credentials are unavailable' };
+        }
+
+        const cooldownUntil = await this.getActiveQuotaCooldownUntil(customerId);
+        if (cooldownUntil) {
+            return {
+                status: 'FAILED',
+                httpStatus: 429,
+                response: null,
+                lastError: `Google Ads quota cooldown active until ${new Date(cooldownUntil).toISOString()}`,
+            };
+        }
+
+        const creds = await getCredentials('GOOGLE_ADS');
+        const developerToken = creds?.developerToken || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '';
+        const loginCustomerId = creds?.loginCustomerId || process.env.GOOGLE_ADS_MANAGER_ACCOUNT_ID || '';
+        const accessToken = await this.refreshToken(adAccount);
+        const action = isEnhancement ? 'uploadConversionAdjustments' : 'uploadClickConversions';
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'developer-token': developerToken,
+        };
+        if (loginCustomerId) headers['login-customer-id'] = loginCustomerId.replace(/-/g, '');
+
+        await this.enforcePerCustomerRequestPacing(customerId);
+        const response = await fetch(
+            `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}:${action}`,
+            {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            },
+        );
+        const responseBody = await response.text();
+        let parsed: any;
+        try { parsed = JSON.parse(responseBody); } catch { parsed = null; }
+        if (response.ok && !parsed?.partialFailureError) {
+            return { status: 'SENT', httpStatus: response.status, response: responseBody, lastError: null };
+        }
+
+        if (response.status === 429) {
+            await this.setQuotaCooldown(customerId, this.extractRetryAfterMs(response, responseBody));
+        }
+        const lastError = parsed?.partialFailureError
+            ? this.normalizeGoogleErrorMessage(parsed.partialFailureError)
+            : responseBody || `HTTP ${response.status}`;
+        return { status: 'FAILED', httpStatus: response.status, response: responseBody, lastError };
     }
 
     /**
@@ -304,18 +380,21 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         }
 
         // Hashed phone
-        if (userData.phone) {
+        const normalizedPhone = normalizePhoneE164(userData.phone, userData.country);
+        if (normalizedPhone) {
             conversion.userIdentifiers.push({
-                hashedPhoneNumber: hashSHA256(userData.phone),
+                hashedPhoneNumber: hashSHA256(normalizedPhone),
             });
         }
 
         // Address info for improved match rates (if available from session/cookies)
-        if (userData.firstName || userData.lastName) {
-            const addressInfo: Record<string, any> = {};
-            if (userData.firstName) addressInfo.hashedFirstName = hashSHA256(userData.firstName);
-            if (userData.lastName) addressInfo.hashedLastName = hashSHA256(userData.lastName);
-            if (userData.country) addressInfo.countryCode = userData.country;
+        if (userData.firstName && userData.lastName && userData.country && userData.zip) {
+            const addressInfo: Record<string, any> = {
+                hashedFirstName: hashSHA256(userData.firstName),
+                hashedLastName: hashSHA256(userData.lastName),
+                postalCode: userData.zip,
+                countryCode: userData.country,
+            };
             conversion.userIdentifiers.push({ addressInfo });
         }
 
@@ -416,8 +495,11 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
                 // Detect whether this was a purchase enhancement or click conversion
                 // by checking which key the payload uses
-                const deliveryPayload = delivery.payload as Record<string, any>;
-                const isEnhancement = !!deliveryPayload.conversionAdjustments;
+                const storedPayload = delivery.payload as Record<string, any>;
+                const isEnhancement = !!storedPayload.conversionAdjustments;
+                const deliveryPayload = isEnhancement
+                    ? this.sanitizeEnhancementPayload(storedPayload)
+                    : storedPayload;
 
                 await this.sendWithRetry(
                     adAccount.externalId,
@@ -486,6 +568,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
                     method: 'POST',
                     headers,
                     body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 });
 
                 const responseBody = await response.text();

@@ -26,6 +26,7 @@ import type { TrackingEventPayload } from './EventProcessor';
 const GA4_ENDPOINT = 'https://www.google-analytics.com/mp/collect';
 const GA4_DEBUG_ENDPOINT = 'https://www.google-analytics.com/debug/mp/collect';
 const MAX_RETRIES = 3;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export class GA4MeasurementService implements ConversionPlatformService {
     readonly platform = 'GA4';
@@ -62,7 +63,7 @@ export class GA4MeasurementService implements ConversionPlatformService {
         const clientId = this.extractGAClientId(userData.gaClientId) || data.visitorId;
 
         // Build session_id from session start time (required for session attribution)
-        const sessionId = this.buildSessionId(session, data);
+        const sessionId = this.buildSessionId(session);
 
         const payload = this.buildPayload(eventName, eventId, clientId, sessionId, data, session);
         const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
@@ -91,32 +92,17 @@ export class GA4MeasurementService implements ConversionPlatformService {
     /**
      * Build GA4 session_id from session start time.
      * GA4 session_id must be a Unix timestamp in seconds since epoch.
-     * Falls back to a deterministic hash of visitorId if session start time
-     * is not available, which preserves session continuity across events.
+     * Omitted when service-level session start data is not available.
      */
     private buildSessionId(
         session: { sessionStartAt?: number | null; id?: string; startAt?: Date | null } | null,
-        data: TrackingEventPayload,
-    ): number {
+    ): number | undefined {
         // Use explicit session start timestamp if available
         if (session?.sessionStartAt) {
             return Math.floor(session.sessionStartAt);
         }
 
-        // Fall back to visitorId-based deterministic hash (stable per visitor)
-        // This ensures events from the same visitor map to the same session
-        // even when session metadata hasn't propagated yet.
-        const visitorId = data.visitorId;
-        let hash = 0;
-        for (let i = 0; i < visitorId.length; i++) {
-            const char = visitorId.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32-bit integer
-        }
-        // Use a recent timestamp offset by the hash to spread sessions
-        const baseTime = Math.floor(Date.now() / 1000);
-        const offset = Math.abs(hash) % 300; // Max 5 min offset
-        return baseTime - offset;
+        return undefined;
     }
 
     /**
@@ -127,7 +113,7 @@ export class GA4MeasurementService implements ConversionPlatformService {
         eventName: string,
         eventId: string,
         clientId: string,
-        sessionId: number,
+        sessionId: number | undefined,
         data: TrackingEventPayload,
         session: { referrer?: string | null } | null,
     ): Record<string, any> {
@@ -136,12 +122,11 @@ export class GA4MeasurementService implements ConversionPlatformService {
             params: {
                 event_id: eventId,
                 page_location: data.url,
-                // FIX: session_id is REQUIRED for GA4 to attribute events to sessions
-                session_id: sessionId,
                 // FIX: engagement_time_msec must be a number, not a string
                 engagement_time_msec: 100, // Required by GA4 for events to show in reports
             },
         };
+        if (sessionId !== undefined) event.params.session_id = sessionId;
 
         // FIX: Add page_title if available
         if (data.pageTitle) {
@@ -201,23 +186,21 @@ export class GA4MeasurementService implements ConversionPlatformService {
             }
         }
 
+        const sourceTime = data.occurredAt
+            || (data.type === 'purchase' ? data.payload?.dateCreated : undefined);
+        const parsedTime = sourceTime ? new Date(sourceTime).getTime() : NaN;
         const body: Record<string, any> = {
             client_id: clientId,
             events: [event],
             // FIX: timestamp_micros ensures event recorded at correct time
-            timestamp_micros: Math.floor(Date.now() * 1000),
-            // Non-personalised ads flag for privacy
-            non_personalized_ads: false,
+            timestamp_micros: Math.floor((Number.isFinite(parsedTime) ? parsedTime : Date.now()) * 1000),
+            non_personalized_ads: data.consentState === 'denied',
         };
 
-        // FIX: Add consent object to prevent GA4 from dropping events under strict consent mode.
-        // The server-side event is sent only when the store owner has enabled GA4 CAPI,
-        // which implies consent to send conversion data to Google.
-        body.consent = {
-            ad_user_data: 'GRANTED',
-            ad_personalization: 'GRANTED',
-            analytics_storage: 'GRANTED',
-        };
+        if (data.consentState) {
+            const consent = data.consentState === 'granted' ? 'GRANTED' : 'DENIED';
+            body.consent = { ad_user_data: consent, ad_personalization: consent };
+        }
 
         // Add user_id if we have a customer ID (for cross-device tracking in GA4)
         if (data.payload?.customerId) {
@@ -242,13 +225,29 @@ export class GA4MeasurementService implements ConversionPlatformService {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 });
 
                 const responseBody = await response.text();
 
                 // GA4 MP returns 204 (no content) on success, 200 for debug endpoint
-                if (response.status === 204 || response.ok) {
+                const debugValidationFailed = endpoint === GA4_DEBUG_ENDPOINT
+                    && response.ok
+                    && (() => {
+                        try {
+                            return (JSON.parse(responseBody).validationMessages || []).length > 0;
+                        } catch {
+                            return true;
+                        }
+                    })();
+                if ((response.status === 204 || response.ok) && !debugValidationFailed) {
                     await this.markDelivery(deliveryId, 'SENT', response.status, responseBody || 'OK', attempt);
+                    return;
+                }
+
+                if (debugValidationFailed) {
+                    await this.markDelivery(deliveryId, 'FAILED', response.status, responseBody, attempt, responseBody || 'Invalid GA4 debug response');
+                    Logger.error('[GA4Measurement] Debug validation failed', { measurementId });
                     return;
                 }
 

@@ -9,7 +9,7 @@ import { Logger } from '../utils/logger';
 import { hasValidTrackingAuth, isValidAccount, isRateLimited, requiresTrackingAuth } from '../middleware/trackingMiddleware';
 import * as z from 'zod';
 import { incrementBotShieldMetric } from '../services/tracking/BotShieldMetrics';
-import { getPayloadWooOrderId } from '../utils/orderIds';
+import { isConversionEvent } from '../services/tracking/conversionUtils';
 
 // Transparent 1x1 GIF for pixel tracking
 const TRANSPARENT_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -40,6 +40,7 @@ const trackingEventPayloadSchema = z.object({
     clickPlatform: z.string().max(100).optional(),
     landingReferrer: z.string().max(2000).optional(),
     eventId: z.string().max(150).optional(),
+    occurredAt: z.string().datetime({ offset: true }).transform((value) => new Date(value)).optional(),
     visitorIp: z.string().max(128).optional(),
     consentState: z.enum(['granted', 'denied']).optional(),
     customerId: z.number().int().positive().optional(),
@@ -78,13 +79,8 @@ const vitalsIpHits = new Map<string, { count: number; startedAt: number }>();
 
 const UNSIGNED_COMPATIBLE_EVENT_TYPES = new Set([
     'pageview',
-    'product_view',
     'cart_view',
     'checkout_view',
-]);
-
-const UNSIGNED_WOO_ORDER_EVENT_TYPES = new Set([
-    'purchase',
 ]);
 
 function pruneBotHitIpHits(now: number): void {
@@ -156,7 +152,7 @@ async function requireSignedTrackingRequest(accountId: string, request: any, rep
     return true;
 }
 
-async function authorizeTrackingEvent(accountId: string, type: string, payload: unknown, request: any, reply: any): Promise<boolean> {
+async function authorizeTrackingEvent(accountId: string, type: string, request: any, reply: any): Promise<boolean> {
     if (!(await isValidAccount(accountId))) {
         reply.code(400).send({ error: 'Invalid account' });
         return false;
@@ -167,11 +163,7 @@ async function authorizeTrackingEvent(accountId: string, type: string, payload: 
         return false;
     }
 
-    if (UNSIGNED_COMPATIBLE_EVENT_TYPES.has(type)) {
-        return true;
-    }
-
-    if (UNSIGNED_WOO_ORDER_EVENT_TYPES.has(type) && getPayloadWooOrderId(payload)) {
+    if (UNSIGNED_COMPATIBLE_EVENT_TYPES.has(type) && !isConversionEvent(type)) {
         return true;
     }
 
@@ -205,9 +197,9 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const body = parsed.data as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState, customerId, email } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, occurredAt, visitorIp, consentState, customerId, email } = body;
 
-            if (!(await authorizeTrackingEvent(accountId, type, payload, request, reply))) return;
+            if (!(await authorizeTrackingEvent(accountId, type, request, reply))) return;
 
             Logger.debug('Tracking event received', { type, accountId });
 
@@ -222,7 +214,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 ipAddress: ip as string,
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
                 referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, is404,
-                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId,
+                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId, occurredAt,
                 consentState, customerId, email
             });
 
@@ -250,9 +242,9 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const body = parsed.data as any;
-            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, visitorIp, consentState, customerId, email } = body;
+            const { accountId, visitorId, type, url, payload, pageTitle, referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, userAgent: bodyUserAgent, is404, clickId, clickPlatform, landingReferrer, eventId, occurredAt, visitorIp, consentState, customerId, email } = body;
 
-            if (!(await authorizeTrackingEvent(accountId, type, payload, request, reply))) return;
+            if (!(await authorizeTrackingEvent(accountId, type, request, reply))) return;
 
             // Prefer visitorIp from body (WC plugin sends real visitor IP for server-side events)
             const ip = normalizeIpHeader(visitorIp || request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip);
@@ -265,7 +257,7 @@ const trackingIngestionRoutes: FastifyPluginAsync = async (fastify) => {
                 ipAddress: ip as string,
                 userAgent: bodyUserAgent !== undefined ? bodyUserAgent : request.headers['user-agent'] as string,
                 referrer, referrerDomain, referrerType, utmSource, utmMedium, utmCampaign, is404,
-                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId,
+                clickId, clickPlatform, landingReferrer, eventId: resolvedEventId, occurredAt,
                 consentState, customerId, email
             });
 

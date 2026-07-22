@@ -18,22 +18,27 @@ class OverSeek_Tracking_Payload_Utils
      * @param object $cart WooCommerce cart instance.
      * @return array<int, array<string, mixed>>
      */
-    public static function get_cart_items_snapshot($cart): array
+    public static function get_cart_items_snapshot($cart, array $meta_config = array()): array
     {
         $items = array();
 
         foreach ($cart->get_cart() as $cart_item) {
             $product = $cart_item['data'] ?? null;
             $product_id = isset($cart_item['product_id']) ? absint($cart_item['product_id']) : 0;
+            $variation_id = isset($cart_item['variation_id']) ? absint($cart_item['variation_id']) : 0;
+            $quantity = isset($cart_item['quantity']) ? max(1, absint($cart_item['quantity'])) : 1;
+            $line_total = isset($cart_item['line_total']) ? floatval($cart_item['line_total']) : 0;
+            $unit_price = $quantity > 0 ? $line_total / $quantity : 0;
             $items[] = array(
-                'id' => $product_id,
+                'id' => $variation_id ?: $product_id,
                 'productId' => $product_id,
-                'variationId' => isset($cart_item['variation_id']) ? absint($cart_item['variation_id']) : 0,
+                'variationId' => $variation_id,
+                'contentId' => ($product instanceof WC_Product) ? OverSeek_Pixel_Matching_Utils::get_content_id($product, array('meta' => $meta_config)) : (string) ($variation_id ?: $product_id),
                 'name' => ($product && is_object($product)) ? $product->get_name() : '',
                 'sku' => ($product && is_object($product) && method_exists($product, 'get_sku')) ? $product->get_sku() : '',
-                'quantity' => isset($cart_item['quantity']) ? absint($cart_item['quantity']) : 1,
-                'price' => isset($cart_item['line_total']) ? floatval($cart_item['line_total']) : 0,
-                'total' => isset($cart_item['line_total']) ? floatval($cart_item['line_total']) : 0,
+                'quantity' => $quantity,
+                'price' => $unit_price,
+                'total' => $line_total,
             );
         }
 
@@ -118,10 +123,36 @@ class OverSeek_Tracking_Payload_Utils
         return $payload;
     }
 
-    public static function get_shared_product_view_event_id(int $product_id, ?string $visitor_id): string
+    public static function issue_product_view_event_id(int $product_id): string
     {
-        $material = implode('|', array('overseek', 'product_view', (string) $product_id, (string) $visitor_id));
+        static $request_ids = array();
+        if (isset($request_ids[$product_id])) {
+            return $request_ids[$product_id];
+        }
 
-        return 'os_pv_' . substr(hash('sha256', $material), 0, 32);
+        $event_id = 'os_pv_' . str_replace('-', '', wp_generate_uuid4());
+        $request_ids[$product_id] = $event_id;
+
+        if (!headers_sent()) {
+            OverSeek_Tracking_Request_Utils::set_cookie_safe('_os_pv_eid', $product_id . '|' . $event_id, time() + 300);
+        }
+
+        return $event_id;
+    }
+
+    public static function issue_search_event_id(string $query): string
+    {
+        static $request_ids = array();
+        $query_key = md5(strtolower(trim($query)));
+        if (isset($request_ids[$query_key])) {
+            return $request_ids[$query_key];
+        }
+
+        $event_id = 'os_search_' . str_replace('-', '', wp_generate_uuid4());
+        $request_ids[$query_key] = $event_id;
+        if (!headers_sent()) {
+            OverSeek_Tracking_Request_Utils::set_cookie_safe('_os_search_eid', $query_key . '|' . $event_id, time() + 300);
+        }
+        return $event_id;
     }
 }

@@ -167,6 +167,26 @@ export function normalizePhoneE164(phone?: string, country?: string): string | u
     return digits && normalized.length >= 9 && normalized.length <= 16 ? normalized : undefined;
 }
 
+/** Resolve the immutable event occurrence time, falling back safely to now. */
+export function resolveConversionEventDate(
+    occurredAt: unknown,
+    payload: Record<string, any> | undefined,
+    fallback = new Date(),
+): Date {
+    const candidates = [occurredAt, payload?.dateCreated, payload?.date, payload?.orderDate];
+
+    for (const candidate of candidates) {
+        if (candidate === undefined || candidate === null || candidate === '') continue;
+        const numericValue = typeof candidate === 'number' && candidate > 0 && candidate < 1_000_000_000_000
+            ? candidate * 1000
+            : candidate;
+        const date = candidate instanceof Date ? candidate : new Date(numericValue as string | number);
+        if (Number.isFinite(date.getTime())) return date;
+    }
+
+    return Number.isFinite(fallback.getTime()) ? fallback : new Date();
+}
+
 /**
  * Check if an event type should be forwarded to ad platforms.
  */
