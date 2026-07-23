@@ -259,9 +259,9 @@ export function CommandPalette() {
                                     <span>Orders</span>
                                 </CommandItem>
 
-                                <CommandItem onSelect={() => runCommand(() => navigate('/customers'))}>
+                                <CommandItem onSelect={() => runCommand(() => navigate('/contacts'))}>
                                     <Users className="w-4 h-4 mr-3" />
-                                    <span>Customers</span>
+                                    <span>Contacts</span>
                                 </CommandItem>
 
                                 <CommandItem onSelect={() => runCommand(() => navigate('/reports'))}>

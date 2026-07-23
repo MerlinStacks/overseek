@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Search, Users, Mail, ShoppingBag, Calendar } from 'lucide-react';
+import { Search, Users, Mail, ShoppingBag, Calendar, Loader2, ShieldCheck } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -11,19 +11,27 @@ import { RelativeTime } from '../components/ui/RelativeTime';
 import { formatDate, formatCurrency } from '../utils/format';
 import { subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 import { useVisibilityRefreshThrottle } from '../hooks/useVisibilityRefreshThrottle';
+import { useToast } from '../context/ToastContext';
 
-interface Customer {
+type ContactStatus = 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' | 'BLOCKED';
+
+interface Contact {
     id: string;
-    firstName: string;
-    lastName: string;
+    wooId: number | null;
+    firstName: string | null;
+    lastName: string | null;
     email: string;
     totalSpent: number;
     ordersCount: number;
     dateCreated: string;
-    contactStatus?: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
+    contactStatus: ContactStatus;
+    isCustomer: boolean;
+    blockedReason?: string | null;
+    blockedAt?: string | null;
+    blockedByName?: string | null;
 }
 
-function getContactStatusBadge(status: Customer['contactStatus']) {
+function getContactStatusBadge(status: Contact['contactStatus']) {
     switch (status || 'SUBSCRIBED') {
         case 'UNVERIFIED':
             return { label: 'Unverified', className: 'bg-gray-100 text-gray-700 border-gray-200' };
@@ -37,6 +45,8 @@ function getContactStatusBadge(status: Customer['contactStatus']) {
             return { label: 'Soft Bounced', className: 'bg-orange-100 text-orange-700 border-orange-200' };
         case 'COMPLAINT':
             return { label: 'Complaint', className: 'bg-rose-100 text-rose-700 border-rose-200' };
+        case 'BLOCKED':
+            return { label: 'Blocked', className: 'bg-slate-800 text-white border-slate-800' };
         default:
             return { label: 'Subscribed', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
     }
@@ -47,35 +57,40 @@ export function CustomersPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const toast = useToast();
     const pageFromUrl = Number(searchParams.get('page') || '1');
     const queryFromUrl = searchParams.get('q') || '';
     const statusFromUrl = searchParams.get('status');
-    const initialStatusFilter: 'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' =
+    const initialStatusFilter: ContactStatus | 'ALL' =
         statusFromUrl === 'UNVERIFIED' ||
         statusFromUrl === 'SUBSCRIBED' ||
         statusFromUrl === 'BOUNCED' ||
         statusFromUrl === 'UNSUBSCRIBED' ||
         statusFromUrl === 'SOFT_BOUNCED' ||
-        statusFromUrl === 'COMPLAINT'
+        statusFromUrl === 'COMPLAINT' ||
+        statusFromUrl === 'BLOCKED'
             ? statusFromUrl
             : 'ALL';
     const initialPage = Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? Math.trunc(pageFromUrl) : 1;
-    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [contacts, setContacts] = useState<Contact[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState(queryFromUrl);
     const [page, setPage] = useState(initialPage);
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
-    const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT'>(initialStatusFilter);
-    const [statusCounts, setStatusCounts] = useState<Record<'ALL' | 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT', number>>({
+    const [statusFilter, setStatusFilter] = useState<ContactStatus | 'ALL'>(initialStatusFilter);
+    const [statusCounts, setStatusCounts] = useState<Record<ContactStatus | 'ALL', number>>({
         ALL: 0,
         UNVERIFIED: 0,
         SUBSCRIBED: 0,
         BOUNCED: 0,
         UNSUBSCRIBED: 0,
         SOFT_BOUNCED: 0,
-        COMPLAINT: 0
+        COMPLAINT: 0,
+        BLOCKED: 0
     });
+    const [unblockingEmail, setUnblockingEmail] = useState<string | null>(null);
+    const fetchRequestId = useRef(0);
 
     const [debouncedQuery, setDebouncedQuery] = useState(queryFromUrl);
     const currency = currentAccount?.currency || 'USD';
@@ -91,9 +106,10 @@ export function CustomersPage() {
         return () => clearTimeout(timer);
     }, [searchQuery, queryFromUrl]);
 
-    const fetchCustomers = useCallback(async () => {
+    const fetchContacts = useCallback(async () => {
         if (!currentAccount || !token) return;
 
+        const requestId = ++fetchRequestId.current;
         setIsLoading(true);
         try {
             const params = new URLSearchParams({
@@ -103,16 +119,16 @@ export function CustomersPage() {
                 status: statusFilter
             });
 
-            const res = await fetch(`/api/customers?${params}`, {
+            const res = await fetch(`/api/customers/contacts?${params}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id
                 }
             });
 
-            if (res.ok) {
+            if (res.ok && requestId === fetchRequestId.current) {
                 const data = await res.json();
-                setCustomers(data.customers);
+                setContacts(data.contacts);
                 setTotalPages(data.totalPages);
                 if (data.statusCounts) {
                     setStatusCounts(data.statusCounts);
@@ -121,13 +137,39 @@ export function CustomersPage() {
         } catch (err) {
             Logger.error('An error occurred', { error: err });
         } finally {
-            setIsLoading(false);
+            if (requestId === fetchRequestId.current) setIsLoading(false);
         }
     }, [currentAccount, token, page, limit, debouncedQuery, statusFilter]);
 
+    const handleUnblock = useCallback(async (email: string) => {
+        if (!currentAccount || !token || !confirm(`Unblock ${email}?`)) return;
+
+        setUnblockingEmail(email);
+        try {
+            const response = await fetch(`/api/chat/block/${encodeURIComponent(email)}`, {
+                method: 'DELETE',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                }
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null) as { error?: string } | null;
+                throw new Error(payload?.error || 'Failed to unblock contact');
+            }
+            toast.success(`${email} unblocked.`);
+            await fetchContacts();
+        } catch (error) {
+            Logger.error('Failed to unblock contact', { error, email });
+            toast.error(error instanceof Error ? error.message : 'Failed to unblock contact.');
+        } finally {
+            setUnblockingEmail(null);
+        }
+    }, [currentAccount, token, toast, fetchContacts]);
+
     useEffect(() => {
-        fetchCustomers();
-    }, [fetchCustomers]);
+        fetchContacts();
+    }, [fetchContacts]);
 
     useEffect(() => {
         const unsubscribe = subscribeToCrossTabEvents((event) => {
@@ -135,11 +177,11 @@ export function CustomersPage() {
                 return;
             }
 
-            void fetchCustomers();
+            void fetchContacts();
         });
 
         return unsubscribe;
-    }, [currentAccount?.id, fetchCustomers]);
+    }, [currentAccount?.id, fetchContacts]);
 
     useEffect(() => {
         const handleVisibilityChange = () => {
@@ -147,13 +189,13 @@ export function CustomersPage() {
                 if (!shouldRefreshOnVisible()) {
                     return;
                 }
-                void fetchCustomers();
+                void fetchContacts();
             }
         };
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [fetchCustomers, shouldRefreshOnVisible]);
+    }, [fetchContacts, shouldRefreshOnVisible]);
 
     useEffect(() => {
         const nextParams = new URLSearchParams(searchParams);
@@ -184,12 +226,12 @@ export function CustomersPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-xl md:text-2xl font-bold text-gray-900">Customers</h1>
-                    <p className="text-sm text-gray-500">View and manage your customer base</p>
+                    <h1 className="text-xl md:text-2xl font-bold text-gray-900">Contacts</h1>
+                    <p className="text-sm text-gray-500">Manage customers, email preferences, and blocked contacts</p>
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
                     <button
-                        onClick={() => navigate('/customers/segments')}
+                        onClick={() => navigate('/emails/audiences?tab=segments')}
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm"
                     >
                         <Users size={16} />
@@ -199,7 +241,7 @@ export function CustomersPage() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                             type="text"
-                            placeholder="Search customers..."
+                            placeholder="Search contacts..."
                             className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -214,6 +256,7 @@ export function CustomersPage() {
                     ['SUBSCRIBED', 'Subscribed'],
                     ['UNVERIFIED', 'Unverified'],
                     ['UNSUBSCRIBED', 'Unsubscribed'],
+                    ['BLOCKED', 'Blocked'],
                     ['SOFT_BOUNCED', 'Soft Bounced'],
                     ['BOUNCED', 'Bounced'],
                     ['COMPLAINT', 'Complaint']
@@ -239,93 +282,124 @@ export function CustomersPage() {
                     <table className="w-full text-left border-collapse min-w-[600px]">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-semibold">
-                                <th className="px-3 md:px-6 py-3 md:py-4">Customer</th>
+                                <th className="px-3 md:px-6 py-3 md:py-4">Email</th>
                                 <th className="px-3 md:px-6 py-3 md:py-4">Contact</th>
                                 <th className="px-3 md:px-6 py-3 md:py-4">Status</th>
                                 <th className="px-3 md:px-6 py-3 md:py-4">Orders</th>
                                 <th className="px-3 md:px-6 py-3 md:py-4">Total Spent</th>
-                                <th className="px-3 md:px-6 py-3 md:py-4">Joined</th>
+                                <th className="px-3 md:px-6 py-3 md:py-4">Added</th>
+                                <th className="px-3 md:px-6 py-3 md:py-4 text-right">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {isLoading ? (
-                                <TableSkeleton rows={8} columns={6} showAvatar />
-                            ) : customers.length === 0 ? (
-                                <tr><td colSpan={6}>
+                                <TableSkeleton rows={8} columns={7} showAvatar />
+                            ) : contacts.length === 0 ? (
+                                <tr><td colSpan={7}>
                                     <EmptyState
                                         icon={<Users size={48} />}
-                                        title={statusFilter === 'ALL' ? 'No customers found' : 'No customers in this status'}
+                                        title={statusFilter === 'ALL' ? 'No contacts found' : 'No contacts in this status'}
                                         description={statusFilter === 'ALL'
-                                            ? 'Customers will appear here once they place orders. Try syncing your store data.'
+                                            ? 'Customers and blocked contacts will appear here.'
                                             : 'Try switching to another status filter or clear the search query.'}
                                     />
                                 </td></tr>
                             ) : (
-                                customers.map((customer) => {
-                                    const statusBadge = getContactStatusBadge(customer.contactStatus);
+                                contacts.map((contact) => {
+                                    const statusBadge = getContactStatusBadge(contact.contactStatus);
                                     return <tr
-                                        key={customer.id}
-                                        className="hover:bg-gray-50 transition-colors cursor-pointer focus-within:bg-blue-50"
+                                        key={`${contact.isCustomer ? 'customer' : 'contact'}-${contact.id}`}
+                                        className={`${contact.isCustomer ? 'cursor-pointer' : ''} hover:bg-gray-50 transition-colors focus-within:bg-blue-50`}
                                         onClick={() => {
-                                            navigate(`/customers/${encodeURIComponent(customer.id)}`);
+                                            if (contact.isCustomer) navigate(`/customers/${encodeURIComponent(contact.id)}`);
                                         }}
                                         onKeyDown={(event) => {
-                                            if (event.key === 'Enter' || event.key === ' ') {
+                                            if (contact.isCustomer && (event.key === 'Enter' || event.key === ' ')) {
                                                 event.preventDefault();
-                                                navigate(`/customers/${encodeURIComponent(customer.id)}`);
+                                                navigate(`/customers/${encodeURIComponent(contact.id)}`);
                                             }
                                         }}
-                                        role="link"
-                                        tabIndex={0}
-                                        aria-label={`Open ${customer.firstName} ${customer.lastName} profile`}
+                                        role={contact.isCustomer ? 'link' : undefined}
+                                        tabIndex={contact.isCustomer ? 0 : undefined}
+                                        aria-label={contact.isCustomer ? `Open ${contact.firstName} ${contact.lastName} profile` : undefined}
                                     >
 
                                         <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3" title={customer.email}>
+                                            <div className="flex items-center gap-3" title={contact.email}>
                                                 <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
-                                                    {customer.firstName?.[0]}{customer.lastName?.[0]}
+                                                    {contact.firstName?.[0] || contact.email[0]?.toUpperCase()}{contact.lastName?.[0]}
                                                 </div>
                                                 <div>
-                                                    <div className="font-medium text-gray-900">{customer.firstName} {customer.lastName}</div>
+                                                    <div className="font-medium text-gray-900">
+                                                        {contact.firstName || contact.lastName ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim() : contact.email}
+                                                    </div>
+                                                    {!contact.isCustomer && <div className="text-xs text-gray-500">Contact</div>}
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">
                                             <div className="flex items-center gap-2">
                                                 <Mail size={14} />
-                                                {customer.email}
+                                                {contact.email}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
-                                                {statusBadge.label}
-                                            </span>
+                                            <div className="flex max-w-52 flex-col items-start gap-1">
+                                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
+                                                    {statusBadge.label}
+                                                </span>
+                                                {contact.contactStatus === 'BLOCKED' && (contact.blockedReason || contact.blockedByName) && (
+                                                    <span
+                                                        className="max-w-full truncate text-xs text-gray-500"
+                                                        title={[contact.blockedReason, contact.blockedByName ? `Blocked by ${contact.blockedByName}` : ''].filter(Boolean).join(' · ')}
+                                                    >
+                                                        {contact.blockedReason || `Blocked by ${contact.blockedByName}`}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">
                                             <div
                                                 className="flex items-center gap-2 cursor-default"
-                                                title={`Total spent: ${formatCurrency(customer.totalSpent, currency)} across ${customer.ordersCount} order${customer.ordersCount !== 1 ? 's' : ''}`}
+                                                    title={`Total spent: ${formatCurrency(contact.totalSpent, currency)} across ${contact.ordersCount} order${contact.ordersCount !== 1 ? 's' : ''}`}
                                             >
                                                 <ShoppingBag size={14} />
-                                                {customer.ordersCount} order{customer.ordersCount !== 1 ? 's' : ''}
+                                                {contact.ordersCount} order{contact.ordersCount !== 1 ? 's' : ''}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 font-medium text-gray-900">
                                             <span
-                                                title={`${customer.ordersCount} order${customer.ordersCount !== 1 ? 's' : ''} · Avg ${formatCurrency(customer.ordersCount > 0 ? customer.totalSpent / customer.ordersCount : 0, currency)}`}
+                                                    title={`${contact.ordersCount} order${contact.ordersCount !== 1 ? 's' : ''} · Avg ${formatCurrency(contact.ordersCount > 0 ? contact.totalSpent / contact.ordersCount : 0, currency)}`}
                                                 className="cursor-default border-b border-dotted border-gray-300"
                                             >
-                                                {formatCurrency(customer.totalSpent, currency)}
+                                                {formatCurrency(contact.totalSpent, currency)}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">
                                             <div className="flex items-center gap-2">
                                                 <Calendar size={14} />
                                                 <div>
-                                                    <div>{formatDate(customer.dateCreated)}</div>
-                                                    <RelativeTime date={customer.dateCreated} />
+                                                    <div>{formatDate(contact.dateCreated)}</div>
+                                                    <RelativeTime date={contact.dateCreated} />
                                                 </div>
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            {contact.contactStatus === 'BLOCKED' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleUnblock(contact.email);
+                                                    }}
+                                                    disabled={unblockingEmail === contact.email}
+                                                    title={contact.blockedReason || `Blocked${contact.blockedByName ? ` by ${contact.blockedByName}` : ''}`}
+                                                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                    {unblockingEmail === contact.email ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
+                                                    Unblock
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>;
                                 })
@@ -333,7 +407,7 @@ export function CustomersPage() {
                         </tbody>
                     </table>
                 </div>
-                {!isLoading && customers.length > 0 && (
+                {!isLoading && contacts.length > 0 && (
                     <Pagination
                         currentPage={page}
                         totalPages={totalPages}

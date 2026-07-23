@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { BarChart3, Boxes, Lock, PieChart, Sparkles, Wrench } from 'lucide-react';
 
 type ReportsTab = 'overview' | 'stock_velocity' | 'profitability' | 'premade' | 'custom';
@@ -14,75 +13,61 @@ export function ReportsTabs({ activeTab, isAdvancedReportsEnabled, onChangeTab, 
     const tabs: Array<{
         value: ReportsTab;
         label: string;
-        description: string;
-        icon: ReactNode;
+        icon: typeof BarChart3;
         locked?: boolean;
         onClick: () => void;
     }> = [
         {
             value: 'overview',
             label: 'Overview',
-            description: 'Revenue, products, customers',
-            icon: <BarChart3 size={16} />,
+            icon: BarChart3,
             onClick: () => onChangeTab('overview')
         },
         {
             value: 'stock_velocity',
             label: 'Stock Velocity',
-            description: 'Movement and reorder signals',
-            icon: <Boxes size={16} />,
+            icon: Boxes,
             onClick: () => onChangeTab('stock_velocity')
         },
         {
             value: 'profitability',
             label: 'Profitability',
-            description: 'Margin and product performance',
-            icon: <PieChart size={16} />,
+            icon: PieChart,
             onClick: () => onChangeTab('profitability')
         },
         {
             value: 'premade',
             label: 'Report Library',
-            description: 'Saved and system templates',
-            icon: <Sparkles size={16} />,
+            icon: Sparkles,
             locked: !isAdvancedReportsEnabled,
             onClick: () => onChangeTab('premade')
         },
         {
             value: 'custom',
             label: 'Custom Builder',
-            description: 'Build from any dimension',
-            icon: <Wrench size={16} />,
+            icon: Wrench,
             locked: !isAdvancedReportsEnabled,
             onClick: onEnterCustomBuilder
         }
     ];
 
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 rounded-2xl border border-gray-200/70 bg-white/80 p-2 shadow-xs backdrop-blur-xs dark:border-slate-700 dark:bg-slate-900/70">
+        <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-gray-100/80 p-1 dark:bg-slate-800">
             {tabs.map((tab) => {
                 const isActive = activeTab === tab.value;
+                const Icon = tab.icon;
                 return (
                     <button
                         key={tab.value}
                         onClick={tab.onClick}
-                        className={`group flex min-w-0 items-start gap-3 rounded-xl px-3 py-3 text-left transition-all ${isActive
-                            ? 'bg-linear-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20'
-                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+                        className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${isActive
+                            ? 'bg-white text-gray-900 shadow-xs dark:bg-slate-700 dark:text-white'
+                            : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
                             }`}
                     >
-                        <span className={`mt-0.5 rounded-lg p-1.5 ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400 group-hover:text-blue-600 dark:bg-slate-800'}`}>
-                            {tab.icon}
-                        </span>
-                        <span className="min-w-0">
-                            <span className="flex items-center gap-1.5 text-sm font-semibold">
-                                {tab.label}
-                                {tab.locked && <Lock size={12} className={isActive ? 'text-white/80' : 'text-gray-400'} />}
-                            </span>
-                            <span className={`mt-0.5 block truncate text-xs ${isActive ? 'text-blue-100' : 'text-gray-400 dark:text-slate-500'}`}>
-                                {tab.description}
-                            </span>
-                        </span>
+                        <Icon size={16} />
+                        <span>{tab.label}</span>
+                        {tab.locked && <Lock size={12} className="text-gray-400 dark:text-slate-500" />}
                     </button>
                 );
             })}

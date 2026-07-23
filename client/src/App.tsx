@@ -45,7 +45,7 @@ const SupplyChainPage = lazy(() => import('./pages/SupplyChainPage').then(m => (
 const BOMSyncPage = lazy(() => import('./pages/BOMSyncPage').then(m => ({ default: m.BOMSyncPage })));
 const InventoryForecastPage = lazy(() => import('./pages/InventoryForecastPage').then(m => ({ default: m.InventoryForecastPage })));
 const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ default: m.CustomersPage })));
-const SegmentsPage = lazy(() => import('./pages/SegmentsPage').then(m => ({ default: m.SegmentsPage })));
+const AudiencesPage = lazy(() => import('./pages/AudiencesPage').then(m => ({ default: m.AudiencesPage })));
 const CustomerDetailsPage = lazy(() => import('./pages/CustomerDetailsPage').then(m => ({ default: m.CustomerDetailsPage })));
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
 const GoldPriceMarginReportPage = lazy(() => import('./pages/GoldPriceMarginReportPage').then(m => ({ default: m.GoldPriceMarginReportPage })));
@@ -57,11 +57,9 @@ const SeoPage = lazy(() => import('./pages/SeoPage').then(m => ({ default: m.Seo
 const SeoContentPage = lazy(() => import('./pages/SeoContentPage').then(m => ({ default: m.SeoContentPage })));
 const AiManagerPage = lazy(() => import('./pages/AiManagerPage').then(m => ({ default: m.AiManagerPage })));
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage').then(m => ({ default: m.BroadcastsPage })));
-const EmailListsPage = lazy(() => import('./pages/EmailListsPage').then(m => ({ default: m.EmailListsPage })));
 const EmailDashboardPage = lazy(() => import('./pages/EmailDashboardPage').then(m => ({ default: m.EmailDashboardPage })));
 const EmailSettingsPage = lazy(() => import('./pages/EmailSettingsPage').then(m => ({ default: m.EmailSettingsPage })));
 const EmailLogsPage = lazy(() => import('./pages/EmailLogsPage').then(m => ({ default: m.EmailLogsPage })));
-const BlockedContactsPage = lazy(() => import('./pages/BlockedContactsPage').then(m => ({ default: m.BlockedContactsPage })));
 const HelpCenterHome = lazy(() => import('./pages/HelpCenter/HelpCenterHome').then(m => ({ default: m.HelpCenterHome })));
 const HelpArticle = lazy(() => import('./pages/HelpCenter/HelpArticle').then(m => ({ default: m.HelpArticle })));
 const LiveAnalyticsPage = lazy(() => import('./pages/LiveAnalyticsPage').then(m => ({ default: m.LiveAnalyticsPage })));
@@ -284,8 +282,9 @@ function App() {
                                                 <Route path={ROUTE_PATTERNS.productDetails} element={<AccountGuard><ProductEditPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.purchaseOrderNew} element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.purchaseOrderEdit} element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.customers} element={<AccountGuard><CustomersPage /></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.customerSegments} element={<AccountGuard><SegmentsPage /></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.contacts} element={<AccountGuard><CustomersPage /></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.customers} element={<Navigate to={ROUTE_PATHS.contacts} replace />} />
+                                                <Route path={ROUTE_PATHS.customerSegments} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><AudiencesPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.customerDetails} element={<AccountGuard><CustomerDetailsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.marketing} element={<AccountGuard><MarketingPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.ads} element={<AccountGuard><PaidAdsPage /></AccountGuard>} />
@@ -301,11 +300,12 @@ function App() {
                                                 <Route path="/shipping/settings" element={<AccountGuard><FeatureGuard featureKey="SHIPPING_HUB"><ShippingSettingsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.aiManager} element={<AccountGuard><FeatureGuard featureKey="AI_MANAGER"><AiManagerPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.broadcasts} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BroadcastsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.emailLists} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailListsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.emailAudiences} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><AudiencesPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.emailLists} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><AudiencesPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emails} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailDashboardPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emailSettings} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailSettingsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emailLogs} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailLogsPage /></FeatureGuard></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.blockedContacts} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><BlockedContactsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.blockedContacts} element={<Navigate to={`${ROUTE_PATHS.contacts}?status=BLOCKED`} replace />} />
                                                 <Route path={ROUTE_PATHS.flows} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><FlowsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inbox} element={<AccountGuard><InboxPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.live} element={<AccountGuard><LiveAnalyticsPage /></AccountGuard>} />

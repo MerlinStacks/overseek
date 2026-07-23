@@ -141,7 +141,10 @@ export function LiveAnalyticsPage() {
                     combined.set(url, { url, title: combined.get(url)?.title, views: combined.get(url)?.views ?? 0, entries: combined.get(url)?.entries ?? 0, exits: row.exits ?? 0 });
                 });
 
-                setReportData(Array.from(combined.values()));
+                setReportData(Array.from(combined.values(), row => ({
+                    ...row,
+                    exitRate: row.views ? ((row.exits ?? 0) / row.views) * 100 : 0,
+                })));
                 return;
             }
 

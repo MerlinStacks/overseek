@@ -13,7 +13,6 @@ import {
     MessageSquare,
     Store,
     PieChart,
-    TrendingUp,
     PenTool,
     ChevronDown,
     Star,
@@ -24,7 +23,6 @@ import {
     Zap,
     HelpCircle,
     UsersRound,
-    Filter,
     TrendingDown,
     RefreshCw,
     Search,
@@ -34,7 +32,6 @@ import {
     Rss,
     Truck,
     ClipboardList,
-    Ban,
     Calculator
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
@@ -68,12 +65,47 @@ const navItems = [
             { icon: ShoppingCart, label: 'Orders', path: '/orders' },
             { icon: TrendingDown, label: 'Abandoned Carts', path: '/abandoned-carts' },
             { icon: Package, label: 'Inventory', path: '/inventory' },
-            { icon: Calculator, label: 'Supply Chain', path: '/inventory/supply-chain' },
+            { icon: Calculator, label: 'Stock & Suppliers', path: '/inventory/supply-chain' },
             { icon: RefreshCw, label: 'BOM Sync', path: '/inventory/bom-sync' },
             { icon: TrendingDown, label: 'Forecasts', path: '/inventory/forecasts' },
             { icon: PenTool, label: 'Invoice Designer', path: '/invoices/design' },
+            { icon: BarChart3, label: 'Reports', path: '/reports' },
+            { icon: Star, label: 'Reviews', path: '/reviews' },
+            { icon: Users, label: 'Contacts', path: '/contacts' },
         ]
     },
+    {
+        type: 'group',
+        label: 'Emails',
+        icon: Mail,
+        children: [
+            { icon: BarChart3, label: 'Email Hub', path: '/emails' },
+            { icon: Zap, label: 'Flows', path: '/flows' },
+            { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
+            { icon: UsersRound, label: 'Audiences', path: '/emails/audiences' },
+            { icon: Settings, label: 'Settings', path: '/emails/settings' },
+            { icon: Mail, label: 'Logs', path: '/emails/logs' },
+        ]
+    },
+    {
+        type: 'group',
+        label: 'Analytics',
+        icon: PieChart,
+        children: [
+            { icon: LineChart, label: 'Overview', path: '/analytics' },
+            { icon: DollarSign, label: 'Revenue', path: '/analytics/revenue' },
+            { icon: BarChart3, label: 'Acquisition', path: '/live' },
+            { icon: Bot, label: 'Bot Shield', path: '/crawlers' },
+            { icon: Megaphone, label: 'Paid Ads', path: '/ads' },
+            { icon: Search, label: 'SEO Keywords', path: '/seo' },
+            { icon: FileText, label: 'SEO Content', path: '/seo/content' },
+            { icon: Rss, label: 'Feeds', path: '/feeds' },
+            { icon: Bot, label: 'AI Manager', path: '/ai-manager' },
+        ]
+    },
+    { type: 'link', icon: BookOpen, label: 'Policies & SOP', path: '/policies' },
+    { type: 'link', icon: UsersRound, label: 'Team', path: '/team' },
+    { type: 'link', icon: HelpCircle, label: 'Help Center', path: '/help' },
     {
         type: 'group',
         label: 'Shipping',
@@ -87,50 +119,6 @@ const navItems = [
             { icon: Settings, label: 'Settings', path: '/shipping/settings' },
         ]
     },
-    {
-        type: 'group',
-        label: 'Emails',
-        icon: Mail,
-        children: [
-            { icon: BarChart3, label: 'Email Hub', path: '/emails' },
-            { icon: Users, label: 'Customers', path: '/customers' },
-            { icon: Filter, label: 'Segments', path: '/customers/segments' },
-            { icon: Zap, label: 'Flows', path: '/flows' },
-            { icon: Megaphone, label: 'Broadcasts', path: '/broadcasts' },
-            { icon: Users, label: 'Email Lists', path: '/emails/lists' },
-            { icon: Settings, label: 'Settings', path: '/emails/settings' },
-            { icon: Mail, label: 'Logs', path: '/emails/logs' },
-            { icon: Ban, label: 'Blocked Contacts', path: '/emails/blocked-contacts' },
-        ]
-    },
-    {
-        type: 'group',
-        label: 'Analytics',
-        icon: PieChart,
-        children: [
-            { icon: LineChart, label: 'Overview', path: '/analytics' },
-            { icon: DollarSign, label: 'Revenue', path: '/analytics/revenue' },
-            { icon: BarChart3, label: 'Acquisition', path: '/live' },
-            { icon: BarChart3, label: 'Reports', path: '/reports' },
-            { icon: Bot, label: 'Bot Shield', path: '/crawlers' },
-        ]
-    },
-    {
-        type: 'group',
-        label: 'Growth',
-        icon: TrendingUp,
-        children: [
-            { icon: Megaphone, label: 'Paid Ads', path: '/ads' },
-            { icon: Star, label: 'Reviews', path: '/reviews' },
-            { icon: Search, label: 'SEO Keywords', path: '/seo' },
-            { icon: FileText, label: 'SEO Content', path: '/seo/content' },
-            { icon: Rss, label: 'Feeds', path: '/feeds' },
-            { icon: Bot, label: 'AI Manager', path: '/ai-manager' },
-        ]
-    },
-    { type: 'link', icon: BookOpen, label: 'Policies & SOP', path: '/policies' },
-    { type: 'link', icon: UsersRound, label: 'Team', path: '/team' },
-    { type: 'link', icon: HelpCircle, label: 'Help Center', path: '/help' },
 ];
 
 /** Why memo: Sidebar subscribes to many contexts; wrapping in memo ensures
@@ -198,8 +186,11 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
         return navItems.filter(item => {
             if (item.label === 'Commerce') {
                 const hasChild = item.children?.some(child => {
+                    if (child.path === '/contacts') return hasPermission('view_orders') || hasPermission('view_marketing');
                     if (child.path === '/orders' || child.path === '/abandoned-carts') return hasPermission('view_orders');
                     if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
+                    if (child.path === '/reports') return hasPermission('view_finance');
+                    if (child.path === '/reviews') return hasPermission('view_marketing');
                     return true;
                 });
                 return hasChild;
@@ -207,15 +198,13 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             if (item.label === 'Emails') {
                 if (!isEmailEnabled) return false;
                 const hasChild = item.children?.some(child => {
-                    if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
-                    if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/lists' || child.path === '/emails/settings' || child.path === '/emails/logs' || child.path === '/emails/blocked-contacts') return hasPermission('view_marketing');
+                    if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/audiences' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
                     return true;
                 });
                 return hasChild;
             }
             if (item.label === 'Shipping') return isShippingEnabled && hasPermission('view_shipping');
-            if (item.label === 'Analytics') return hasPermission('view_finance');
-            if (item.label === 'Growth') return hasPermission('view_marketing');
+            if (item.label === 'Analytics') return hasPermission('view_finance') || hasPermission('view_marketing');
             if (item.label === 'Team') return hasPermission('view_orders');
             return true;
         }).map(item => {
@@ -223,18 +212,24 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 return {
                     ...item,
                     children: item.children.filter(child => {
-                        if (child.path === '/crawlers') return isBotShieldEnabled;
+                        if (child.path === '/crawlers') return isBotShieldEnabled && hasPermission('view_finance');
                         if (child.path === '/ai-manager') return isAiManagerEnabled && hasPermission('view_marketing');
                         if (child.path === '/feeds') return isFeedsEnabled && hasPermission('view_marketing');
                         if (child.path?.startsWith('/shipping')) return isShippingEnabled && hasPermission('view_shipping');
+                        if (child.path === '/contacts') return hasPermission('view_orders') || hasPermission('view_marketing');
                         if (child.path === '/orders' || child.path === '/abandoned-carts') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
-                        if (child.path === '/customers' || child.path === '/customers/segments') return hasPermission('view_orders');
-                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/lists' || child.path === '/emails/settings' || child.path === '/emails/logs' || child.path === '/emails/blocked-contacts') {
+                        if (child.path === '/reports') return hasPermission('view_finance');
+                        if (child.path === '/reviews') return hasPermission('view_marketing');
+                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/audiences' || child.path === '/emails/settings' || child.path === '/emails/logs') {
                             return isEmailEnabled && hasPermission('view_marketing');
                         }
-                        if (item.label === 'Analytics') return hasPermission('view_finance');
-                        if (item.label === 'Growth') return hasPermission('view_marketing');
+                        if (item.label === 'Analytics') {
+                            if (child.path === '/analytics' || child.path === '/analytics/revenue' || child.path === '/live' || child.path === '/crawlers') {
+                                return hasPermission('view_finance');
+                            }
+                            return hasPermission('view_marketing');
+                        }
                         return true;
                     })
                 };

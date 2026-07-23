@@ -4,6 +4,7 @@ import { Logger } from '../utils/logger';
 import { Prisma } from '@prisma/client';
 
 type ContactStatus = 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
+type ContactListStatus = ContactStatus | 'BLOCKED';
 
 type FilterOperator = 'is' | 'is not' | 'contains' | 'greater than' | 'less than';
 
@@ -184,6 +185,182 @@ export class CustomersService {
         return expression;
     }
 
+    static async searchContacts(
+        accountId: string,
+        query: string = '',
+        page: number = 1,
+        limit: number = 20,
+        status: ContactListStatus | 'ALL' = 'ALL'
+    ) {
+        const offset = (page - 1) * limit;
+        const searchClause = query
+            ? Prisma.sql`AND (
+                COALESCE("firstName", '') ILIKE ${`%${query}%`}
+                OR COALESCE("lastName", '') ILIKE ${`%${query}%`}
+                OR "email" ILIKE ${`%${query}%`}
+                OR COALESCE("blockedReason", '') ILIKE ${`%${query}%`}
+            )`
+            : Prisma.empty;
+        const statusClause = status === 'ALL'
+            ? Prisma.empty
+            : Prisma.sql`AND "contactStatus" = ${status}`;
+        const contactsCte = Prisma.sql`
+            WITH customer_base AS (
+                SELECT
+                    wc."id",
+                    wc."wooId",
+                    wc."email",
+                    wc."firstName",
+                    wc."lastName",
+                    wc."totalSpent",
+                    wc."ordersCount",
+                    wc."createdAt" AS "dateCreated",
+                    wc."updatedAt",
+                    bc."id" AS "blockedId",
+                    bc."reason" AS "blockedReason",
+                    bc."blockedAt",
+                    blocker."fullName" AS "blockedByName",
+                    CASE
+                        WHEN bc."id" IS NOT NULL THEN 'BLOCKED'
+                        WHEN suppression."scope" = 'ALL' THEN 'COMPLAINT'
+                        WHEN suppression."scope" = 'MARKETING' THEN 'UNSUBSCRIBED'
+                        WHEN UPPER(COALESCE(wc."rawData"->>'contactStatus', '')) IN
+                            ('UNVERIFIED', 'SUBSCRIBED', 'BOUNCED', 'UNSUBSCRIBED', 'SOFT_BOUNCED', 'COMPLAINT')
+                            THEN UPPER(wc."rawData"->>'contactStatus')
+                        ELSE 'SUBSCRIBED'
+                    END AS "contactStatus",
+                    ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(NULLIF(LOWER(TRIM(wc."email")), ''), wc."id")
+                        ORDER BY wc."ordersCount" DESC, wc."updatedAt" DESC
+                    ) AS row_number
+                FROM "WooCustomer" wc
+                LEFT JOIN LATERAL (
+                    SELECT blocked.*
+                    FROM "BlockedContact" blocked
+                    WHERE blocked."accountId" = wc."accountId"
+                      AND LOWER(TRIM(blocked."email")) = LOWER(TRIM(wc."email"))
+                    ORDER BY blocked."blockedAt" DESC
+                    LIMIT 1
+                ) bc ON TRUE
+                LEFT JOIN "User" blocker ON blocker."id" = bc."blockedBy"
+                LEFT JOIN LATERAL (
+                    SELECT unsubscribed."scope"
+                    FROM "EmailUnsubscribe" unsubscribed
+                    WHERE unsubscribed."accountId" = wc."accountId"
+                      AND LOWER(TRIM(unsubscribed."email")) = LOWER(TRIM(wc."email"))
+                    ORDER BY unsubscribed."createdAt" DESC
+                    LIMIT 1
+                ) suppression ON TRUE
+                WHERE wc."accountId" = ${accountId}
+            ),
+            contacts AS (
+                SELECT
+                    "id",
+                    "wooId",
+                    "email",
+                    "firstName",
+                    "lastName",
+                    "totalSpent",
+                    "ordersCount",
+                    "dateCreated",
+                    "contactStatus",
+                    "blockedReason",
+                    "blockedAt",
+                    "blockedByName",
+                    TRUE AS "isCustomer"
+                FROM customer_base
+                WHERE row_number = 1
+
+                UNION ALL
+
+                SELECT
+                    blocked."id",
+                    NULL::integer AS "wooId",
+                    blocked."email",
+                    NULL::text AS "firstName",
+                    NULL::text AS "lastName",
+                    0::numeric AS "totalSpent",
+                    0::integer AS "ordersCount",
+                    blocked."blockedAt" AS "dateCreated",
+                    'BLOCKED'::text AS "contactStatus",
+                    blocked."reason" AS "blockedReason",
+                    blocked."blockedAt",
+                    blocker."fullName" AS "blockedByName",
+                    FALSE AS "isCustomer"
+                FROM "BlockedContact" blocked
+                LEFT JOIN "User" blocker ON blocker."id" = blocked."blockedBy"
+                WHERE blocked."accountId" = ${accountId}
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM "WooCustomer" customer
+                      WHERE customer."accountId" = blocked."accountId"
+                        AND LOWER(TRIM(customer."email")) = LOWER(TRIM(blocked."email"))
+                  )
+            )
+        `;
+
+        type ContactRow = {
+            id: string;
+            wooId: number | null;
+            email: string;
+            firstName: string | null;
+            lastName: string | null;
+            totalSpent: Prisma.Decimal;
+            ordersCount: number;
+            dateCreated: Date;
+            contactStatus: ContactListStatus;
+            blockedReason: string | null;
+            blockedAt: Date | null;
+            blockedByName: string | null;
+            isCustomer: boolean;
+        };
+
+        const [rows, countRows] = await Promise.all([
+            prisma.$queryRaw<ContactRow[]>`${contactsCte}
+                SELECT *
+                FROM contacts
+                WHERE TRUE ${searchClause} ${statusClause}
+                ORDER BY COALESCE(NULLIF("firstName", ''), "email") ASC, "lastName" ASC NULLS LAST
+                LIMIT ${limit}
+                OFFSET ${offset}
+            `,
+            prisma.$queryRaw<Array<{ contactStatus: ContactListStatus; count: bigint }>>`${contactsCte}
+                SELECT "contactStatus", COUNT(*) AS count
+                FROM contacts
+                WHERE TRUE ${searchClause}
+                GROUP BY "contactStatus"
+            `
+        ]);
+
+        const statusCounts: Record<ContactListStatus | 'ALL', number> = {
+            ALL: 0,
+            UNVERIFIED: 0,
+            SUBSCRIBED: 0,
+            BOUNCED: 0,
+            UNSUBSCRIBED: 0,
+            SOFT_BOUNCED: 0,
+            COMPLAINT: 0,
+            BLOCKED: 0
+        };
+        for (const countRow of countRows) {
+            const count = Number(countRow.count);
+            statusCounts[countRow.contactStatus] = count;
+            statusCounts.ALL += count;
+        }
+
+        const total = status === 'ALL' ? statusCounts.ALL : statusCounts[status];
+        return {
+            contacts: rows.map((row) => ({
+                ...row,
+                totalSpent: Number(row.totalSpent)
+            })),
+            total,
+            page,
+            totalPages: Math.ceil(total / limit),
+            statusCounts
+        };
+    }
+
     static async searchCustomers(
         accountId: string,
         query: string = '',
@@ -261,7 +438,7 @@ export class CustomersService {
         const statusMust = [...baseMust];
 
         if (status === 'UNSUBSCRIBED') {
-            const [unsubscribedCustomers, unsubscribedTotalRows, allCustomerCount, allStatusAggs] = await Promise.all([
+            const [unsubscribedCustomers, unsubscribedTotalRows, allStatusAggs] = await Promise.all([
                 marketingSuppressedEmailList.length > 0
                     ? prisma.$queryRaw<Array<{
                         id: string;
@@ -295,21 +472,6 @@ export class CustomersService {
                           ${suppressionSearchClause}
                     `
                     : Promise.resolve([{ count: BigInt(0) }]),
-                prisma.wooCustomer.count({
-                    where: {
-                        accountId,
-                        ordersCount: { gt: 0 },
-                        ...(query
-                            ? {
-                                OR: [
-                                    { firstName: { contains: query, mode: 'insensitive' as const } },
-                                    { lastName: { contains: query, mode: 'insensitive' as const } },
-                                    { email: { contains: query, mode: 'insensitive' as const } }
-                                ]
-                            }
-                            : {})
-                    }
-                }),
                 esClient.search({
                     index: 'customers',
                     query: {
@@ -330,6 +492,7 @@ export class CustomersService {
             ]);
 
             const unsubscribedTotal = Number(unsubscribedTotalRows[0]?.count || 0);
+            const allTotal = (allStatusAggs?.hits.total as any)?.value || 0;
             const buckets = (allStatusAggs?.aggregations as any)?.contact_statuses?.buckets || [];
             const rawCounts = buckets.reduce((acc: Record<string, number>, bucket: { key: string; doc_count: number }) => {
                 acc[bucket.key] = bucket.doc_count;
@@ -341,7 +504,7 @@ export class CustomersService {
                 + (rawCounts.UNSUBSCRIBED || 0)
                 + (rawCounts.SOFT_BOUNCED || 0)
                 + (rawCounts.COMPLAINT || 0);
-            const missingStatusCount = Math.max(allCustomerCount - knownStatusesTotal, 0);
+            const missingStatusCount = Math.max(allTotal - knownStatusesTotal, 0);
             const suppressedRawCounts = this.getSuppressedRawCounts(suppressedCustomerRows);
 
             return {
@@ -361,7 +524,7 @@ export class CustomersService {
                 page,
                 totalPages: Math.ceil(unsubscribedTotal / limit),
                 statusCounts: {
-                    ALL: allCustomerCount,
+                    ALL: allTotal,
                     UNVERIFIED: Math.max((rawCounts.UNVERIFIED || 0) - (suppressedRawCounts.UNVERIFIED || 0), 0),
                     SUBSCRIBED: Math.max(((rawCounts.SUBSCRIBED || 0) + missingStatusCount) - (suppressedRawCounts.SUBSCRIBED || 0), 0),
                     BOUNCED: Math.max((rawCounts.BOUNCED || 0) - (suppressedRawCounts.BOUNCED || 0), 0),

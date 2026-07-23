@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Plus, Trash2, Save } from 'lucide-react';
+import { Loader2, Plus, Trash2, Save } from 'lucide-react';
 import { getSegmentFieldType } from '../../utils/conditionFieldRules';
 
 export interface SegmentRule {
@@ -80,13 +80,13 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
     };
 
     return (
-        <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-xs space-y-6">
-            <div className="flex items-center justify-between">
+        <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-4 shadow-xs sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h3 className="text-lg font-medium text-gray-900">Segment Rules</h3>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm text-gray-500">Match</span>
                     <select
-                        className="bg-gray-50 border border-gray-300 rounded-sm px-2 py-1 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                        className="rounded-lg border border-gray-300 bg-gray-50 px-2 py-1 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                         value={criteria.type}
                         onChange={(e) => setCriteria({ ...criteria, type: e.target.value as 'AND' | 'OR' })}
                     >
@@ -99,9 +99,9 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
 
             <div className="space-y-4">
                 {criteria.rules.map((rule, index) => (
-                    <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 group">
+                    <div key={index} className="grid gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_minmax(0,1fr)_auto] sm:items-center">
                         <select
-                            className="flex-1 bg-white border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             value={rule.field}
                             onChange={(e) => updateRule(index, { field: e.target.value })}
                         >
@@ -111,7 +111,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                         </select>
 
                         <select
-                            className="w-40 bg-white border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             value={rule.operator}
                             onChange={(e) => updateRule(index, { operator: e.target.value })}
                         >
@@ -123,7 +123,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                         <input
                             type={getSegmentFieldType(rule.field) === 'number' ? 'number' : 'text'}
                             inputMode={getSegmentFieldType(rule.field) === 'number' ? 'decimal' : 'text'}
-                            className="flex-1 bg-white border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             placeholder="Value"
                             value={rule.value}
                             onChange={(e) => updateRule(index, { value: e.target.value })}
@@ -131,7 +131,9 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
 
                         <button
                             onClick={() => removeRule(index)}
-                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-sm transition-colors"
+                            type="button"
+                            title="Remove condition"
+                            className="justify-self-end rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
                         >
                             <Trash2 size={16} />
                         </button>
@@ -146,7 +148,8 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
 
                 <button
                     onClick={addRule}
-                    className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium px-2 py-1 rounded-sm hover:bg-blue-50 transition-colors"
+                    type="button"
+                    className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                 >
                     <Plus size={16} />
                     Add Condition
@@ -163,9 +166,9 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                 <button
                     onClick={() => onSave(criteria)}
                     disabled={isSaving}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
                 >
-                    {isSaving ? <span className="animate-spin">⌛</span> : <Save size={16} />}
+                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                     Save Segment
                 </button>
             </div>

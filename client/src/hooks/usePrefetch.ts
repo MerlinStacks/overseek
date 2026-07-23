@@ -9,7 +9,7 @@ const ROUTE_CHUNK_MAP: Record<string, () => Promise<unknown>> = {
     '/orders': () => import('../pages/OrdersPage'),
     '/inbox': () => import('../pages/InboxPage'),
     '/inventory': () => import('../pages/InventoryPage'),
-    '/customers': () => import('../pages/CustomersPage'),
+    '/contacts': () => import('../pages/CustomersPage'),
     '/analytics': () => import('../pages/analytics/AnalyticsOverviewPage'),
     '/settings': () => import('../pages/SettingsPage'),
 };

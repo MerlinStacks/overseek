@@ -290,7 +290,7 @@ describe('CustomersService', () => {
                     createdAt: new Date('2025-01-01T00:00:00.000Z')
                 }])
                 .mockResolvedValueOnce([{ count: BigInt(1) }]);
-            mockWooCustomerCount.mockResolvedValueOnce(2);
+            mockWooCustomerCount.mockResolvedValueOnce(200);
 
             mockSearch
                 .mockResolvedValueOnce({
@@ -306,7 +306,66 @@ describe('CustomersService', () => {
 
             expect(result.customers).toHaveLength(1);
             expect(result.customers[0].contactStatus).toBe('UNSUBSCRIBED');
+            expect(result.statusCounts.ALL).toBe(1);
             expect(result.statusCounts.UNSUBSCRIBED).toBe(1);
+            expect(mockWooCustomerCount).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('searchContacts', () => {
+        it('returns customers and standalone blocked contacts with stable status counts', async () => {
+            mockQueryRaw
+                .mockResolvedValueOnce([
+                    {
+                        id: 'customer-1',
+                        wooId: 123,
+                        email: 'customer@example.com',
+                        firstName: 'Ada',
+                        lastName: 'Lovelace',
+                        totalSpent: 50,
+                        ordersCount: 2,
+                        dateCreated: new Date('2025-01-01T00:00:00.000Z'),
+                        contactStatus: 'SUBSCRIBED',
+                        blockedReason: null,
+                        blockedAt: null,
+                        blockedByName: null,
+                        isCustomer: true
+                    },
+                    {
+                        id: 'blocked-1',
+                        wooId: null,
+                        email: 'blocked@example.com',
+                        firstName: null,
+                        lastName: null,
+                        totalSpent: 0,
+                        ordersCount: 0,
+                        dateCreated: new Date('2025-02-01T00:00:00.000Z'),
+                        contactStatus: 'BLOCKED',
+                        blockedReason: 'Spam',
+                        blockedAt: new Date('2025-02-01T00:00:00.000Z'),
+                        blockedByName: 'Admin',
+                        isCustomer: false
+                    }
+                ])
+                .mockResolvedValueOnce([
+                    { contactStatus: 'SUBSCRIBED', count: BigInt(1) },
+                    { contactStatus: 'BLOCKED', count: BigInt(1) }
+                ]);
+
+            const result = await CustomersService.searchContacts(accountId, '', 1, 20, 'ALL');
+
+            expect(result.contacts).toHaveLength(2);
+            expect(result.contacts[1]).toEqual(expect.objectContaining({
+                email: 'blocked@example.com',
+                contactStatus: 'BLOCKED',
+                isCustomer: false
+            }));
+            expect(result.statusCounts).toEqual(expect.objectContaining({
+                ALL: 2,
+                SUBSCRIBED: 1,
+                BLOCKED: 1
+            }));
+            expect(result.totalPages).toBe(1);
         });
     });
 });

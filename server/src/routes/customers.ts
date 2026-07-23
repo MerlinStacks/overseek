@@ -43,6 +43,44 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get('/contacts', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const query = request.query as {
+                page?: string;
+                limit?: string;
+                q?: string;
+                status?: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' | 'BLOCKED' | 'ALL';
+            };
+            const page = Math.max(parseInt(query.page || '1', 10) || 1, 1);
+            const limit = Math.min(Math.max(parseInt(query.limit || '20', 10) || 20, 1), 100);
+            const parsedStatus = z.enum([
+                'UNVERIFIED',
+                'SUBSCRIBED',
+                'BOUNCED',
+                'UNSUBSCRIBED',
+                'SOFT_BOUNCED',
+                'COMPLAINT',
+                'BLOCKED',
+                'ALL'
+            ]).safeParse(query.status || 'ALL');
+            if (!parsedStatus.success) {
+                return reply.code(400).send({ error: 'Invalid status value' });
+            }
+
+            return await CustomersService.searchContacts(
+                accountId,
+                query.q || '',
+                page,
+                limit,
+                parsedStatus.data
+            );
+        } catch (error) {
+            Logger.error('Failed to fetch contacts', { error });
+            return handleRouteError(error, reply, 'Failed to fetch contacts');
+        }
+    });
+
     fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
         try {
             const accountId = request.accountId!;

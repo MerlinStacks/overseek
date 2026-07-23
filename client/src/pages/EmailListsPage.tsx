@@ -29,7 +29,11 @@ interface BulkUnsubscribeResult {
     invalidCount?: number;
 }
 
-export function EmailListsPage() {
+interface EmailListsPageProps {
+    embedded?: boolean;
+}
+
+export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const toast = useToast();
@@ -238,14 +242,14 @@ export function EmailListsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div className="flex flex-col gap-2">
+            <div className={`flex flex-col gap-4 lg:flex-row lg:items-end ${embedded ? 'lg:justify-end' : 'lg:justify-between'}`}>
+                {!embedded && <div className="flex flex-col gap-2">
                     <div className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
                         <Mail size={14} /> Broadcast targeting
                     </div>
                     <h1 className="text-2xl font-bold text-gray-900">Email Lists</h1>
                     <p className="max-w-2xl text-gray-500">Build reusable recipient lists, add contacts, and manage subscription status before sending campaigns.</p>
-                </div>
+                </div>}
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[420px]">
                     <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-xs">

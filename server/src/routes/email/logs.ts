@@ -14,6 +14,7 @@ interface QueryParams {
     offset?: string;
     status?: string;
     source?: string;
+    search?: string;
 }
 
 function parseIntOrFallback(value: string | undefined, fallback: number) {
@@ -31,7 +32,8 @@ const emailLogRoutes: FastifyPluginAsync = async (fastify) => {
             limit: rawLimit,
             offset: rawOffset,
             status: rawStatus,
-            source: rawSource
+            source: rawSource,
+            search: rawSearch
         } = request.query as QueryParams;
         const limit = Math.min(parseIntOrFallback(rawLimit, 50), 100);
         const offset = parseIntOrFallback(rawOffset, 0);
@@ -43,11 +45,20 @@ const emailLogRoutes: FastifyPluginAsync = async (fastify) => {
             .split(',')
             .map((value) => value.trim().toUpperCase())
             .filter(Boolean);
+        const search = rawSearch?.trim();
 
         const where = {
             accountId,
             ...(statuses.length > 0 ? { status: { in: statuses } } : {}),
-            ...(sources.length > 0 ? { source: { in: sources } } : {})
+            ...(sources.length > 0 ? { source: { in: sources } } : {}),
+            ...(search ? {
+                OR: [
+                    { to: { contains: search, mode: 'insensitive' as const } },
+                    { subject: { contains: search, mode: 'insensitive' as const } },
+                    { messageId: { contains: search, mode: 'insensitive' as const } },
+                    { errorMessage: { contains: search, mode: 'insensitive' as const } }
+                ]
+            } : {})
         };
 
         try {

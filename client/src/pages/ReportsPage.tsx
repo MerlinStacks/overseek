@@ -3,7 +3,7 @@ import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
-import { BarChart3, FileText, Lock, Plus, Sparkles } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 
 import { ReportBuilder } from '../components/ReportBuilder';
 import { Toast, ToastType } from '../components/ui/Toast';
@@ -34,14 +34,6 @@ interface CustomerGrowth {
     date: string;
     newCustomers: number;
 }
-
-const TAB_LABELS = {
-    overview: 'Overview',
-    stock_velocity: 'Stock Velocity',
-    profitability: 'Profitability',
-    premade: 'Report Library',
-    custom: 'Custom Builder'
-};
 
 export function ReportsPage() {
     const { token } = useAuth();
@@ -163,56 +155,22 @@ export function ReportsPage() {
 
     return (
         <>
-            <div className="min-w-0 space-y-6">
-                {/* Header */}
-                <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xs dark:border-slate-700 dark:bg-slate-900/80">
-                    <div className="relative p-6 sm:p-8">
-                        <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-blue-500 via-indigo-500 to-purple-500" />
-                        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-                            <div className="max-w-3xl">
-                                <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                                    <BarChart3 size={14} />
-                                    {TAB_LABELS[activeTab]}
-                                </div>
-                                <h1 className="text-3xl font-bold tracking-tight text-gray-950 dark:text-white">Reports & Analytics</h1>
-                                <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-slate-400">
-                                    Explore sales, inventory, profitability, and custom report templates from one workspace.
-                                </p>
-                            </div>
+            <div className="min-w-0 space-y-6 p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Reports & Analytics</h1>
+                    {(activeTab === 'overview' || activeTab === 'profitability' || activeTab === 'premade') && (
+                        <ReportsDateSelector dateOption={dateOption} onChange={setDateOption} />
+                    )}
+                </div>
 
-                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
-                                    <p className="text-xs font-medium text-gray-500 dark:text-slate-400">Templates</p>
-                                    <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{templates.length}</p>
-                                </div>
-                                <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
-                                    <p className="text-xs font-medium text-gray-500 dark:text-slate-400">Revenue Rows</p>
-                                    <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{salesData.length}</p>
-                                </div>
-                                <div className="col-span-2 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80 sm:col-span-1">
-                                    <p className="text-xs font-medium text-gray-500 dark:text-slate-400">Advanced</p>
-                                    <p className="mt-1 flex items-center gap-2 text-sm font-bold text-gray-950 dark:text-white">
-                                        {isAdvancedReportsEnabled ? <Sparkles size={16} className="text-purple-500" /> : <Lock size={16} className="text-gray-400" />}
-                                        {isAdvancedReportsEnabled ? 'Enabled' : 'Locked'}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="border-t border-gray-100 bg-gray-50/70 p-3 dark:border-slate-700 dark:bg-slate-950/30">
+                <div className="min-w-0">
                     <ReportsTabs
                         activeTab={activeTab}
                         isAdvancedReportsEnabled={isAdvancedReportsEnabled}
                         onChangeTab={setActiveTab}
                         onEnterCustomBuilder={enterCustomBuilder}
                     />
-                    </div>
                 </div>
-
-                {/* Date Range Selector (for applicable tabs) */}
-                {(activeTab === 'overview' || activeTab === 'profitability' || activeTab === 'premade') && (
-                    <ReportsDateSelector dateOption={dateOption} onChange={setDateOption} />
-                )}
 
                 {
                     activeTab === 'overview' && (

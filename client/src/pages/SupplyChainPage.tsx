@@ -32,7 +32,7 @@ export function SupplyChainPage() {
         <div className="space-y-6">
             <div className="flex justify-between items-end border-b pb-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Supply Chain</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Stock & Suppliers</h1>
                     <p className="text-sm text-gray-500">Manage suppliers, materials, and purchase orders</p>
                 </div>
 

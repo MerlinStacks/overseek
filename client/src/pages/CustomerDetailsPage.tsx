@@ -331,7 +331,7 @@ export function CustomerDetailsPage() {
             {/* Header */}
             <div>
                 <Breadcrumbs items={[
-                    { label: 'Customers', href: '/customers' },
+                    { label: 'Contacts', href: '/contacts' },
                     { label: `${customer.firstName} ${customer.lastName}` }
                 ]} />
                 <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-start">

@@ -75,7 +75,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
             setSortKey('sessions');
             setSortDirection('desc');
         }
-        if (isPages && !['url', 'title', 'views', 'entries', 'exits'].includes(sortKey)) {
+        if (isPages && !['url', 'title', 'views', 'entries', 'exits', 'exitRate'].includes(sortKey)) {
             setSortKey('views');
             setSortDirection('desc');
         }
@@ -118,7 +118,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
 
         return [...rows].sort((a, b) => {
             const direction = sortDirection === 'asc' ? 1 : -1;
-            const activeSortKey = isPages && ['channel', 'source', 'campaign', 'sessions', 'conversions', 'revenue', 'exitRate'].includes(sortKey) ? 'views' : sortKey;
+            const activeSortKey = isPages && ['channel', 'source', 'campaign', 'sessions', 'conversions', 'revenue'].includes(sortKey) ? 'views' : sortKey;
             const channelSafeSortKey = isChannels && ['source', 'campaign', 'revenue', 'url', 'title', 'views', 'entries', 'exits'].includes(activeSortKey) ? 'sessions' : activeSortKey;
             const safeSortKey = isCampaigns && ['channel', 'exitRate', 'url', 'title', 'views', 'entries', 'exits'].includes(channelSafeSortKey) ? 'sessions' : channelSafeSortKey;
 
@@ -135,7 +135,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
     const columnCount = () => {
         if (isSearch) return 2;
         if (isChannels) return 4;
-        if (isPages) return 5;
+        if (isPages) return 6;
         if (isCampaigns) return 5;
         return 2;
     };
@@ -171,7 +171,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
                     <tr>
                         {isChannels && <><SortableHeader sort="channel">Channel</SortableHeader><SortableHeader sort="sessions" align="right">Sessions</SortableHeader><SortableHeader sort="conversions" align="right">Conversions</SortableHeader><SortableHeader sort="exitRate" align="right">Exit Rate</SortableHeader></>}
                         {isCampaigns && <><SortableHeader sort="source">Source / Medium</SortableHeader><SortableHeader sort="campaign">Campaign</SortableHeader><SortableHeader sort="sessions" align="right">Sessions</SortableHeader><SortableHeader sort="conversions" align="right">Conversions</SortableHeader><SortableHeader sort="revenue" align="right">Revenue</SortableHeader></>}
-                        {isPages && <><SortableHeader sort="url">Page URL</SortableHeader><SortableHeader sort="title">Title</SortableHeader><SortableHeader sort="views" align="right">Views</SortableHeader><SortableHeader sort="entries" align="right">Entries</SortableHeader><SortableHeader sort="exits" align="right">Exits</SortableHeader></>}
+                        {isPages && <><SortableHeader sort="url">Page URL</SortableHeader><SortableHeader sort="title">Title</SortableHeader><SortableHeader sort="views" align="right">Views</SortableHeader><SortableHeader sort="entries" align="right">Entries</SortableHeader><SortableHeader sort="exits" align="right">Exits</SortableHeader><SortableHeader sort="exitRate" align="right">Exit %</SortableHeader></>}
                         {isSearch && <><th className="p-4">Search Term</th><th className="p-4 text-right">Searches</th></>}
                     </tr>
                 </thead>
@@ -180,7 +180,7 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
                         <tr key={i} className="hover:bg-gray-50">
                             {isChannels && <><td className="p-4 font-medium"><div className="flex items-center gap-2"><ChannelIcon channel={row.channel} /><span>{row.channel}</span>{row.domains && row.domains.length > 1 && <span className="text-xs font-normal text-gray-400" title={row.domains.join(', ')}>+{row.domains.length - 1}</span>}</div></td><td className="p-4 text-right">{row.sessions ?? 0}</td><td className="p-4 text-right">{row.conversions ?? 0}</td><td className="p-4 text-right">{(row.exitRate ?? 0).toFixed(2)}%</td></>}
                             {isCampaigns && <><td className="p-4 font-medium">{row.source} / {row.medium}</td><td className="p-4">{row.campaign}</td><td className="p-4 text-right">{row.sessions ?? 0}</td><td className="p-4 text-right">{row.conversions ?? 0}</td><td className="p-4 text-right">{formatCurrency(row.revenue ?? 0)}</td></>}
-                            {isPages && <><td className="p-4 font-medium text-blue-600 truncate max-w-sm" title={row.url}>{row.url}</td><td className="p-4 text-gray-500 truncate max-w-xs">{row.title || 'Untitled'}</td><td className="p-4 text-right">{row.views ?? 0}</td><td className="p-4 text-right">{row.entries ?? 0}</td><td className="p-4 text-right">{row.exits ?? 0}</td></>}
+                            {isPages && <><td className="p-4 font-medium text-blue-600 truncate max-w-sm" title={row.url}>{row.url}</td><td className="p-4 text-gray-500 truncate max-w-xs">{row.title || 'Untitled'}</td><td className="p-4 text-right">{row.views ?? 0}</td><td className="p-4 text-right">{row.entries ?? 0}</td><td className="p-4 text-right">{row.exits ?? 0}</td><td className="p-4 text-right">{(row.exitRate ?? 0).toFixed(2)}%</td></>}
                             {isSearch && <><td className="p-4 font-medium">"{row.term}"</td><td className="p-4 text-right">{row.searches}</td></>}
                         </tr>
                     ))}

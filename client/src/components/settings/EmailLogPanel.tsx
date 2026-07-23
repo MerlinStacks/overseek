@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail, AlertTriangle, ShieldAlert, Clock3, Eye } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw, Mail, AlertTriangle, ShieldAlert, Clock3, Eye, Search, X } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
 interface EmailLog {
@@ -61,6 +61,8 @@ export function EmailLogPanel() {
     const [loadingContentId, setLoadingContentId] = useState<string | null>(null);
     const [offset, setOffset] = useState(0);
     const [busyLogId, setBusyLogId] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const location = useLocation();
     const navigate = useNavigate();
     const limit = 20;
@@ -88,6 +90,7 @@ export function EmailLogPanel() {
             });
             if (statusFilter) params.set('status', statusFilter);
             if (sourceFilter) params.set('source', sourceFilter);
+            if (debouncedSearch) params.set('search', debouncedSearch);
 
             const res = await fetch(`/api/email/logs?${params.toString()}`, {
                 headers: {
@@ -106,17 +109,24 @@ export function EmailLogPanel() {
         } finally {
             setIsLoading(false);
         }
-    }, [currentAccount, offset, sourceFilter, statusFilter, token]);
+    }, [currentAccount, debouncedSearch, offset, sourceFilter, statusFilter, token]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
+        return () => window.clearTimeout(timer);
+    }, [searchQuery]);
 
     useEffect(() => {
         setOffset(0);
-    }, [statusFilter, sourceFilter]);
+    }, [statusFilter, sourceFilter, debouncedSearch]);
 
     useEffect(() => {
         fetchLogs();
     }, [fetchLogs]);
 
     const clearFilters = () => {
+        setSearchQuery('');
+        setDebouncedSearch('');
         navigate('/emails/logs');
     };
 
@@ -306,7 +316,7 @@ export function EmailLogPanel() {
                     <Mail size={18} className="text-gray-500" />
                     <h3 className="font-medium text-gray-900">Email Logs</h3>
                     <span className="text-sm text-gray-500">({total} total)</span>
-                    {(statusFilter || sourceFilter) && (
+                    {(statusFilter || sourceFilter || debouncedSearch) && (
                         <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
                             Filtered
                         </span>
@@ -318,7 +328,7 @@ export function EmailLogPanel() {
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    {(statusFilter || sourceFilter) && (
+                    {(statusFilter || sourceFilter || debouncedSearch) && (
                         <button
                             onClick={clearFilters}
                             className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100"
@@ -337,7 +347,31 @@ export function EmailLogPanel() {
                 </div>
             </div>
 
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
+            <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/70 px-4 py-3 sm:flex-row sm:items-end">
+                <label className="flex w-full max-w-md flex-col gap-1 text-sm">
+                    <span className="font-medium text-gray-700">Search</span>
+                    <div className="relative">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                            type="search"
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                            placeholder="Search recipient, subject, message ID, or error..."
+                            aria-label="Search email logs"
+                            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-9 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                aria-label="Clear search"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                </label>
                 <label className="flex w-full max-w-xs flex-col gap-1 text-sm">
                     <span className="font-medium text-gray-700">Type</span>
                     <select
@@ -358,8 +392,10 @@ export function EmailLogPanel() {
             {logs.length === 0 ? (
                 <div className="p-6 text-center text-gray-500">
                     <Mail size={32} className="mx-auto mb-2 opacity-50" />
-                    <p>No email logs yet</p>
-                    <p className="text-sm">Sent emails will appear here</p>
+                    <p>{debouncedSearch || statusFilter || sourceFilter ? 'No matching email logs' : 'No email logs yet'}</p>
+                    <p className="text-sm">
+                        {debouncedSearch || statusFilter || sourceFilter ? 'Try changing your search or filters' : 'Sent emails will appear here'}
+                    </p>
                 </div>
             ) : (
                 <div className="divide-y divide-gray-100">
