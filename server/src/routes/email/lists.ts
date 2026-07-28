@@ -16,13 +16,15 @@ const BULK_UNSUBSCRIBE_RATE_LIMIT = {
 
 const CreateListSchema = z.object({
     name: z.string().min(1),
-    description: z.string().optional()
+    description: z.string().optional(),
+    isDefault: z.boolean().optional()
 });
 
 const UpdateListSchema = z.object({
     name: z.string().min(1).optional(),
     description: z.string().optional(),
-    isActive: z.boolean().optional()
+    isActive: z.boolean().optional(),
+    isDefault: z.boolean().optional()
 });
 
 const MemberSchema = z.object({

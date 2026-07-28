@@ -231,7 +231,7 @@ export class MarketingService {
             resolveMergeTags(campaign.subject, context),
             await resolveMergeTagsWithDynamicProducts(campaign.content, context),
             undefined,
-            { source: 'TEST', sourceId: campaignId, category: 'MARKETING' }
+            { source: 'TEST', sourceId: campaignId, category: 'MARKETING', listId: campaign.listId || undefined }
         );
 
         if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
@@ -324,7 +324,7 @@ export class MarketingService {
                         subject,
                         content,
                         undefined,
-                        { source: 'CAMPAIGN', sourceId: campaignId }
+                        { source: 'CAMPAIGN', sourceId: campaignId, listId: campaign.listId || undefined }
                     );
 
                     if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {

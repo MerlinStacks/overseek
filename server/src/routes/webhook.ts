@@ -14,6 +14,7 @@ import { EventBus, EVENTS } from '../services/events';
 import { redisClient } from '../utils/redis';
 import { isExcludedOrderStatus, normalizeOrderStatus } from '../constants/orderStatus';
 import { campaignTrackingService } from '../services/CampaignTrackingService';
+import { emailListService } from '../services/EmailListService';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 const PAID_ATTRIBUTION_STATUSES = ['processing', 'on-hold', 'completed'];
@@ -308,8 +309,18 @@ export async function processWebhookPayload(
 
     // Handle Customer Events
     if (topic === 'customer.created' || topic === 'customer.updated') {
+        let persistedCustomer: { id: string; email: string } | null = null;
+        let isNewCustomer = false;
         try {
-            await prisma.wooCustomer.upsert({
+            if (topic === 'customer.created') {
+                const existingCustomer = await prisma.wooCustomer.findUnique({
+                    where: { accountId_wooId: { accountId, wooId: body.id as number } },
+                    select: { id: true }
+                });
+                isNewCustomer = !existingCustomer;
+            }
+
+            persistedCustomer = await prisma.wooCustomer.upsert({
                 where: { accountId_wooId: { accountId, wooId: body.id as number } },
                 update: {
                     email: ((body as any).email as string)?.toLowerCase() || '',
@@ -328,6 +339,10 @@ export async function processWebhookPayload(
                     rawData: body as any
                 }
             });
+
+            if (isNewCustomer && persistedCustomer.email) {
+                await emailListService.applyNewCustomerDefaults(accountId, persistedCustomer.email, persistedCustomer.id);
+            }
         } catch (err: any) {
             Logger.warn('[Webhook] Failed to upsert customer to DB', { accountId, customerId: body.id, error: err.message });
         }

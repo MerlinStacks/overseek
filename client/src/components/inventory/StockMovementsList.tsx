@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, Boxes, Loader2, RefreshCw, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, Boxes, ChevronDown, Loader2, RefreshCw, Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { Logger } from '../../utils/logger';
@@ -145,15 +145,20 @@ export function StockMovementsList() {
                                                 </div>
                                                 {movement.sku && <div className="mt-0.5 font-mono text-xs text-gray-500">{movement.sku}</div>}
                                                 {movement.bomParents.length > 0 && (
-                                                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-amber-900">
-                                                        <Boxes size={14} />
-                                                        <span>Used by</span>
-                                                        {movement.bomParents.map((parent) => (
-                                                            <span key={`${parent.id}:${parent.variationId}`} className="rounded bg-amber-200/80 px-1.5 py-0.5 font-medium">
-                                                                {parent.name}{parent.variationId ? ` (variation #${parent.variationId})` : ''}
-                                                            </span>
-                                                        ))}
-                                                    </div>
+                                                    <details className="group mt-2 text-xs text-amber-900">
+                                                        <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md px-1 py-0.5 font-medium hover:bg-amber-100">
+                                                            <Boxes size={14} />
+                                                            Used by {movement.bomParents.length} BOM {movement.bomParents.length === 1 ? 'product' : 'products'}
+                                                            <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+                                                        </summary>
+                                                        <div className="mt-1.5 flex flex-wrap gap-1.5 pl-1">
+                                                            {movement.bomParents.map((parent) => (
+                                                                <span key={`${parent.id}:${parent.variationId}`} className="rounded bg-amber-200/80 px-1.5 py-0.5 font-medium">
+                                                                    {parent.name}{parent.variationId ? ` (variation #${parent.variationId})` : ''}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </details>
                                                 )}
                                             </td>
                                             <td className="px-5 py-4 text-sm text-gray-700">

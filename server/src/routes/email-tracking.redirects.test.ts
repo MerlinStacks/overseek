@@ -14,6 +14,12 @@ vi.mock('../utils/prisma', () => ({
             deleteMany: vi.fn(),
             upsert: vi.fn(),
         },
+        marketingCampaign: {
+            findFirst: vi.fn(),
+        },
+        emailListMember: {
+            updateMany: vi.fn(),
+        },
         $transaction: vi.fn(),
     },
 }));
@@ -54,6 +60,10 @@ describe('email click redirects', () => {
             },
         } as any);
         vi.mocked(prisma.emailUnsubscribe.findFirst).mockResolvedValue(null);
+        vi.mocked(prisma.marketingCampaign.findFirst).mockResolvedValue({
+            list: { id: 'list-1', name: 'Weekly Offers' },
+        } as any);
+        vi.mocked(prisma.emailListMember.updateMany).mockResolvedValue({ count: 1 });
         vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => callback({
             emailUnsubscribe: {
                 deleteMany: prisma.emailUnsubscribe.deleteMany,
@@ -186,5 +196,60 @@ describe('email click redirects', () => {
                 reason: null,
             },
         });
+    });
+
+    it('removes the tracked recipient from only the campaign list', async () => {
+        vi.mocked(prisma.emailLog.findUnique).mockResolvedValueOnce({
+            id: 'email-log-1',
+            trackingId: 'track-1',
+            accountId: 'acct-1',
+            to: 'Customer@Example.com',
+            source: 'CAMPAIGN',
+            sourceId: 'campaign-1',
+            account: { name: 'Example Store', wooUrl: null },
+        } as any);
+
+        const res = await app.inject({
+            method: 'GET',
+            url: '/api/email/unsubscribe-list/track-1/list-1',
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toContain('removed from Weekly Offers');
+        expect(prisma.marketingCampaign.findFirst).toHaveBeenCalledWith({
+            where: { id: 'campaign-1', accountId: 'acct-1', listId: 'list-1' },
+            select: { list: { select: { id: true, name: true } } },
+        });
+        expect(prisma.emailListMember.updateMany).toHaveBeenCalledWith({
+            where: {
+                accountId: 'acct-1',
+                listId: 'list-1',
+                email: { equals: 'Customer@Example.com', mode: 'insensitive' },
+                isSubscribed: true,
+            },
+            data: {
+                isSubscribed: false,
+                unsubscribedAt: expect.any(Date),
+                source: 'EMAIL_LINK',
+            },
+        });
+        expect(prisma.emailUnsubscribe.upsert).not.toHaveBeenCalled();
+    });
+
+    it('rejects a list that was not targeted by the tracked campaign', async () => {
+        vi.mocked(prisma.emailLog.findUnique).mockResolvedValueOnce({
+            id: 'email-log-1', trackingId: 'track-1', accountId: 'acct-1',
+            to: 'customer@example.com', source: 'CAMPAIGN', sourceId: 'campaign-1',
+            account: { name: 'Example Store', wooUrl: null },
+        } as any);
+        vi.mocked(prisma.marketingCampaign.findFirst).mockResolvedValueOnce(null);
+
+        const res = await app.inject({
+            method: 'GET',
+            url: '/api/email/unsubscribe-list/track-1/other-list',
+        });
+
+        expect(res.statusCode).toBe(404);
+        expect(prisma.emailListMember.updateMany).not.toHaveBeenCalled();
     });
 });

@@ -4,7 +4,7 @@ import { normalizeOrderStatus } from '../../constants/orderStatus';
 
 export class IndexingService {
 
-    private static readonly PRODUCT_DOCUMENT_VERSION = 2;
+    private static readonly PRODUCT_DOCUMENT_VERSION = 3;
 
     private static async createIndexIfNotExists(indexName: string, mapping: any) {
         try {
@@ -94,6 +94,7 @@ export class IndexingService {
                 id: { type: 'keyword' },
                 wooId: { type: 'integer' },
                 name: { type: 'text' },
+                nameSort: { type: 'keyword' },
                 sku: { type: 'keyword' },
                 stock_status: { type: 'keyword' },
                 stock_quantity: { type: 'integer' },
@@ -215,6 +216,7 @@ export class IndexingService {
                 id: product.id,
                 wooId: externalId,
                 name: product.name,
+                nameSort: product.name?.toLowerCase() || '',
                 sku: product.sku,
                 stock_status: product.stockStatus || product.stock_status,
                 stock_quantity: product.stockQuantity ?? product.stock_quantity ?? null,
@@ -429,6 +431,7 @@ export class IndexingService {
                     id: product.id,
                     wooId: externalId,
                     name: product.name,
+                    nameSort: product.name?.toLowerCase() || '',
                     sku: product.sku,
                     stock_status: product.stockStatus || product.stock_status,
                     stock_quantity: product.stockQuantity ?? product.stock_quantity ?? null,
@@ -500,8 +503,8 @@ export class IndexingService {
         return indexed;
     }
 
-    /** Run the document-key migration once per Elasticsearch products index. */
-    static async ensureProductDocumentIds(): Promise<void> {
+    /** Rebuild product documents once when their indexed projection changes. */
+    static async ensureProductIndexProjection(): Promise<void> {
         if (!await isElasticsearchAvailable()) return;
 
         const mappings = await esClient.indices.getMapping({ index: 'products' }) as any;
@@ -515,7 +518,7 @@ export class IndexingService {
 
         for (const account of accounts) {
             const indexed = await this.rebuildProductsForAccount(account.id);
-            Logger.info('Rebuilt product index with stable document IDs', {
+            Logger.info('Rebuilt product index projection', {
                 accountId: account.id,
                 indexed
             });

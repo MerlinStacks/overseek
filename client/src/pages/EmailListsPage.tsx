@@ -307,13 +307,13 @@ export function EmailListsPage({ embedded = false }: EmailListsPageProps) {
                                     <button
                                         key={list.id}
                                         onClick={() => setSelectedListId(list.id)}
-                                        className={`w-full rounded-xl border p-3 text-left transition ${
+                                        className={`w-full rounded-xl border p-3 transition ${
                                             isSelected
                                                 ? 'border-indigo-300 bg-indigo-50 shadow-xs ring-2 ring-indigo-100'
                                                 : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                         }`}
                                     >
-                                        <div className="flex items-start justify-between gap-3">
+                                        <div className="flex w-full items-start justify-between gap-3 text-left">
                                             <div className="min-w-0">
                                                 <div className="truncate text-sm font-semibold text-gray-900">{list.name}</div>
                                                 {list.description && <div className="mt-1 line-clamp-2 text-xs text-gray-500">{list.description}</div>}

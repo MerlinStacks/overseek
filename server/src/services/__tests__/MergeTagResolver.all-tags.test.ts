@@ -47,6 +47,7 @@ describe('MergeTagResolver all merge tags', () => {
         '{{cart.itemsTable}}',
         '{{store_url}}',
         '{{unsubscribe_url}}',
+        '{{unsubscribe_list_url}}',
         '{{preferences_url}}',
     ];
 
@@ -55,6 +56,7 @@ describe('MergeTagResolver all merge tags', () => {
         linkTriggerUrl: 'https://store.example.com/special',
         preferencesUrl: 'https://store.example.com/my-account/edit-account',
         unsubscribeUrl: 'https://store.example.com/?unsubscribe=token-123',
+        unsubscribeListUrl: 'https://store.example.com/?unsubscribe-list=list-123',
         order: {
             id: 99,
             orderNumber: 'WC-99',
@@ -143,6 +145,7 @@ describe('MergeTagResolver all merge tags', () => {
             '{{link_trigger}}',
             '{{preferences_url}}',
             '{{unsubscribe_url}}',
+            '{{unsubscribe_list_url}}',
             '{{customer.firstName}}',
             '{{customer.lastName}}',
             '{{customer.email}}',
@@ -197,6 +200,7 @@ describe('MergeTagResolver all merge tags', () => {
         expect(html).toContain('https://store.example.com/special');
         expect(html).toContain('https://store.example.com/my-account/edit-account');
         expect(html).toContain('https://store.example.com/?unsubscribe=token-123');
+        expect(html).toContain('https://store.example.com/?unsubscribe-list=list-123');
         expect(html).toContain('https://store.example.com/products/classic-hoodie');
         expect(html).toContain('https://store.example.com/invoices/99.pdf');
         expect(html).toContain('https://store.example.com/recover/abc');

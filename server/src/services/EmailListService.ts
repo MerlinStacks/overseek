@@ -105,23 +105,25 @@ export class EmailListService {
         });
     }
 
-    async createList(accountId: string, data: { name: string; description?: string }) {
+    async createList(accountId: string, data: { name: string; description?: string; isDefault?: boolean }) {
         return prisma.emailList.create({
             data: {
                 accountId,
                 name: data.name.trim(),
-                description: data.description?.trim() || null
+                description: data.description?.trim() || null,
+                isDefault: data.isDefault ?? false
             }
         });
     }
 
-    async updateList(accountId: string, listId: string, data: { name?: string; description?: string; isActive?: boolean }) {
+    async updateList(accountId: string, listId: string, data: { name?: string; description?: string; isActive?: boolean; isDefault?: boolean }) {
         return prisma.emailList.updateMany({
             where: { id: listId, accountId },
             data: {
                 ...(data.name !== undefined ? { name: data.name.trim() } : {}),
                 ...(data.description !== undefined ? { description: data.description?.trim() || null } : {}),
-                ...(data.isActive !== undefined ? { isActive: data.isActive } : {})
+                ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+                ...(data.isDefault !== undefined ? { isDefault: data.isDefault } : {})
             }
         });
     }
@@ -238,6 +240,50 @@ export class EmailListService {
         for (const list of activeLists) {
             await this.setMemberSubscription(accountId, list.id, normalizedEmail, desiredIds.has(list.id), source);
         }
+    }
+
+    async applyNewCustomerDefaults(accountId: string, email: string, wooCustomerId: string) {
+        const normalizedEmail = normalizeEmail(email);
+        if (!normalizedEmail) return;
+
+        const account = await prisma.account.findUnique({
+            where: { id: accountId },
+            select: { subscribeNewCustomersByDefault: true }
+        });
+        if (!account) return;
+
+        if (!account.subscribeNewCustomersByDefault) {
+            await prisma.emailUnsubscribe.upsert({
+                where: { accountId_email: { accountId, email: normalizedEmail } },
+                create: {
+                    accountId,
+                    email: normalizedEmail,
+                    scope: 'MARKETING',
+                    reason: 'New customer default'
+                },
+                update: {}
+            });
+            return;
+        }
+
+        const defaultLists = await prisma.emailList.findMany({
+            where: { accountId, isActive: true, isDefault: true },
+            select: { id: true }
+        });
+        if (defaultLists.length === 0) return;
+
+        await prisma.emailListMember.createMany({
+            data: defaultLists.map((list) => ({
+                accountId,
+                listId: list.id,
+                email: normalizedEmail,
+                wooCustomerId,
+                isSubscribed: true,
+                source: 'DEFAULT',
+                subscribedAt: new Date()
+            })),
+            skipDuplicates: true
+        });
     }
 
     async getEmailListPreferences(accountId: string, email: string) {

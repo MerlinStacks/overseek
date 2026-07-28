@@ -35,6 +35,7 @@ interface Account {
     revenueTaxInclusive?: boolean;
     autoSendInvoiceOnNewOrder?: boolean;
     invoiceRecipientEmail?: string | null;
+    subscribeNewCustomersByDefault?: boolean;
 }
 
 interface AccountContextType {

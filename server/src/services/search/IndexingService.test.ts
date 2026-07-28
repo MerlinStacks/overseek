@@ -43,6 +43,7 @@ describe('IndexingService product document IDs', () => {
         expect(operations[1]).toMatchObject({
             id: 'internal-product-uuid',
             wooId: 42,
+            nameSort: 'product',
             variations: [{ id: 84 }]
         });
     });

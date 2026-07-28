@@ -246,7 +246,10 @@ export class ProductSearchService {
 
         const explicitSort = sortField
             ? sortField === 'name'
-                ? [{ 'name.keyword': { order: sortDirection, unmapped_type: 'keyword' } }] as any
+                ? [
+                    { nameSort: { order: sortDirection, unmapped_type: 'keyword' } },
+                    { wooId: { order: 'asc', unmapped_type: 'integer' } }
+                ] as any
                 : [{ price: { order: sortDirection, missing: '_last', unmapped_type: 'double' } }] as any
             : null;
 

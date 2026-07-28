@@ -178,6 +178,10 @@ export class EmailService {
         return `${this.buildApiBaseUrl()}/api/email/preferences/${trackingId}`;
     }
 
+    private buildListUnsubscribeUrl(trackingId: string, listId: string): string {
+        return `${this.buildApiBaseUrl()}/api/email/unsubscribe-list/${trackingId}/${listId}`;
+    }
+
     private async enforceSendingLimits(accountId: string): Promise<{ allowed: boolean; reason?: string }> {
         const settings = await this.getEmailSettings(accountId);
 
@@ -291,6 +295,7 @@ export class EmailService {
             fromName?: string;
             fromEmail?: string;
             replyToEmail?: string;
+            listId?: string;
         }
     ) {
         const emailAccount = await prisma.emailAccount.findFirst({
@@ -313,27 +318,27 @@ export class EmailService {
             throw new Error("Email account not found");
         }
 
-        const limitCheck = await this.enforceSendingLimits(accountId);
-        if (!limitCheck.allowed) {
-            await prisma.emailLog.create({
-                data: {
-                    accountId,
-                    emailAccountId,
-                    to,
-                    subject,
-                    status: 'SKIPPED',
-                    errorMessage: limitCheck.reason || 'Email sending blocked by account limits',
-                    source: options?.source,
-                    sourceId: options?.sourceId,
-                    canRetry: false
-                }
-            });
-            return { skipped: true, reason: 'account_sending_limit_reached' };
-        }
-
         const emailCategory = options?.category || 'MARKETING';
 
         if (emailCategory === 'MARKETING') {
+            const limitCheck = await this.enforceSendingLimits(accountId);
+            if (!limitCheck.allowed) {
+                await prisma.emailLog.create({
+                    data: {
+                        accountId,
+                        emailAccountId,
+                        to,
+                        subject,
+                        status: 'SKIPPED',
+                        errorMessage: limitCheck.reason || 'Email sending blocked by account limits',
+                        source: options?.source,
+                        sourceId: options?.sourceId,
+                        canRetry: false
+                    }
+                });
+                return { skipped: true, reason: 'account_sending_limit_reached' };
+            }
+
             const pressureCheck = await this.enforceMarketingPressureCap(accountId, to, options?.source);
             if (!pressureCheck.allowed) {
                 await prisma.emailLog.create({
@@ -353,21 +358,16 @@ export class EmailService {
             }
         }
 
-        // A human inbox reply answers a message initiated by the customer, so it is
-        // not an unsolicited send and must remain possible after an ALL opt-out.
-        const isInboxReply = options?.source?.toUpperCase() === 'INBOX' && options.isInboxReply === true;
-        const unsubscribe = isInboxReply
-            ? null
-            : await prisma.emailUnsubscribe.findFirst({
+        const unsubscribe = emailCategory === 'MARKETING'
+            ? await prisma.emailUnsubscribe.findFirst({
                 where: {
                     accountId,
                     email: { equals: to, mode: 'insensitive' },
-                    ...(emailCategory === 'TRANSACTIONAL'
-                        ? { scope: 'ALL' }
-                        : { scope: { in: ['MARKETING', 'ALL'] } })
+                    scope: { in: ['MARKETING', 'ALL'] }
                 },
                 select: { id: true, scope: true }
-            });
+            })
+            : null;
         if (unsubscribe) {
             await prisma.emailLog.create({
                 data: {
@@ -408,6 +408,9 @@ export class EmailService {
         const preferencesUrl = emailCategory === 'MARKETING'
             ? this.buildPreferencesUrl(trackingId)
             : null;
+        const listUnsubscribeUrl = emailCategory === 'MARKETING' && options?.listId
+            ? this.buildListUnsubscribeUrl(trackingId, options.listId)
+            : null;
 
         let htmlWithMergeTagUrls = htmlWithTracking;
         if (unsubscribeUrl) {
@@ -416,6 +419,13 @@ export class EmailService {
         }
         if (preferencesUrl) {
             htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{preferences_url\}\}/g, preferencesUrl);
+        }
+        if (listUnsubscribeUrl) {
+            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/https?:\/\/\{\{unsubscribe_list_url\}\}\/?/gi, listUnsubscribeUrl);
+            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{unsubscribe_list_url\}\}/g, listUnsubscribeUrl);
+        } else if (preferencesUrl) {
+            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/https?:\/\/\{\{unsubscribe_list_url\}\}\/?/gi, preferencesUrl);
+            htmlWithMergeTagUrls = htmlWithMergeTagUrls.replace(/\{\{unsubscribe_list_url\}\}/g, preferencesUrl);
         }
 
         const overrideFromEmail = options?.fromEmail?.trim();

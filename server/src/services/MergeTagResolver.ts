@@ -29,6 +29,8 @@ interface MergeTagContext {
     preferences_url?: string;
     unsubscribeUrl?: string;
     unsubscribe_url?: string;
+    unsubscribeListUrl?: string;
+    unsubscribe_list_url?: string;
     accountId?: string;
     currency?: string;
 }
@@ -90,6 +92,8 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     if (preferencesUrl) replaceMergeTag('{{preferences_url}}', preferencesUrl);
     const unsubscribeUrl = context.unsubscribeUrl || context.unsubscribe_url || '';
     if (unsubscribeUrl) replaceMergeTag('{{unsubscribe_url}}', unsubscribeUrl);
+    const unsubscribeListUrl = context.unsubscribeListUrl || context.unsubscribe_list_url || '';
+    if (unsubscribeListUrl) replaceMergeTag('{{unsubscribe_list_url}}', unsubscribeListUrl);
 
     // Order merge tags
     if (context.order) {

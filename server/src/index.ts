@@ -121,8 +121,8 @@ async function start() {
 
     // Run in the background so large multi-account index repairs do not delay
     // API startup. The migration is versioned in Elasticsearch index metadata.
-    IndexingService.ensureProductDocumentIds()
-      .catch(err => Logger.error('[Startup] Failed to repair product document IDs', { error: err }));
+    IndexingService.ensureProductIndexProjection()
+      .catch(err => Logger.error('[Startup] Failed to rebuild product index projection', { error: err }));
 
   } catch (error) {
     Logger.error('[Startup] Failed to initialize Elasticsearch indices', { error });

@@ -37,22 +37,22 @@ export function SupplyChainPage() {
                     <p className="text-sm text-gray-500">Manage suppliers, materials, and purchase orders</p>
                 </div>
 
-                <div className="flex gap-2 overflow-x-auto sm:gap-4">
+                <div className="flex gap-2 overflow-x-auto pb-1 sm:gap-4">
                     <button
                         onClick={() => setActiveTab('purchasing')}
-                        className={`flex shrink-0 items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'purchasing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'purchasing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Calculator size={18} /> Purchase Orders
                     </button>
                     <button
                         onClick={() => setActiveTab('suppliers')}
-                        className={`flex shrink-0 items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'suppliers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'suppliers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Truck size={18} /> Suppliers & Materials
                     </button>
                     <button
                         onClick={() => setActiveTab('movements')}
-                        className={`flex shrink-0 items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'movements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`flex shrink-0 items-center gap-2 px-2 py-2 font-medium transition-colors border-b-2 ${activeTab === 'movements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <History size={18} /> Stock Movements
                     </button>

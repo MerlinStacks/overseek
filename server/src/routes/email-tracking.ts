@@ -216,6 +216,46 @@ async function upsertPreference(token: string, scope?: string, reason?: string) 
     };
 }
 
+async function unsubscribeFromList(token: string, listId: string) {
+    const context = await getPreferenceContext(token);
+    if (!context?.emailLog.sourceId || !['CAMPAIGN', 'TEST'].includes(context.emailLog.source || '')) return null;
+
+    const campaign = await prisma.marketingCampaign.findFirst({
+        where: {
+            id: context.emailLog.sourceId,
+            accountId: context.emailLog.accountId,
+            listId
+        },
+        select: {
+            list: { select: { id: true, name: true } }
+        }
+    });
+    if (!campaign?.list) return null;
+
+    const result = await prisma.emailListMember.updateMany({
+        where: {
+            accountId: context.emailLog.accountId,
+            listId: campaign.list.id,
+            email: { equals: context.email, mode: 'insensitive' },
+            isSubscribed: true
+        },
+        data: {
+            isSubscribed: false,
+            unsubscribedAt: new Date(),
+            source: 'EMAIL_LINK'
+        }
+    });
+
+    Logger.info('Recipient unsubscribed from email list', {
+        accountId: context.emailLog.accountId,
+        email: context.email,
+        listId: campaign.list.id,
+        changed: result.count > 0
+    });
+
+    return { context, list: campaign.list };
+}
+
 function renderHostedPreferenceHtml(context: NonNullable<Awaited<ReturnType<typeof getPreferenceContext>>>) {
     const escapedEmail = escapeHtml(context.email);
     const escapedAccountName = escapeHtml(context.accountName);
@@ -529,6 +569,42 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
             } catch (error) {
                 Logger.error('Unsubscribe error', { token, error });
                 return reply.code(500).send({ error: 'Failed to unsubscribe' });
+            }
+        }
+    );
+
+    /**
+     * Remove the tracked recipient from the list targeted by this campaign.
+     * GET /api/email/unsubscribe-list/:token/:listId
+     */
+    fastify.get<{ Params: { token: string; listId: string } }>(
+        '/unsubscribe-list/:token/:listId',
+        async (request, reply) => {
+            const { token, listId } = request.params;
+
+            try {
+                const updated = await unsubscribeFromList(token, listId);
+                if (!updated) {
+                    return reply.code(404).type('text/html').send(`
+                        <!DOCTYPE html><html><head><title>Invalid Link</title></head>
+                        <body style="font-family: system-ui; padding: 40px; text-align: center;">
+                            <h1>Invalid Unsubscribe Link</h1>
+                            <p>This list unsubscribe link is invalid.</p>
+                        </body></html>
+                    `);
+                }
+
+                return reply.type('text/html').send(`
+                    <!DOCTYPE html><html><head><title>Unsubscribed</title></head>
+                    <body style="font-family: system-ui; padding: 40px; text-align: center;">
+                        <h1>Unsubscribed</h1>
+                        <p>${escapeHtml(updated.context.email)} has been removed from ${escapeHtml(updated.list.name)}.</p>
+                        <p style="color: #666; font-size: 14px;">Other email subscriptions are unchanged. You may close this window.</p>
+                    </body></html>
+                `);
+            } catch (error) {
+                Logger.error('List unsubscribe error', { token, listId, error });
+                return reply.code(500).send({ error: 'Failed to unsubscribe from list' });
             }
         }
     );

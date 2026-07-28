@@ -80,9 +80,13 @@ describe('EmailService unsubscribe suppression', () => {
         expect(result).toMatchObject({ messageId: 'message-1' });
     });
 
-    it('continues to suppress non-inbox transactional email for an ALL opt-out', async () => {
+    it('sends automation transactional email regardless of an ALL opt-out', async () => {
         const service = new EmailService();
-        const createTransporter = vi.spyOn(service, 'createTransporter');
+        const sendMail = vi.fn().mockResolvedValue({ messageId: 'message-2' });
+        vi.spyOn(service, 'createTransporter').mockResolvedValue({
+            sendMail,
+            close: vi.fn()
+        } as any);
 
         const result = await service.sendEmail(
             'account-1',
@@ -94,13 +98,18 @@ describe('EmailService unsubscribe suppression', () => {
             { source: 'AUTOMATION', category: 'TRANSACTIONAL' }
         );
 
-        expect(result).toEqual({ skipped: true, reason: 'unsubscribed_all' });
-        expect(createTransporter).not.toHaveBeenCalled();
+        expect(mockEmailUnsubscribeFindFirst).not.toHaveBeenCalled();
+        expect(sendMail).toHaveBeenCalledOnce();
+        expect(result).toMatchObject({ messageId: 'message-2' });
     });
 
-    it('continues to suppress a newly composed inbox email for an ALL opt-out', async () => {
+    it('sends composed transactional email regardless of an ALL opt-out', async () => {
         const service = new EmailService();
-        const createTransporter = vi.spyOn(service, 'createTransporter');
+        const sendMail = vi.fn().mockResolvedValue({ messageId: 'message-3' });
+        vi.spyOn(service, 'createTransporter').mockResolvedValue({
+            sendMail,
+            close: vi.fn()
+        } as any);
 
         const result = await service.sendEmail(
             'account-1',
@@ -112,7 +121,39 @@ describe('EmailService unsubscribe suppression', () => {
             { source: 'INBOX', category: 'TRANSACTIONAL' }
         );
 
-        expect(result).toEqual({ skipped: true, reason: 'unsubscribed_all' });
-        expect(createTransporter).not.toHaveBeenCalled();
+        expect(mockEmailUnsubscribeFindFirst).not.toHaveBeenCalled();
+        expect(sendMail).toHaveBeenCalledOnce();
+        expect(result).toMatchObject({ messageId: 'message-3' });
+    });
+
+    it('adds RFC 8058 headers and resolves global and list unsubscribe URLs for marketing email', async () => {
+        process.env.API_URL = 'https://api.example.com';
+        mockEmailUnsubscribeFindFirst.mockResolvedValueOnce(null);
+        const service = new EmailService();
+        const sendMail = vi.fn().mockResolvedValue({ messageId: 'message-4' });
+        vi.spyOn(service, 'createTransporter').mockResolvedValue({
+            sendMail,
+            close: vi.fn()
+        } as any);
+
+        await service.sendEmail(
+            'account-1',
+            'email-account-1',
+            'customer@example.com',
+            'Weekly offers',
+            '<a href="{{unsubscribe_url}}">Stop all marketing</a><a href="{{unsubscribe_list_url}}">Leave this list</a>',
+            undefined,
+            { source: 'CAMPAIGN', sourceId: 'campaign-1', category: 'MARKETING', listId: 'list-1' }
+        );
+
+        const mail = sendMail.mock.calls[0][0];
+        expect(mail.headers).toEqual({
+            'List-Unsubscribe': expect.stringMatching(/^<https:\/\/api\.example\.com\/api\/email\/unsubscribe\/[0-9a-f-]+>$/),
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+        });
+        expect(mail.html).toMatch(/href="https:\/\/api\.example\.com\/api\/email\/unsubscribe\/[0-9a-f-]+"/);
+        expect(mail.html).toMatch(/href="https:\/\/api\.example\.com\/api\/email\/unsubscribe-list\/[0-9a-f-]+\/list-1"/);
+
+        delete process.env.API_URL;
     });
 });

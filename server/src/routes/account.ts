@@ -108,7 +108,8 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 goldPrice18ct, goldPrice9ct, goldPrice18ctWhite, goldPrice9ctWhite, goldPriceMargin,
                 revenueTaxInclusive,
                 autoSendInvoiceOnNewOrder,
-                invoiceRecipientEmail
+                invoiceRecipientEmail,
+                subscribeNewCustomersByDefault
             } = request.body as any;
             const userId = request.user!.id;
 
@@ -128,6 +129,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
             if (appearance && typeof appearance === 'object' && !Array.isArray(appearance)) data.appearance = appearance;
             if (typeof revenueTaxInclusive === 'boolean') data.revenueTaxInclusive = revenueTaxInclusive;
             if (typeof autoSendInvoiceOnNewOrder === 'boolean') data.autoSendInvoiceOnNewOrder = autoSendInvoiceOnNewOrder;
+            if (typeof subscribeNewCustomersByDefault === 'boolean') data.subscribeNewCustomersByDefault = subscribeNewCustomersByDefault;
             if (invoiceRecipientEmail !== undefined) {
                 const cleanedInvoiceRecipientEmail = typeof invoiceRecipientEmail === 'string'
                     ? invoiceRecipientEmail.trim().toLowerCase()
