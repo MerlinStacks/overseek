@@ -81,4 +81,31 @@ describe('artwork events', () => {
 
         await fastify.close();
     });
+
+    it('normalizes nested proof versions on artwork changes events', async () => {
+        const fastify = Fastify();
+        await fastify.register(artworkEventsRoutes);
+        const listener = vi.fn();
+        EventBus.on(EVENTS.ARTWORK.CHANGES_REQUESTED, listener);
+
+        const response = await fastify.inject({
+            method: 'POST',
+            url: '/account-1',
+            payload: {
+                event: {
+                    event_status: 'changes_requested',
+                    customer_email: 'buyer@example.com',
+                    metadata: { proofVersion: 'V2' }
+                }
+            }
+        });
+
+        expect(response.statusCode, response.body).toBe(202);
+        expect(listener).toHaveBeenCalledWith({
+            accountId: 'account-1',
+            artwork: expect.objectContaining({ proofVersion: 2 })
+        });
+
+        await fastify.close();
+    });
 });

@@ -23,11 +23,35 @@ interface ArtworkEventPayload {
         customer_name?: string;
         proof_url?: string;
         proof_version?: string | number;
+        proofVersion?: string | number;
+        proof?: { version?: string | number };
+        metadata?: { proof_version?: string | number; proofVersion?: string | number };
+        data?: { proof_version?: string | number; proofVersion?: string | number };
         notes?: string;
         staff_user?: string;
         source?: string;
         source_version?: string;
     };
+}
+
+function resolveProofVersion(event: NonNullable<ArtworkEventPayload['event']>): number | null {
+    const candidates = [
+        event.proof_version,
+        event.proofVersion,
+        event.proof?.version,
+        event.metadata?.proof_version,
+        event.metadata?.proofVersion,
+        event.data?.proof_version,
+        event.data?.proofVersion,
+    ];
+
+    for (const candidate of candidates) {
+        if (candidate === undefined || candidate === null || candidate === '') continue;
+        const match = String(candidate).trim().match(/^(?:v(?:ersion)?\s*)?(\d+)$/i);
+        if (match) return Number(match[1]);
+    }
+
+    return null;
 }
 
 export function normalizeArtworkStatus(...values: Array<string | undefined>): ArtworkStatus | null {
@@ -98,6 +122,7 @@ async function handleArtworkEvent(
     }
 
     const mapped = mapArtworkStatusToTrigger(normalizedStatus);
+    const proofVersion = resolveProofVersion(event);
     const triggerData = {
         accountId,
         email: event.customer_email || null,
@@ -110,7 +135,7 @@ async function handleArtworkEvent(
         eventName: event.event_name || null,
         occurredAt: event.occurred_at || null,
         proofUrl: event.proof_url || null,
-        proofVersion: event.proof_version || null,
+        proofVersion,
         notes: event.notes || null,
         staffUser: event.staff_user || null,
         source: event.source || 'ck_order_workflow_suite',
@@ -125,6 +150,7 @@ async function handleArtworkEvent(
         triggerType: mapped.triggerType,
         orderId: event.order_id ?? null,
         eventStatus: normalizedStatus,
+        proofVersion,
     });
 
     return reply.code(202).send({ success: true, accepted: true, triggerType: mapped.triggerType });

@@ -199,6 +199,16 @@ export class AutomationConditionService {
                 return Boolean(context.email?.clicked);
             case 'inbox.customerSentEmail':
                 return Boolean(context.customer?.hasInboxEmail || context.inbox?.customerSentEmail);
+            case 'proofVersion':
+                return context.proofVersion
+                    ?? context.proof_version
+                    ?? context.rawEvent?.proofVersion
+                    ?? context.rawEvent?.proof_version
+                    ?? context.rawEvent?.proof?.version
+                    ?? context.rawEvent?.metadata?.proofVersion
+                    ?? context.rawEvent?.metadata?.proof_version
+                    ?? context.rawEvent?.data?.proofVersion
+                    ?? context.rawEvent?.data?.proof_version;
             case 'date.dayOfWeek':
                 return this.resolveDayOfWeek();
             case 'date.hour':

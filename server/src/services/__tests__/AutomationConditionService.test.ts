@@ -194,6 +194,11 @@ describe('AutomationConditionService', () => {
             { field: 'proofVersion', operator: 'gt', value: '1' },
             { proofVersion: '1', eventStatus: 'approval_requested' }
         )).toBe(false);
+
+        expect(automationConditionService.evaluate(
+            { field: 'proofVersion', operator: 'neq', value: '1' },
+            { rawEvent: { metadata: { proof_version: 2 } } }
+        )).toBe(true);
     });
 
     it('matches order status conditions after normalizing Woo status prefixes', () => {
