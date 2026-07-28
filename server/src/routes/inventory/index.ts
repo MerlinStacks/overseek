@@ -10,6 +10,7 @@ import bomProductRoutes from './bom-products';
 import purchaseOrderRoutes from './purchase-orders';
 import picklistRoutes from './picklist';
 import maintenanceRoutes from './maintenance';
+import { stockMovementRoutes } from './stock-movements';
 
 const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -24,6 +25,7 @@ const inventoryRoutes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(purchaseOrderRoutes);
     await fastify.register(picklistRoutes);
     await fastify.register(maintenanceRoutes);
+    await fastify.register(stockMovementRoutes);
 
     // Settings
     fastify.get('/settings', async (request, reply) => {

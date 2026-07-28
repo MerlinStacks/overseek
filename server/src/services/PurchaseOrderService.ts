@@ -449,6 +449,24 @@ export class PurchaseOrderService {
 
                 updated++;
                 updatedProductIds.push(product.id);
+                await tx.auditLog.create({
+                    data: {
+                        accountId,
+                        action: 'UPDATE',
+                        resource: 'PRODUCT',
+                        resourceId: product.id,
+                        source: 'SYSTEM_SYNC',
+                        previousValue: { stock_quantity: newStock - item.quantity },
+                        validationStatus: 'PASSED',
+                        details: {
+                            stock_quantity: newStock,
+                            movementType: 'PO_RECEIPT',
+                            reference: po.orderNumber || po.id,
+                            variationWooId: item.variationWooId,
+                            reason: 'Purchase order received'
+                        }
+                    }
+                });
                 Logger.info('Stock received for PO item', {
                     productId: product.id,
                     itemName: item.name,
@@ -633,6 +651,24 @@ export class PurchaseOrderService {
 
                 updated++;
                 updatedProductIds.push(product.id);
+                await tx.auditLog.create({
+                    data: {
+                        accountId,
+                        action: 'UPDATE',
+                        resource: 'PRODUCT',
+                        resourceId: product.id,
+                        source: 'SYSTEM_SYNC',
+                        previousValue: { stock_quantity: newStock + item.quantity },
+                        validationStatus: 'PASSED',
+                        details: {
+                            stock_quantity: newStock,
+                            movementType: 'PO_REVERSAL',
+                            reference: po.orderNumber || po.id,
+                            variationWooId: item.variationWooId,
+                            reason: 'Purchase order receipt reversed'
+                        }
+                    }
+                });
                 Logger.info('Stock unreceived for item', {
                     productId: product.id,
                     itemName: item.name,

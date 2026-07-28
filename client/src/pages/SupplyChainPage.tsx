@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Calculator, Truck } from 'lucide-react';
+import { Calculator, History, Truck } from 'lucide-react';
 import { SuppliersList } from '../components/inventory/SuppliersList';
 import { PurchaseOrderList } from '../components/inventory/PurchaseOrderList';
+import { StockMovementsList } from '../components/inventory/StockMovementsList';
 
-type SupplyChainTab = 'suppliers' | 'purchasing';
+type SupplyChainTab = 'suppliers' | 'purchasing' | 'movements';
 
 const DEFAULT_TAB: SupplyChainTab = 'purchasing';
-const VALID_TABS: SupplyChainTab[] = ['purchasing', 'suppliers'];
+const VALID_TABS: SupplyChainTab[] = ['purchasing', 'suppliers', 'movements'];
 
 export function SupplyChainPage() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -30,29 +31,37 @@ export function SupplyChainPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-end border-b pb-4">
+            <div className="flex flex-col gap-4 border-b pb-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Stock & Suppliers</h1>
                     <p className="text-sm text-gray-500">Manage suppliers, materials, and purchase orders</p>
                 </div>
 
-                <div className="flex gap-4">
+                <div className="flex gap-2 overflow-x-auto sm:gap-4">
                     <button
                         onClick={() => setActiveTab('purchasing')}
-                        className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'purchasing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`flex shrink-0 items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'purchasing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Calculator size={18} /> Purchase Orders
                     </button>
                     <button
                         onClick={() => setActiveTab('suppliers')}
-                        className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'suppliers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`flex shrink-0 items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'suppliers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
                         <Truck size={18} /> Suppliers & Materials
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('movements')}
+                        className={`flex shrink-0 items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'movements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <History size={18} /> Stock Movements
                     </button>
                 </div>
             </div>
 
-            {activeTab === 'purchasing' ? <PurchaseOrderList /> : <SuppliersList />}
+            {activeTab === 'purchasing' && <PurchaseOrderList />}
+            {activeTab === 'suppliers' && <SuppliersList />}
+            {activeTab === 'movements' && <StockMovementsList />}
         </div>
     );
 }
