@@ -47,6 +47,23 @@ describe('ConversionRetryService', () => {
         expect(result).toMatchObject({ totalAttempted: 1, totalRecovered: 1 });
     });
 
+    it('does not select terminal failures for scheduled retries', async () => {
+        vi.mocked(prisma.conversionDelivery.findMany).mockResolvedValue([]);
+
+        await retryFailedConversions();
+
+        expect(prisma.conversionDelivery.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                OR: expect.arrayContaining([
+                    expect.objectContaining({
+                        status: 'FAILED',
+                        lastError: { not: { startsWith: 'NON_RETRYABLE:' } },
+                    }),
+                ]),
+            }),
+        }));
+    });
+
     it('returns a claimed row to FAILED after a network error', async () => {
         vi.mocked(prisma.conversionDelivery.findMany).mockResolvedValue([{
             id: 'delivery-1', accountId: 'account-1', platform: 'SNAPCHAT', payload: { data: [] },

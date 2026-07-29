@@ -193,6 +193,23 @@ describe('GoogleEnhancedConversionsService', () => {
         expect(adjustment.restatementValue).toBeUndefined();
     });
 
+    it('should use the submission time instead of a future order date for adjustments', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-29T01:00:00.000Z'));
+
+        try {
+            await service.sendEvent(accountId, config, {
+                ...purchaseData,
+                payload: { ...purchaseData.payload, dateCreated: '2026-07-29T11:00:00+00:00' },
+            }, session);
+
+            const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+            expect(body.conversionAdjustments[0].adjustmentDateTime).toBe('2026-07-29 01:00:00+00:00');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('should use top-level Google click attribution for click conversions', async () => {
         const configWithAtc = { ...config, conversionActionIdAddToCart: 'atc-action-456' };
         const addToCartData = {
@@ -245,7 +262,16 @@ describe('GoogleEnhancedConversionsService', () => {
 
         expect(sanitized.conversionAdjustments[0].gclidDateTimePair).toBeUndefined();
         expect(sanitized.conversionAdjustments[0].restatementValue).toBeUndefined();
+        expect(sanitized.conversionAdjustments[0].adjustmentDateTime).toBeDefined();
         expect(storedPayload.conversionAdjustments[0].gclidDateTimePair).toBeDefined();
+    });
+
+    it('should mark an undecodable gclid as non-retryable', () => {
+        const error = {
+            message: 'The imported gclid could not be decoded. Make sure you use the correct gclid.',
+        };
+
+        expect((service as any).normalizeGoogleErrorMessage(error)).toMatch(/^NON_RETRYABLE:/);
     });
 
     it('should replay a stored enhancement through the direct retry contract', async () => {

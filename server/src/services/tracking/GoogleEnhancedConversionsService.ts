@@ -204,23 +204,14 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         data: TrackingEventPayload,
         userData: ReturnType<typeof extractUserData>,
     ): Record<string, any> {
-        // Use the order's actual creation time if provided by the plugin.
-        // Falling back to now is acceptable for real-time events but the
-        // conversionDateTime MUST be close to when the Google Ads tag fired
-        // on the thank-you page so Google can match the enhancement to its
-        // existing conversion record.
-        const orderDate = data.payload?.date || data.payload?.orderDate || data.payload?.dateCreated;
-        const conversionTime = orderDate
-            ? new Date(orderDate).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00')
-            : new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00');
-
         const orderId = getPayloadWooOrderIdString(data.payload) || eventId;
 
         const adjustment: Record<string, any> = {
             conversionAction: `customers/${customerId.replace(/-/g, '')}/conversionActions/${conversionActionId}`,
             adjustmentType: 'ENHANCEMENT',
             orderId,
-            adjustmentDateTime: conversionTime,
+            // This is the adjustment submission time, not the original order time.
+            adjustmentDateTime: this.googleDateTimeNow(),
             userIdentifiers: [],
         };
 
@@ -268,6 +259,7 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
             if (adjustment.orderId) {
                 delete adjustment.gclidDateTimePair;
             }
+            adjustment.adjustmentDateTime = this.googleDateTimeNow();
         }
         return sanitized;
     }
@@ -667,6 +659,10 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
         return new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
     }
 
+    private googleDateTimeNow(): string {
+        return new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '+00:00');
+    }
+
     private normalizeGoogleErrorMessage(error: any): string {
         const rawMessage = error?.message || JSON.stringify(error);
         const serialized = JSON.stringify(error);
@@ -682,6 +678,8 @@ export class GoogleEnhancedConversionsService implements ConversionPlatformServi
 
     private isNonRetryableGoogleError(serialized: string): boolean {
         return serialized.includes('INVALID_CONVERSION_ACTION_TYPE')
+            || serialized.includes('UNPARSEABLE_GCLID')
+            || serialized.toLowerCase().includes('gclid could not be decoded')
             || serialized.includes('USER_PERMISSION_DENIED')
             || serialized.includes('PERMISSION_DENIED');
     }

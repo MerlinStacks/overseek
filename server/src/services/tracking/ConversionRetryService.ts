@@ -8,6 +8,7 @@ const BATCH_SIZE = 100;
 const MAX_AGE_HOURS = 24;
 const MAX_ATTEMPTS = 5;
 const STALE_PENDING_MINUTES = 15;
+const NON_RETRYABLE_PREFIX = 'NON_RETRYABLE:';
 
 interface RetryDelivery {
     id: string;
@@ -37,7 +38,11 @@ export async function retryFailedConversions(): Promise<{
         where: {
             createdAt: { gte: cutoff },
             OR: [
-                { status: 'FAILED', attempts: { lt: MAX_ATTEMPTS } },
+                {
+                    status: 'FAILED',
+                    attempts: { lt: MAX_ATTEMPTS },
+                    lastError: { not: { startsWith: NON_RETRYABLE_PREFIX } },
+                },
                 {
                     status: 'PENDING',
                     OR: [
