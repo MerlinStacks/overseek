@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, AlertTriangle, CheckCircle, Clock, Settings, Loader2 } from 'lucide-react';
 import ReactEChartsCore from 'echarts-for-react/esm/core';
@@ -116,17 +116,28 @@ export function CAPIHealthPage() {
     const [loading, setLoading] = useState(true);
     const [range, setRange] = useState<string>('7d');
 
-    const fetchHealth = useCallback(async () => {
-        if (!isReady) return;
-        setLoading(true);
-        try {
-            const res = await get<HealthResponse>(`/api/capi/health?accountId=${accountId}&range=${range}`);
-            setData(res);
-        } catch { /* handled by api layer */ }
-        finally { setLoading(false); }
-    }, [get, accountId, isReady, range]);
+    useEffect(() => {
+        let cancelled = false;
 
-    useEffect(() => { fetchHealth(); }, [fetchHealth]);
+        if (!isReady || !accountId) {
+            setData(null);
+            setLoading(false);
+            return;
+        }
+
+        setData(null);
+        setLoading(true);
+        get<HealthResponse>(`/api/capi/health?range=${range}`)
+            .then(res => {
+                if (!cancelled) setData(res);
+            })
+            .catch(() => { /* handled by api layer */ })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+
+        return () => { cancelled = true; };
+    }, [get, accountId, isReady, range]);
 
     const platforms = data ? computePlatformHealth(data.platformSummary) : [];
 
@@ -187,7 +198,7 @@ export function CAPIHealthPage() {
                     <Activity className="w-6 h-6 text-indigo-600" />
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">CAPI Delivery Health</h1>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Server-side conversion delivery across all platforms.</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">Server-side conversion delivery for the selected account.</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">

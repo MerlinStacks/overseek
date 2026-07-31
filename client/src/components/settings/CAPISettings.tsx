@@ -93,9 +93,9 @@ const PLATFORMS: PlatformDef[] = [
             { name: 'conversionLabelViewItem', label: 'View Item Label', type: 'text', placeholder: 'StUvWx...', help: 'Optional. Create a separate conversion action in Google Ads for product views.', section: 'pixel' },
             { name: 'customerId', label: 'Customer ID (for CAPI)', type: 'text', placeholder: '123-456-7890', section: 'capi' },
             { name: 'conversionActionId', label: 'Purchase Action ID', type: 'text', placeholder: '123456789', help: 'Web conversion action with Enhanced Conversions enabled. The browser tag must send the WooCommerce order ID as transaction_id.', section: 'capi' },
-            { name: 'conversionActionIdAddToCart', label: 'Add to Cart Action ID', type: 'text', placeholder: '123456789', help: 'Optional. Must be a Google Ads Import from clicks conversion action.', section: 'capi' },
-            { name: 'conversionActionIdBeginCheckout', label: 'Begin Checkout Action ID', type: 'text', placeholder: '123456789', help: 'Optional. Must be a Google Ads Import from clicks conversion action.', section: 'capi' },
-            { name: 'conversionActionIdViewItem', label: 'View Item Action ID', type: 'text', placeholder: '123456789', help: 'Optional. Must be a Google Ads Import from clicks conversion action.', section: 'capi' },
+            { name: 'conversionActionIdAddToCart', label: 'Add to Cart Action ID', type: 'text', placeholder: 'Leave blank for browser tracking', help: 'Optional API resource ID for a separate Import from clicks action. Leave blank when using the Add to Cart Label above.', section: 'capi' },
+            { name: 'conversionActionIdBeginCheckout', label: 'Begin Checkout Action ID', type: 'text', placeholder: 'Leave blank for browser tracking', help: 'Optional API resource ID for a separate Import from clicks action. Leave blank when using the Begin Checkout Label above.', section: 'capi' },
+            { name: 'conversionActionIdViewItem', label: 'View Item Action ID', type: 'text', placeholder: 'Leave blank for browser tracking', help: 'Optional API resource ID for a separate Import from clicks action. Leave blank when using the View Item Label above.', section: 'capi' },
         ],
     },
     {

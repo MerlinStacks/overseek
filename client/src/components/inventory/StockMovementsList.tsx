@@ -17,7 +17,7 @@ type StockMovement = {
     reason: string | null;
     createdAt: string;
     isBomProduct: boolean;
-    bomParents: Array<{ id: string; name: string; variationId: number }>;
+    bomParents: Array<{ id: string; name: string; variationId: number; variantLabel: string | null; sku: string | null }>;
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -154,7 +154,7 @@ export function StockMovementsList() {
                                                         <div className="mt-1.5 flex flex-wrap gap-1.5 pl-1">
                                                             {movement.bomParents.map((parent) => (
                                                                 <span key={`${parent.id}:${parent.variationId}`} className="rounded bg-amber-200/80 px-1.5 py-0.5 font-medium">
-                                                                    {parent.name}{parent.variationId ? ` (variation #${parent.variationId})` : ''}
+                                                                    {parent.name}{parent.variantLabel ? ` - ${parent.variantLabel}` : ''}{parent.sku ? ` (${parent.sku})` : ''}
                                                                 </span>
                                                             ))}
                                                         </div>

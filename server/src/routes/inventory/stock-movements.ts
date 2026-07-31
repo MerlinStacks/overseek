@@ -20,8 +20,16 @@ type Movement = {
     reason: string | null;
     createdAt: Date;
     isBomProduct: boolean;
-    bomParents: Array<{ id: string; name: string; variationId: number }>;
+    bomParents: Array<{ id: string; name: string; variationId: number; variantLabel: string | null; sku: string | null }>;
 };
+
+function getVariationLabel(rawData: unknown, sku: string | null, wooId: number): string {
+    const raw = rawData as { attributes?: Array<{ name?: string; option?: string }> } | null;
+    const attributes = Array.isArray(raw?.attributes)
+        ? raw.attributes.map((attribute) => attribute.option || attribute.name).filter(Boolean)
+        : [];
+    return attributes.join(' / ') || sku || `Variation #${wooId}`;
+}
 
 export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/stock-movements', async (request, reply) => {
@@ -131,6 +139,46 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
             const productMap = new Map(wooProducts.map((product) => [product.id, product]));
             const internalMap = new Map(internalProducts.map((product) => [product.id, product]));
             const orderMap = new Map(orders.map((order) => [order.wooId, order.number]));
+            const variationPairs = new Map<string, { productId: string; wooId: number }>();
+            for (const item of bomItems) {
+                if (item.childProductId && item.childVariationId) {
+                    variationPairs.set(`${item.childProductId}:${item.childVariationId}`, {
+                        productId: item.childProductId,
+                        wooId: item.childVariationId
+                    });
+                }
+                if (item.bom.variationId) {
+                    variationPairs.set(`${item.bom.product.id}:${item.bom.variationId}`, {
+                        productId: item.bom.product.id,
+                        wooId: item.bom.variationId
+                    });
+                }
+            }
+            for (const bom of ownBoms) {
+                if (bom.variationId) {
+                    variationPairs.set(`${bom.productId}:${bom.variationId}`, {
+                        productId: bom.productId,
+                        wooId: bom.variationId
+                    });
+                }
+            }
+            for (const entry of ledgerEntries) {
+                if (entry.componentType === 'ProductVariation' && entry.wooId) {
+                    variationPairs.set(`${entry.componentId}:${entry.wooId}`, { productId: entry.componentId, wooId: entry.wooId });
+                }
+            }
+            for (const log of stockLogs) {
+                const variationId = Number(log.details.variationWooId || 0);
+                if (variationId) variationPairs.set(`${log.resourceId}:${variationId}`, { productId: log.resourceId, wooId: variationId });
+            }
+            const pairs = [...variationPairs.values()];
+            const variations = pairs.length > 0
+                ? await prisma.productVariation.findMany({
+                    where: { OR: pairs },
+                    select: { productId: true, wooId: true, sku: true, rawData: true }
+                })
+                : [];
+            const variationMap = new Map(variations.map((variation) => [`${variation.productId}:${variation.wooId}`, variation]));
             const bomParents = new Map<string, Movement['bomParents']>();
             for (const item of bomItems) {
                 const key = item.internalProductId
@@ -138,7 +186,14 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                     : `woo:${item.childProductId}:${item.childVariationId ?? 0}`;
                 const parents = bomParents.get(key) || [];
                 if (!parents.some((parent) => parent.id === item.bom.product.id && parent.variationId === item.bom.variationId)) {
-                    parents.push({ id: item.bom.product.id, name: item.bom.product.name, variationId: item.bom.variationId });
+                    const variation = variationMap.get(`${item.bom.product.id}:${item.bom.variationId}`);
+                    parents.push({
+                        id: item.bom.product.id,
+                        name: item.bom.product.name,
+                        variationId: item.bom.variationId,
+                        variantLabel: variation ? getVariationLabel(variation.rawData, variation.sku, variation.wooId) : null,
+                        sku: variation?.sku || null
+                    });
                 }
                 bomParents.set(key, parents);
             }
@@ -147,6 +202,7 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
             const movements: Movement[] = stockLogs.map((log) => {
                 const product = productMap.get(log.resourceId) || internalMap.get(log.resourceId);
                 const variationId = Number(log.details.variationWooId || 0);
+                const variation = variationMap.get(`${log.resourceId}:${variationId}`);
                 const isInternal = log.details.productType === 'INTERNAL' || internalMap.has(log.resourceId);
                 const movementType = typeof log.details.movementType === 'string'
                     ? log.details.movementType
@@ -154,8 +210,10 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                 return {
                     id: `audit:${log.id}`,
                     productId: log.resourceId,
-                    productName: product?.name || String(log.details.productName || 'Unknown product'),
-                    sku: product?.sku || null,
+                    productName: variation && product
+                        ? `${product.name} - ${getVariationLabel(variation.rawData, variation.sku, variation.wooId)}`
+                        : product?.name || String(log.details.productName || 'Unknown product'),
+                    sku: variation?.sku || product?.sku || null,
                     previousStock: log.previousStock,
                     newStock: log.newStock,
                     quantity: log.newStock - log.previousStock,
@@ -172,6 +230,7 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                 const isInternal = entry.componentType === 'InternalProduct';
                 const variationId = entry.componentType === 'ProductVariation' ? entry.wooId || 0 : 0;
                 const product = isInternal ? internalMap.get(entry.componentId) : productMap.get(entry.componentId);
+                const variation = variationMap.get(`${entry.componentId}:${variationId}`);
                 const parents = bomParents.get(isInternal
                     ? `internal:${entry.componentId}`
                     : `woo:${entry.componentId}:${variationId}`) || [];
@@ -179,8 +238,10 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                 movements.push({
                     id: `ledger:${entry.id}:deduction`,
                     productId: entry.componentId,
-                    productName: product?.name || entry.componentName,
-                    sku: product?.sku || null,
+                    productName: variation && product
+                        ? `${product.name} - ${getVariationLabel(variation.rawData, variation.sku, variation.wooId)}`
+                        : product?.name || entry.componentName,
+                    sku: variation?.sku || product?.sku || null,
                     previousStock: entry.previousStock,
                     newStock: entry.newStock,
                     quantity: -entry.quantityDeducted,
@@ -195,8 +256,10 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                     movements.push({
                         id: `ledger:${entry.id}:reversal`,
                         productId: entry.componentId,
-                        productName: product?.name || entry.componentName,
-                        sku: product?.sku || null,
+                        productName: variation && product
+                            ? `${product.name} - ${getVariationLabel(variation.rawData, variation.sku, variation.wooId)}`
+                            : product?.name || entry.componentName,
+                        sku: variation?.sku || product?.sku || null,
                         previousStock: entry.newStock,
                         newStock: entry.previousStock,
                         quantity: entry.quantityDeducted,
@@ -211,7 +274,8 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             movements.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-            return { movements: movements.slice(0, limit), total: Math.min(movements.length, limit) };
+            const visibleMovements = movements.filter((movement) => movement.type !== 'BOM_SYNC');
+            return { movements: visibleMovements.slice(0, limit), total: Math.min(visibleMovements.length, limit) };
         } catch (error) {
             Logger.error('Failed to fetch stock movements', { error, accountId });
             return reply.code(500).send({ error: 'Failed to fetch stock movements' });
