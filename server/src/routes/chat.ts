@@ -527,7 +527,10 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
                 const plainBody = toSmsPlainText(body);
                 await chatService.addMessage(conversation.id, plainBody, 'AGENT', userId, false, accountId);
-                await TwilioService.sendSms(accountId, normalizedTo, plainBody);
+                await TwilioService.sendSms(accountId, normalizedTo, plainBody, {
+                    source: 'MANUAL',
+                    sourceId: conversation.id
+                });
 
                 Logger.info('Composed and sent new SMS', { conversationId: conversation.id, to });
                 return { success: true, conversationId: conversation.id };

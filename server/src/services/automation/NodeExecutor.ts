@@ -697,7 +697,8 @@ export class NodeExecutor {
         const result = await smsService.sendSms(
             phone,
             body,
-            enrollment.automation?.accountId
+            enrollment.automation?.accountId,
+            { source: 'AUTOMATION', sourceId: enrollment.id }
         );
 
         if (!result.success) {

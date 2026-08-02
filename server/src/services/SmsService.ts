@@ -7,6 +7,7 @@
 
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import { recordSmsLog, SmsLogContext } from './SmsLogService';
 
 interface TwilioCredentials {
     accountSid: string;
@@ -49,12 +50,13 @@ export class SmsService {
      * @param body - Message content (max 1600 chars for concatenated)
      * @param accountId - Account ID for fetching credentials
      */
-    async sendSms(to: string, body: string, accountId: string): Promise<SmsResult> {
+    async sendSms(to: string, body: string, accountId: string, context: SmsLogContext = {}): Promise<SmsResult> {
         if (!accountId) {
             return { success: false, error: 'Account ID required' };
         }
 
         if (body.length > MAX_SMS_LENGTH) {
+            await recordSmsLog({ accountId, to, body, status: 'FAILED', errorMessage: `Message too long. Maximum length is ${MAX_SMS_LENGTH} characters.`, ...context });
             return {
                 success: false,
                 error: `Message too long. Maximum length is ${MAX_SMS_LENGTH} characters.`
@@ -65,12 +67,14 @@ export class SmsService {
             const creds = await this.getCredentials(accountId);
             if (!creds) {
                 Logger.warn('SMS not configured for account', { accountId });
+                await recordSmsLog({ accountId, to, body, status: 'FAILED', errorMessage: 'SMS not configured for this account', ...context });
                 return { success: false, error: 'SMS not configured for this account' };
             }
 
             // Normalize phone number
             const normalizedTo = this.normalizePhoneNumber(to);
             if (!normalizedTo) {
+                await recordSmsLog({ accountId, to, from: creds.fromNumber, body, status: 'FAILED', errorMessage: 'Invalid phone number', ...context });
                 return { success: false, error: 'Invalid phone number' };
             }
 
@@ -78,17 +82,21 @@ export class SmsService {
             const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/Messages.json`;
             const auth = Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString('base64');
 
+            const formData = new URLSearchParams({
+                To: normalizedTo,
+                From: creds.fromNumber,
+                Body: body
+            });
+            const appUrl = process.env.APP_URL?.trim().replace(/\/+$/, '');
+            if (appUrl?.startsWith('https://')) formData.append('StatusCallback', `${appUrl}/api/sms/status`);
+
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                body: new URLSearchParams({
-                    To: normalizedTo,
-                    From: creds.fromNumber,
-                    Body: body
-                })
+                body: formData
             });
 
             const data = await safeTwilioJson(response, accountId);
@@ -98,6 +106,10 @@ export class SmsService {
                     status: response.status,
                     error: data,
                     accountId
+                });
+                await recordSmsLog({
+                    accountId, to: normalizedTo, from: creds.fromNumber, body, status: 'FAILED',
+                    errorMessage: data.message || 'Failed to send SMS', errorCode: data.code, ...context
                 });
                 return {
                     success: false,
@@ -110,6 +122,12 @@ export class SmsService {
                 to: normalizedTo,
                 accountId
             });
+            await recordSmsLog({
+                accountId, to: normalizedTo, from: creds.fromNumber, body,
+                status: data.status || 'QUEUED', messageId: data.sid,
+                segments: data.num_segments, price: data.price, priceUnit: data.price_unit,
+                ...context
+            });
 
             return {
                 success: true,
@@ -118,6 +136,10 @@ export class SmsService {
 
         } catch (error) {
             Logger.error('SMS send failed', { error, accountId });
+            await recordSmsLog({
+                accountId, to, body, status: 'FAILED',
+                errorMessage: error instanceof Error ? error.message : 'Unknown error', ...context
+            });
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error'

@@ -35,6 +35,43 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
         });
         return Object.fromEntries(new URLSearchParams(raw).entries());
     };
+
+    fastify.get('/logs', { preHandler: requireAuthFastify }, async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
+
+        const query = request.query as { limit?: string; offset?: string; status?: string; source?: string; search?: string };
+        const limit = Math.min(Math.max(Number.parseInt(query.limit || '20', 10) || 20, 1), 100);
+        const offset = Math.max(Number.parseInt(query.offset || '0', 10) || 0, 0);
+        const statuses = (query.status || '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean);
+        const sources = (query.source || '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean);
+        const search = query.search?.trim();
+        const where = {
+            accountId,
+            ...(statuses.length ? { status: { in: statuses } } : {}),
+            ...(sources.length ? { source: { in: sources } } : {}),
+            ...(search ? {
+                OR: [
+                    { to: { contains: search, mode: 'insensitive' as const } },
+                    { from: { contains: search, mode: 'insensitive' as const } },
+                    { body: { contains: search, mode: 'insensitive' as const } },
+                    { messageId: { contains: search, mode: 'insensitive' as const } },
+                    { errorMessage: { contains: search, mode: 'insensitive' as const } }
+                ]
+            } : {})
+        };
+
+        try {
+            const [logs, total] = await Promise.all([
+                prisma.smsLog.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset }),
+                prisma.smsLog.count({ where })
+            ]);
+            return { logs, total, limit, offset };
+        } catch (error) {
+            Logger.error('Failed to fetch SMS logs', { error, accountId });
+            return reply.status(500).send({ error: 'Failed to fetch SMS logs' });
+        }
+    });
     
     // Get SMS Settings
     fastify.get('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
@@ -77,6 +114,42 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
         });
 
         return settings;
+    });
+
+    // Twilio delivery receipts update the original outbound attempt by Message SID.
+    fastify.post('/status', async (request, reply) => {
+        const params = await parseWebhookParams(request);
+        const messageId = params.MessageSid || params.SmsSid;
+        const status = (params.MessageStatus || params.SmsStatus || '').toUpperCase();
+        const settings = params.AccountSid
+            ? await prisma.smsSettings.findFirst({ where: { accountSid: params.AccountSid, enabled: true } })
+            : null;
+
+        if (!messageId || !status || !settings) {
+            return reply.status(400).send({ error: 'Invalid status callback' });
+        }
+
+        const signature = request.headers['x-twilio-signature'];
+        const appUrl = process.env.APP_URL?.trim().replace(/\/+$/, '');
+        const callbackUrl = appUrl ? `${appUrl}/api/sms/status` : '';
+        if (typeof signature !== 'string' || !callbackUrl || !TwilioService.validateRequest(settings.authToken, signature, callbackUrl, params)) {
+            Logger.warn('[SMS Status] Invalid Twilio signature', { messageId, accountId: settings.accountId });
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+
+        await prisma.smsLog.updateMany({
+            where: { accountId: settings.accountId, messageId },
+            data: {
+                status,
+                statusAt: new Date(),
+                errorCode: params.ErrorCode || null,
+                errorMessage: params.ErrorMessage || null,
+                ...(params.NumSegments ? { segments: Number.parseInt(params.NumSegments, 10) || undefined } : {}),
+                ...(params.Price ? { price: params.Price } : {}),
+                ...(params.PriceUnit ? { priceUnit: params.PriceUnit } : {})
+            }
+        });
+        return reply.status(204).send();
     });
 
     // Twilio Webhook

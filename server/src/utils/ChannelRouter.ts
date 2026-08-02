@@ -192,7 +192,10 @@ export async function routeMessageToChannel(
         }
 
         if (externalId) {
-            await TwilioService.sendSms(accountId, externalId, toPlainText(content));
+            await TwilioService.sendSms(accountId, externalId, toPlainText(content), {
+                source: 'INBOX',
+                sourceId: conversation.id
+            });
             Logger.info('[ChannelRouter] SMS sent', { to: externalId });
         }
     }

@@ -85,6 +85,7 @@ const navItems = [
             { icon: UsersRound, label: 'Audiences', path: '/emails/audiences' },
             { icon: Settings, label: 'Settings', path: '/emails/settings' },
             { icon: Mail, label: 'Logs', path: '/emails/logs' },
+            { icon: MessageSquare, label: 'SMS Logs', path: '/sms/logs' },
         ]
     },
     {
@@ -198,7 +199,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             if (item.label === 'Emails') {
                 if (!isEmailEnabled) return false;
                 const hasChild = item.children?.some(child => {
-                    if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/audiences' || child.path === '/emails/settings' || child.path === '/emails/logs') return hasPermission('view_marketing');
+                    if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/audiences' || child.path === '/emails/settings' || child.path === '/emails/logs' || child.path === '/sms/logs') return hasPermission('view_marketing');
                     return true;
                 });
                 return hasChild;
@@ -221,7 +222,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                         if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/reports') return hasPermission('view_finance');
                         if (child.path === '/reviews') return hasPermission('view_marketing');
-                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/audiences' || child.path === '/emails/settings' || child.path === '/emails/logs') {
+                        if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/audiences' || child.path === '/emails/settings' || child.path === '/emails/logs' || child.path === '/sms/logs') {
                             return isEmailEnabled && hasPermission('view_marketing');
                         }
                         if (item.label === 'Analytics') {

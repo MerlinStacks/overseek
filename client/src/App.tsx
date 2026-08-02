@@ -60,6 +60,7 @@ const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage').then(m => ({ 
 const EmailDashboardPage = lazy(() => import('./pages/EmailDashboardPage').then(m => ({ default: m.EmailDashboardPage })));
 const EmailSettingsPage = lazy(() => import('./pages/EmailSettingsPage').then(m => ({ default: m.EmailSettingsPage })));
 const EmailLogsPage = lazy(() => import('./pages/EmailLogsPage').then(m => ({ default: m.EmailLogsPage })));
+const SmsLogsPage = lazy(() => import('./pages/SmsLogsPage').then(m => ({ default: m.SmsLogsPage })));
 const HelpCenterHome = lazy(() => import('./pages/HelpCenter/HelpCenterHome').then(m => ({ default: m.HelpCenterHome })));
 const HelpArticle = lazy(() => import('./pages/HelpCenter/HelpArticle').then(m => ({ default: m.HelpArticle })));
 const LiveAnalyticsPage = lazy(() => import('./pages/LiveAnalyticsPage').then(m => ({ default: m.LiveAnalyticsPage })));
@@ -305,6 +306,7 @@ function App() {
                                                 <Route path={ROUTE_PATHS.emails} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailDashboardPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emailSettings} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailSettingsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.emailLogs} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><EmailLogsPage /></FeatureGuard></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.smsLogs} element={<AccountGuard><SmsLogsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.blockedContacts} element={<Navigate to={`${ROUTE_PATHS.contacts}?status=BLOCKED`} replace />} />
                                                 <Route path={ROUTE_PATHS.flows} element={<AccountGuard><FeatureGuard featureKey="EMAIL"><FlowsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inbox} element={<AccountGuard><InboxPage /></AccountGuard>} />

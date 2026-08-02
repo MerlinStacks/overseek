@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import crypto from 'crypto';
+import { recordSmsLog, SmsLogContext } from './SmsLogService';
 
 const TWILIO_API_BASE = 'https://api.twilio.com/2010-04-01';
 
@@ -61,8 +62,9 @@ export class TwilioService {
     /**
      * Send an SMS message via Twilio
      */
-    static async sendSms(accountId: string, to: string, body: string) {
+    static async sendSms(accountId: string, to: string, body: string, context: SmsLogContext = {}) {
         if (body.length > MAX_SMS_LENGTH) {
+            await recordSmsLog({ accountId, to, body, status: 'FAILED', errorMessage: `Message too long. Maximum length is ${MAX_SMS_LENGTH} characters.`, ...context });
             throw new Error(`Message too long. Maximum length is ${MAX_SMS_LENGTH} characters.`);
         }
 
@@ -71,12 +73,14 @@ export class TwilioService {
         });
 
         if (!settings || !settings.enabled) {
+            await recordSmsLog({ accountId, to, body, status: 'FAILED', errorMessage: 'SMS settings not configured or disabled for this account.', ...context });
             throw new Error('SMS settings not configured or disabled for this account.');
         }
 
         const { accountSid, authToken, fromNumber } = settings;
         const normalizedTo = this.normalizeToE164(to, fromNumber);
         if (!normalizedTo || normalizedTo.replace(/\D/g, '').length < 10) {
+            await recordSmsLog({ accountId, to, from: fromNumber, body, status: 'FAILED', errorMessage: 'Invalid phone number format', ...context });
             throw new Error('Invalid phone number format');
         }
 
@@ -87,7 +91,12 @@ export class TwilioService {
         formData.append('From', fromNumber);
         formData.append('To', normalizedTo);
         formData.append('Body', body);
+        const appUrl = process.env.APP_URL?.trim().replace(/\/+$/, '');
+        if (appUrl?.startsWith('https://')) {
+            formData.append('StatusCallback', `${appUrl}/api/sms/status`);
+        }
 
+        let failureLogged = false;
         try {
             const response = await fetch(`${TWILIO_API_BASE}/Accounts/${accountSid}/Messages.json`, {
                 method: 'POST',
@@ -102,12 +111,26 @@ export class TwilioService {
 
             if (!response.ok) {
                 Logger.error('[TwilioService] Failed to send SMS', { error: data, accountId });
+                await recordSmsLog({ accountId, to: normalizedTo, from: fromNumber, body, status: 'FAILED', errorMessage: data.message || 'Failed to send SMS', errorCode: data.code, ...context });
+                failureLogged = true;
                 throw new Error(data.message || 'Failed to send SMS');
             }
 
+            await recordSmsLog({
+                accountId, to: normalizedTo, from: fromNumber, body,
+                status: data.status || 'QUEUED', messageId: data.sid,
+                segments: data.num_segments, price: data.price, priceUnit: data.price_unit,
+                ...context
+            });
             return data;
         } catch (error) {
             Logger.error('[TwilioService] Error sending SMS', { error, accountId });
+            if (!failureLogged) {
+                await recordSmsLog({
+                    accountId, to: normalizedTo, from: fromNumber, body, status: 'FAILED',
+                    errorMessage: error instanceof Error ? error.message : 'Unknown error', ...context
+                });
+            }
             throw error;
         }
     }

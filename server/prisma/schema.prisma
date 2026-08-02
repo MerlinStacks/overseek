@@ -130,6 +130,7 @@ model Account {
   emailAccounts EmailAccount[]
   emailSettings EmailSettings?
   emailLogs     EmailLog[]
+  smsLogs       SmsLog[]
   SyncState     SyncState[]
   SyncLog       SyncLog[]
   WooOrder      WooOrder[]
@@ -390,6 +391,32 @@ model SmsSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model SmsLog {
+  id           String   @id @default(uuid())
+  accountId    String
+  to           String
+  from         String?
+  body         String   @db.Text
+  status       String   // FAILED, QUEUED, SENT, DELIVERED, UNDELIVERED
+  errorMessage String?  @db.Text
+  errorCode    String?
+  source       String?  // INBOX, MANUAL, AUTOMATION
+  sourceId     String?
+  messageId    String?  @unique // Twilio Message SID
+  segments     Int?
+  price        String?
+  priceUnit    String?
+  statusAt     DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([accountId, status])
+  @@index([source, sourceId])
 }
 
 model Notification {
