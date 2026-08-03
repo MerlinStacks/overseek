@@ -277,6 +277,7 @@ export async function processWebhookPayload(
                     status: (body.status as string) || null,
                     catalogVisibility: (body.catalog_visibility as string) || 'visible',
                     dateCreated: parseWooDate(body.date_created_gmt || body.date_created),
+                    stockStatus: (body.stock_status as string) || null,
                     permalink: (body.permalink as string) || null,
                     mainImage: Array.isArray(body.images) && typeof body.images[0]?.src === 'string' ? body.images[0].src : null,
                     rawData: body as any
@@ -288,6 +289,7 @@ export async function processWebhookPayload(
                     status: (body.status as string) || null,
                     catalogVisibility: (body.catalog_visibility as string) || 'visible',
                     dateCreated: parseWooDate(body.date_created_gmt || body.date_created),
+                    stockStatus: (body.stock_status as string) || null,
                     permalink: (body.permalink as string) || null,
                     mainImage: Array.isArray(body.images) && typeof body.images[0]?.src === 'string' ? body.images[0].src : null,
                     rawData: body as any

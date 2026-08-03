@@ -102,6 +102,11 @@ const productTypeCategoryPriorityBodySchema = z.object({
     productTypeCategoryPriority: z.array(z.string().trim().min(1).max(200)).max(500),
 });
 
+const productFiltersBodySchema = z.object({
+    excludeOutOfStockProducts: z.boolean(),
+    excludeUnpublishedProducts: z.boolean(),
+});
+
 const feedsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
     fastify.addHook('preHandler', async (request, reply) => {
@@ -385,6 +390,15 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    fastify.get('/settings/product-filters', async (request, reply) => {
+        try {
+            return await FeedMappingService.getProductFilters(request.accountId!);
+        } catch (error: any) {
+            Logger.error('Failed to fetch feed product filters', { error: error?.message || error });
+            return reply.code(500).send({ error: 'Failed to fetch feed product filters' });
+        }
+    });
+
     fastify.get('/settings/urls', async (request, reply) => {
         try {
             const accountId = request.accountId!;
@@ -421,6 +435,16 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error: any) {
             Logger.error('Failed to save product type category priority', { error: error?.message || error });
             return reply.code(400).send({ error: 'Failed to save product type category priority' });
+        }
+    });
+
+    fastify.put<{ Body: { excludeOutOfStockProducts: boolean; excludeUnpublishedProducts: boolean } }>('/settings/product-filters', async (request, reply) => {
+        try {
+            const filters = productFiltersBodySchema.parse(request.body);
+            return await FeedMappingService.setProductFilters(request.accountId!, filters);
+        } catch (error: any) {
+            Logger.error('Failed to save feed product filters', { error: error?.message || error });
+            return reply.code(400).send({ error: 'Failed to save feed product filters' });
         }
     });
 

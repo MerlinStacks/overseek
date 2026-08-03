@@ -30,11 +30,18 @@ export interface GoogleProductCategoryOption {
     path: string;
 }
 
+export interface FeedProductFilters {
+    excludeOutOfStockProducts: boolean;
+    excludeUnpublishedProducts: boolean;
+}
+
 interface FeedFeatureConfig {
     mappings?: Partial<Record<FeedChannel, FeedFieldMapping[]>>;
     refreshModes?: Partial<Record<FeedChannel, FeedRefreshMode>>;
     maxBulkOptimizeRows?: number;
     productTypeCategoryPriority?: string[];
+    excludeOutOfStockProducts?: boolean;
+    excludeUnpublishedProducts?: boolean;
 }
 
 interface FeedAccountContext {
@@ -45,6 +52,10 @@ interface FeedAccountContext {
 const DEFAULT_REFRESH_MODE: FeedRefreshMode = 'manual';
 const ALLOWED_REFRESH_MODES: FeedRefreshMode[] = ['manual', 'auto_on_sync', '1h', '3h', '12h', '24h'];
 const DEFAULT_MAX_BULK_OPTIMIZE_ROWS = 5000;
+const DEFAULT_PRODUCT_FILTERS: FeedProductFilters = {
+    excludeOutOfStockProducts: false,
+    excludeUnpublishedProducts: false,
+};
 const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
 const SHARED_REWRITE_FIELDS = new Set(['title', 'description']);
 const FEED_CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
@@ -165,6 +176,15 @@ function normalizeStockStatus(status: unknown): string | null {
     if (normalized === 'outofstock' || normalized === 'out_of_stock') return 'out_of_stock';
     if (normalized === 'onbackorder' || normalized === 'backorder' || normalized === 'backorders') return 'backorder';
     return normalized;
+}
+
+function isOutOfStock(status: unknown): boolean {
+    return normalizeStockStatus(status) === 'out_of_stock';
+}
+
+function isPublished(product: { status?: string | null; rawData?: unknown }): boolean {
+    const rawData = product.rawData as { status?: unknown } | null;
+    return String(product.status || rawData?.status || '').trim().toLowerCase() === 'publish';
 }
 
 function getProductType(rawData: any, categoryPriority: string[] = []): string | null {
@@ -619,6 +639,45 @@ export class FeedMappingService {
         return normalized;
     }
 
+    static async getProductFilters(accountId: string): Promise<FeedProductFilters> {
+        const feature = await prisma.accountFeature.findUnique({
+            where: { accountId_featureKey: { accountId, featureKey: FEED_FEATURE_KEY } },
+            select: { config: true },
+        });
+        const config = (feature?.config || {}) as FeedFeatureConfig;
+        return {
+            excludeOutOfStockProducts: config.excludeOutOfStockProducts === true,
+            excludeUnpublishedProducts: config.excludeUnpublishedProducts === true,
+        };
+    }
+
+    static async setProductFilters(accountId: string, filters: FeedProductFilters): Promise<FeedProductFilters> {
+        const normalized: FeedProductFilters = {
+            excludeOutOfStockProducts: filters.excludeOutOfStockProducts === true,
+            excludeUnpublishedProducts: filters.excludeUnpublishedProducts === true,
+        };
+        const feature = await prisma.accountFeature.findUnique({
+            where: { accountId_featureKey: { accountId, featureKey: FEED_FEATURE_KEY } },
+            select: { config: true },
+        });
+        const nextConfig: FeedFeatureConfig = {
+            ...((feature?.config || {}) as FeedFeatureConfig),
+            ...normalized,
+        };
+
+        await prisma.accountFeature.upsert({
+            where: { accountId_featureKey: { accountId, featureKey: FEED_FEATURE_KEY } },
+            update: { config: nextConfig as unknown as Prisma.InputJsonValue },
+            create: {
+                accountId,
+                featureKey: FEED_FEATURE_KEY,
+                isEnabled: false,
+                config: nextConfig as unknown as Prisma.InputJsonValue,
+            },
+        });
+        return normalized;
+    }
+
     static async getMappings(accountId: string, channelInput: string): Promise<FeedFieldMapping[]> {
         const channel = normalizeChannel(channelInput);
         const feature = await prisma.accountFeature.findUnique({
@@ -721,9 +780,10 @@ export class FeedMappingService {
         productWooId?: number,
     ): Promise<{ total: number; rows: any[]; mappings: FeedFieldMapping[] }> {
         const channel = normalizeChannel(channelInput);
-        const [mappings, categoryPriority] = await Promise.all([
+        const [mappings, categoryPriority, productFilters] = await Promise.all([
             this.getMappings(accountId, channel),
             this.getProductTypeCategoryPriority(accountId),
+            productWooId === undefined ? this.getProductFilters(accountId) : Promise.resolve(DEFAULT_PRODUCT_FILTERS),
         ]);
 
         const where: any = { accountId };
@@ -752,6 +812,7 @@ export class FeedMappingService {
                     name: true,
                     sku: true,
                     price: true,
+                    status: true,
                     stockStatus: true,
                     permalink: true,
                     mainImage: true,
@@ -772,6 +833,8 @@ export class FeedMappingService {
             });
 
         const rows = products.flatMap((product) => {
+            if (productFilters.excludeUnpublishedProducts && !isPublished(product)) return [];
+
             const productRawData = product.rawData as any;
             const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
             const isVariableProduct = String(productRawData?.type || '').includes('variable')
@@ -816,7 +879,8 @@ export class FeedMappingService {
             };
 
             const productRows: any[] = [];
-            if (includeParents || !isVariableProduct) {
+            const parentOutOfStock = isOutOfStock(product.stockStatus || productRawData?.stock_status);
+            if ((includeParents || !isVariableProduct) && !(productFilters.excludeOutOfStockProducts && parentOutOfStock)) {
                 productRows.push({
                     rowType: 'parent',
                     rowId: `p:${product.wooId}`,
@@ -854,6 +918,10 @@ export class FeedMappingService {
                 }
 
                 selectedVariations.forEach((variation: any) => {
+                    const variationOutOfStock = isOutOfStock(
+                        variation.stockStatus || variation.rawData?.stock_status || product.stockStatus || productRawData?.stock_status,
+                    );
+                    if (productFilters.excludeOutOfStockProducts && variationOutOfStock) return;
                     const variationId = `${product.wooId}-${variation.wooId}`;
                     productRows.push({
                         rowType: 'variation',
@@ -892,6 +960,7 @@ export class FeedMappingService {
         variationMode: VariationMode,
     ): Promise<{ total: number; rows: Array<{ rowId: string; wooId: number; variationWooId?: number }> }> {
         normalizeChannel(channelInput);
+        const productFilters = await this.getProductFilters(accountId);
 
         const where: any = { accountId };
         if (query) {
@@ -908,9 +977,11 @@ export class FeedMappingService {
             where,
             select: {
                 wooId: true,
+                status: true,
+                stockStatus: true,
                 rawData: true,
                 variations: includeVariations ? {
-                    select: { wooId: true, rawData: true },
+                    select: { wooId: true, stockStatus: true, rawData: true },
                     orderBy: { wooId: 'asc' },
                 } : false,
             },
@@ -920,11 +991,13 @@ export class FeedMappingService {
         const rows = products.flatMap((product) => {
             const out: Array<{ rowId: string; wooId: number; variationWooId?: number }> = [];
             const productRawData = product.rawData as any;
+            if (productFilters.excludeUnpublishedProducts && !isPublished(product)) return out;
             const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
             const isVariableProduct = String(productRawData?.type || '').includes('variable')
                 || (Array.isArray(productRawData?.variations) && productRawData.variations.length > 0)
                 || hasVariations;
-            if (includeParents || !isVariableProduct) {
+            const parentOutOfStock = isOutOfStock(product.stockStatus || productRawData?.stock_status);
+            if ((includeParents || !isVariableProduct) && !(productFilters.excludeOutOfStockProducts && parentOutOfStock)) {
                 out.push({ rowId: `p:${product.wooId}`, wooId: product.wooId });
             }
 
@@ -955,6 +1028,10 @@ export class FeedMappingService {
                 }
 
                 selectedVariations.forEach((variation: any) => {
+                    const variationOutOfStock = isOutOfStock(
+                        variation.stockStatus || variation.rawData?.stock_status || product.stockStatus || productRawData?.stock_status,
+                    );
+                    if (productFilters.excludeOutOfStockProducts && variationOutOfStock) return;
                     const variationId = `${product.wooId}-${variation.wooId}`;
                     out.push({
                         rowId: `v:${variationId}`,

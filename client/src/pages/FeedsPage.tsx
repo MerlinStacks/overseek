@@ -47,6 +47,11 @@ interface FeedExportUrlsResponse {
     urls: Record<FeedChannel, string>;
 }
 
+interface FeedProductFilters {
+    excludeOutOfStockProducts: boolean;
+    excludeUnpublishedProducts: boolean;
+}
+
 interface GoogleProductCategoryOption {
     id: string;
     path: string;
@@ -112,6 +117,10 @@ export function FeedsPage() {
     const [allMatchingSelected, setAllMatchingSelected] = useState(false);
     const [mappingDraft, setMappingDraft] = useState<FeedMapping[]>([]);
     const [productTypeCategoryPriorityDraft, setProductTypeCategoryPriorityDraft] = useState('');
+    const [productFiltersDraft, setProductFiltersDraft] = useState<FeedProductFilters>({
+        excludeOutOfStockProducts: false,
+        excludeUnpublishedProducts: false,
+    });
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
     const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
 
@@ -217,6 +226,20 @@ export function FeedsPage() {
         },
     });
 
+    const {
+        data: productFiltersData,
+        isLoading: productFiltersLoading,
+        refetch: refetchProductFilters,
+    } = useApiQuery<FeedProductFilters>({
+        queryKey: ['feed-product-filters', currentAccount?.id],
+        enabled: !!token && !!currentAccount?.id,
+        queryFn: async () => {
+            const res = await fetch('/api/feeds/settings/product-filters', { headers });
+            if (!res.ok) throw new Error('Failed to fetch feed product filters');
+            return res.json();
+        },
+    });
+
     const { data: feedUrlData, isLoading: feedUrlLoading } = useApiQuery<FeedExportUrlsResponse>({
         queryKey: ['feed-export-urls', currentAccount?.id],
         enabled: !!token && !!currentAccount?.id,
@@ -255,6 +278,22 @@ export function FeedsPage() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'Failed to save product type category priority');
+            return data;
+        },
+    });
+
+    const { mutateAsync: saveProductFilters, isPending: isSavingProductFilters } = useApiMutation<
+        FeedProductFilters,
+        FeedProductFilters
+    >({
+        mutationFn: async (payload) => {
+            const res = await fetch('/api/feeds/settings/product-filters', {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Failed to save feed product filters');
             return data;
         },
     });
@@ -508,6 +547,10 @@ export function FeedsPage() {
         setProductTypeCategoryPriorityDraft((productTypeCategoryPriorityData?.productTypeCategoryPriority || []).join('\n'));
     }, [productTypeCategoryPriorityData?.productTypeCategoryPriority]);
 
+    useEffect(() => {
+        if (productFiltersData) setProductFiltersDraft(productFiltersData);
+    }, [productFiltersData]);
+
     const getColumn = (row: FeedRow, field: string) => row.columns.find((c) => c.targetField === field);
     const canAiOptimizeField = (field: string) => field === 'title' || field === 'description';
     const isLockedFeedField = (field: string) => LOCKED_FEED_FIELDS.has(field);
@@ -757,6 +800,63 @@ export function FeedsPage() {
                                 })}
                             </div>
                         )}
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                        <div>
+                            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Product exclusions</h2>
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                                Excluded products are removed from the spreadsheet, bulk selection, and exported feeds.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                <input
+                                    type="checkbox"
+                                    checked={productFiltersDraft.excludeOutOfStockProducts}
+                                    disabled={productFiltersLoading || isSavingProductFilters}
+                                    onChange={(event) => setProductFiltersDraft((current) => ({
+                                        ...current,
+                                        excludeOutOfStockProducts: event.target.checked,
+                                    }))}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                Exclude out of stock products
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                <input
+                                    type="checkbox"
+                                    checked={productFiltersDraft.excludeUnpublishedProducts}
+                                    disabled={productFiltersLoading || isSavingProductFilters}
+                                    onChange={(event) => setProductFiltersDraft((current) => ({
+                                        ...current,
+                                        excludeUnpublishedProducts: event.target.checked,
+                                    }))}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                Exclude products that are not published
+                            </label>
+                        </div>
+                        <button
+                            type="button"
+                            disabled={productFiltersLoading || isSavingProductFilters}
+                            className="px-3 py-2 rounded-lg text-sm bg-indigo-600 text-white disabled:opacity-50"
+                            onClick={async () => {
+                                try {
+                                    await saveProductFilters(productFiltersDraft);
+                                    setPage(1);
+                                    setPageInput('1');
+                                    setSelectedRows({});
+                                    setAllMatchingSelected(false);
+                                    await Promise.all([refetchProductFilters(), refetchRows()]);
+                                    toast.success('Product exclusions saved.');
+                                } catch (error: any) {
+                                    toast.error(error?.message || 'Failed to save product exclusions');
+                                }
+                            }}
+                        >
+                            {isSavingProductFilters ? 'Saving...' : 'Save exclusions'}
+                        </button>
                     </div>
 
                     <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-2">

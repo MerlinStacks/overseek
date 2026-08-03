@@ -91,6 +91,97 @@ describe('FeedMappingService.getFeedExportCsv', () => {
     });
 });
 
+describe('FeedMappingService product exclusions', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockPrisma.account.findUnique.mockResolvedValue({ name: 'CustomKings', currency: 'AUD' });
+    });
+
+    it('defaults exclusions off and preserves other feed settings when saving', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValueOnce(null);
+        await expect(FeedMappingService.getProductFilters('account-1')).resolves.toEqual({
+            excludeOutOfStockProducts: false,
+            excludeUnpublishedProducts: false,
+        });
+
+        mockPrisma.accountFeature.findUnique.mockResolvedValueOnce({ config: { maxBulkOptimizeRows: 2000 } });
+        const filters = await FeedMappingService.setProductFilters('account-1', {
+            excludeOutOfStockProducts: true,
+            excludeUnpublishedProducts: true,
+        });
+
+        expect(filters).toEqual({
+            excludeOutOfStockProducts: true,
+            excludeUnpublishedProducts: true,
+        });
+        expect(mockPrisma.accountFeature.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            update: {
+                config: {
+                    maxBulkOptimizeRows: 2000,
+                    excludeOutOfStockProducts: true,
+                    excludeUnpublishedProducts: true,
+                },
+            },
+        }));
+    });
+
+    it('excludes unpublished and out-of-stock parent and variation rows consistently', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({
+            config: {
+                excludeOutOfStockProducts: true,
+                excludeUnpublishedProducts: true,
+            },
+        });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([
+            {
+                id: 'product-1', wooId: 1, name: 'Published', sku: 'ONE', price: '10', status: 'publish',
+                stockStatus: 'instock', permalink: null, mainImage: null, rawData: { type: 'simple' }, seoData: {}, variations: [],
+            },
+            {
+                id: 'product-2', wooId: 2, name: 'Draft', sku: 'TWO', price: '10', status: 'draft',
+                stockStatus: 'instock', permalink: null, mainImage: null, rawData: { type: 'simple' }, seoData: {}, variations: [],
+            },
+            {
+                id: 'product-3', wooId: 3, name: 'Sold out', sku: 'THREE', price: '10', status: 'publish',
+                stockStatus: 'outofstock', permalink: null, mainImage: null, rawData: { type: 'simple' }, seoData: {}, variations: [],
+            },
+            {
+                id: 'product-4', wooId: 4, name: 'Variable', sku: 'FOUR', price: '10', status: 'publish',
+                stockStatus: 'outofstock', permalink: null, mainImage: null, rawData: { type: 'variable' }, seoData: {},
+                variations: [
+                    { wooId: 41, sku: 'FOUR-A', price: '10', stockStatus: 'instock', rawData: {} },
+                    { wooId: 42, sku: 'FOUR-B', price: '10', stockStatus: 'out_of_stock', rawData: {} },
+                ],
+            },
+        ]);
+
+        const feed = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_and_variations');
+        const refs = await FeedMappingService.getFeedRowRefs('account-1', 'google', '', 'variable_and_variations');
+
+        expect(feed.rows.map((row) => row.rowId)).toEqual(['p:1', 'v:4-41']);
+        expect(feed.total).toBe(2);
+        expect(refs.rows.map((row) => row.rowId)).toEqual(['p:1', 'v:4-41']);
+        expect(refs.total).toBe(2);
+    });
+
+    it('keeps excluded products available in the product-specific feed editor', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({
+            config: {
+                excludeOutOfStockProducts: true,
+                excludeUnpublishedProducts: true,
+            },
+        });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            id: 'product-2', wooId: 2, name: 'Draft', sku: 'TWO', price: '10', status: 'draft',
+            stockStatus: 'outofstock', permalink: null, mainImage: null, rawData: { type: 'simple' }, seoData: {}, variations: [],
+        }]);
+
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_parent', 2);
+
+        expect(result.rows.map((row) => row.rowId)).toEqual(['p:2']);
+    });
+});
+
 describe('FeedMappingService product type category priority', () => {
     beforeEach(() => {
         vi.clearAllMocks();
