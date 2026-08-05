@@ -95,6 +95,13 @@ class OverSeek_Main
 			$api = new OverSeek_API();
 			$api->register_routes();
 		});
+		// Register the artwork bridge after other plugins and replace CK Order
+		// Workflow's colliding route so outbound events always reach OverSeek.
+		add_action('rest_api_init', function (): void {
+			$this->load_api_dependencies();
+			$api = new OverSeek_API();
+			$api->register_artwork_event_bridge_route();
+		}, PHP_INT_MAX);
 		add_filter('woocommerce_rest_prepare_product_review', function ($response, $review, $request) {
 			$this->load_api_dependencies();
 			$api = new OverSeek_API();

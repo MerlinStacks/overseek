@@ -8,6 +8,7 @@
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { recordSmsLog, SmsLogContext } from './SmsLogService';
+import { TwilioService } from './TwilioService';
 
 interface TwilioCredentials {
     accountSid: string;
@@ -72,8 +73,12 @@ export class SmsService {
             }
 
             // Normalize phone number
-            const normalizedTo = this.normalizePhoneNumber(to);
-            if (!normalizedTo) {
+            // Infer the recipient's country from the account's Twilio number.
+            // WooCommerce commonly stores local numbers (for example 0491...
+            // in Australia), which must have the trunk zero replaced by +61.
+            const normalizedTo = TwilioService.normalizeToE164(to, creds.fromNumber);
+            const normalizedDigits = normalizedTo.replace(/\D/g, '');
+            if (!normalizedTo || normalizedDigits.length < 10 || normalizedDigits.length > 15) {
                 await recordSmsLog({ accountId, to, from: creds.fromNumber, body, status: 'FAILED', errorMessage: 'Invalid phone number', ...context });
                 return { success: false, error: 'Invalid phone number' };
             }
@@ -204,36 +209,6 @@ export class SmsService {
         } else {
             this.credentialsCache.clear();
         }
-    }
-
-    /**
-     * Normalize phone number to E.164 format.
-     */
-    private normalizePhoneNumber(phone: string): string | null {
-        if (!phone) return null;
-
-        // Remove all non-digit characters except leading +
-        let normalized = phone.replace(/[^\d+]/g, '');
-
-        // Ensure it starts with +
-        if (!normalized.startsWith('+')) {
-            // Assume US/CA if no country code
-            if (normalized.length === 10) {
-                normalized = '+1' + normalized;
-            } else if (normalized.length === 11 && normalized.startsWith('1')) {
-                normalized = '+' + normalized;
-            } else {
-                normalized = '+' + normalized;
-            }
-        }
-
-        // Basic validation: must be 10-15 digits after +
-        const digits = normalized.slice(1);
-        if (digits.length < 10 || digits.length > 15) {
-            return null;
-        }
-
-        return normalized;
     }
 
     /**

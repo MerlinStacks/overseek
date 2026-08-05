@@ -13,6 +13,7 @@ interface ArtworkEventPayload {
     account_id?: string;
     event?: {
         account_id?: string;
+        event_id?: string;
         event_name?: string;
         event_status?: string;
         occurred_at?: string;
@@ -125,6 +126,7 @@ async function handleArtworkEvent(
     const proofVersion = resolveProofVersion(event);
     const triggerData = {
         accountId,
+        eventId: event.event_id || null,
         email: event.customer_email || null,
         customerEmail: event.customer_email || null,
         customerPhone: event.customer_phone || null,

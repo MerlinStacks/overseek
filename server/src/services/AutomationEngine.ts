@@ -586,10 +586,14 @@ export class AutomationEngine {
         }
         if (triggerType.includes('ARTWORK')) {
             const proofVersion = data?.proofVersion ?? data?.proof_version ?? data?.rawEvent?.proof_version;
+            const eventId = data?.eventId ?? data?.event_id ?? data?.rawEvent?.event_id;
             const proofSuffix = proofVersion !== undefined && proofVersion !== null && proofVersion !== ''
                 ? `:${proofVersion}`
                 : '';
-            return `${triggerType}:${entityId || email.toLowerCase()}${proofSuffix}:${email.toLowerCase()}`;
+            const eventSuffix = eventId !== undefined && eventId !== null && eventId !== ''
+                ? `:${eventId}`
+                : '';
+            return `${triggerType}:${entityId || email.toLowerCase()}${proofSuffix}${eventSuffix}:${email.toLowerCase()}`;
         }
         if (entityId) {
             return `${triggerType}:${entityId}:${email.toLowerCase()}`;

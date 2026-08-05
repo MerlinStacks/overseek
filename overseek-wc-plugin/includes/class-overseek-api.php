@@ -110,12 +110,6 @@ class OverSeek_API {
 			'permission_callback' => [ $this, 'check_tracking_events_permission' ],
 		] );
 
-		register_rest_route( 'overseek/v1', '/artwork-events', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'artwork_events_callback' ],
-			'permission_callback' => [ $this, 'check_tracking_events_permission' ],
-		] );
-
 		register_rest_route( 'overseek/v1', '/invoices/(?P<order_id>\d+)', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'invoice_details_callback' ],
@@ -145,6 +139,24 @@ class OverSeek_API {
 			'callback'            => [ $this, 'reply_to_review_callback' ],
 			'permission_callback' => [ $this, 'check_admin_permission' ],
 		] );
+	}
+
+	/**
+	 * Register the artwork event bridge route.
+	 *
+	 * CK Order Workflow Suite also registers these paths for inbound events. The
+	 * OverSeek integration registers its forwarding routes last and overrides any
+	 * collision so CK's outbound events cannot be accepted locally without ever
+	 * reaching OverSeek.
+	 *
+	 * @return void
+	 */
+	public function register_artwork_event_bridge_route(): void {
+		register_rest_route( 'overseek/v1', '/artwork-events', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'artwork_events_callback' ],
+			'permission_callback' => [ $this, 'check_tracking_events_permission' ],
+		], true );
 	}
 
 	/**

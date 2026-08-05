@@ -129,4 +129,23 @@ describe('AutomationEngine trigger filters', () => {
         expect(v2Key).toBe('ARTWORK_APPROVAL_REQUESTED:1001:2:buyer@example.com');
         expect(v1Key).not.toBe(v2Key);
     });
+
+    it('uses artwork event IDs to distinguish replacement proofs with a reused version', () => {
+        const firstReplacementKey = (engine as any).buildDedupeKey(
+            'ARTWORK_APPROVAL_REQUESTED',
+            'buyer@example.com',
+            '1001',
+            { proofVersion: 2, eventId: 'event-a' }
+        );
+        const secondReplacementKey = (engine as any).buildDedupeKey(
+            'ARTWORK_APPROVAL_REQUESTED',
+            'buyer@example.com',
+            '1001',
+            { proofVersion: 2, eventId: 'event-b' }
+        );
+
+        expect(firstReplacementKey).toBe('ARTWORK_APPROVAL_REQUESTED:1001:2:event-a:buyer@example.com');
+        expect(secondReplacementKey).toBe('ARTWORK_APPROVAL_REQUESTED:1001:2:event-b:buyer@example.com');
+        expect(firstReplacementKey).not.toBe(secondReplacementKey);
+    });
 });

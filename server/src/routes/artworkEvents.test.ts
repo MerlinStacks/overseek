@@ -36,6 +36,7 @@ describe('artwork events', () => {
             url: '/account-1',
             payload: {
                 event: {
+                    event_id: 'event-v2',
                     event_name: 'artwork_approval_requested',
                     order_id: 1001,
                     customer_email: 'buyer@example.com',
@@ -49,6 +50,7 @@ describe('artwork events', () => {
             accountId: 'account-1',
             artwork: expect.objectContaining({
                 email: 'buyer@example.com',
+                eventId: 'event-v2',
                 eventStatus: 'approval_requested',
                 orderId: 1001,
                 proofVersion: 2
