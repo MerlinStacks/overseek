@@ -22,6 +22,9 @@ interface SkuForecast {
     sku: string | null;
     image: string | null;
     currentStock: number;
+    inboundStock: number;
+    projectedStock: number;
+    inboundArrivals: Array<{ quantity: number; expectedDate: string }>;
     dailyDemand: number;
     derivedDemand: number;
     forecastedDemand: number;
@@ -33,6 +36,8 @@ interface SkuForecast {
     trendPercent: number;
     recommendedReorderQty: number;
     supplierLeadTime: number | null;
+    supplierLeadTimeMin: number | null;
+    supplierLeadTimeMax: number | null;
     reorderPoint: number;
 }
 
@@ -155,7 +160,7 @@ export function InventoryForecastPage() {
                     comparison = a.dailyDemand - b.dailyDemand;
                     break;
                 case 'currentStock':
-                    comparison = a.currentStock - b.currentStock;
+                    comparison = a.projectedStock - b.projectedStock;
                     break;
                 case 'confidence':
                     comparison = a.confidence - b.confidence;
@@ -210,6 +215,18 @@ export function InventoryForecastPage() {
                 </div>
             </th>
         );
+    }
+
+    function formatLeadTime(forecast: SkuForecast): string {
+        if (forecast.supplierLeadTimeMin != null && forecast.supplierLeadTimeMax != null) {
+            const range = forecast.supplierLeadTimeMin === forecast.supplierLeadTimeMax
+                ? `${forecast.supplierLeadTimeMin}d`
+                : `${forecast.supplierLeadTimeMin}-${forecast.supplierLeadTimeMax}d`;
+            return forecast.supplierLeadTime != null && forecast.supplierLeadTime !== forecast.supplierLeadTimeMax
+                ? `${range} (${forecast.supplierLeadTime}d plan)`
+                : range;
+        }
+        return `${forecast.supplierLeadTime ?? 14}d`;
     }
 
     if (isLoading) {
@@ -355,9 +372,10 @@ export function InventoryForecastPage() {
                             <th className="px-4 py-3 w-12">Image</th>
                             <SortableHeader field="name" label="Product" />
                             <th className="px-4 py-3">SKU</th>
-                            <SortableHeader field="currentStock" label="Stock" />
+                            <SortableHeader field="currentStock" label="Stock (Ordered)" />
                             <SortableHeader field="dailyDemand" label="Daily Demand" />
                             <SortableHeader field="daysUntilStockout" label="Days Left" />
+                            <th className="px-4 py-3">Lead Time</th>
                             <th className="px-4 py-3">Risk</th>
                             <th className="px-4 py-3">Trend</th>
                             <SortableHeader field="confidence" label="Confidence" />
@@ -367,7 +385,7 @@ export function InventoryForecastPage() {
                     <tbody className="divide-y divide-gray-100">
                         {filteredForecasts.length === 0 ? (
                             <tr>
-                                <td colSpan={10} className="p-12 text-center text-gray-500">
+                                <td colSpan={11} className="p-12 text-center text-gray-500">
                                     <Package size={48} className="mx-auto text-gray-300 mb-2" />
                                     <p>No products match the current filters.</p>
                                 </td>
@@ -414,11 +432,19 @@ export function InventoryForecastPage() {
 
                                     {/* Current Stock */}
                                     <td className="px-4 py-3">
-                                        <span className={`font-bold ${forecast.currentStock === 0 ? 'text-red-600' :
-                                            forecast.currentStock <= forecast.reorderPoint ? 'text-orange-600' :
+                                        <span
+                                            className={`font-bold ${forecast.projectedStock === 0 ? 'text-red-600' :
+                                            forecast.projectedStock <= forecast.reorderPoint ? 'text-orange-600' :
                                                 'text-gray-900'
-                                            }`}>
+                                            }`}
+                                            title={forecast.inboundStock > 0
+                                                ? `${forecast.currentStock} on hand + ${forecast.inboundStock} on ordered purchase orders`
+                                                : `${forecast.currentStock} on hand`}
+                                        >
                                             {forecast.currentStock}
+                                            {forecast.inboundStock > 0 && (
+                                                <span className="ml-1 text-blue-600">({forecast.inboundStock})</span>
+                                            )}
                                         </span>
                                     </td>
 
@@ -436,6 +462,14 @@ export function InventoryForecastPage() {
                                             }`}>
                                             {forecast.daysUntilStockout >= 999 ? 'No stockout' : `${forecast.daysUntilStockout}d`}
                                         </span>
+                                    </td>
+
+                                    {/* Supplier Lead Time */}
+                                    <td
+                                        className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap"
+                                        title={`Planning lead time: ${forecast.supplierLeadTime ?? 14} days`}
+                                    >
+                                        {formatLeadTime(forecast)}
                                     </td>
 
                                     {/* Risk Badge */}

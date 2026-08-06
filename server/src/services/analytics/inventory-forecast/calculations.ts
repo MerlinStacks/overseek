@@ -56,17 +56,21 @@ export function generateForecastCurve(
     currentStock: number,
     dailyDemand: number,
     confidence: number,
-    days: number
+    days: number,
+    inboundArrivals: Array<{ quantity: number; arrivalDay: number }> = []
 ): ForecastCurvePoint[] {
     const curve: ForecastCurvePoint[] = [];
     const bandWidth = (100 - confidence) / 100 * 0.5;
+    let predictedStock = currentStock;
 
     for (let i = 0; i <= days; i++) {
         const date = new Date();
         date.setDate(date.getDate() + i);
         const dateStr = date.toISOString().split('T')[0];
 
-        const predictedStock = Math.max(0, currentStock - dailyDemand * i);
+        predictedStock += inboundArrivals
+            .filter(arrival => arrival.arrivalDay === i)
+            .reduce((sum, arrival) => sum + arrival.quantity, 0);
         const variation = predictedStock * bandWidth * (i / days);
 
         curve.push({
@@ -75,9 +79,29 @@ export function generateForecastCurve(
             upperBound: Math.round(predictedStock + variation),
             lowerBound: Math.round(Math.max(0, predictedStock - variation))
         });
+        predictedStock = Math.max(0, predictedStock - dailyDemand);
     }
 
     return curve;
+}
+
+/** Returns the first day stock is unavailable, accounting for dated receipts. */
+export function calculateDaysUntilStockoutWithInbound(
+    currentStock: number,
+    dailyDemand: number,
+    inboundArrivals: Array<{ quantity: number; arrivalDay: number }>
+): number {
+    if (dailyDemand <= 0) return 999;
+
+    let stock = currentStock;
+    for (let day = 0; day < 999; day++) {
+        stock += inboundArrivals
+            .filter(arrival => arrival.arrivalDay === day)
+            .reduce((sum, arrival) => sum + arrival.quantity, 0);
+        if (stock < dailyDemand) return day;
+        stock -= dailyDemand;
+    }
+    return 999;
 }
 
 export function sortByRisk<T extends { stockoutRisk: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'; daysUntilStockout: number }>(

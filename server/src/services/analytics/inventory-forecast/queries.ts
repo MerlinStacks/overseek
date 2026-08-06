@@ -1,5 +1,20 @@
 import { prisma } from '../../../utils/prisma';
-import type { ManagedProduct } from './types';
+import type { ManagedProduct, OrderedInventory, OrderedInventoryItem } from './types';
+
+const supplierLeadTimesSelect = {
+    leadTimeDefault: true,
+    leadTimeMin: true,
+    leadTimeMax: true
+} as const;
+
+function getSupplierLeadTime(supplier: {
+    leadTimeDefault: number | null;
+    leadTimeMin: number | null;
+    leadTimeMax: number | null;
+} | null): number | null {
+    // Prefer the configured planning value, then the conservative end of the range.
+    return supplier?.leadTimeDefault ?? supplier?.leadTimeMax ?? supplier?.leadTimeMin ?? null;
+}
 
 export async function getManagedStockProducts(accountId: string): Promise<ManagedProduct[]> {
     const products = await prisma.wooProduct.findMany({
@@ -13,7 +28,7 @@ export async function getManagedStockProducts(accountId: string): Promise<Manage
             stockQuantity: true,
             manageStock: true,
             rawData: true,
-            supplier: { select: { leadTimeDefault: true } },
+            supplier: { select: supplierLeadTimesSelect },
             boms: {
                 select: {
                     variationId: true,
@@ -55,12 +70,15 @@ export async function getManagedStockProducts(accountId: string): Promise<Manage
             if (managesStock && typeof stockQty === 'number') {
                 result.push({
                     id: p.id,
+                    productId: p.id,
                     wooId: p.wooId,
                     name: p.name,
                     sku: p.sku,
                     image: p.mainImage,
                     currentStock: stockQty,
-                    supplierLeadTime: p.supplier?.leadTimeDefault || null
+                    supplierLeadTime: getSupplierLeadTime(p.supplier),
+                    supplierLeadTimeMin: p.supplier?.leadTimeMin ?? null,
+                    supplierLeadTimeMax: p.supplier?.leadTimeMax ?? null
                 });
             }
         }
@@ -89,13 +107,16 @@ export async function getManagedStockProducts(accountId: string): Promise<Manage
 
                 result.push({
                     id: v.id,
+                    productId: p.id,
                     wooId: v.wooId,
                     parentWooId: p.wooId,
                     name: `${p.name} - ${variationSuffix}`,
                     sku: v.sku,
                     image: p.mainImage,
                     currentStock: stockQty,
-                    supplierLeadTime: p.supplier?.leadTimeDefault || null,
+                    supplierLeadTime: getSupplierLeadTime(p.supplier),
+                    supplierLeadTimeMin: p.supplier?.leadTimeMin ?? null,
+                    supplierLeadTimeMax: p.supplier?.leadTimeMax ?? null,
                     isVariation: true
                 });
             }
@@ -104,20 +125,64 @@ export async function getManagedStockProducts(accountId: string): Promise<Manage
 
     const internalProducts = await prisma.internalProduct.findMany({
         where: { accountId },
-        select: { id: true, name: true, sku: true, mainImage: true, stockQuantity: true, supplier: { select: { leadTimeDefault: true } } }
+        select: { id: true, name: true, sku: true, mainImage: true, stockQuantity: true, supplier: { select: supplierLeadTimesSelect } }
     });
 
     for (const ip of internalProducts) {
         result.push({
             id: ip.id,
+            productId: ip.id,
             wooId: 0,
             name: `[Internal] ${ip.name}`,
             sku: ip.sku,
             image: ip.mainImage,
             currentStock: ip.stockQuantity,
-            supplierLeadTime: ip.supplier?.leadTimeDefault || null
+            supplierLeadTime: getSupplierLeadTime(ip.supplier),
+            supplierLeadTimeMin: ip.supplier?.leadTimeMin ?? null,
+            supplierLeadTimeMax: ip.supplier?.leadTimeMax ?? null
         });
     }
 
     return result;
+}
+
+/**
+ * Loads committed inbound stock in one query. DRAFT, RECEIVED and CANCELLED
+ * orders are intentionally excluded. PO lines without a linked product cannot
+ * be matched safely to a forecast and are ignored.
+ */
+export async function getOrderedInventory(accountId: string): Promise<OrderedInventory> {
+    const items = await prisma.purchaseOrderItem.findMany({
+        where: {
+            productId: { not: null },
+            purchaseOrder: { accountId, status: 'ORDERED' }
+        },
+        select: {
+            productId: true,
+            variationWooId: true,
+            quantity: true,
+            purchaseOrder: { select: { expectedDate: true, orderDate: true, createdAt: true } }
+        }
+    });
+
+    const byProduct = new Map<string, OrderedInventoryItem[]>();
+    const byVariation = new Map<string, OrderedInventoryItem[]>();
+
+    for (const item of items) {
+        if (!item.productId) continue;
+        const orderedItem: OrderedInventoryItem = {
+            quantity: item.quantity,
+            expectedDate: item.purchaseOrder.expectedDate,
+            orderDate: item.purchaseOrder.orderDate,
+            createdAt: item.purchaseOrder.createdAt
+        };
+        if (item.variationWooId != null) {
+            const key = `${item.productId}:${item.variationWooId}`;
+            byVariation.set(key, [...(byVariation.get(key) || []), orderedItem]);
+        } else {
+            byProduct.set(item.productId, [...(byProduct.get(item.productId) || []), orderedItem]);
+        }
+    }
+
+    return { byProduct, byVariation };
 }

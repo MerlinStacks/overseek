@@ -19,6 +19,9 @@ vi.mock('../../utils/prisma', () => ({
         internalProduct: {
             findMany: vi.fn(),
         },
+        purchaseOrderItem: {
+            findMany: vi.fn(),
+        },
         bOMItem: {
             findMany: vi.fn(),
         },
@@ -67,6 +70,7 @@ describe('InventoryForecastService', () => {
         vi.clearAllMocks();
         // Set default returns for required Prisma mocks
         (prisma.internalProduct.findMany as any).mockResolvedValue([]);
+        (prisma.purchaseOrderItem.findMany as any).mockResolvedValue([]);
         (prisma.bOMItem.findMany as any).mockResolvedValue([]);
         (prisma.wooProduct.findUnique as any).mockResolvedValue(null);
     });
@@ -136,6 +140,77 @@ describe('InventoryForecastService', () => {
             expect(result[0].name).toBeDefined();
             expect(result[0].currentStock).toBeDefined();
             expect(result[0].stockoutRisk).toBeDefined();
+        });
+
+        it('should include ordered PO stock and subtract it from the reorder recommendation', async () => {
+            (prisma.wooProduct.findMany as any).mockResolvedValue([
+                {
+                    id: 'prod_1',
+                    wooId: 101,
+                    name: 'Inbound Widget',
+                    sku: 'INBOUND-1',
+                    mainImage: null,
+                    stockQuantity: 0,
+                    manageStock: true,
+                    rawData: { manage_stock: true, stock_quantity: 0 },
+                    supplier: { leadTimeDefault: null, leadTimeMin: 7, leadTimeMax: 12 },
+                    boms: [],
+                    variations: []
+                }
+            ]);
+            (prisma.purchaseOrderItem.findMany as any).mockResolvedValue([
+                {
+                    productId: 'prod_1',
+                    variationWooId: null,
+                    quantity: 50,
+                    purchaseOrder: { expectedDate: new Date(), orderDate: new Date(), createdAt: new Date() }
+                }
+            ]);
+            (esClient.search as any).mockResolvedValue({ aggregations: { products: { by_product: { buckets: [] } } } });
+
+            const [result] = await InventoryForecastService.getSkuForecasts('acc_123');
+
+            expect(prisma.purchaseOrderItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: expect.objectContaining({
+                    purchaseOrder: { accountId: 'acc_123', status: 'ORDERED' }
+                })
+            }));
+            expect(result.currentStock).toBe(0);
+            expect(result.inboundStock).toBe(50);
+            expect(result.projectedStock).toBe(50);
+            expect(result.recommendedReorderQty).toBe(0);
+            expect(result.daysUntilStockout).toBe(20);
+            expect(result.supplierLeadTime).toBe(12);
+            expect(result.supplierLeadTimeMin).toBe(7);
+            expect(result.supplierLeadTimeMax).toBe(12);
+        });
+
+        it('should not treat a PO arriving after the planning horizon as available stock', async () => {
+            const lateDate = new Date();
+            lateDate.setUTCDate(lateDate.getUTCDate() + 60);
+            (prisma.wooProduct.findMany as any).mockResolvedValue([
+                {
+                    id: 'prod_late', wooId: 102, name: 'Late Widget', sku: 'LATE-1', mainImage: null,
+                    stockQuantity: 0, manageStock: true,
+                    rawData: { manage_stock: true, stock_quantity: 0 },
+                    supplier: { leadTimeDefault: 7, leadTimeMin: 5, leadTimeMax: 10 },
+                    boms: [], variations: []
+                }
+            ]);
+            (prisma.purchaseOrderItem.findMany as any).mockResolvedValue([
+                {
+                    productId: 'prod_late', variationWooId: null, quantity: 50,
+                    purchaseOrder: { expectedDate: lateDate, orderDate: new Date(), createdAt: new Date() }
+                }
+            ]);
+            (esClient.search as any).mockResolvedValue({ aggregations: { products: { by_product: { buckets: [] } } } });
+
+            const [result] = await InventoryForecastService.getSkuForecasts('acc_123');
+
+            expect(result.inboundStock).toBe(50);
+            expect(result.projectedStock).toBe(0);
+            expect(result.daysUntilStockout).toBe(0);
+            expect(result.recommendedReorderQty).toBe(50);
         });
 
         it('should exclude products without managed stock', async () => {

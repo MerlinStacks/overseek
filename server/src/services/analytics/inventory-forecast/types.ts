@@ -8,6 +8,9 @@ export interface SkuForecast {
     sku: string | null;
     image: string | null;
     currentStock: number;
+    inboundStock: number;
+    projectedStock: number;
+    inboundArrivals: Array<{ quantity: number; expectedDate: string }>;
     dailyDemand: number;
     derivedDemand: number;
     forecastedDemand: number;
@@ -19,6 +22,8 @@ export interface SkuForecast {
     trendPercent: number;
     recommendedReorderQty: number;
     supplierLeadTime: number | null;
+    supplierLeadTimeMin: number | null;
+    supplierLeadTimeMax: number | null;
     reorderPoint: number;
 }
 
@@ -60,6 +65,8 @@ export interface SkuForecastDetail extends SkuForecast {
 
 export interface ManagedProduct {
     id: string;
+    /** Parent WooProduct ID used by purchase-order lines. */
+    productId: string;
     wooId: number;
     parentWooId?: number;
     name: string;
@@ -67,5 +74,19 @@ export interface ManagedProduct {
     image: string | null;
     currentStock: number;
     supplierLeadTime: number | null;
+    supplierLeadTimeMin: number | null;
+    supplierLeadTimeMax: number | null;
     isVariation?: boolean;
+}
+
+export interface OrderedInventory {
+    byProduct: Map<string, OrderedInventoryItem[]>;
+    byVariation: Map<string, OrderedInventoryItem[]>;
+}
+
+export interface OrderedInventoryItem {
+    quantity: number;
+    expectedDate: Date | null;
+    orderDate: Date | null;
+    createdAt: Date;
 }

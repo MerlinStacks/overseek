@@ -2,7 +2,6 @@ import { Logger } from '../../utils/logger';
 import { ANALYTICS_CONFIG } from './utils/analyticsConfig';
 import {
     predictDailyDemand,
-    calculateDaysUntilStockout,
     classifyStockoutRisk,
     calculateReorderQuantity,
 } from './utils/forecastUtils';
@@ -11,7 +10,7 @@ import type {
     StockoutAlert,
     SkuForecastDetail,
 } from './inventory-forecast/types';
-import { getManagedStockProducts } from './inventory-forecast/queries';
+import { getManagedStockProducts, getOrderedInventory } from './inventory-forecast/queries';
 import { getHistoricalSales } from './inventory-forecast/sales';
 import { getBOMComponentMappings, calculateBOMDerivedDemand } from './inventory-forecast/bom';
 import {
@@ -19,6 +18,7 @@ import {
     aggregateToDailySales,
     aggregateToHistoricalDemand,
     generateForecastCurve,
+    calculateDaysUntilStockoutWithInbound,
     sortByRisk,
 } from './inventory-forecast/calculations';
 
@@ -28,7 +28,10 @@ export class InventoryForecastService {
         daysToForecast: number = ANALYTICS_CONFIG.forecasting.defaultForecastDays
     ): Promise<SkuForecast[]> {
         try {
-            const products = await getManagedStockProducts(accountId);
+            const [products, orderedInventory] = await Promise.all([
+                getManagedStockProducts(accountId),
+                getOrderedInventory(accountId)
+            ]);
             if (products.length === 0) return [];
 
             const simpleProducts = products.filter(p => !p.isVariation);
@@ -74,14 +77,42 @@ export class InventoryForecastService {
                 const derivedDemand = derivedDemandByComponent.get(product.id) || 0;
                 const totalDailyDemand = prediction.dailyDemand + derivedDemand;
 
-                const daysUntilStockout = calculateDaysUntilStockout(product.currentStock, totalDailyDemand);
-                const leadTime = product.supplierLeadTime || ANALYTICS_CONFIG.forecasting.defaultLeadTimeDays;
+                const leadTime = product.supplierLeadTime ?? ANALYTICS_CONFIG.forecasting.defaultLeadTimeDays;
+                const orderedItems = product.isVariation
+                    ? orderedInventory.byVariation.get(`${product.productId}:${product.wooId}`) || []
+                    : orderedInventory.byProduct.get(product.productId) || [];
+                const today = new Date();
+                today.setUTCHours(0, 0, 0, 0);
+                const inboundArrivals = orderedItems.map(item => {
+                    const expectedDate = item.expectedDate
+                        ? new Date(item.expectedDate)
+                        : new Date(item.orderDate || item.createdAt);
+                    if (!item.expectedDate) expectedDate.setUTCDate(expectedDate.getUTCDate() + leadTime);
+                    expectedDate.setUTCHours(0, 0, 0, 0);
+                    return {
+                        quantity: item.quantity,
+                        expectedDate: expectedDate.toISOString(),
+                        arrivalDay: Math.max(0, Math.ceil((expectedDate.getTime() - today.getTime()) / 86_400_000))
+                    };
+                });
+                const inboundStock = orderedItems.reduce((sum, item) => sum + item.quantity, 0);
+                const planningHorizon = leadTime + ANALYTICS_CONFIG.forecasting.safetyStockDays;
+                const inboundWithinLeadTime = inboundArrivals
+                    .filter(arrival => arrival.arrivalDay <= planningHorizon)
+                    .reduce((sum, arrival) => sum + arrival.quantity, 0);
+                const projectedStock = product.currentStock + inboundWithinLeadTime;
+                const daysUntilStockout = calculateDaysUntilStockoutWithInbound(
+                    product.currentStock,
+                    totalDailyDemand,
+                    inboundArrivals
+                );
                 const stockoutRisk = classifyStockoutRisk(daysUntilStockout, leadTime);
-                const reorderQty = calculateReorderQuantity(
+                const targetStock = calculateReorderQuantity(
                     totalDailyDemand,
                     leadTime,
                     ANALYTICS_CONFIG.forecasting.safetyStockDays
                 );
+                const reorderQty = Math.max(0, targetStock - projectedStock);
                 const reorderPoint = Math.ceil(totalDailyDemand * (leadTime + ANALYTICS_CONFIG.forecasting.safetyStockDays));
 
                 forecasts.push({
@@ -92,6 +123,9 @@ export class InventoryForecastService {
                     sku: product.sku,
                     image: product.image,
                     currentStock: product.currentStock,
+                    inboundStock,
+                    projectedStock,
+                    inboundArrivals: inboundArrivals.map(({ quantity, expectedDate }) => ({ quantity, expectedDate })),
                     dailyDemand: totalDailyDemand,
                     derivedDemand,
                     forecastedDemand: Math.round(totalDailyDemand * daysToForecast),
@@ -102,7 +136,9 @@ export class InventoryForecastService {
                     trendDirection: prediction.trendDirection,
                     trendPercent: prediction.trendPercent,
                     recommendedReorderQty: reorderQty,
-                    supplierLeadTime: product.supplierLeadTime,
+                    supplierLeadTime: leadTime,
+                    supplierLeadTimeMin: product.supplierLeadTimeMin,
+                    supplierLeadTimeMax: product.supplierLeadTimeMax,
                     reorderPoint
                 });
             }
@@ -144,7 +180,19 @@ export class InventoryForecastService {
             const salesData = await getHistoricalSales(accountId, [wooId], [wooId], 90);
             const productSales = salesData.get(wooId) || [];
             const historicalDemand = aggregateToHistoricalDemand(productSales);
-            const forecastCurve = generateForecastCurve(forecast.currentStock, forecast.dailyDemand, forecast.confidence, 30);
+            const today = new Date();
+            today.setUTCHours(0, 0, 0, 0);
+            const inboundArrivals = forecast.inboundArrivals.map(arrival => ({
+                quantity: arrival.quantity,
+                arrivalDay: Math.max(0, Math.ceil((new Date(arrival.expectedDate).getTime() - today.getTime()) / 86_400_000))
+            }));
+            const forecastCurve = generateForecastCurve(
+                forecast.currentStock,
+                forecast.dailyDemand,
+                forecast.confidence,
+                30,
+                inboundArrivals
+            );
 
             return { ...forecast, forecastCurve, historicalDemand };
         } catch (error) {
