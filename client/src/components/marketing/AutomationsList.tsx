@@ -73,15 +73,18 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         setToastMessage(message); setToastType(type); setToastVisible(true);
     }, []);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (signal?: AbortSignal) => {
         if (!currentAccount) return;
+        setIsLoading(true);
         try {
             const res = await fetch('/api/marketing/automations', {
+                signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount?.id || ''
                 }
             });
+            if (signal?.aborted) return;
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) setFlows(data as FlowRecord[]);
@@ -90,12 +93,19 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                 Logger.error('Failed to fetch flows', { status: res.status });
                 setFlows([]);
             }
-        } catch (err) { Logger.error('An error occurred', { error: err }); setFlows([]); }
-        finally { setIsLoading(false); }
+        } catch (err) {
+            if (signal?.aborted) return;
+            Logger.error('An error occurred', { error: err });
+            setFlows([]);
+        } finally {
+            if (!signal?.aborted) setIsLoading(false);
+        }
     }, [currentAccount, token]);
 
     useEffect(() => {
-        fetchData();
+        const controller = new AbortController();
+        void fetchData(controller.signal);
+        return () => controller.abort();
     }, [fetchData]);
 
     async function handleCreate(e: React.FormEvent) {
@@ -162,7 +172,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         }
     }
 
-    async function handleDelete(id: string) {
+    async function handleDelete(id: string): Promise<boolean> {
         try {
             const res = await fetch(`/api/marketing/automations/${id}`, {
                 method: 'DELETE',
@@ -174,15 +184,22 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
             if (!res.ok) {
                 throw new Error('Failed to delete flow');
             }
-            fetchData();
-        } catch (err) { Logger.error('Failed to delete flow', { error: err }); showToast('Failed to delete flow'); }
+            await fetchData();
+            return true;
+        } catch (err) {
+            Logger.error('Failed to delete flow', { error: err });
+            showToast('Failed to delete flow');
+            return false;
+        }
     }
 
     async function confirmDeleteFlow() {
         if (!pendingDelete) return;
-        await handleDelete(pendingDelete.id);
-        setPendingDelete(null);
-        showToast('Flow deleted', 'success');
+        const deleted = await handleDelete(pendingDelete.id);
+        if (deleted) {
+            setPendingDelete(null);
+            showToast('Flow deleted', 'success');
+        }
     }
 
     // Trigger type display labels
@@ -249,12 +266,8 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                         <table className="min-w-[1040px] w-full text-left text-xs text-slate-800">
                             <thead className="bg-slate-100 text-[11px] font-semibold text-slate-900">
                                 <tr>
-                                    <th className="w-10 px-3 py-2">
-                                        <input type="checkbox" aria-label="Select all flows" className="h-4 w-4 rounded border-slate-300" disabled />
-                                    </th>
                                     <th className="px-3 py-2">Name</th>
                                     <th className="px-3 py-2">Event</th>
-                                    <th className="px-3 py-2">Category</th>
                                     <th className="px-3 py-2">Contact Activity</th>
                                     <th className="px-3 py-2">Revenue</th>
                                     <th className="px-3 py-2">Status</th>
@@ -264,9 +277,6 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                             <tbody className="divide-y divide-slate-100">
                                 {flows.map(flow => (
                                     <tr key={flow.id} className="h-10 hover:bg-slate-50">
-                                        <td className="px-3 py-1.5 align-middle">
-                                            <input type="checkbox" aria-label={`Select ${flow.name}`} className="h-4 w-4 rounded border-slate-300" />
-                                        </td>
                                         <td className="max-w-[320px] px-3 py-1.5 align-middle">
                                             <button onClick={() => onEdit(flow.id, flow.name)} className="truncate font-semibold text-blue-700 hover:text-blue-900 hover:underline">
                                                 {flow.name}
@@ -275,7 +285,6 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                         <td className="px-3 py-1.5 align-middle text-slate-700">
                                             {triggers[flow.triggerType || 'NONE'] || flow.triggerType || 'No Trigger'}
                                         </td>
-                                        <td className="px-3 py-1.5 align-middle text-slate-700">-</td>
                                         <td className="px-3 py-1.5 align-middle">
                                             <div className="flex flex-wrap items-center gap-1.5">
                                                 <MetricPill icon={<Circle size={12} />} label="Active in flow" value={flow.metrics?.activeInFlow || flow.enrollments?.length || 0} />
@@ -317,7 +326,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                 ))}
                                 {flows.length === 0 && (
                                     <tr>
-                                        <td colSpan={8} className="py-12 text-center text-sm text-gray-500">No flows created yet. Create your first flow to automate customer engagement.</td>
+                                        <td colSpan={6} className="py-12 text-center text-sm text-gray-500">No flows created yet. Create your first flow to automate customer engagement.</td>
                                     </tr>
                                 )}
                             </tbody>

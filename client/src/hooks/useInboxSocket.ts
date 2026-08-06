@@ -75,7 +75,7 @@ export function useInboxSocket({
             }
         };
 
-        socket.on('conversation:updated', async (data: ConversationUpdatedPayload) => {
+        const handleConversationUpdated = (data: ConversationUpdatedPayload) => {
             let needsFetch = false;
             const lastMessage = data.lastMessage;
             startTransition(() => {
@@ -98,7 +98,7 @@ export function useInboxSocket({
                     return updated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
                 });
             });
-            if (needsFetch) fetchNewConversation(data.id);
+            if (needsFetch) void fetchNewConversation(data.id);
 
             if (selectedId === data.id && lastMessage) {
                 setMessages(prev => {
@@ -106,17 +106,17 @@ export function useInboxSocket({
                     return [...prev, lastMessage];
                 });
             }
-        });
+        };
 
-        socket.on('conversation:read', (data: { id: string }) => {
+        const handleConversationRead = (data: { id: string }) => {
             startTransition(() => {
                 setConversations(prev => prev.map(c =>
                     c.id === data.id ? { ...c, isRead: true } : c
                 ));
             });
-        });
+        };
 
-        socket.on('message:new', (msg: InboxMessage) => {
+        const handleMessageNew = (msg: InboxMessage) => {
             const conversationId = msg.conversationId;
             if (!conversationId) return;
             if (selectedId === conversationId) {
@@ -134,12 +134,16 @@ export function useInboxSocket({
                     messagesCache.current.set(conversationId, [...cached, msg]);
                 }
             }
-        });
+        };
+
+        socket.on('conversation:updated', handleConversationUpdated);
+        socket.on('conversation:read', handleConversationRead);
+        socket.on('message:new', handleMessageNew);
 
         return () => {
-            socket.off('conversation:updated');
-            socket.off('conversation:read');
-            socket.off('message:new');
+            socket.off('conversation:updated', handleConversationUpdated);
+            socket.off('conversation:read', handleConversationRead);
+            socket.off('message:new', handleMessageNew);
         };
     }, [socket, selectedId, accountId, token, messagesCache, shouldIncludeConversation, setConversations, setMessages]);
 }

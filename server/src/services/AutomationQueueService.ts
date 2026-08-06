@@ -10,7 +10,10 @@ export class AutomationQueueService {
     private queue = QueueFactory.getQueue(QUEUES.AUTOMATIONS);
 
     async enqueueEnrollment({ enrollmentId, runAt }: EnqueueEnrollmentOptions): Promise<void> {
-        const targetRunAt = runAt && runAt > new Date() ? runAt : new Date();
+        // Preserve the persisted schedule even when it is already due. The ticker may
+        // discover the same enrollment more than once; a stable job id lets BullMQ
+        // deduplicate those enqueue attempts instead of running duplicate actions.
+        const targetRunAt = runAt || new Date();
         const delay = Math.max(0, targetRunAt.getTime() - Date.now());
         const jobId = `automation-enrollment:${enrollmentId}:${targetRunAt.getTime()}`;
 

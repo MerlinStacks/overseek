@@ -11,6 +11,7 @@ import { ChatService } from '../../services/ChatService';
 import { LabelService } from '../../services/LabelService';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
+import { invalidateCache } from '../../utils/cache';
 
 /**
  * Creates bulk action routes.
@@ -99,6 +100,9 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
                         return reply.code(400).send({ error: `Unknown action: ${action}` });
                 }
 
+                if (accountId && result.updated > 0) {
+                    await invalidateCache('inbox', `conversations:${accountId}`);
+                }
                 Logger.info('Bulk action completed', { action, count: result.updated, userId });
                 return { success: true, ...result };
             } catch (error) {

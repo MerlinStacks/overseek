@@ -47,6 +47,16 @@ function areMessagesEquivalent(current: InboxMessage[], next: InboxMessage[]) {
     });
 }
 
+function mergeMessages(current: InboxMessage[], fetched: InboxMessage[]) {
+    const fetchedIds = new Set(fetched.map(message => message.id));
+    const newerLocalMessages = current.filter(message => !fetchedIds.has(message.id));
+    if (newerLocalMessages.length === 0) return fetched;
+
+    return [...fetched, ...newerLocalMessages].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+}
+
 export function useInbox() {
     const { socket, isConnected } = useSocket();
     const { token, user } = useAuth();
@@ -69,8 +79,14 @@ export function useInbox() {
 
     // Caches / refs
     const messagesCache = useRef<Map<string, InboxMessage[]>>(new Map());
-    const preloadingRef = useRef<Set<string>>(new Set());
+    const conversationRequestsRef = useRef<Map<string, Promise<{ messages?: InboxMessage[] } | null>>>(new Map());
+    const listRequestRef = useRef<AbortController | null>(null);
+    const listRequestSequenceRef = useRef(0);
+    const selectionRequestRef = useRef<AbortController | null>(null);
+    const selectionSequenceRef = useRef(0);
+    const accountIdRef = useRef(currentAccount?.id);
     const initialLoadCompleteRef = useRef(false);
+    accountIdRef.current = currentAccount?.id;
 
     // Lifted hooks — persist across conversation switches
     const canned = useCannedResponses();
@@ -126,6 +142,10 @@ export function useInbox() {
     const fetchConversations = useCallback(async (cursor?: string) => {
         if (!currentAccount || !token) return;
 
+        listRequestRef.current?.abort();
+        const controller = new AbortController();
+        listRequestRef.current = controller;
+        const requestSequence = ++listRequestSequenceRef.current;
         const isLoadMore = !!cursor;
         const isInitialLoad = !initialLoadCompleteRef.current && !cursor;
 
@@ -149,8 +169,11 @@ export function useInbox() {
 
             const res = await fetch(`/api/chat/conversations?${params}`, {
                 headers: buildHeaders(token, currentAccount.id),
+                signal: controller.signal,
             });
+            if (!res.ok) throw new Error(`Failed to load conversations (${res.status})`);
             const data: unknown = await res.json();
+            if (requestSequence !== listRequestSequenceRef.current) return;
             const parsed = Array.isArray(data)
                 ? { conversations: data as InboxConversation[], hasMore: false }
                 : {
@@ -171,10 +194,14 @@ export function useInbox() {
                 initialLoadCompleteRef.current = true;
             }
         } catch (error) {
+            if (controller.signal.aborted) return;
             Logger.error('Failed to load chats', { error });
         } finally {
-            if (isInitialLoad) setIsLoading(false);
-            setIsLoadingMore(false);
+            if (requestSequence === listRequestSequenceRef.current) {
+                if (isInitialLoad) setIsLoading(false);
+                setIsLoadingMore(false);
+                listRequestRef.current = null;
+            }
         }
     }, [conversationFilter, currentAccount, showResolved, token, user?.id]);
 
@@ -189,26 +216,27 @@ export function useInbox() {
     // -------------------------------------------------------
 
     const handlePreloadConversation = useCallback((conversationId: string) => {
-        if (messagesCache.current.has(conversationId) || preloadingRef.current.has(conversationId)) return;
+        if (messagesCache.current.has(conversationId) || conversationRequestsRef.current.has(conversationId)) return;
         if (!token || !currentAccount) return;
+        const requestAccountId = currentAccount.id;
 
-        preloadingRef.current.add(conversationId);
-
-        fetch(`/api/chat/${conversationId}`, {
-            headers: buildHeaders(token, currentAccount.id),
+        const request = fetch(`/api/chat/${conversationId}`, {
+            headers: buildHeaders(token, requestAccountId),
         })
             .then(res => res.ok ? res.json() : null)
             .then(data => {
-                if (data?.messages) {
+                if (data?.messages && accountIdRef.current === requestAccountId) {
                     messagesCache.current.set(conversationId, data.messages);
                     if (messagesCache.current.size > 25) {
                         const firstKey = messagesCache.current.keys().next().value;
                         if (firstKey) messagesCache.current.delete(firstKey);
                     }
                 }
+                return data as { messages?: InboxMessage[] } | null;
             })
-            .catch(() => { /* Silent fail for preload */ })
-            .finally(() => preloadingRef.current.delete(conversationId));
+            .catch(() => null)
+            .finally(() => conversationRequestsRef.current.delete(conversationId));
+        conversationRequestsRef.current.set(conversationId, request);
     }, [token, currentAccount]);
 
     // -------------------------------------------------------
@@ -227,14 +255,21 @@ export function useInbox() {
     }, [selectedId, token, currentAccount]);
 
     const handleStatusChange = useCallback(async (newStatus: string, snoozeUntil?: Date) => {
-        const ok = await patchConversation({
-            status: newStatus,
-            snoozeUntil: snoozeUntil?.toISOString(),
-        });
+        let ok: boolean;
+        if (newStatus === 'SNOOZED' && snoozeUntil && selectedId && token && currentAccount) {
+            const res = await fetch(`/api/chat/${selectedId}/snooze`, {
+                method: 'POST',
+                headers: buildHeaders(token, currentAccount.id, true),
+                body: JSON.stringify({ until: snoozeUntil.toISOString() }),
+            });
+            ok = res.ok;
+        } else {
+            ok = await patchConversation({ status: newStatus });
+        }
         if (ok) {
             await fetchConversations();
         }
-    }, [fetchConversations, patchConversation]);
+    }, [currentAccount, fetchConversations, patchConversation, selectedId, token]);
 
     const handleAssign = useCallback(async (userId: string) => {
         const ok = await patchConversation({ assignedTo: userId || null });
@@ -324,14 +359,21 @@ export function useInbox() {
     // Effects
     // -------------------------------------------------------
 
-    // Reset initial-load flag when account changes.
-    // useVisibilityPolling (below) handles the actual initial fetch on mount.
+    // Reset account-scoped state. The list effect below owns the initial fetch;
+    // polling only handles subsequent interval/visibility refreshes.
     useEffect(() => {
         initialLoadCompleteRef.current = false;
-    }, [currentAccount?.id, token]);
+        listRequestRef.current?.abort();
+        selectionRequestRef.current?.abort();
+        messagesCache.current.clear();
+        conversationRequestsRef.current.clear();
+        setSelectedId(null);
+        setMessages([]);
+        setAvailableChannels([]);
+    }, [currentAccount?.id]);
 
     // Visibility-based polling fallback
-    useVisibilityPolling(() => fetchConversations(), 30000, [fetchConversations], 'inbox-conversations');
+    useVisibilityPolling(() => fetchConversations(), 30000, [fetchConversations], 'inbox-conversations', false);
 
     // Socket listeners (extracted to reduce file size)
     useInboxSocket({
@@ -354,30 +396,39 @@ export function useInbox() {
     useEffect(() => {
         if (!selectedId || !token || !currentAccount) return;
 
-        socket?.emit('join:conversation', selectedId);
-
+        selectionRequestRef.current?.abort();
+        const controller = new AbortController();
+        selectionRequestRef.current = controller;
+        const requestSequence = ++selectionSequenceRef.current;
         const cachedMessages = messagesCache.current.get(selectedId);
-        if (cachedMessages) setMessages(cachedMessages);
+        setMessages(cachedMessages || []);
+        setAvailableChannels([]);
 
         const fetchConversationData = async () => {
             const headers = buildHeaders(token, currentAccount.id);
+            const existingConversationRequest = conversationRequestsRef.current.get(selectedId);
+            const messagesRequest = existingConversationRequest || fetch(`/api/chat/${selectedId}`, {
+                headers,
+                signal: controller.signal,
+            }).then(async response => response.ok ? response.json() : null);
 
-            const [messagesRes, , channelsRes] = await Promise.all([
-                fetch(`/api/chat/${selectedId}`, { headers }),
-                fetch(`/api/chat/${selectedId}/read`, { method: 'POST', headers })
+            const [conversationData, , channelsRes] = await Promise.all([
+                messagesRequest,
+                fetch(`/api/chat/${selectedId}/read`, { method: 'POST', headers, signal: controller.signal })
                     .catch(err => Logger.error('Failed to mark as read', { error: err })),
-                fetch(`/api/chat/${selectedId}/available-channels`, { headers })
+                fetch(`/api/chat/${selectedId}/available-channels`, { headers, signal: controller.signal })
                     .catch(() => null),
             ]);
+            if (controller.signal.aborted || requestSequence !== selectionSequenceRef.current) return;
 
-            if (messagesRes.ok) {
-                const data: unknown = await messagesRes.json();
-                const nextMessages = (data as { messages?: InboxMessage[] }).messages;
+            if (conversationData) {
+                const nextMessages = (conversationData as { messages?: InboxMessage[] }).messages;
                 if (nextMessages) {
                     setMessages(prev => {
-                        if (areMessagesEquivalent(prev, nextMessages)) return prev;
-                        messagesCache.current.set(selectedId, nextMessages);
-                        return nextMessages;
+                        const mergedMessages = mergeMessages(prev, nextMessages);
+                        if (areMessagesEquivalent(prev, mergedMessages)) return prev;
+                        messagesCache.current.set(selectedId, mergedMessages);
+                        return mergedMessages;
                     });
                     if (messagesCache.current.size > 20) {
                         const firstKey = messagesCache.current.keys().next().value;
@@ -398,10 +449,12 @@ export function useInbox() {
             }
         };
 
-        fetchConversationData();
+        void fetchConversationData().catch(error => {
+            if (!controller.signal.aborted) Logger.error('Failed to load conversation', { error, conversationId: selectedId });
+        });
 
-        return () => { socket?.emit('leave:conversation', selectedId); };
-    }, [selectedId, token, socket, currentAccount]);
+        return () => controller.abort();
+    }, [selectedId, token, currentAccount]);
 
     // Keyboard shortcuts
     useKeyboardShortcuts({

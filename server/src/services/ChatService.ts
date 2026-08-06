@@ -430,6 +430,7 @@ export class ChatService {
             where: { id: existing.id },
             data: { assignedTo: userId ?? null }
         });
+        await this.invalidateConversationCache(conv.accountId);
         this.io.to(`conversation:${id}`).emit('conversation:assigned', { userId });
 
         // Trigger automation
@@ -473,16 +474,16 @@ export class ChatService {
     async markAsRead(accountId: string, id: string) {
         const existing = await prisma.conversation.findFirst({
             where: { id, accountId },
-            select: { id: true }
+            select: { id: true, isRead: true }
         });
         if (!existing) {
             throw new Error('Conversation not found');
         }
 
-        const conv = await prisma.conversation.update({
-            where: { id: existing.id },
-            data: { isRead: true }
-        });
+        if (existing.isRead) return existing;
+
+        const conv = await prisma.conversation.update({ where: { id: existing.id }, data: { isRead: true } });
+        await this.invalidateConversationCache(accountId);
         // Emit socket event so other clients know it's been read
         this.io.to(`account:${conv.accountId}`).emit('conversation:read', { id });
         return conv;

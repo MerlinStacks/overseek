@@ -205,7 +205,33 @@ export class CustomersService {
             ? Prisma.empty
             : Prisma.sql`AND "contactStatus" = ${status}`;
         const contactsCte = Prisma.sql`
-            WITH customer_base AS (
+            WITH blocked_latest AS (
+                SELECT DISTINCT ON (LOWER(TRIM(blocked."email")))
+                    blocked."id",
+                    blocked."email",
+                    LOWER(TRIM(blocked."email")) AS "normalizedEmail",
+                    blocked."reason",
+                    blocked."blockedAt",
+                    blocked."blockedBy"
+                FROM "BlockedContact" blocked
+                WHERE blocked."accountId" = ${accountId}
+                ORDER BY LOWER(TRIM(blocked."email")), blocked."blockedAt" DESC
+            ),
+            suppression_latest AS (
+                SELECT DISTINCT ON (LOWER(TRIM(unsubscribed."email")))
+                    LOWER(TRIM(unsubscribed."email")) AS "normalizedEmail",
+                    unsubscribed."scope"
+                FROM "EmailUnsubscribe" unsubscribed
+                WHERE unsubscribed."accountId" = ${accountId}
+                ORDER BY LOWER(TRIM(unsubscribed."email")), unsubscribed."createdAt" DESC
+            ),
+            customer_emails AS (
+                SELECT DISTINCT LOWER(TRIM(customer."email")) AS "normalizedEmail"
+                FROM "WooCustomer" customer
+                WHERE customer."accountId" = ${accountId}
+                  AND NULLIF(TRIM(customer."email"), '') IS NOT NULL
+            ),
+            customer_base AS (
                 SELECT
                     wc."id",
                     wc."wooId",
@@ -234,23 +260,9 @@ export class CustomersService {
                         ORDER BY wc."ordersCount" DESC, wc."updatedAt" DESC
                     ) AS row_number
                 FROM "WooCustomer" wc
-                LEFT JOIN LATERAL (
-                    SELECT blocked.*
-                    FROM "BlockedContact" blocked
-                    WHERE blocked."accountId" = wc."accountId"
-                      AND LOWER(TRIM(blocked."email")) = LOWER(TRIM(wc."email"))
-                    ORDER BY blocked."blockedAt" DESC
-                    LIMIT 1
-                ) bc ON TRUE
+                LEFT JOIN blocked_latest bc ON bc."normalizedEmail" = LOWER(TRIM(wc."email"))
                 LEFT JOIN "User" blocker ON blocker."id" = bc."blockedBy"
-                LEFT JOIN LATERAL (
-                    SELECT unsubscribed."scope"
-                    FROM "EmailUnsubscribe" unsubscribed
-                    WHERE unsubscribed."accountId" = wc."accountId"
-                      AND LOWER(TRIM(unsubscribed."email")) = LOWER(TRIM(wc."email"))
-                    ORDER BY unsubscribed."createdAt" DESC
-                    LIMIT 1
-                ) suppression ON TRUE
+                LEFT JOIN suppression_latest suppression ON suppression."normalizedEmail" = LOWER(TRIM(wc."email"))
                 WHERE wc."accountId" = ${accountId}
             ),
             contacts AS (
@@ -287,15 +299,10 @@ export class CustomersService {
                     blocked."blockedAt",
                     blocker."fullName" AS "blockedByName",
                     FALSE AS "isCustomer"
-                FROM "BlockedContact" blocked
+                FROM blocked_latest blocked
                 LEFT JOIN "User" blocker ON blocker."id" = blocked."blockedBy"
-                WHERE blocked."accountId" = ${accountId}
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM "WooCustomer" customer
-                      WHERE customer."accountId" = blocked."accountId"
-                        AND LOWER(TRIM(customer."email")) = LOWER(TRIM(blocked."email"))
-                  )
+                LEFT JOIN customer_emails customer ON customer."normalizedEmail" = blocked."normalizedEmail"
+                WHERE customer."normalizedEmail" IS NULL
             )
         `;
 
@@ -313,46 +320,79 @@ export class CustomersService {
             blockedAt: Date | null;
             blockedByName: string | null;
             isCustomer: boolean;
+            allCount: number;
+            unverifiedCount: number;
+            subscribedCount: number;
+            bouncedCount: number;
+            unsubscribedCount: number;
+            softBouncedCount: number;
+            complaintCount: number;
+            blockedCount: number;
         };
 
-        const [rows, countRows] = await Promise.all([
-            prisma.$queryRaw<ContactRow[]>`${contactsCte}
+        const rows = await prisma.$queryRaw<ContactRow[]>`${contactsCte},
+            filtered_contacts AS (
                 SELECT *
                 FROM contacts
-                WHERE TRUE ${searchClause} ${statusClause}
+                WHERE TRUE ${searchClause}
+            ),
+            status_counts AS (
+                SELECT
+                    COUNT(*)::integer AS "allCount",
+                    COUNT(*) FILTER (WHERE "contactStatus" = 'UNVERIFIED')::integer AS "unverifiedCount",
+                    COUNT(*) FILTER (WHERE "contactStatus" = 'SUBSCRIBED')::integer AS "subscribedCount",
+                    COUNT(*) FILTER (WHERE "contactStatus" = 'BOUNCED')::integer AS "bouncedCount",
+                    COUNT(*) FILTER (WHERE "contactStatus" = 'UNSUBSCRIBED')::integer AS "unsubscribedCount",
+                    COUNT(*) FILTER (WHERE "contactStatus" = 'SOFT_BOUNCED')::integer AS "softBouncedCount",
+                    COUNT(*) FILTER (WHERE "contactStatus" = 'COMPLAINT')::integer AS "complaintCount",
+                    COUNT(*) FILTER (WHERE "contactStatus" = 'BLOCKED')::integer AS "blockedCount"
+                FROM filtered_contacts
+            ),
+            paged_contacts AS (
+                SELECT *
+                FROM filtered_contacts
+                WHERE TRUE ${statusClause}
                 ORDER BY COALESCE(NULLIF("firstName", ''), "email") ASC, "lastName" ASC NULLS LAST
                 LIMIT ${limit}
                 OFFSET ${offset}
-            `,
-            prisma.$queryRaw<Array<{ contactStatus: ContactListStatus; count: bigint }>>`${contactsCte}
-                SELECT "contactStatus", COUNT(*) AS count
-                FROM contacts
-                WHERE TRUE ${searchClause}
-                GROUP BY "contactStatus"
-            `
-        ]);
+            )
+            SELECT paged_contacts.*, status_counts.*
+            FROM status_counts
+            LEFT JOIN paged_contacts ON TRUE
+            ORDER BY COALESCE(NULLIF(paged_contacts."firstName", ''), paged_contacts."email") ASC,
+                paged_contacts."lastName" ASC NULLS LAST
+        `;
 
+        const firstRow = rows[0];
         const statusCounts: Record<ContactListStatus | 'ALL', number> = {
-            ALL: 0,
-            UNVERIFIED: 0,
-            SUBSCRIBED: 0,
-            BOUNCED: 0,
-            UNSUBSCRIBED: 0,
-            SOFT_BOUNCED: 0,
-            COMPLAINT: 0,
-            BLOCKED: 0
+            ALL: firstRow?.allCount ?? 0,
+            UNVERIFIED: firstRow?.unverifiedCount ?? 0,
+            SUBSCRIBED: firstRow?.subscribedCount ?? 0,
+            BOUNCED: firstRow?.bouncedCount ?? 0,
+            UNSUBSCRIBED: firstRow?.unsubscribedCount ?? 0,
+            SOFT_BOUNCED: firstRow?.softBouncedCount ?? 0,
+            COMPLAINT: firstRow?.complaintCount ?? 0,
+            BLOCKED: firstRow?.blockedCount ?? 0
         };
-        for (const countRow of countRows) {
-            const count = Number(countRow.count);
-            statusCounts[countRow.contactStatus] = count;
-            statusCounts.ALL += count;
-        }
+
+        const contactRows = rows.filter((row) => row.id !== null);
 
         const total = status === 'ALL' ? statusCounts.ALL : statusCounts[status];
         return {
-            contacts: rows.map((row) => ({
-                ...row,
-                totalSpent: Number(row.totalSpent)
+            contacts: contactRows.map((row) => ({
+                id: row.id,
+                wooId: row.wooId,
+                email: row.email,
+                firstName: row.firstName,
+                lastName: row.lastName,
+                totalSpent: Number(row.totalSpent),
+                ordersCount: row.ordersCount,
+                dateCreated: row.dateCreated,
+                contactStatus: row.contactStatus,
+                blockedReason: row.blockedReason,
+                blockedAt: row.blockedAt,
+                blockedByName: row.blockedByName,
+                isCustomer: row.isCustomer
             })),
             total,
             page,

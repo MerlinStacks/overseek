@@ -39,4 +39,21 @@ describe('validateAutomationFlow', () => {
 
         expect(issues.some((issue) => issue.id === 'unsupported-action-exit')).toBe(false);
     });
+
+    it.each([
+        ['ADD_TAG', {}, 'tag-name-action'],
+        ['GENERATE_COUPON', { discountType: 'percent', amount: 0, expiryDays: 7 }, 'coupon-amount-action'],
+        ['ADD_ORDER_NOTE', {}, 'order-note-action'],
+        ['UPDATE_ORDER_STATUS', { orderStatus: 'not-a-status' }, 'order-status-action'],
+    ])('rejects incomplete %s configuration', (actionType, config, expectedIssueId) => {
+        const issues = validateAutomationFlow({
+            nodes: [
+                { id: 'trigger', type: 'trigger', data: { config: { triggerType: 'CUSTOMER_CREATED' } } },
+                { id: 'action', type: 'action', data: { config: { actionType, ...config } } },
+            ],
+            edges: [{ id: 'edge-1', source: 'trigger', target: 'action' }],
+        } as any);
+
+        expect(issues.some((issue) => issue.id === expectedIssueId)).toBe(true);
+    });
 });

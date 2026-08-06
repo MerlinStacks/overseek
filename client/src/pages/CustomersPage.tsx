@@ -3,7 +3,7 @@ import { Logger } from '../utils/logger';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Search, Users, Mail, ShoppingBag, Calendar, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertCircle, Search, Users, Mail, ShoppingBag, Calendar, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -14,6 +14,8 @@ import { useVisibilityRefreshThrottle } from '../hooks/useVisibilityRefreshThrot
 import { useToast } from '../context/ToastContext';
 
 type ContactStatus = 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT' | 'BLOCKED';
+
+const CONTACTS_REQUEST_TIMEOUT_MS = 30_000;
 
 interface Contact {
     id: string;
@@ -74,6 +76,7 @@ export function CustomersPage() {
     const initialPage = Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? Math.trunc(pageFromUrl) : 1;
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState(queryFromUrl);
     const [page, setPage] = useState(initialPage);
     const [limit, setLimit] = useState(20);
@@ -91,6 +94,7 @@ export function CustomersPage() {
     });
     const [unblockingEmail, setUnblockingEmail] = useState<string | null>(null);
     const fetchRequestId = useRef(0);
+    const fetchAbortController = useRef<AbortController | null>(null);
 
     const [debouncedQuery, setDebouncedQuery] = useState(queryFromUrl);
     const currency = currentAccount?.currency || 'USD';
@@ -107,10 +111,25 @@ export function CustomersPage() {
     }, [searchQuery, queryFromUrl]);
 
     const fetchContacts = useCallback(async () => {
-        if (!currentAccount || !token) return;
-
         const requestId = ++fetchRequestId.current;
+        fetchAbortController.current?.abort();
+
+        if (!currentAccount || !token) {
+            setIsLoading(false);
+            setLoadError(currentAccount ? 'Your session is unavailable. Please sign in again.' : 'No account is selected.');
+            return;
+        }
+
+        const controller = new AbortController();
+        fetchAbortController.current = controller;
+        let didTimeout = false;
+        const timeoutId = window.setTimeout(() => {
+            didTimeout = true;
+            controller.abort();
+        }, CONTACTS_REQUEST_TIMEOUT_MS);
+
         setIsLoading(true);
+        setLoadError(null);
         try {
             const params = new URLSearchParams({
                 page: page.toString(),
@@ -123,20 +142,41 @@ export function CustomersPage() {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id
-                }
+                },
+                signal: controller.signal
             });
 
-            if (res.ok && requestId === fetchRequestId.current) {
-                const data = await res.json();
+            if (!res.ok) {
+                const payload = await res.json().catch(() => null) as { error?: string; message?: string } | null;
+                throw new Error(payload?.error || payload?.message || `Failed to load contacts (${res.status})`);
+            }
+
+            const data = await res.json();
+            if (requestId === fetchRequestId.current) {
                 setContacts(data.contacts);
                 setTotalPages(data.totalPages);
                 if (data.statusCounts) {
                     setStatusCounts(data.statusCounts);
                 }
             }
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
+        } catch (error) {
+            if (requestId !== fetchRequestId.current) return;
+
+            const wasAborted = error instanceof DOMException && error.name === 'AbortError';
+            const message = didTimeout
+                ? 'Contacts took too long to load. Please try again.'
+                : wasAborted
+                    ? 'Loading contacts was cancelled. Please try again.'
+                    : error instanceof Error
+                        ? error.message
+                        : 'Failed to load contacts.';
+            setLoadError(message);
+            Logger.error('Failed to load contacts', { error });
         } finally {
+            window.clearTimeout(timeoutId);
+            if (fetchAbortController.current === controller) {
+                fetchAbortController.current = null;
+            }
             if (requestId === fetchRequestId.current) setIsLoading(false);
         }
     }, [currentAccount, token, page, limit, debouncedQuery, statusFilter]);
@@ -170,6 +210,11 @@ export function CustomersPage() {
     useEffect(() => {
         fetchContacts();
     }, [fetchContacts]);
+
+    useEffect(() => () => {
+        fetchRequestId.current += 1;
+        fetchAbortController.current?.abort();
+    }, []);
 
     useEffect(() => {
         const unsubscribe = subscribeToCrossTabEvents((event) => {
@@ -294,6 +339,22 @@ export function CustomersPage() {
                         <tbody className="divide-y divide-gray-100">
                             {isLoading ? (
                                 <TableSkeleton rows={8} columns={7} showAvatar />
+                            ) : loadError ? (
+                                <tr>
+                                    <td colSpan={7} className="px-6 py-16 text-center">
+                                        <AlertCircle size={40} className="mx-auto mb-3 text-red-500" />
+                                        <p className="font-semibold text-gray-900">Unable to load contacts</p>
+                                        <p className="mt-1 text-sm text-gray-500">{loadError}</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => void fetchContacts()}
+                                            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                                        >
+                                            <RefreshCw size={15} />
+                                            Retry
+                                        </button>
+                                    </td>
+                                </tr>
                             ) : contacts.length === 0 ? (
                                 <tr><td colSpan={7}>
                                     <EmptyState
@@ -407,7 +468,7 @@ export function CustomersPage() {
                         </tbody>
                     </table>
                 </div>
-                {!isLoading && contacts.length > 0 && (
+                {!isLoading && !loadError && contacts.length > 0 && (
                     <Pagination
                         currentPage={page}
                         totalPages={totalPages}

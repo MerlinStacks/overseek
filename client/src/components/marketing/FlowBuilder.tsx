@@ -767,6 +767,10 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
         const parentNode = nodes.find(n => n.id === parentId);
         if (!parentNode) return;
 
+        const actionDefaults: Record<string, Record<string, unknown>> = {
+            GENERATE_COUPON: { discountType: 'percent', amount: 10, codePrefix: 'OS', expiryDays: 7, individualUse: true },
+            UPDATE_ORDER_STATUS: { orderStatus: 'processing' },
+        };
         const newNode: Node = {
             id: getId(),
             type: 'action',
@@ -776,7 +780,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
             },
             data: {
                 label: action.label,
-                config: { actionType: action.actionType },
+                config: { actionType: action.actionType, ...(actionDefaults[action.actionType] || {}) },
                 onAddStep: handleOpenStepPopup,
                 onDelete: onNodeDelete,
                 density: flowDensity,

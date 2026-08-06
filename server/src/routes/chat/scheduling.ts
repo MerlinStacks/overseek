@@ -9,6 +9,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
+import { invalidateCache } from '../../utils/cache';
 
 export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -141,6 +142,7 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
                     snoozedUntil: snoozeUntil,
                 },
             });
+            await invalidateCache('inbox', `conversations:${accountId}`);
 
             Logger.info('Conversation snoozed', { conversationId: conversation.id, until: snoozeUntil });
             return { success: true, snoozedUntil: snoozeUntil };
@@ -176,6 +178,7 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
                     snoozedUntil: null,
                 },
             });
+            await invalidateCache('inbox', `conversations:${accountId}`);
 
             Logger.info('Snooze cancelled', { conversationId: conversation.id });
             return { success: true };

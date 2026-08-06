@@ -73,6 +73,7 @@ export function useMobileChat(conversationId: string | undefined) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isNearBottomRef = useRef(true);
     const previousMessageCountRef = useRef(0);
+    const fetchControllerRef = useRef<AbortController | null>(null);
 
     // Canned responses
     const {
@@ -108,10 +109,13 @@ export function useMobileChat(conversationId: string | undefined) {
             return;
         }
 
+        fetchControllerRef.current?.abort();
+        const controller = new AbortController();
+        fetchControllerRef.current = controller;
         try {
             const headers = buildHeaders(token, currentAccount.id);
 
-            const convRes = await fetch(`/api/chat/${conversationId}`, { headers });
+            const convRes = await fetch(`/api/chat/${conversationId}`, { headers, signal: controller.signal });
             if (!convRes.ok) {
                 setConversation(null);
                 setMessages([]);
@@ -123,6 +127,7 @@ export function useMobileChat(conversationId: string | undefined) {
             }
 
             const conv = await convRes.json();
+            if (controller.signal.aborted) return;
             const customerName = conv.wooCustomer
                 ? `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim() || conv.wooCustomer.email
                 : conv.guestName || conv.guestEmail || 'Unknown';
@@ -157,11 +162,12 @@ export function useMobileChat(conversationId: string | undefined) {
                 setMessages([]);
             }
         } catch (error) {
+            if (controller.signal.aborted) return;
             setConversation(null);
             setMessages([]);
             Logger.error('[MobileChat] Error:', { error });
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) setLoading(false);
         }
     }, [currentAccount, token, conversationId]);
 
@@ -170,7 +176,7 @@ export function useMobileChat(conversationId: string | undefined) {
     // -------------------------------------------------------
 
     const handleSend = useCallback(async () => {
-        if (!newMessage.trim() || sending || !currentAccount || !token) return;
+        if (!newMessage.trim() || sending || !currentAccount || !token || !conversation || conversation.id !== conversationId) return;
 
         setSending(true);
         haptic();
@@ -179,26 +185,29 @@ export function useMobileChat(conversationId: string | undefined) {
             const res = await fetch(`/api/chat/${conversationId}/messages`, {
                 method: 'POST',
                 headers: buildHeaders(token, currentAccount.id, true),
-                body: JSON.stringify({ content: newMessage.trim() }),
+                body: JSON.stringify({
+                    content: newMessage.trim(),
+                    channel: conversation.channel.toUpperCase(),
+                }),
             });
 
-            if (res.ok) {
-                const sent = await res.json();
-                setMessages(prev => [...prev, {
-                    id: sent.id || Date.now().toString(),
-                    body: newMessage.trim(),
-                    direction: 'outbound' as const,
-                    createdAt: new Date().toISOString(),
-                }]);
-                setNewMessage('');
-                inputRef.current?.focus();
-            }
+            if (!res.ok) throw new Error(`Send failed with status ${res.status}`);
+
+            const sent = await res.json();
+            setMessages(prev => prev.some(message => message.id === sent.id) ? prev : [...prev, {
+                id: sent.id || Date.now().toString(),
+                body: newMessage.trim(),
+                direction: 'outbound' as const,
+                createdAt: sent.createdAt || new Date().toISOString(),
+            }]);
+            setNewMessage('');
+            inputRef.current?.focus();
         } catch (error) {
             Logger.error('[MobileChat] Send error:', { error });
         } finally {
             setSending(false);
         }
-    }, [newMessage, sending, currentAccount, token, conversationId]);
+    }, [newMessage, sending, currentAccount, token, conversationId, conversation]);
 
     const handleResolve = useCallback(async () => {
         setShowMenu(false);
@@ -240,7 +249,7 @@ export function useMobileChat(conversationId: string | undefined) {
 
     const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || !currentAccount || !token) return;
+        if (!file || !currentAccount || !token || !conversation || conversation.id !== conversationId) return;
 
         setIsUploading(true);
         haptic();
@@ -248,8 +257,10 @@ export function useMobileChat(conversationId: string | undefined) {
         try {
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('content', '');
+            formData.append('channel', conversation.channel.toUpperCase());
 
-            const res = await fetch(`/api/chat/${conversationId}/attachments`, {
+            const res = await fetch(`/api/chat/${conversationId}/message-with-attachments`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -258,19 +269,25 @@ export function useMobileChat(conversationId: string | undefined) {
                 body: formData,
             });
 
-            if (res.ok) {
-                const { url, filename } = await res.json();
-                const attachmentMsg = `📎 [${filename}](${url})`;
-                setNewMessage(prev => prev ? `${prev}\n${attachmentMsg}` : attachmentMsg);
-                inputRef.current?.focus();
+            if (!res.ok) throw new Error(`Upload failed with status ${res.status}`);
+
+            const { message } = await res.json();
+            if (message) {
+                setMessages(prev => prev.some(item => item.id === message.id) ? prev : [...prev, {
+                    id: message.id,
+                    body: message.content || `📎 ${file.name}`,
+                    direction: 'outbound' as const,
+                    createdAt: message.createdAt || new Date().toISOString(),
+                }]);
             }
+            inputRef.current?.focus();
         } catch (error) {
             Logger.error('[MobileChat] Upload error:', { error });
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
-    }, [currentAccount, token, conversationId]);
+    }, [currentAccount, token, conversationId, conversation]);
 
     const handleGenerateAIDraft = useCallback(async () => {
         if (!currentAccount || !token || isGeneratingDraft) return;
@@ -339,7 +356,10 @@ export function useMobileChat(conversationId: string | undefined) {
         fetchConversation();
         const handleRefresh = () => fetchConversation();
         window.addEventListener('mobile-refresh', handleRefresh);
-        return () => window.removeEventListener('mobile-refresh', handleRefresh);
+        return () => {
+            fetchControllerRef.current?.abort();
+            window.removeEventListener('mobile-refresh', handleRefresh);
+        };
     }, [fetchConversation]);
 
     useEffect(() => {
@@ -392,27 +412,13 @@ export function useMobileChat(conversationId: string | undefined) {
             });
         };
 
-        const handleConversationUpdated = (payload: { id: string }) => {
-            if (payload.id !== conversationId) return;
-            void fetchConversation();
-        };
-
-        const handleConversationRead = (payload: { id: string }) => {
-            if (payload.id !== conversationId) return;
-            void fetchConversation();
-        };
-
         socket.on('message:new', handleMessageNew);
-        socket.on('conversation:updated', handleConversationUpdated);
-        socket.on('conversation:read', handleConversationRead);
 
         return () => {
             socket.emit('leave:conversation', { conversationId });
             socket.off('message:new', handleMessageNew);
-            socket.off('conversation:updated', handleConversationUpdated);
-            socket.off('conversation:read', handleConversationRead);
         };
-    }, [socket, conversationId, user, currentAccount?.id, fetchConversation]);
+    }, [socket, conversationId, user, currentAccount?.id]);
 
     useEffect(() => {
         const hadMessages = previousMessageCountRef.current;

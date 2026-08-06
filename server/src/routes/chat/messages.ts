@@ -20,6 +20,13 @@ const attachmentsDir = path.join(__dirname, '../../../uploads/attachments');
 const MAX_RELAY_ATTACHMENTS = 10;
 const MAX_RELAY_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
+function getPublicAttachmentUrl(filename: string): string {
+    const appUrl = (process.env.APP_URL || process.env.CLIENT_URL || 'http://localhost:5173')
+        .trim()
+        .replace(/\/+$/, '');
+    return `${appUrl}/uploads/attachments/${filename}`;
+}
+
 // Why: ensure the directory exists on startup so file writes don't crash with ENOENT
 fs.mkdirSync(attachmentsDir, { recursive: true });
 
@@ -146,7 +153,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
 
                 const conversationId = request.params.id;
                 const userId = request.user?.id;
-                const attachmentUrl = `/uploads/attachments/${filename}`;
+                const attachmentUrl = getPublicAttachmentUrl(filename);
                 const content = `[Attachment: ${data.filename}](${attachmentUrl})`;
 
                 const msg = await chatService.addMessage(conversationId, content, 'AGENT', userId, false, accountId);
@@ -229,7 +236,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                                 return reply.code(400).send({ error: `Attachment exceeds 10 MB limit: ${part.filename}` });
                             }
 
-                            const attachmentUrl = `/uploads/attachments/${filename}`;
+                            const attachmentUrl = getPublicAttachmentUrl(filename);
                             attachmentLinks.push(`[${part.filename}](${attachmentUrl})`);
 
                             // Track for email relay transport
@@ -279,14 +286,14 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 // success while customers never received the message/attachments.
                 if (!isInternal) {
                     try {
-                        if (attachments.length > 0) {
+                        if (attachments.length > 0 && channel === 'EMAIL') {
                             if (!(await ensureEmailFeatureEnabled(accountId, reply))) return;
                             await sendEmailWithAttachments(conversationId, content, attachments, accountId, emailAccountId);
                         } else if (channel) {
                             if (channel === 'EMAIL' && !(await ensureEmailFeatureEnabled(accountId, reply))) {
                                 return;
                             }
-                            await routeMessageToChannel(conversationId, content, channel, accountId, emailAccountId);
+                            await routeMessageToChannel(conversationId, fullContent, channel, accountId, emailAccountId);
                         }
                     } catch (routingError: any) {
                         Logger.error('[message-with-attachments] External routing failed', {

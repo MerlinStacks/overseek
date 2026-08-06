@@ -314,8 +314,7 @@ describe('CustomersService', () => {
 
     describe('searchContacts', () => {
         it('returns customers and standalone blocked contacts with stable status counts', async () => {
-            mockQueryRaw
-                .mockResolvedValueOnce([
+            mockQueryRaw.mockResolvedValueOnce([
                     {
                         id: 'customer-1',
                         wooId: 123,
@@ -329,7 +328,15 @@ describe('CustomersService', () => {
                         blockedReason: null,
                         blockedAt: null,
                         blockedByName: null,
-                        isCustomer: true
+                        isCustomer: true,
+                        allCount: 2,
+                        unverifiedCount: 0,
+                        subscribedCount: 1,
+                        bouncedCount: 0,
+                        unsubscribedCount: 0,
+                        softBouncedCount: 0,
+                        complaintCount: 0,
+                        blockedCount: 1
                     },
                     {
                         id: 'blocked-1',
@@ -344,12 +351,16 @@ describe('CustomersService', () => {
                         blockedReason: 'Spam',
                         blockedAt: new Date('2025-02-01T00:00:00.000Z'),
                         blockedByName: 'Admin',
-                        isCustomer: false
+                        isCustomer: false,
+                        allCount: 2,
+                        unverifiedCount: 0,
+                        subscribedCount: 1,
+                        bouncedCount: 0,
+                        unsubscribedCount: 0,
+                        softBouncedCount: 0,
+                        complaintCount: 0,
+                        blockedCount: 1
                     }
-                ])
-                .mockResolvedValueOnce([
-                    { contactStatus: 'SUBSCRIBED', count: BigInt(1) },
-                    { contactStatus: 'BLOCKED', count: BigInt(1) }
                 ]);
 
             const result = await CustomersService.searchContacts(accountId, '', 1, 20, 'ALL');
@@ -366,6 +377,26 @@ describe('CustomersService', () => {
                 BLOCKED: 1
             }));
             expect(result.totalPages).toBe(1);
+        });
+
+        it('returns counts without exposing the empty-page sentinel as a contact', async () => {
+            mockQueryRaw.mockResolvedValueOnce([{
+                id: null,
+                allCount: 0,
+                unverifiedCount: 0,
+                subscribedCount: 0,
+                bouncedCount: 0,
+                unsubscribedCount: 0,
+                softBouncedCount: 0,
+                complaintCount: 0,
+                blockedCount: 0
+            }]);
+
+            const result = await CustomersService.searchContacts(accountId, '', 1, 20, 'ALL');
+
+            expect(result.contacts).toEqual([]);
+            expect(result.total).toBe(0);
+            expect(result.totalPages).toBe(0);
         });
     });
 });

@@ -25,6 +25,40 @@ export const AUTOMATION_CATEGORIES = ['All', 'Onboarding', 'Sales', 'Engagement'
 
 export type AutomationCategory = typeof AUTOMATION_CATEGORIES[number];
 
+const createRecipeEmailConfig = (subject: string, previewText: string, body: string) => {
+    const design = createDefaultEmailDesignV2({ title: subject, previewText, appName: '{{store.name}}' });
+    const contentBlock = createBlock('text');
+
+    if (contentBlock.type === 'text') {
+        contentBlock.props = {
+            html: body,
+            align: 'left',
+            size: 16,
+            lineHeight: 1.65,
+        };
+    }
+
+    design.document.sections[1] = {
+        ...design.document.sections[1],
+        name: 'Email Content',
+        columns: [{
+            ...design.document.sections[1].columns[0],
+            blocks: [contentBlock],
+        }],
+    };
+
+    return {
+        actionType: 'SEND_EMAIL',
+        templateType: 'visual',
+        emailCategory: 'MARKETING',
+        to: '{{customer.email}}',
+        subject,
+        previewText,
+        htmlContent: compileEmailDesignV2(design),
+        designJson: design,
+    };
+};
+
 const createReviewRequestEmailConfig = () => {
     const subject = 'How was your order?';
     const previewText = 'Tell us how everything went with your recent order.';
@@ -87,9 +121,9 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
         category: 'Onboarding',
         nodes: [
             { id: 'trigger', type: 'trigger', data: { label: 'Customer Created', config: { triggerType: 'CUSTOMER_CREATED' } } },
-            { id: 'email1', type: 'action', data: { label: 'Welcome Email', config: { actionType: 'SEND_EMAIL', subject: 'Welcome to our store!' } } },
+            { id: 'email1', type: 'action', data: { label: 'Welcome Email', config: createRecipeEmailConfig('Welcome to our store!', 'We are glad you are here.', '<h2>Welcome!</h2><p>Thanks for joining us. We are delighted to have you here.</p>') } },
             { id: 'delay1', type: 'delay', data: { label: 'Wait 3 Days', config: { duration: 3, unit: 'days' } } },
-            { id: 'email2', type: 'action', data: { label: 'Follow-up Email', config: { actionType: 'SEND_EMAIL', subject: 'Need help getting started?' } } },
+            { id: 'email2', type: 'action', data: { label: 'Follow-up Email', config: createRecipeEmailConfig('Need help getting started?', 'We are here if you need a hand.', '<h2>How are you getting on?</h2><p>Reply to this email if there is anything we can help you with.</p>') } },
         ],
         edges: [
             { source: 'trigger', target: 'email1' },
@@ -106,9 +140,9 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
         nodes: [
             { id: 'trigger', type: 'trigger', data: { label: 'Cart Abandoned', config: { triggerType: 'ABANDONED_CART' } } },
             { id: 'delay1', type: 'delay', data: { label: 'Wait 1 Hour', config: { duration: 1, unit: 'hours' } } },
-            { id: 'email1', type: 'action', data: { label: 'Reminder Email', config: { actionType: 'SEND_EMAIL', subject: 'You left something behind...' } } },
+            { id: 'email1', type: 'action', data: { label: 'Reminder Email', config: createRecipeEmailConfig('You left something behind...', 'Your cart is ready when you are.', '<h2>Your cart is waiting</h2><p>You left items in your cart. Return to the store when you are ready to complete your order.</p>') } },
             { id: 'delay2', type: 'delay', data: { label: 'Wait 24 Hours', config: { duration: 24, unit: 'hours' } } },
-            { id: 'email2', type: 'action', data: { label: 'Last Chance Email', config: { actionType: 'SEND_EMAIL', subject: 'Your cart is about to expire!' } } },
+            { id: 'email2', type: 'action', data: { label: 'Last Chance Email', config: createRecipeEmailConfig('Your cart is about to expire!', 'A final reminder about the items in your cart.', '<h2>Still interested?</h2><p>This is your final reminder that items are waiting in your cart.</p>') } },
         ],
         edges: [
             { source: 'trigger', target: 'delay1' },
@@ -143,10 +177,12 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
             { id: 'trigger', type: 'trigger', data: { label: 'Order Completed', config: { triggerType: 'ORDER_COMPLETED' } } },
             { id: 'condition', type: 'condition', data: { label: 'Order > $100?', config: { field: 'order.total', operator: 'gt', value: '100' } } },
             { id: 'tag', type: 'action', data: { label: 'Add VIP Tag', config: { actionType: 'ADD_TAG', tagName: 'VIP Customer' } } },
+            { id: 'exit', type: 'action', data: { label: 'Exit Flow', config: { actionType: 'EXIT' } } },
         ],
         edges: [
             { source: 'trigger', target: 'condition' },
             { source: 'condition', target: 'tag', sourceHandle: 'true' },
+            { source: 'condition', target: 'exit', sourceHandle: 'false' },
         ],
     },
 ];

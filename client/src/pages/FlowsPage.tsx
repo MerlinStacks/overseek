@@ -424,6 +424,9 @@ export function FlowsPage() {
     const autosaveAgainRef = useRef(false);
     const autosaveRetryDelayRef = useRef(AUTOSAVE_DEFAULT_RETRY_MS);
     const autosaveCooldownUntilRef = useRef(0);
+    const flowDetailAbortRef = useRef<AbortController | null>(null);
+    const activeEditorRequestRef = useRef('');
+    const activeEditorScopeRef = useRef('');
     const latestNodeAnalyticsRequestRef = useRef('');
     const renameInputRef = useRef<HTMLInputElement | null>(null);
     const shouldCommitRenameOnBlurRef = useRef(true);
@@ -517,6 +520,15 @@ export function FlowsPage() {
     };
 
     const handleEditFlow = useCallback(async (id: string, requestedName?: string) => {
+        if (!currentAccount?.id || !token) return;
+
+        flowDetailAbortRef.current?.abort();
+        const controller = new AbortController();
+        const requestKey = `${currentAccount.id}:${id}:${Date.now()}`;
+        flowDetailAbortRef.current = controller;
+        activeEditorRequestRef.current = requestKey;
+        activeEditorScopeRef.current = `${currentAccount.id}:${id}`;
+
         if (searchParams.get('flowId') !== id) {
             const nextParams = new URLSearchParams(searchParams);
             nextParams.set('flowId', id);
@@ -527,11 +539,14 @@ export function FlowsPage() {
 
         try {
             const res = await fetch(`/api/marketing/automations/${id}`, {
+                signal: controller.signal,
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount?.id || ''
+                    'x-account-id': currentAccount.id
                 }
             });
+
+            if (controller.signal.aborted || activeEditorRequestRef.current !== requestKey) return;
 
             if (!res.ok) {
                 showToast('Failed to load flow details');
@@ -539,6 +554,7 @@ export function FlowsPage() {
             }
 
             const data: FlowRecord = await res.json();
+            if (controller.signal.aborted || activeEditorRequestRef.current !== requestKey) return;
             const resolvedName = requestedName || data.name || 'Untitled flow';
 
             const draftKey = getDraftKey(id);
@@ -578,13 +594,18 @@ export function FlowsPage() {
             setSaveState('saved');
             setInvalidNodeIds(getInvalidNodeIds((data.flowDefinition as FlowDefinition | undefined) || { nodes: [], edges: [] }));
         } catch (error) {
+            if (controller.signal.aborted) return;
             Logger.error('An error occurred', { error });
             showToast('Failed to load flow details');
         }
-    }, [searchParams, setSearchParams, token, currentAccount, getDraftKey]);
+    }, [searchParams, setSearchParams, token, currentAccount?.id, getDraftKey]);
 
     const handleCloseEditor = useCallback(() => {
         setIsClosingEditor(true);
+        activeEditorRequestRef.current = '';
+        activeEditorScopeRef.current = '';
+        flowDetailAbortRef.current?.abort();
+        flowDetailAbortRef.current = null;
         if (autosaveTimerRef.current) {
             window.clearTimeout(autosaveTimerRef.current);
             autosaveTimerRef.current = null;
@@ -599,6 +620,13 @@ export function FlowsPage() {
         setInvalidNodeIds([]);
         setSearchParams({}, { replace: true });
     }, [setSearchParams]);
+
+    useEffect(() => {
+        if (!currentAccount?.id || !activeEditorScopeRef.current) return;
+        if (!activeEditorScopeRef.current.startsWith(`${currentAccount.id}:`)) {
+            handleCloseEditor();
+        }
+    }, [currentAccount?.id, handleCloseEditor]);
 
     useEffect(() => {
         const flowId = searchParams.get('flowId');
@@ -618,36 +646,51 @@ export function FlowsPage() {
         void handleEditFlow(flowId);
     }, [searchParams, isEditing, token, currentAccount, handleEditFlow, isClosingEditor, activeEditorTab]);
 
-    const persistLatestFlow = useCallback(async () => {
-        if (!editingItem || !editingFlowData) return;
+    const persistLatestFlow = useCallback(async (ignoreCooldown = false): Promise<boolean> => {
+        if (!editingItem || !editingFlowData) return false;
         if (!currentAccount || !token) {
             setSaveState('error');
-            return;
+            return false;
         }
 
         if (autosaveInFlightRef.current) {
             autosaveAgainRef.current = true;
-            return;
+            await new Promise<void>((resolve) => {
+                const waitForSave = () => {
+                    if (!autosaveInFlightRef.current) {
+                        resolve();
+                        return;
+                    }
+                    window.setTimeout(waitForSave, 50);
+                };
+                waitForSave();
+            });
+            if (latestSerializedFlowRef.current !== baselineFlowRef.current) {
+                return persistLatestFlow(ignoreCooldown);
+            }
+            return true;
         }
 
         const flow = latestFlowRef.current;
-        if (!flow) return;
+        if (!flow) return false;
+        const saveScope = `${currentAccount.id}:${editingItem.id}`;
+        if (activeEditorScopeRef.current !== saveScope) return false;
 
         const serializedAtStart = latestSerializedFlowRef.current;
         if (!serializedAtStart || serializedAtStart === baselineFlowRef.current) {
             setSaveState('saved');
-            return;
+            return true;
         }
 
         const cooldownRemainingMs = autosaveCooldownUntilRef.current - Date.now();
-        if (cooldownRemainingMs > 0) {
+        if (!ignoreCooldown && cooldownRemainingMs > 0) {
             setSaveState('unsaved');
             if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
             autosaveTimerRef.current = window.setTimeout(() => {
                 autosaveTimerRef.current = null;
                 void persistLatestFlow();
             }, cooldownRemainingMs);
-            return;
+            return false;
         }
 
         autosaveInFlightRef.current = true;
@@ -690,6 +733,7 @@ export function FlowsPage() {
             }
 
             const updated: FlowRecord = await res.json();
+            if (activeEditorScopeRef.current !== saveScope) return false;
             autosaveRetryDelayRef.current = AUTOSAVE_DEFAULT_RETRY_MS;
             autosaveCooldownUntilRef.current = 0;
             setEditingFlowData((previous) => previous ? {
@@ -711,7 +755,9 @@ export function FlowsPage() {
                 setSaveState('unsaved');
                 autosaveAgainRef.current = true;
             }
+            return true;
         } catch (error) {
+            if (activeEditorScopeRef.current !== saveScope) return false;
             Logger.error('Failed to autosave flow', { error });
             setSaveErrorMessage(error instanceof Error ? error.message : 'Unknown error');
             setSaveState('error');
@@ -721,9 +767,10 @@ export function FlowsPage() {
                 autosaveCooldownUntilRef.current = Date.now() + AUTOSAVE_RATE_LIMIT_RETRY_MS;
                 autosaveAgainRef.current = true;
             }
+            return false;
         } finally {
             autosaveInFlightRef.current = false;
-            if (autosaveAgainRef.current) {
+            if (activeEditorScopeRef.current === saveScope && autosaveAgainRef.current) {
                 autosaveAgainRef.current = false;
                 if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
                 autosaveTimerRef.current = window.setTimeout(() => {
@@ -1238,6 +1285,16 @@ export function FlowsPage() {
                 setToastMessage(blockingIssues[0]?.message || 'Fix blocking flow issues before enabling.');
                 setToastType('error');
                 setToastVisible(true);
+                return;
+            }
+
+            if (autosaveTimerRef.current) {
+                window.clearTimeout(autosaveTimerRef.current);
+                autosaveTimerRef.current = null;
+            }
+            const saved = await persistLatestFlow(true);
+            if (!saved || latestSerializedFlowRef.current !== baselineFlowRef.current) {
+                showToast('Save the latest flow changes before enabling it.');
                 return;
             }
         }

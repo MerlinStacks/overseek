@@ -49,6 +49,7 @@ async function runOnce(inFlightRef: MutableRefObject<boolean>, callbackRef: Muta
  * @param intervalMs - Polling interval in milliseconds
  * @param deps - Dependencies array for the callback
  * @param channelName - Optional channel name for cross-tab coordination
+ * @param runImmediately - Whether to execute once when the polling effect starts
  * 
  * @example
  * // Basic usage (no tab coordination)
@@ -61,7 +62,8 @@ export function useVisibilityPolling(
     callback: () => void | Promise<void>,
     intervalMs: number,
     deps: React.DependencyList = [],
-    channelName?: string
+    channelName?: string,
+    runImmediately = true,
 ): void {
     const savedCallback = useRef(callback);
     const dataChannelRef = useRef<BroadcastChannel | null>(null);
@@ -141,10 +143,12 @@ export function useVisibilityPolling(
 
         // Delay initial fetch when coordinating so leader election can settle
         let initialTimeout: ReturnType<typeof setTimeout> | null = null;
-        if (shouldCoordinate) {
-            initialTimeout = setTimeout(executeIfVisible, 500);
-        } else {
-            executeIfVisible();
+        if (runImmediately) {
+            if (shouldCoordinate) {
+                initialTimeout = setTimeout(executeIfVisible, 500);
+            } else {
+                void executeIfVisible();
+            }
         }
 
         // Set up polling interval
@@ -176,5 +180,5 @@ export function useVisibilityPolling(
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('overseek:auth-refresh-completed', handleAuthRefreshCompleted);
         };
-    }, [intervalMs, shouldCoordinate, isLeader, channelName, ...deps]);
+    }, [intervalMs, shouldCoordinate, isLeader, channelName, runImmediately, ...deps]);
 }

@@ -13,6 +13,8 @@ import { NodeExecutor } from './automation/NodeExecutor';
 import { findNextNodeId, calculateDelayDuration } from './automation/FlowNavigator';
 import { automationEnrollmentService } from './AutomationEnrollmentService';
 import { automationQueueService } from './AutomationQueueService';
+import { redisClient } from '../utils/redis';
+import crypto from 'crypto';
 
 export class AutomationEngine {
     private nodeExecutor = new NodeExecutor();
@@ -163,6 +165,18 @@ export class AutomationEngine {
      * Process a single enrollment - advances through flow nodes.
      */
     async processEnrollment(enrollmentId: string) {
+        const lockKey = `automation:enrollment-lock:${enrollmentId}`;
+        const lockToken = crypto.randomUUID();
+        const configuredLockTtlMs = parseInt(process.env.AUTOMATION_ENROLLMENT_LOCK_TTL_MS || '900000', 10);
+        const lockTtlMs = Number.isFinite(configuredLockTtlMs) ? Math.max(60_000, configuredLockTtlMs) : 900_000;
+        const acquired = await redisClient.set(lockKey, lockToken, 'PX', lockTtlMs, 'NX');
+
+        if (!acquired) {
+            Logger.debug('[AutomationEngine] Enrollment is already being processed', { enrollmentId });
+            return;
+        }
+
+        try {
         const enrollment = await prisma.automationEnrollment.findUnique({
             where: { id: enrollmentId },
             include: { automation: true }
@@ -377,6 +391,18 @@ export class AutomationEngine {
                 enrollmentId,
                 runAt: retryAt
             });
+        }
+        } finally {
+            try {
+                await redisClient.eval(
+                    'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end',
+                    1,
+                    lockKey,
+                    lockToken
+                );
+            } catch (error) {
+                Logger.warn('[AutomationEngine] Failed to release enrollment lock', { enrollmentId, error });
+            }
         }
     }
 

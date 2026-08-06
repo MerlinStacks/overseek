@@ -2,7 +2,7 @@
  * ChatComposer - Message composition area with toolbar and canned responses.
  * Handles the reply/private note toggle, channel selector, and send controls.
  */
-import { useState, memo } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { Paperclip, X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { InboxRichTextEditor } from './InboxRichTextEditor';
@@ -87,6 +87,7 @@ interface ChatComposerProps {
  * Renders the message composition area including toolbar and controls.
  */
 export const ChatComposer = memo(function ChatComposer({
+    conversationId,
     recipientEmail,
     input,
     onInputChange,
@@ -129,6 +130,14 @@ export const ChatComposer = memo(function ChatComposer({
     onDismissSafetyWarnings
 }: ChatComposerProps) {
     const [selectedChannel, setSelectedChannel] = useState<ConversationChannel>(currentChannel || 'CHAT');
+
+    useEffect(() => {
+        const currentIsAvailable = availableChannels?.some(
+            option => option.channel === currentChannel && option.available,
+        );
+        const fallback = availableChannels?.find(option => option.available)?.channel;
+        setSelectedChannel(currentIsAvailable ? (currentChannel || 'CHAT') : (fallback || currentChannel || 'CHAT'));
+    }, [conversationId, currentChannel, availableChannels]);
 
     const GSM_7BIT_REGEX = /^[\r\n\x20-\x7E\u00A3\u00A5\u00A7\u00BF\u00C4\u00C5\u00C6\u00C9\u00D1\u00D6\u00D8\u00DC\u00DF\u00E0\u00E4\u00E5\u00E6\u00E8\u00E9\u00EC\u00F1\u00F2\u00F6\u00F8\u00F9\u00FC\u0393\u0394\u0398\u039B\u039E\u03A0\u03A3\u03A6\u03A8\u03A9\u20AC^{}\\[~\]|]+$/;
     const MAX_SMS_LENGTH = 1600;

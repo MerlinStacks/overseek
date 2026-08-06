@@ -1,5 +1,5 @@
 
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { useInbox } from './useInbox';
 import { ConversationList } from '../components/chat/ConversationList';
 import { ChatWindow } from '../components/chat/ChatWindow';
@@ -54,20 +54,20 @@ export function InboxPage() {
         emailAccounts,
     } = useInbox();
 
-    const normalizedConversations: ConversationListItem[] = conversations.map((conversation) => ({
+    const normalizedConversations: ConversationListItem[] = useMemo(() => conversations.map((conversation) => ({
         ...conversation,
         assignedTo: conversation.assignedTo ?? undefined,
         messages: conversation.messages || [],
-    }));
+    })), [conversations]);
 
-    const normalizedMergedRecipients: MergedRecipient[] = (activeConversation?.mergedFrom || [])
+    const normalizedMergedRecipients: MergedRecipient[] = useMemo(() => (activeConversation?.mergedFrom || [])
         .filter((recipient): recipient is { id: string; name?: string; email?: string } => typeof recipient.id === 'string' && recipient.id.length > 0)
         .map((recipient) => ({
             id: recipient.id,
             name: recipient.name,
             email: recipient.email,
             channel: activeConversation?.channel || 'CHAT',
-        }));
+        })), [activeConversation?.channel, activeConversation?.mergedFrom]);
 
     const smsIdentifier = availableChannels
         .find((option) => option.channel === 'SMS' && option.available)?.identifier;
@@ -116,6 +116,7 @@ export function InboxPage() {
                 onFilterChange={setConversationFilter}
                 showResolved={showResolved}
                 onShowResolvedChange={setShowResolved}
+                onRefresh={fetchConversations}
             />
 
             {/* Main Chat Area */}

@@ -5,8 +5,10 @@ import {
     User, Mail,
     Phone,
     MoreVertical,
+    ExternalLink,
     ChevronDown, ChevronRight,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { cn } from '../../utils/cn';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
@@ -295,6 +297,16 @@ export function ContactPanel({ conversation, smsIdentifier, messageCount, onSele
                             </a>
                         )}
                     </div>
+                    {customer?.id && (
+                        <Link
+                            to={`/customers/${encodeURIComponent(customer.id)}`}
+                            aria-label={`View ${name} customer page`}
+                            className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-600 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                        >
+                            View customer
+                            <ExternalLink size={11} aria-hidden="true" />
+                        </Link>
+                    )}
                 </div>
 
                 {/* Quick Stats for WooCustomer */}

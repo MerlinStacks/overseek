@@ -36,6 +36,8 @@ const SUPPORTED_ACTIONS = new Set([
 ]);
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);
+const ALLOWED_ORDER_STATUSES = new Set(['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed']);
+const ALLOWED_DISCOUNT_TYPES = new Set(['percent', 'fixed_cart']);
 const OPERATORS_WITHOUT_VALUE = new Set(['is_set', 'not_set']);
 const SUPPORTED_TRIGGERS = new Set([
     'ORDER_CREATED',
@@ -163,6 +165,28 @@ export function validateAutomationFlow(flow: FlowDefinition | null | undefined):
 
             if (actionType === 'SEND_SMS' && !hasText(config.smsMessage) && !hasText(config.body) && !hasText(config.message)) {
                 issues.push({ id: `sms-content-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'SMS content is required.' });
+            }
+            if (actionType === 'ADD_TAG' && !hasText(config.tagName)) {
+                issues.push({ id: `tag-name-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Tag name is required.' });
+            }
+            if (actionType === 'GENERATE_COUPON') {
+                const amount = Number(config.amount);
+                const expiryDays = Number(config.expiryDays);
+                if (!ALLOWED_DISCOUNT_TYPES.has(String(config.discountType || ''))) {
+                    issues.push({ id: `coupon-type-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Coupon discount type is invalid.' });
+                }
+                if (!Number.isFinite(amount) || amount <= 0) {
+                    issues.push({ id: `coupon-amount-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Coupon amount must be greater than zero.' });
+                }
+                if (!Number.isInteger(expiryDays) || expiryDays <= 0) {
+                    issues.push({ id: `coupon-expiry-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Coupon expiry must be at least one day.' });
+                }
+            }
+            if (actionType === 'ADD_ORDER_NOTE' && !hasText(config.noteContent)) {
+                issues.push({ id: `order-note-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Order note content is required.' });
+            }
+            if (actionType === 'UPDATE_ORDER_STATUS' && !ALLOWED_ORDER_STATUSES.has(String(config.orderStatus || ''))) {
+                issues.push({ id: `order-status-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Target order status is invalid.' });
             }
         }
 

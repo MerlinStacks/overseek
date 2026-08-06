@@ -22,6 +22,8 @@ const SUPPORTED_ACTIONS = new Set([
 ]);
 
 const ALLOWED_DELAY_UNITS = new Set(['minutes', 'hours', 'days', 'weeks', 'months']);
+const ALLOWED_ORDER_STATUSES = new Set(['pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed']);
+const ALLOWED_DISCOUNT_TYPES = new Set(['percent', 'fixed_cart']);
 const SUPPORTED_TRIGGERS = new Set([
     'ORDER_CREATED',
     'ORDER_PAID',
@@ -91,7 +93,7 @@ export function validateFlow(nodes: Node[], edges: Edge[]): FlowIssue[] {
     }
 
     if (triggerNodes.length > 1) {
-        issues.push({ id: 'multiple-triggers', severity: 'warning', message: 'Flow has more than one trigger. Keep one entry point for predictable runs.' });
+        issues.push({ id: 'multiple-triggers', severity: 'blocking', message: 'Flow must have one trigger.' });
     }
 
     edges.forEach((edge) => {
@@ -128,7 +130,7 @@ export function validateFlow(nodes: Node[], edges: Edge[]): FlowIssue[] {
 
             if (actionType === 'SEND_EMAIL') {
                 const emailCategory = String(config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING'));
-                const htmlContent = String(config.htmlContent || '');
+                const htmlContent = String(config.htmlContent || config.body || config.html || '');
                 const subject = String(config.subject || '');
                 const to = String(config.to || '{{customer.email}}');
 
@@ -150,6 +152,32 @@ export function validateFlow(nodes: Node[], edges: Edge[]): FlowIssue[] {
                 if (emailCategory === 'MARKETING' && !htmlContent.includes('{{unsubscribe_url}}')) {
                     issues.push({ id: `email-unsubscribe-url-${node.id}`, nodeId: node.id, severity: 'warning', message: 'Add {{unsubscribe_url}} so each recipient gets a working unsubscribe link.' });
                 }
+            }
+
+            if (actionType === 'SEND_SMS' && !hasText(config.smsMessage) && !hasText(config.body) && !hasText(config.message)) {
+                issues.push({ id: `sms-content-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'SMS content is required.' });
+            }
+            if (actionType === 'ADD_TAG' && !hasText(config.tagName)) {
+                issues.push({ id: `tag-name-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Tag name is required.' });
+            }
+            if (actionType === 'GENERATE_COUPON') {
+                const amount = Number(config.amount);
+                const expiryDays = Number(config.expiryDays);
+                if (!ALLOWED_DISCOUNT_TYPES.has(String(config.discountType || ''))) {
+                    issues.push({ id: `coupon-type-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Coupon discount type is invalid.' });
+                }
+                if (!Number.isFinite(amount) || amount <= 0) {
+                    issues.push({ id: `coupon-amount-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Coupon amount must be greater than zero.' });
+                }
+                if (!Number.isInteger(expiryDays) || expiryDays <= 0) {
+                    issues.push({ id: `coupon-expiry-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Coupon expiry must be at least one day.' });
+                }
+            }
+            if (actionType === 'ADD_ORDER_NOTE' && !hasText(config.noteContent)) {
+                issues.push({ id: `order-note-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Order note content is required.' });
+            }
+            if (actionType === 'UPDATE_ORDER_STATUS' && !ALLOWED_ORDER_STATUSES.has(String(config.orderStatus || ''))) {
+                issues.push({ id: `order-status-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Target order status is invalid.' });
             }
         }
 
@@ -180,10 +208,11 @@ export function validateFlow(nodes: Node[], edges: Edge[]): FlowIssue[] {
                 issues.push({ id: `condition-rule-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Condition needs at least one complete rule.' });
             }
 
-            const hasYes = outgoing.some((edge) => edge.sourceHandle === 'true');
-            const hasNo = outgoing.some((edge) => edge.sourceHandle === 'false');
-            if (!hasYes) issues.push({ id: `condition-yes-${node.id}`, nodeId: node.id, severity: 'warning', message: 'YES branch is empty.' });
-            if (!hasNo) issues.push({ id: `condition-no-${node.id}`, nodeId: node.id, severity: 'warning', message: 'NO branch is empty.' });
+            const trueEdges = outgoing.filter((edge) => edge.sourceHandle === 'true');
+            const falseEdges = outgoing.filter((edge) => edge.sourceHandle === 'false');
+            if (trueEdges.length !== 1 || falseEdges.length !== 1 || outgoing.length > 2) {
+                issues.push({ id: `condition-branches-${node.id}`, nodeId: node.id, severity: 'blocking', message: 'Condition needs exactly one YES and one NO branch.' });
+            }
         }
     });
 
