@@ -11,8 +11,29 @@ import { handleRouteError } from '../utils/errors';
 import { parseAdvancedFilters } from './routeHelpers';
 
 const customersRoutes: FastifyPluginAsync = async (fastify) => {
+    const AbnSchema = z.string().trim().transform(value => value.replace(/\D/g, '')).refine(value => {
+        if (!value) return true;
+        if (!/^\d{11}$/.test(value)) return false;
+        const weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19];
+        const sum = value.split('').reduce((total, digit, index) => total + (Number(digit) - (index === 0 ? 1 : 0)) * weights[index], 0);
+        return sum % 89 === 0;
+    }, 'Invalid ABN');
     const ContactStatusSchema = z.object({
         status: z.enum(['UNVERIFIED', 'SUBSCRIBED', 'BOUNCED', 'UNSUBSCRIBED', 'SOFT_BOUNCED', 'COMPLAINT'])
+    });
+    const CustomerProfileSchema = z.object({
+        firstName: z.string().trim().max(100),
+        lastName: z.string().trim().max(100),
+        email: z.string().trim().email().toLowerCase(),
+        phone: z.string().trim().max(50).optional(),
+        company: z.string().trim().max(200).optional(),
+        abn: AbnSchema.optional(),
+        address1: z.string().trim().max(200).optional(),
+        address2: z.string().trim().max(200).optional(),
+        city: z.string().trim().max(100).optional(),
+        state: z.string().trim().max(100).optional(),
+        postcode: z.string().trim().max(30).optional(),
+        country: z.string().trim().toUpperCase().regex(/^([A-Z]{2})?$/, 'Invalid country code').optional()
     });
 
     // Apply auth to all routes in this plugin
@@ -99,6 +120,21 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('Get Customer Details Error', { error });
             return handleRouteError(error, reply, 'Failed to fetch customer details');
+        }
+    });
+
+    fastify.put<{ Params: { id: string } }>('/:id/profile', async (request, reply) => {
+        try {
+            const parsed = CustomerProfileSchema.safeParse(request.body);
+            if (!parsed.success) {
+                return reply.code(400).send({ error: 'Invalid profile details', details: parsed.error.flatten() });
+            }
+            const customer = await CustomersService.updateCustomerProfile(request.accountId!, request.params.id, parsed.data);
+            if (!customer) return reply.code(404).send({ error: 'Customer not found' });
+            return { success: true, customer };
+        } catch (error) {
+            Logger.error('Update Customer Profile Error', { error });
+            return handleRouteError(error, reply, 'Failed to update customer profile');
         }
     });
 

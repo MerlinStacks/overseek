@@ -1,7 +1,17 @@
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../utils/prisma', () => ({
+    prisma: {
+        account: { findUnique: vi.fn() },
+        accountFeature: { findUnique: vi.fn() },
+        emailAccount: { findMany: vi.fn() }
+    }
+}));
+
 import artworkEventsRoutes, { normalizeArtworkStatus } from './artworkEvents';
 import { EventBus, EVENTS } from '../services/events';
+import { prisma } from '../utils/prisma';
 
 vi.mock('../utils/logger', () => ({
     Logger: {
@@ -13,6 +23,12 @@ vi.mock('../utils/logger', () => ({
 }));
 
 describe('artwork events', () => {
+    beforeEach(() => {
+        vi.mocked(prisma.account.findUnique).mockResolvedValue({ webhookSecret: 'artwork-secret' } as any);
+        vi.mocked(prisma.accountFeature.findUnique).mockResolvedValue(null);
+        vi.mocked(prisma.emailAccount.findMany).mockResolvedValue([]);
+    });
+
     afterEach(() => {
         EventBus.removeAllListeners();
         vi.clearAllMocks();
@@ -34,6 +50,7 @@ describe('artwork events', () => {
         const response = await fastify.inject({
             method: 'POST',
             url: '/account-1',
+            headers: { authorization: 'Bearer artwork-secret' },
             payload: {
                 event: {
                     event_id: 'event-v2',
@@ -69,6 +86,7 @@ describe('artwork events', () => {
         const response = await fastify.inject({
             method: 'POST',
             url: '/wp-json/overseek/v1/artwork-events',
+            headers: { authorization: 'Bearer artwork-secret' },
             payload: {
                 account_id: 'account-1',
                 event: { event_status: 'approved', order_id: 1001 }
@@ -93,6 +111,7 @@ describe('artwork events', () => {
         const response = await fastify.inject({
             method: 'POST',
             url: '/account-1',
+            headers: { authorization: 'Bearer artwork-secret' },
             payload: {
                 event: {
                     event_status: 'changes_requested',
@@ -108,6 +127,23 @@ describe('artwork events', () => {
             artwork: expect.objectContaining({ proofVersion: 2 })
         });
 
+        await fastify.close();
+    });
+
+    it('rejects events without a bearer token', async () => {
+        const fastify = Fastify();
+        await fastify.register(artworkEventsRoutes);
+        const listener = vi.fn();
+        EventBus.on(EVENTS.ARTWORK.APPROVED, listener);
+
+        const response = await fastify.inject({
+            method: 'POST',
+            url: '/account-1',
+            payload: { event: { event_status: 'approved' } }
+        });
+
+        expect(response.statusCode).toBe(401);
+        expect(listener).not.toHaveBeenCalled();
         await fastify.close();
     });
 });

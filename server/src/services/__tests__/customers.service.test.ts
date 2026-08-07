@@ -12,6 +12,10 @@ const mockEmailUnsubscribeFindMany = vi.fn();
 const mockEmailUnsubscribeCount = vi.fn();
 const mockAutomationEnrollmentFindMany = vi.fn();
 const mockEmailLogFindMany = vi.fn();
+const mockWooOrderFindMany = vi.fn();
+const mockWooOrderAggregate = vi.fn();
+const mockEmailUnsubscribeDeleteMany = vi.fn();
+const mockEmailUnsubscribeCreate = vi.fn();
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
@@ -22,11 +26,8 @@ vi.mock('../../utils/prisma', () => ({
             count: (...args: any[]) => mockWooCustomerCount(...args),
         },
         wooOrder: {
-            findMany: vi.fn().mockResolvedValue([]),
-            aggregate: vi.fn().mockResolvedValue({
-                _count: { id: 0 },
-                _sum: { total: 0 }
-            }),
+            findMany: (...args: any[]) => mockWooOrderFindMany(...args),
+            aggregate: (...args: any[]) => mockWooOrderAggregate(...args),
         },
         automationEnrollment: {
             findMany: (...args: any[]) => mockAutomationEnrollmentFindMany(...args),
@@ -38,6 +39,8 @@ vi.mock('../../utils/prisma', () => ({
             findFirst: (...args: any[]) => mockEmailUnsubscribeFindFirst(...args),
             findMany: (...args: any[]) => mockEmailUnsubscribeFindMany(...args),
             count: (...args: any[]) => mockEmailUnsubscribeCount(...args),
+            deleteMany: (...args: any[]) => mockEmailUnsubscribeDeleteMany(...args),
+            create: (...args: any[]) => mockEmailUnsubscribeCreate(...args),
         },
         conversation: {
             findMany: vi.fn().mockResolvedValue([]),
@@ -45,7 +48,17 @@ vi.mock('../../utils/prisma', () => ({
         emailLog: {
             findMany: (...args: any[]) => mockEmailLogFindMany(...args),
         },
-        $queryRaw: (...args: any[]) => mockQueryRaw(...args)
+        $queryRaw: (...args: any[]) => mockQueryRaw(...args),
+        $transaction: async (callback: (tx: any) => unknown) => callback({
+            wooCustomer: {
+                findFirst: (...args: any[]) => mockFindFirst(...args),
+                update: (...args: any[]) => mockUpdate(...args),
+            },
+            emailUnsubscribe: {
+                deleteMany: (...args: any[]) => mockEmailUnsubscribeDeleteMany(...args),
+                create: (...args: any[]) => mockEmailUnsubscribeCreate(...args),
+            }
+        })
     }
 }));
 
@@ -78,6 +91,8 @@ describe('CustomersService', () => {
         mockQueryRaw.mockResolvedValue([]);
         mockAutomationEnrollmentFindMany.mockResolvedValue([]);
         mockEmailLogFindMany.mockResolvedValue([]);
+        mockWooOrderFindMany.mockResolvedValue([]);
+        mockWooOrderAggregate.mockResolvedValue({ _count: { id: 0 }, _sum: { total: 0 } });
     });
 
     describe('getCustomerDetails', () => {
@@ -97,12 +112,17 @@ describe('CustomersService', () => {
 
             expect(result).not.toBeNull();
             // Service enriches customer with computed stats from orders (fallback when DB value is 0)
-            expect(result?.customer).toEqual({
-                ...mockCustomer,
-                contactStatus: 'SUBSCRIBED',
+            expect(result?.customer).toEqual(expect.objectContaining({
+                id: customerId,
+                wooId: 123,
+                email: 'test@example.com',
+                billingAddress: {},
+                company: '',
+                abn: '',
+                contactStatus: 'UNVERIFIED',
                 totalSpent: 0,
                 ordersCount: 0
-            });
+            }));
             expect(mockFindFirst).toHaveBeenCalledTimes(1);
         });
 
@@ -123,6 +143,41 @@ describe('CustomersService', () => {
             // We expect mockFindFirst to be called ONLY ONCE (the scoped lookup).
             // The second global lookup (which was the vulnerability) should not happen.
             expect(mockFindFirst).toHaveBeenCalledTimes(1);
+        });
+
+        it('links orders by Woo customer ID or normalized billing email and falls back to order billing', async () => {
+            mockFindFirst.mockResolvedValueOnce({
+                id: customerId,
+                accountId,
+                email: 'Buyer@Example.com ',
+                wooId: 123,
+                totalSpent: 0,
+                ordersCount: 0,
+                rawData: {}
+            });
+            mockWooOrderFindMany.mockResolvedValueOnce([{
+                id: 'order-1', wooId: 44, number: '44', status: 'processing', total: 25,
+                currency: 'AUD', dateCreated: new Date(),
+                rawData: { billing: { address_1: '1 Test Street', company: 'Buyer Co' } }
+            }]);
+
+            const result = await CustomersService.getCustomerDetails(accountId, customerId);
+
+            expect(mockWooOrderFindMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: {
+                    accountId,
+                    OR: [
+                        { wooCustomerId: 123 },
+                        {
+                            wooCustomerId: null,
+                            billingEmail: { in: ['buyer@example.com'], mode: 'insensitive' }
+                        }
+                    ]
+                }
+            }));
+            expect(result?.customer.billingAddress).toEqual({ address_1: '1 Test Street', company: 'Buyer Co' });
+            expect(result?.customer.company).toBe('Buyer Co');
+            expect(result?.orders[0]).not.toHaveProperty('rawData');
         });
 
         it('includes automation email logs matched to enrollment windows', async () => {
@@ -186,10 +241,86 @@ describe('CustomersService', () => {
                     accountId,
                     source: 'AUTOMATION',
                     sourceId: { in: ['automation-1'] },
-                    to: { equals: 'test@example.com', mode: 'insensitive' },
+                    to: { in: ['test@example.com'], mode: 'insensitive' },
                     createdAt: { gte: enteredAt }
                 })
             }));
+        });
+    });
+
+    describe('updateContactStatus', () => {
+        it('accepts a numeric Woo ID and updates customer and suppression atomically', async () => {
+            const customer = {
+                id: customerId,
+                accountId,
+                wooId: 123,
+                email: 'Buyer@Example.com',
+                rawData: { billing: { city: 'Sydney' } }
+            };
+            mockFindFirst.mockResolvedValue(customer);
+            mockUpdate.mockResolvedValue({ ...customer, rawData: { ...customer.rawData, contactStatus: 'COMPLAINT' } });
+            mockEmailUnsubscribeDeleteMany.mockResolvedValue({ count: 1 });
+            mockEmailUnsubscribeCreate.mockResolvedValue({ id: 'suppression-1' });
+
+            const result = await CustomersService.updateContactStatus(accountId, '123', 'COMPLAINT');
+
+            expect(mockFindFirst).toHaveBeenNthCalledWith(1, { where: { accountId, wooId: 123 } });
+            expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+                where: { id: customerId },
+                data: { rawData: { billing: { city: 'Sydney' }, contactStatus: 'COMPLAINT' } }
+            }));
+            expect(mockEmailUnsubscribeDeleteMany).toHaveBeenCalledWith({
+                where: { accountId, email: { equals: 'buyer@example.com', mode: 'insensitive' } }
+            });
+            expect(mockEmailUnsubscribeCreate).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ email: 'buyer@example.com', scope: 'ALL' })
+            }));
+            expect(result?.sendingMethods).toEqual({ marketing: false, transactional: false });
+        });
+    });
+
+    describe('updateCustomerProfile', () => {
+        it('preserves concurrent status changes, email history, suppression, and canonical ABN data', async () => {
+            const originalCustomer = {
+                id: customerId,
+                accountId,
+                wooId: -10,
+                email: 'old@example.com',
+                firstName: 'Old',
+                lastName: 'Name',
+                rawData: { contactStatus: 'SUBSCRIBED', billing: { abn: 'old-value', city: 'Sydney' } }
+            };
+            const latestCustomer = {
+                ...originalCustomer,
+                rawData: { ...originalCustomer.rawData, contactStatus: 'COMPLAINT' }
+            };
+            const updatedCustomer = { ...latestCustomer, email: 'new@example.com', firstName: 'New' };
+            mockFindFirst.mockResolvedValueOnce(originalCustomer).mockResolvedValueOnce(latestCustomer);
+            mockEmailUnsubscribeFindMany.mockResolvedValueOnce([{ scope: 'ALL', reason: 'Complaint' }]);
+            mockEmailUnsubscribeDeleteMany.mockResolvedValue({ count: 0 });
+            mockEmailUnsubscribeCreate.mockResolvedValue({ id: 'suppression-new' });
+            mockUpdate.mockResolvedValue(updatedCustomer);
+
+            await CustomersService.updateCustomerProfile(accountId, customerId, {
+                firstName: 'New', lastName: 'Name', email: 'new@example.com', abn: '51824753556',
+                city: 'Melbourne', country: 'AU'
+            });
+
+            expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+                where: { id: customerId },
+                data: expect.objectContaining({
+                    email: 'new@example.com',
+                    rawData: expect.objectContaining({
+                        contactStatus: 'COMPLAINT',
+                        abn: '51824753556',
+                        previousEmails: ['old@example.com'],
+                        billing: expect.not.objectContaining({ abn: expect.anything() })
+                    })
+                })
+            }));
+            expect(mockEmailUnsubscribeCreate).toHaveBeenCalledWith({
+                data: { accountId, email: 'new@example.com', scope: 'ALL', reason: 'Complaint' }
+            });
         });
     });
 
@@ -254,7 +385,11 @@ describe('CustomersService', () => {
 
                 return [];
             });
-            mockQueryRaw.mockResolvedValueOnce([{ wooId: 123, email: 'alice@example.com', rawData: {} }]);
+            mockQueryRaw.mockResolvedValueOnce([{
+                wooId: 123,
+                email: 'alice@example.com',
+                rawData: { contactStatus: 'SUBSCRIBED' }
+            }]);
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'ALL', []);
 

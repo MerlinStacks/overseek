@@ -129,6 +129,9 @@ export class SchedulerService {
                 case 'review-delete-cleanup':
                     await MaintenanceScheduler.dispatchReviewDeleteCleanup();
                     break;
+                case 'wholesale-catalog-maintenance':
+                    await MaintenanceScheduler.dispatchWholesaleCatalogMaintenance();
+                    break;
                 case 'shipping-tracking-poll':
                     await ShippingTrackingScheduler.dispatchTrackingPoll();
                     break;

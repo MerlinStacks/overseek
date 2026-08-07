@@ -13,6 +13,9 @@ import { MarketingService } from '../services/MarketingService';
 import { normalizeOrderStatus } from '../constants/orderStatus';
 import { FeedMappingService } from '../services/feedMapping';
 import { canonicalInvoiceService } from '../services/CanonicalInvoiceService';
+import { WholesaleCatalogWorker } from '../services/wholesale/worker';
+import { WholesaleCatalogShareWorker } from '../services/wholesale/shareWorker';
+import { WholesaleCatalogValidityWorker } from '../services/wholesale/validityWorker';
 
 /** Track all workers for graceful shutdown */
 const activeWorkers: Worker[] = [];
@@ -112,6 +115,18 @@ export async function startWorkers() {
         }
 
         await canonicalInvoiceService.processGenerationJob({ artifactId, accountId, orderId, templateId });
+    }));
+
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.WHOLESALE_CATALOG_GENERATE, async (job) => {
+        await WholesaleCatalogWorker.process(job);
+    }));
+
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.WHOLESALE_CATALOG_SHARE_PREPARE, async (job) => {
+        await WholesaleCatalogShareWorker.process(job);
+    }));
+
+    activeWorkers.push(QueueFactory.createWorker(QUEUES.WHOLESALE_CATALOG_VALIDITY_UPDATE, async (job) => {
+        await WholesaleCatalogValidityWorker.process(job);
     }));
 
 

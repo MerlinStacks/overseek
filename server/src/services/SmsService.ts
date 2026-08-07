@@ -92,8 +92,8 @@ export class SmsService {
                 From: creds.fromNumber,
                 Body: body
             });
-            const appUrl = process.env.APP_URL?.trim().replace(/\/+$/, '');
-            if (appUrl?.startsWith('https://')) formData.append('StatusCallback', `${appUrl}/api/sms/status`);
+            const apiUrl = process.env.API_URL?.trim().replace(/\/+$/, '');
+            if (apiUrl?.startsWith('https://')) formData.append('StatusCallback', `${apiUrl}/api/sms/status`);
 
             const response = await fetch(url, {
                 method: 'POST',

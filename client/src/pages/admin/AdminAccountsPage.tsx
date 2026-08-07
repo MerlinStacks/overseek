@@ -35,6 +35,7 @@ const KNOWN_FEATURES = [
     'SHIPPING_HUB',
     'FEED_EXPORTS',
     'BOT_SHIELD',
+    'WHOLESALE_CATALOG',
     'TRACKING_EMAIL_EVENTS'
 ];
 
@@ -51,6 +52,7 @@ const FEATURE_LABELS: Record<string, string> = {
     SHIPPING_HUB: 'Shipping Hub',
     FEED_EXPORTS: 'Feeds',
     BOT_SHIELD: 'Bot Shield',
+    WHOLESALE_CATALOG: 'Wholesale Catalog',
     TRACKING_EMAIL_EVENTS: 'Tracking Email',
 };
 

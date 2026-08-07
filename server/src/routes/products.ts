@@ -19,6 +19,7 @@ import { REVENUE_STATUSES } from '../constants/orderStatus';
 import { AuditService } from '../services/AuditService';
 import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
 import { validateProductDescriptionHtml } from '../utils/productDescriptionHtml';
+import { reconcileWholesaleProductsBestEffort } from '../services/wholesale/reconciliation';
 
 const searchQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
@@ -355,6 +356,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     Logger.warn("Failed to index product during manual sync", { error: err });
                 }
             }
+
+            if (upsertedProduct) await reconcileWholesaleProductsBestEffort(accountId, [upsertedProduct.id]);
 
             const finalProduct = await ProductsService.getProductByWooId(accountId, wooId);
             return finalProduct;

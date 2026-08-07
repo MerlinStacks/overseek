@@ -20,6 +20,9 @@ export const QUEUES = {
     CAMPAIGNS: 'campaign-send',
     FEED_OPTIMIZE: 'feed-optimize',
     INVOICE_CANONICAL_GENERATE: 'invoice-canonical-generate',
+    WHOLESALE_CATALOG_GENERATE: 'wholesale-catalog-generate',
+    WHOLESALE_CATALOG_SHARE_PREPARE: 'wholesale-catalog-share-prepare',
+    WHOLESALE_CATALOG_VALIDITY_UPDATE: 'wholesale-catalog-validity-update',
 };
 
 // Global Store for Queues to adapter
@@ -116,7 +119,8 @@ export class QueueFactory {
         const isLongRunning = [
             QUEUES.ORDERS, QUEUES.PRODUCTS, QUEUES.CUSTOMERS, QUEUES.REVIEWS,
             QUEUES.PAGES, QUEUES.BLOG_POSTS,
-            QUEUES.BOM_SYNC, QUEUES.REPORTS, QUEUES.CAMPAIGNS
+            QUEUES.BOM_SYNC, QUEUES.REPORTS, QUEUES.CAMPAIGNS, QUEUES.WHOLESALE_CATALOG_GENERATE,
+            QUEUES.WHOLESALE_CATALOG_SHARE_PREPARE, QUEUES.WHOLESALE_CATALOG_VALIDITY_UPDATE
         ].includes(name);
 
         const worker = new Worker(name, async (job) => {

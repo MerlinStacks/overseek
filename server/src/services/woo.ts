@@ -5,6 +5,7 @@ import { Logger } from '../utils/logger';
 import { retryWithBackoff, isCredentialError, isMaintenanceMode, getRetryAfterSeconds } from '../utils/retryWithBackoff';
 import { registerRuntimeMetricsProvider } from '../utils/runtimeMetrics';
 import { HTTP_LIMITS } from '../config/limits';
+import { buildWholesaleTaxImportCandidate } from './wholesale/taxImport';
 
 // Mock data removed - demo mode is currently disabled (see isDemo flag)
 type MockProduct = { id: number; name: string; price: string };
@@ -330,6 +331,43 @@ export class WooService {
             ...(after && { modified_after: after })
         };
         return this.requestWithRetry('get', 'customers', apiParams);
+    }
+
+    async updateCustomer(customerId: number, data: Record<string, unknown>) {
+        if (this.isDemo) return { id: customerId, ...data };
+        const response = await this.requestWithRetry('put', `customers/${customerId}`, data);
+        return response.data;
+    }
+
+    async getWholesaleTaxSettings() {
+        const account = this.accountId ? await prisma.account.findUnique({
+            where: { id: this.accountId },
+            select: { revenueTaxInclusive: true },
+        }) : null;
+        const warnings: string[] = [];
+        let wooSettings: unknown;
+        let wooTaxRates: unknown;
+
+        try {
+            wooSettings = (await this.requestWithRetry('get', 'settings/tax')).data;
+        } catch {
+            warnings.push('WooCommerce tax settings are unavailable; review the account tax fallback before applying it.');
+        }
+
+        if (wooSettings !== undefined) {
+            try {
+                wooTaxRates = (await this.requestWithRetry('get', 'taxes', { per_page: 100 })).data;
+            } catch {
+                warnings.push('WooCommerce tax rates are unavailable; review the fallback GST rate before applying it.');
+            }
+        }
+
+        return buildWholesaleTaxImportCandidate({
+            wooSettings,
+            wooTaxRates,
+            accountRevenueTaxInclusive: account?.revenueTaxInclusive ?? false,
+            warnings,
+        });
     }
 
     async getReviews(params: { after?: string; page?: number; per_page?: number; status?: string } = {}) {

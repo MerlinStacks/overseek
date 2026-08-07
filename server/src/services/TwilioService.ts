@@ -91,9 +91,9 @@ export class TwilioService {
         formData.append('From', fromNumber);
         formData.append('To', normalizedTo);
         formData.append('Body', body);
-        const appUrl = process.env.APP_URL?.trim().replace(/\/+$/, '');
-        if (appUrl?.startsWith('https://')) {
-            formData.append('StatusCallback', `${appUrl}/api/sms/status`);
+        const apiUrl = process.env.API_URL?.trim().replace(/\/+$/, '');
+        if (apiUrl?.startsWith('https://')) {
+            formData.append('StatusCallback', `${apiUrl}/api/sms/status`);
         }
 
         let failureLogged = false;

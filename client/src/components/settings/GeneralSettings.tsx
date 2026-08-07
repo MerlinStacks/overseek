@@ -31,7 +31,7 @@ export function GeneralSettings() {
                 domain: currentAccount.domain || '',
                 sitemapUrl: currentAccount.sitemapUrl || '',
                 wooUrl: currentAccount.wooUrl || '',
-                wooConsumerKey: currentAccount.wooConsumerKey || '',
+                wooConsumerKey: '',
                 wooConsumerSecret: '', // Don't show existing secret for security, only if updating
                 revenueTaxInclusive: currentAccount.revenueTaxInclusive ?? true,
                 autoSendInvoiceOnNewOrder: currentAccount.autoSendInvoiceOnNewOrder ?? false,
@@ -90,7 +90,11 @@ export function GeneralSettings() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify({
+                    ...formData,
+                    wooConsumerKey: formData.wooConsumerKey.trim() || undefined,
+                    wooConsumerSecret: formData.wooConsumerSecret.trim() || undefined,
+                })
             });
 
             if (!res.ok) throw new Error('Failed to update settings');
@@ -221,7 +225,7 @@ export function GeneralSettings() {
                                 type="text"
                                 name="wooConsumerKey"
                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-hidden font-mono"
-                                placeholder="ck_..."
+                                placeholder={currentAccount.wooCredentialsConfigured ? 'Leave blank to keep unchanged' : 'ck_...'}
                                 value={formData.wooConsumerKey}
                                 onChange={handleChange}
                             />

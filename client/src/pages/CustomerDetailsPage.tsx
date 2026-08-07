@@ -1,14 +1,16 @@
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
 import { formatCurrency, formatDateSafe, formatTimeSafe, formatDateTimeSafe, toValidDate } from '../utils/format';
 import { Mail, Calendar, Activity, Zap, Users, Send } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { MergeCustomerModal } from '../components/customers/MergeCustomerModal';
+import { EditCustomerProfileModal, type CustomerProfileValues } from '../components/customers/EditCustomerProfileModal';
 import { subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
+import { emailMessageToPreview } from '../utils/emailParser';
 
 interface CustomerDetails {
     customer: {
@@ -22,6 +24,7 @@ interface CustomerDetails {
         rawData?: {
             billing?: {
                 phone?: string;
+                company?: string;
                 address_1?: string;
                 address_2?: string;
                 city?: string;
@@ -31,6 +34,18 @@ interface CustomerDetails {
             };
             [key: string]: unknown;
         };
+        billingAddress?: {
+            phone?: string;
+            company?: string;
+            address_1?: string;
+            address_2?: string;
+            city?: string;
+            state?: string;
+            postcode?: string;
+            country?: string;
+        };
+        company?: string;
+        abn?: string;
         contactStatus?: 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
     };
     orders: Array<{
@@ -88,6 +103,14 @@ interface CustomerDetails {
             createdAt: string;
         } | null;
     }>;
+    metadata?: {
+        recordSource: 'database' | 'search-fallback';
+        billingSource: 'woocommerce-customer' | 'latest-order' | 'customer-and-order' | 'none';
+        statsSource: 'woocommerce-customer' | 'local-orders';
+        isLocalOnly: boolean;
+        wooId: number;
+        lastSyncedAt?: string;
+    };
 }
 
 const CONTACT_STATUS_OPTIONS = [
@@ -100,7 +123,7 @@ const CONTACT_STATUS_OPTIONS = [
 ] as const;
 
 function getContactStatusBadge(status: CustomerDetails['customer']['contactStatus'] | undefined) {
-    switch (status || 'SUBSCRIBED') {
+    switch (status || 'UNVERIFIED') {
         case 'UNVERIFIED':
             return { label: 'Unverified', className: 'bg-gray-100 text-gray-700 border-gray-200' };
         case 'SUBSCRIBED':
@@ -114,7 +137,7 @@ function getContactStatusBadge(status: CustomerDetails['customer']['contactStatu
         case 'COMPLAINT':
             return { label: 'Complaint', className: 'bg-rose-100 text-rose-700 border-rose-200' };
         default:
-            return { label: 'Subscribed', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+            return { label: 'Unverified', className: 'bg-gray-100 text-gray-700 border-gray-200' };
     }
 }
 
@@ -174,51 +197,98 @@ function CustomerDetailsSkeleton() {
 
 export function CustomerDetailsPage() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { id } = useParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const requestedTab = searchParams.get('tab');
+    const initialTab = ['overview', 'orders', 'automations', 'activity', 'inbox'].includes(requestedTab || '')
+        ? requestedTab as 'overview' | 'orders' | 'automations' | 'activity' | 'inbox'
+        : 'overview';
     const [data, setData] = useState<CustomerDetails | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'automations' | 'activity' | 'inbox'>('overview');
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [notFound, setNotFound] = useState(false);
+    const [activeTab, setActiveTabState] = useState<'overview' | 'orders' | 'automations' | 'activity' | 'inbox'>(initialTab);
     const [showMergeModal, setShowMergeModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+    const [profileError, setProfileError] = useState<string | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
-    const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+    const customerRequestRef = useRef<AbortController | null>(null);
     const [statusFeedback, setStatusFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const [resendFeedback, setResendFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
 
-    const fetchCustomerDetails = useCallback(async () => {
-        if (!id) return;
-        const shouldShowBlockingLoader = !hasLoadedOnce;
-        if (shouldShowBlockingLoader) {
-            setIsLoading(true);
-        }
+    const setActiveTab = useCallback((tab: typeof activeTab) => {
+        setActiveTabState(tab);
+        setSearchParams(previous => {
+            const next = new URLSearchParams(previous);
+            if (tab === 'overview') next.delete('tab');
+            else next.set('tab', tab);
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
+
+    const fetchCustomerDetails = useCallback(async (background = false) => {
+        if (!id || !token || !currentAccount?.id) return;
+        customerRequestRef.current?.abort();
+        const controller = new AbortController();
+        customerRequestRef.current = controller;
+        if (background) setIsRefreshing(true);
+        else setIsLoading(true);
+        setLoadError(null);
         try {
             const res = await fetch(`/api/customers/${id}`, {
+                signal: controller.signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount?.id || ''
                 }
             });
-            if (res.ok) {
-                const json = await res.json();
-                setData(json);
+            if (controller.signal.aborted || customerRequestRef.current !== controller) return;
+            if (res.status === 404) {
+                setData(null);
+                setNotFound(true);
+                return;
             }
+            if (!res.ok) throw new Error(res.status === 403 ? 'You do not have access to this contact.' : 'Could not load this contact.');
+            const json = await res.json();
+            if (controller.signal.aborted || customerRequestRef.current !== controller) return;
+            setData(json);
+            setNotFound(false);
         } catch (err) {
+            if (controller.signal.aborted) return;
             Logger.error('An error occurred', { error: err });
+            setLoadError(err instanceof Error ? err.message : 'Could not load this contact.');
         } finally {
-            setHasLoadedOnce(true);
-            if (shouldShowBlockingLoader) {
+            if (customerRequestRef.current === controller && !controller.signal.aborted) {
                 setIsLoading(false);
+                setIsRefreshing(false);
             }
         }
-    }, [id, token, currentAccount?.id, hasLoadedOnce]);
+    }, [id, token, currentAccount?.id]);
 
     useEffect(() => {
         if (id && currentAccount && token) {
-            fetchCustomerDetails();
+            setData(null);
+            setNotFound(false);
+            setLoadError(null);
+            void fetchCustomerDetails();
         }
+        return () => customerRequestRef.current?.abort();
     }, [id, currentAccount, token, fetchCustomerDetails]);
+
+    useEffect(() => {
+        if (requestedTab && ['overview', 'orders', 'automations', 'activity', 'inbox'].includes(requestedTab)) {
+            setActiveTabState(requestedTab as typeof activeTab);
+        } else if (!requestedTab) {
+            setActiveTabState('overview');
+        }
+    }, [requestedTab]);
 
     useEffect(() => {
         const unsubscribe = subscribeToCrossTabEvents((event) => {
@@ -227,7 +297,7 @@ export function CustomerDetailsPage() {
             }
 
             if (!event.resourceId || event.resourceId === id) {
-                void fetchCustomerDetails();
+                void fetchCustomerDetails(true);
             }
         });
 
@@ -237,7 +307,7 @@ export function CustomerDetailsPage() {
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                void fetchCustomerDetails();
+                void fetchCustomerDetails(true);
             }
         };
 
@@ -247,7 +317,10 @@ export function CustomerDetailsPage() {
 
     const updateContactStatus = useCallback(async (status: (typeof CONTACT_STATUS_OPTIONS)[number]['value']) => {
         if (!id || !token || !currentAccount?.id || !data) return;
+        const previousStatus = data.customer.contactStatus || 'UNVERIFIED';
+        const previousMethods = data.sendingMethods;
         setIsUpdatingStatus(true);
+        setData(current => current ? { ...current, customer: { ...current.customer, contactStatus: status } } : current);
         try {
             const res = await fetch(`/api/customers/${id}/contact-status`, {
                 method: 'PUT',
@@ -260,17 +333,11 @@ export function CustomerDetailsPage() {
             });
             if (!res.ok) throw new Error('Failed to update status');
             const json = await res.json();
-            setData({
-                ...data,
-                customer: {
-                    ...data.customer,
-                    contactStatus: json.contactStatus
-                },
-                sendingMethods: json.sendingMethods
-            });
+            setData(current => current ? { ...current, customer: { ...current.customer, contactStatus: json.contactStatus }, sendingMethods: json.sendingMethods } : current);
             setStatusFeedback({ type: 'success', message: 'Contact status updated.' });
         } catch (err) {
             Logger.error('Failed to update contact status', { error: err });
+            setData(current => current ? { ...current, customer: { ...current.customer, contactStatus: previousStatus }, sendingMethods: previousMethods } : current);
             setStatusFeedback({ type: 'error', message: 'Could not update contact status. Please try again.' });
         } finally {
             setIsUpdatingStatus(false);
@@ -294,7 +361,7 @@ export function CustomerDetailsPage() {
                 throw new Error(payload.error || 'Failed to resend email');
             }
             setResendFeedback({ type: 'success', message: 'Email resent.' });
-            void fetchCustomerDetails();
+            void fetchCustomerDetails(true);
         } catch (err) {
             Logger.error('Failed to resend automation email', { error: err, emailLogId });
             setResendFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to resend email.' });
@@ -302,6 +369,36 @@ export function CustomerDetailsPage() {
             setResendingEmailId(null);
         }
     }, [currentAccount?.id, fetchCustomerDetails, token]);
+
+    const saveProfile = useCallback(async (profile: CustomerProfileValues) => {
+        if (!id || !token || !currentAccount?.id) return;
+        setIsSavingProfile(true);
+        setProfileError(null);
+        try {
+            const response = await fetch(`/api/customers/${id}/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id
+                },
+                body: JSON.stringify(profile)
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const fieldMessage = Object.values(payload.details?.fieldErrors || {}).flat().find((message): message is string => typeof message === 'string');
+                throw new Error(fieldMessage || payload.error || 'Failed to save profile');
+            }
+            await fetchCustomerDetails(true);
+            setShowEditModal(false);
+            setProfileFeedback(data?.metadata?.isLocalOnly ? 'Contact profile saved in OverSeek.' : 'Contact profile saved and synchronized.');
+        } catch (error) {
+            Logger.error('Failed to update customer profile', { error });
+            setProfileError(error instanceof Error ? error.message : 'Failed to save profile');
+        } finally {
+            setIsSavingProfile(false);
+        }
+    }, [currentAccount?.id, data?.metadata?.isLocalOnly, fetchCustomerDetails, id, token]);
 
     useEffect(() => {
         if (!statusFeedback) return;
@@ -315,13 +412,44 @@ export function CustomerDetailsPage() {
         return () => window.clearTimeout(timer);
     }, [resendFeedback]);
 
-    if (isLoading) return <CustomerDetailsSkeleton />;
-    if (!data) return <div className="p-8 text-center text-red-500">Customer not found</div>;
+    useEffect(() => {
+        if (!profileFeedback) return;
+        const timer = window.setTimeout(() => setProfileFeedback(null), 4000);
+        return () => window.clearTimeout(timer);
+    }, [profileFeedback]);
 
-    const { customer, orders, automations, activity, sendingMethods, inboxConversations = [] } = data;
+    if (isLoading) return <CustomerDetailsSkeleton />;
+    if (!data) return (
+        <div className="mx-auto max-w-lg rounded-xl border border-gray-200 bg-white p-8 text-center">
+            <h1 className="text-xl font-semibold text-gray-900">{notFound ? 'Contact not found' : 'Unable to load contact'}</h1>
+            <p className="mt-2 text-sm text-gray-600">{notFound ? 'This contact may have been removed or belongs to another account.' : loadError}</p>
+            <div className="mt-5 flex justify-center gap-3">
+                <Link to="/contacts" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium">Back to contacts</Link>
+                {!notFound && <button onClick={() => void fetchCustomerDetails()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Retry</button>}
+            </div>
+        </div>
+    );
+
+    const { customer, orders, automations, activity, sendingMethods, inboxConversations = [], metadata } = data;
     const statusBadge = getContactStatusBadge(customer.contactStatus);
     const currency = currentAccount?.currency || 'USD';
     const fmt = (amount: number) => formatCurrency(amount, currency);
+    const billing = customer.billingAddress || customer.rawData?.billing || {};
+    const profileValues: CustomerProfileValues = {
+        firstName: customer.firstName || '',
+        lastName: customer.lastName || '',
+        email: customer.email || '',
+        phone: billing.phone || '',
+        company: customer.company || billing.company || '',
+        abn: customer.abn || '',
+        address1: billing.address_1 || '',
+        address2: billing.address_2 || '',
+        city: billing.city || '',
+        state: billing.state || '',
+        postcode: billing.postcode || '',
+        country: billing.country || ''
+    };
+    const hasBillingAddress = Boolean(billing.address_1 || billing.address_2 || billing.city || billing.state || billing.postcode || billing.country);
 
     // Helper to get initials
     const initials = (customer.firstName?.[0] || '') + (customer.lastName?.[0] || '');
@@ -331,7 +459,7 @@ export function CustomerDetailsPage() {
             {/* Header */}
             <div>
                 <Breadcrumbs items={[
-                    { label: 'Contacts', href: '/contacts' },
+                    { label: 'Contacts', href: (location.state as { contactsPath?: string } | null)?.contactsPath || '/contacts' },
                     { label: `${customer.firstName} ${customer.lastName}` }
                 ]} />
                 <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-start">
@@ -348,13 +476,24 @@ export function CustomerDetailsPage() {
                                 <span className="flex items-center gap-1 break-all"><Mail size={14} /> {customer.email}</span>
                                 <span className="flex items-center gap-1"><Calendar size={14} /> Joined {formatDateSafe(customer.dateCreated, '-')}</span>
                             </div>
+                            {metadata && (
+                                <p className="mt-2 text-xs text-gray-500">
+                                    {metadata.isLocalOnly ? 'Overseek-only contact' : `WooCommerce customer #${metadata.wooId}`}
+                                    {metadata.lastSyncedAt ? ` • Updated ${formatDateTimeSafe(metadata.lastSyncedAt, '-')}` : ''}
+                                    {metadata.recordSource === 'search-fallback' ? ' • Showing search fallback data' : ''}
+                                </p>
+                            )}
+                            {isRefreshing && <p role="status" className="mt-1 text-xs text-blue-600">Refreshing contact data…</p>}
+                            {loadError && data && <p role="alert" className="mt-1 text-xs text-amber-700">Refresh failed. Showing the last loaded data.</p>}
+                            {profileFeedback && <p role="status" className="mt-1 text-xs text-emerald-700">{profileFeedback}</p>}
                         </div>
                     </div>
                     <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-end lg:w-auto lg:max-w-[420px]">
                         <div className="w-full rounded-lg border border-gray-200 bg-white p-3 sm:w-auto">
-                            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Contact Status</p>
+                            <label htmlFor="contact-status" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Contact Status</label>
                             <select
-                                value={customer.contactStatus || 'SUBSCRIBED'}
+                                id="contact-status"
+                                value={customer.contactStatus || 'UNVERIFIED'}
                                 onChange={(event) => updateContactStatus(event.target.value as (typeof CONTACT_STATUS_OPTIONS)[number]['value'])}
                                 disabled={isUpdatingStatus}
                                 className="w-full min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 focus:border-blue-500 focus:outline-none sm:w-auto"
@@ -364,7 +503,7 @@ export function CustomerDetailsPage() {
                                 ))}
                             </select>
                             {statusFeedback && (
-                                <p className={`mt-2 text-xs ${statusFeedback.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                <p role={statusFeedback.type === 'error' ? 'alert' : 'status'} className={`mt-2 text-xs ${statusFeedback.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
                                     {statusFeedback.message}
                                 </p>
                             )}
@@ -376,7 +515,7 @@ export function CustomerDetailsPage() {
                             <Users size={16} />
                             Merge Duplicates
                         </button>
-                        <button className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">Edit Profile</button>
+                        <button onClick={() => { setProfileError(null); setShowEditModal(true); }} className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">Edit Profile</button>
                     </div>
                 </div>
             </div>
@@ -404,11 +543,26 @@ export function CustomerDetailsPage() {
             {/* Content Tabs */}
             <div className="bg-white rounded-xl shadow-xs border border-gray-200 min-h-[500px]">
                 <div className="border-b border-gray-200 px-3 sm:px-6 overflow-x-auto">
-                    <div className="flex gap-2 sm:gap-6 min-w-max">
+                    <div role="tablist" aria-label="Contact details" className="flex gap-2 sm:gap-6 min-w-max">
                     {(['overview', 'orders', 'automations', 'activity', 'inbox'] as const).map(tab => (
                         <button
                             key={tab}
+                            id={`contact-tab-${tab}`}
+                            role="tab"
+                            aria-selected={activeTab === tab}
+                            aria-controls={`contact-panel-${tab}`}
+                            tabIndex={activeTab === tab ? 0 : -1}
                             onClick={() => setActiveTab(tab)}
+                            onKeyDown={(event) => {
+                                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                                event.preventDefault();
+                                const tabs = ['overview', 'orders', 'automations', 'activity', 'inbox'] as const;
+                                const direction = event.key === 'ArrowRight' ? 1 : -1;
+                                const nextIndex = (tabs.indexOf(tab) + direction + tabs.length) % tabs.length;
+                                const nextTab = tabs[nextIndex];
+                                setActiveTab(nextTab);
+                                window.requestAnimationFrame(() => document.getElementById(`contact-tab-${nextTab}`)?.focus());
+                            }}
                             className={`py-3 sm:py-4 px-3 sm:px-0 text-sm font-medium border-b-2 transition-colors capitalize whitespace-nowrap ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
@@ -418,7 +572,7 @@ export function CustomerDetailsPage() {
                     </div>
                 </div>
 
-                <div className="p-4 sm:p-6">
+                <div id={`contact-panel-${activeTab}`} role="tabpanel" aria-labelledby={`contact-tab-${activeTab}`} className="p-4 sm:p-6">
                     {activeTab === 'overview' && (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
                             <div>
@@ -430,7 +584,15 @@ export function CustomerDetailsPage() {
                                     </div>
                                     <div>
                                         <dt className="text-sm text-gray-500 mb-1">Phone</dt>
-                                        <dd className="font-medium">{customer.rawData?.billing?.phone || 'N/A'}</dd>
+                                        <dd className="font-medium">{billing.phone || 'N/A'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-sm text-gray-500 mb-1">Company</dt>
+                                        <dd className="font-medium">{customer.company || billing.company || 'N/A'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-sm text-gray-500 mb-1">ABN</dt>
+                                        <dd className="font-medium">{customer.abn || 'N/A'}</dd>
                                     </div>
                                     <div>
                                         <dt className="text-sm text-gray-500 mb-1">Contact Status</dt>
@@ -446,13 +608,15 @@ export function CustomerDetailsPage() {
                             </div>
                             <div>
                                 <h3 className="text-lg font-semibold mb-4 text-gray-900">Billing Address</h3>
+                                {(metadata?.billingSource === 'latest-order' || metadata?.billingSource === 'customer-and-order') && <p className="mb-2 text-xs text-amber-700">{metadata.billingSource === 'latest-order' ? 'Address supplied by the latest linked order.' : 'Missing address fields supplemented from the latest linked order.'}</p>}
                                 <div className="text-gray-700 bg-gray-50 p-4 rounded-lg">
-                                    {customer.rawData?.billing ? (
+                                    {hasBillingAddress ? (
                                         <>
-                                            <p>{customer.rawData.billing.address_1}</p>
-                                            <p>{customer.rawData.billing.address_2}</p>
-                                            <p>{customer.rawData.billing.city}, {customer.rawData.billing.state} {customer.rawData.billing.postcode}</p>
-                                            <p>{customer.rawData.billing.country}</p>
+                                            {billing.company && <p className="font-medium">{billing.company}</p>}
+                                            {billing.address_1 && <p>{billing.address_1}</p>}
+                                            {billing.address_2 && <p>{billing.address_2}</p>}
+                                            <p>{[billing.city, billing.state, billing.postcode].filter(Boolean).join(' ')}</p>
+                                            {billing.country && <p>{billing.country}</p>}
                                         </>
                                     ) : (
                                         <p className="text-gray-400 italic">No address on file</p>
@@ -463,19 +627,21 @@ export function CustomerDetailsPage() {
                     )}
 
                     {activeTab === 'orders' && (
-                        <table className="w-full text-left">
+                        <div className="overflow-x-auto" aria-label="Recent orders">
+                        <table className="w-full min-w-[620px] text-left">
+                            <caption className="sr-only">Up to 10 most recent orders for this contact</caption>
                             <thead>
                                 <tr className="text-xs uppercase text-gray-500 border-b border-gray-100">
-                                    <th className="pb-3">Order #</th>
-                                    <th className="pb-3">Date</th>
-                                    <th className="pb-3">Status</th>
-                                    <th className="pb-3 text-right">Total</th>
+                                    <th scope="col" className="pb-3">Order #</th>
+                                    <th scope="col" className="pb-3">Date</th>
+                                    <th scope="col" className="pb-3">Status</th>
+                                    <th scope="col" className="pb-3 text-right">Total</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                                 {orders.map(order => (
                                     <tr key={order.id} className="hover:bg-gray-50">
-                                        <td className="py-4 font-medium text-blue-600">#{order.number}</td>
+                                        <td className="py-4 font-medium"><Link to={`/orders/${order.id}`} className="text-blue-600 hover:underline">#{order.number}</Link></td>
                                         <td className="py-4 text-gray-600">{formatDateSafe(order.dateCreated, '-')}</td>
                                         <td className="py-4">
                                             <span className={`px-2 py-1 rounded text-xs font-semibold uppercase ${order.status === 'completed' ? 'bg-green-100 text-green-700' :
@@ -492,6 +658,8 @@ export function CustomerDetailsPage() {
                                 )}
                             </tbody>
                         </table>
+                        {customer.ordersCount > orders.length && <p className="mt-3 text-right text-xs text-gray-500">Showing the 10 most recent of {customer.ordersCount} orders.</p>}
+                        </div>
                     )}
 
                     {activeTab === 'automations' && (
@@ -505,7 +673,8 @@ export function CustomerDetailsPage() {
                                     {resendFeedback.message}
                                 </div>
                             )}
-                            <table className="w-full text-left">
+                            <div className="overflow-x-auto" aria-label="Automation history">
+                            <table className="w-full min-w-[720px] text-left">
                                 <thead>
                                     <tr className="text-xs uppercase text-gray-500 border-b border-gray-100">
                                         <th className="pb-3">Automation</th>
@@ -576,6 +745,7 @@ export function CustomerDetailsPage() {
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     )}
 
@@ -647,7 +817,7 @@ export function CustomerDetailsPage() {
                                         <span className="text-xs uppercase text-gray-500">{conversation.status}</span>
                                     </div>
                                     <p className="mt-1 text-xs text-gray-500">Updated {formatDateTimeSafe(conversation.updatedAt, '-')}</p>
-                                    <p className="mt-2 text-sm text-gray-700 line-clamp-2">{conversation.lastInboundMessage?.content || 'No inbound message preview available'}</p>
+                                    <p className="mt-2 text-sm text-gray-700 line-clamp-2">{conversation.lastInboundMessage?.content ? emailMessageToPreview(conversation.lastInboundMessage.content) : 'No inbound message preview available'}</p>
                                 </button>
                             ))}
                         </div>
@@ -661,6 +831,14 @@ export function CustomerDetailsPage() {
                 onClose={() => setShowMergeModal(false)}
                 customerId={id || ''}
                 onMergeComplete={fetchCustomerDetails}
+            />
+            <EditCustomerProfileModal
+                isOpen={showEditModal}
+                initialValues={profileValues}
+                isSaving={isSavingProfile}
+                error={profileError}
+                onClose={() => setShowEditModal(false)}
+                onSave={saveProfile}
             />
         </div>
     );

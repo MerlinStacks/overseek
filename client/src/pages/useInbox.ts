@@ -19,6 +19,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useInboxSocket } from '../hooks/useInboxSocket';
 import type { ConversationChannel } from '../components/chat/ChannelSelector';
 import type { AvailableChannelOption, InboxConversation, InboxMessage } from '../types/inbox';
+import { useSearchParams } from 'react-router-dom';
 type ConversationFilterType = 'all' | 'mine' | 'unassigned';
 
 /** Shared auth headers builder — eliminates per-fetch boilerplate */
@@ -61,10 +62,12 @@ export function useInbox() {
     const { socket, isConnected } = useSocket();
     const { token, user } = useAuth();
     const { currentAccount } = useAccount();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const requestedConversationId = searchParams.get('conversationId');
 
     // --- Core state ---
     const [conversations, setConversations] = useState<InboxConversation[]>([]);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [selectedId, setSelectedIdState] = useState<string | null>(requestedConversationId);
     const [messages, setMessages] = useState<InboxMessage[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -85,8 +88,20 @@ export function useInbox() {
     const selectionRequestRef = useRef<AbortController | null>(null);
     const selectionSequenceRef = useRef(0);
     const accountIdRef = useRef(currentAccount?.id);
+    const selectedIdRef = useRef(selectedId);
     const initialLoadCompleteRef = useRef(false);
     accountIdRef.current = currentAccount?.id;
+
+    const setSelectedId = useCallback((conversationId: string | null) => {
+        selectedIdRef.current = conversationId;
+        setSelectedIdState(conversationId);
+        setSearchParams(previous => {
+            const next = new URLSearchParams(previous);
+            if (conversationId) next.set('conversationId', conversationId);
+            else next.delete('conversationId');
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
 
     // Lifted hooks — persist across conversation switches
     const canned = useCannedResponses();
@@ -187,7 +202,12 @@ export function useInbox() {
             if (isLoadMore) {
                 setConversations(prev => [...prev, ...newConversations]);
             } else {
-                setConversations(newConversations);
+                setConversations(previous => {
+                    const selected = previous.find(conversation => conversation.id === selectedIdRef.current);
+                    return selected && !newConversations.some(conversation => conversation.id === selected.id)
+                        ? [selected, ...newConversations]
+                        : newConversations;
+                });
             }
 
             if (isInitialLoad) {
@@ -367,10 +387,18 @@ export function useInbox() {
         selectionRequestRef.current?.abort();
         messagesCache.current.clear();
         conversationRequestsRef.current.clear();
-        setSelectedId(null);
+        selectedIdRef.current = null;
+        setSelectedIdState(null);
         setMessages([]);
         setAvailableChannels([]);
     }, [currentAccount?.id]);
+
+    // Keep browser history/query-string navigation and local selection in sync.
+    // The normal selection loader below hydrates deep-linked resolved conversations.
+    useEffect(() => {
+        selectedIdRef.current = requestedConversationId;
+        setSelectedIdState(requestedConversationId);
+    }, [currentAccount?.id, requestedConversationId]);
 
     // Visibility-based polling fallback
     useVisibilityPolling(() => fetchConversations(), 30000, [fetchConversations], 'inbox-conversations', false);
@@ -410,7 +438,10 @@ export function useInbox() {
             const messagesRequest = existingConversationRequest || fetch(`/api/chat/${selectedId}`, {
                 headers,
                 signal: controller.signal,
-            }).then(async response => response.ok ? response.json() : null);
+            }).then(async response => {
+                if (response.status === 403 || response.status === 404) return { unavailable: true };
+                return response.ok ? response.json() : null;
+            });
 
             const [conversationData, , channelsRes] = await Promise.all([
                 messagesRequest,
@@ -421,7 +452,17 @@ export function useInbox() {
             ]);
             if (controller.signal.aborted || requestSequence !== selectionSequenceRef.current) return;
 
+            if ((conversationData as { unavailable?: boolean } | null)?.unavailable) {
+                setSelectedId(null);
+                setMessages([]);
+                return;
+            }
+
             if (conversationData) {
+                const loadedConversation = conversationData as InboxConversation;
+                setConversations(previous => previous.some(item => item.id === selectedId)
+                    ? previous.map(item => item.id === selectedId ? { ...item, ...loadedConversation } : item)
+                    : [loadedConversation, ...previous]);
                 const nextMessages = (conversationData as { messages?: InboxMessage[] }).messages;
                 if (nextMessages) {
                     setMessages(prev => {
@@ -454,7 +495,7 @@ export function useInbox() {
         });
 
         return () => controller.abort();
-    }, [selectedId, token, currentAccount]);
+    }, [selectedId, token, currentAccount, setSelectedId]);
 
     // Keyboard shortcuts
     useKeyboardShortcuts({

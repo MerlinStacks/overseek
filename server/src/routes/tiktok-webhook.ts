@@ -34,6 +34,16 @@ import { TikTokMessagingService } from '../services/messaging/TikTokMessagingSer
 import { prisma } from '../utils/prisma';
 
 const tiktokWebhookRoutes: FastifyPluginAsync = async (fastify) => {
+    fastify.removeContentTypeParser('application/json');
+    fastify.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, body, done) => {
+        (request as any).rawBody = body;
+        try {
+            done(null, JSON.parse((body as Buffer).toString('utf8')));
+        } catch (error) {
+            done(error as Error, undefined);
+        }
+    });
+
     /**
      * GET /api/webhook/tiktok
      * Webhook verification endpoint.
@@ -57,38 +67,43 @@ const tiktokWebhookRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.post('/', async (request, reply) => {
         try {
-            const signature = request.headers['x-tiktok-signature'] as string;
-            const timestamp = request.headers['x-tiktok-timestamp'] as string;
+            const signature = request.headers['x-tiktok-signature'];
+            const timestamp = request.headers['x-tiktok-timestamp'];
             const body = request.body as any;
+            const rawBody = (request as any).rawBody as Buffer | undefined;
 
             Logger.info('[TikTok Webhook] Event received', {
                 event: body.event,
                 hasSignature: !!signature,
             });
 
-            if (signature && timestamp) {
-                const credentials = await prisma.platformCredentials.findUnique({
-                    where: { platform: 'TIKTOK_MESSAGING' },
-                });
+            if (typeof signature !== 'string' || !signature || typeof timestamp !== 'string' || !timestamp || !rawBody) {
+                Logger.warn('[TikTok Webhook] Missing signature, timestamp, or raw body');
+                return reply.code(401).send();
+            }
 
-                const clientSecret = credentials?.credentials
-                    ? (credentials.credentials as any).clientSecret
-                    : process.env.TIKTOK_CLIENT_SECRET;
+            const credentials = await prisma.platformCredentials.findUnique({
+                where: { platform: 'TIKTOK_MESSAGING' },
+            });
 
-                if (clientSecret) {
-                    const rawBody = JSON.stringify(body);
-                    const isValid = TikTokMessagingService.verifyWebhookSignature(
-                        signature,
-                        timestamp,
-                        rawBody,
-                        clientSecret
-                    );
+            const clientSecret = (credentials?.credentials as any)?.clientSecret
+                || process.env.TIKTOK_CLIENT_SECRET;
 
-                    if (!isValid) {
-                        Logger.warn('[TikTok Webhook] Invalid signature');
-                        return reply.code(403).send();
-                    }
-                }
+            if (!clientSecret) {
+                Logger.error('[TikTok Webhook] Client secret is not configured');
+                return reply.code(503).send();
+            }
+
+            const isValid = TikTokMessagingService.verifyWebhookSignature(
+                signature,
+                timestamp,
+                rawBody.toString('utf8'),
+                clientSecret
+            );
+
+            if (!isValid) {
+                Logger.warn('[TikTok Webhook] Invalid signature');
+                return reply.code(403).send();
             }
 
             reply.code(200).send();
@@ -99,7 +114,7 @@ const tiktokWebhookRoutes: FastifyPluginAsync = async (fastify) => {
 
         } catch (error: any) {
             Logger.error('[TikTok Webhook] Processing error', { error: error.message });
-            return reply.code(200).send();
+            if (!reply.sent) return reply.code(503).send();
         }
     });
 };

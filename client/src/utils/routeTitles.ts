@@ -15,6 +15,8 @@ export const ROUTE_PATHS = {
     supplyChain: '/inventory/supply-chain',
     inventoryBomSync: '/inventory/bom-sync',
     inventoryForecasts: '/inventory/forecasts',
+    wholesaleCatalog: '/wholesale-catalog',
+    catalogView: '/catalog-view',
     contacts: '/contacts',
     customers: '/customers',
     customerSegments: '/customers/segments',
@@ -88,6 +90,7 @@ export const ROUTE_PATTERNS = {
     mobileInboxShare: `${ROUTE_PATHS.mobileInbox}/share`,
     mobileCustomerDetails: `${ROUTE_PATHS.mobileCustomers}/:id`,
     mobileVisitorDetails: '/m/visitor/:id',
+    catalogView: `${ROUTE_PATHS.catalogView}/:token`,
 };
 
 export const ROUTE_PREFIXES = {
@@ -102,6 +105,7 @@ export const ROUTE_PREFIXES = {
     mobileCustomerDetails: `${ROUTE_PATHS.mobileCustomers}/`,
     mobileVisitorDetails: '/m/visitor/',
     inboxDetail: `${ROUTE_PATHS.inbox}/`,
+    catalogView: `${ROUTE_PATHS.catalogView}/`,
 } as const;
 
 export const EXACT_ROUTE_TITLES: Record<string, string> = {
@@ -120,6 +124,7 @@ export const EXACT_ROUTE_TITLES: Record<string, string> = {
     [ROUTE_PATHS.supplyChain]: 'Stock & Suppliers',
     [ROUTE_PATHS.inventoryBomSync]: 'BOM Sync',
     [ROUTE_PATHS.inventoryForecasts]: 'Inventory Forecasts',
+    [ROUTE_PATHS.wholesaleCatalog]: 'Wholesale Catalog',
     [ROUTE_PATHS.contacts]: 'Contacts',
     [ROUTE_PATHS.customers]: 'Contacts',
     [ROUTE_PATHS.customerSegments]: 'Customer Segments',
@@ -189,6 +194,7 @@ const DYNAMIC_ROUTE_TITLES: Array<{ prefix: string; title: string }> = [
     { prefix: ROUTE_PREFIXES.mobileChat, title: 'Mobile Chat' },
     { prefix: ROUTE_PREFIXES.mobileCustomerDetails, title: 'Mobile Customer Details' },
     { prefix: ROUTE_PREFIXES.mobileVisitorDetails, title: 'Mobile Visitor Details' },
+    { prefix: ROUTE_PREFIXES.catalogView, title: 'Secure Catalog' },
 ];
 
 export function getRouteTitle(pathname: string): string {

@@ -7,7 +7,7 @@
 
 import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot, Rss } from 'lucide-react';
+import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot, Rss, BookOpen } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
@@ -36,6 +36,8 @@ import type { MerchantCenterIssue } from '../components/Seo/MerchantCenterScoreB
 import type { ProductVariant as VariantType } from '../components/products/variantTypes';
 import { FeedWritesPanel } from '../components/products/FeedWritesPanel';
 import { useAccountFeature } from '../hooks/useAccountFeature';
+import { usePermissions } from '../hooks/usePermissions';
+import { WholesaleProductPanel } from '../components/wholesale/WholesaleProductPanel';
 
 type SupplierOption = { id: string; name: string };
 type GalleryImage = { id: string | number; src: string; alt?: string };
@@ -133,6 +135,9 @@ function ProductEditPageContent({
 }: ProductEditPageContentProps) {
     const activeTabParam = searchParams.get('tab');
     const hasFeedExports = useAccountFeature('FEED_EXPORTS');
+    const hasWholesaleCatalog = useAccountFeature('WHOLESALE_CATALOG');
+    const { hasPermission } = usePermissions();
+    const canViewWholesale = hasWholesaleCatalog && hasPermission('view_wholesale_catalog');
 
     const previewImage = (formData.images as Array<{ src?: string }> | undefined)?.[0]?.src || product.mainImage;
     const statusTone = saveState === 'error'
@@ -330,6 +335,12 @@ function ProductEditPageContent({
             label: 'Feed Writes',
             icon: <Rss size={16} />,
             content: <FeedWritesPanel productWooId={product.wooId} />
+        }] : []),
+        ...(canViewWholesale ? [{
+            id: 'wholesale',
+            label: 'Wholesale',
+            icon: <BookOpen size={16} />,
+            content: <WholesaleProductPanel productId={product.id} canEdit={hasPermission('edit_wholesale_catalog')} />
         }] : []),
         {
             id: 'history',

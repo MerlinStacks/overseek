@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseQuotedContent, parseEmailContent } from './emailParser';
+import { parseQuotedContent, parseEmailContent, emailMessageToPreview } from './emailParser';
 
 describe('parseEmailContent', () => {
     it('extracts subject and body from Subject: prefixed content', () => {
@@ -19,6 +19,13 @@ describe('parseEmailContent', () => {
         const result = parseEmailContent(content);
         expect(result.subject).toBeNull();
         expect(result.body).toBe('Just a regular message');
+    });
+});
+
+describe('emailMessageToPreview', () => {
+    it('removes the stored subject prefix and converts HTML into readable text', () => {
+        expect(emailMessageToPreview('Subject: Re: Missing order\n\n<div>Hello,<br>Order <strong>#123</strong> is missing &amp; overdue.</div>'))
+            .toBe('Hello, Order #123 is missing & overdue.');
     });
 });
 

@@ -13,6 +13,35 @@ import { prisma } from '../utils/prisma';
 import { ChatService } from '../services/ChatService';
 import { Logger } from '../utils/logger';
 
+function toPublicMessage(message: any) {
+    return {
+        id: message.id,
+        content: message.content,
+        contentType: message.contentType,
+        senderType: message.senderType,
+        createdAt: message.createdAt,
+    };
+}
+
+function toPublicConversation(conversation: any) {
+    return {
+        id: conversation.id,
+        status: conversation.status,
+        channel: conversation.channel,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+        assignee: conversation.assignee ? {
+            fullName: conversation.assignee.fullName,
+            avatarUrl: conversation.assignee.avatarUrl,
+        } : null,
+        messages: Array.isArray(conversation.messages)
+            ? conversation.messages
+                .filter((message: any) => !message.isInternal && (!message.scheduledFor || new Date(message.scheduledFor) <= new Date()))
+                .map(toPublicMessage)
+            : [],
+    };
+}
+
 export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginAsync => {
     return async (fastify) => {
         // POST /conversation - Start or resume a conversation for a guest visitor
@@ -29,8 +58,7 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                     where: { accountId, visitorToken, status: 'OPEN' },
                     include: {
                         messages: { orderBy: { createdAt: 'asc' } },
-                        assignee: { select: { id: true, fullName: true, avatarUrl: true } },
-                        wooCustomer: { select: { id: true, firstName: true, lastName: true, email: true, totalSpent: true, ordersCount: true } }
+                        assignee: { select: { id: true, fullName: true, avatarUrl: true } }
                     }
                 });
 
@@ -64,8 +92,7 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                         },
                         include: {
                             messages: true,
-                            assignee: { select: { id: true, fullName: true, avatarUrl: true } },
-                            wooCustomer: { select: { id: true, firstName: true, lastName: true, email: true, totalSpent: true, ordersCount: true } }
+                            assignee: { select: { id: true, fullName: true, avatarUrl: true } }
                         }
                     });
 
@@ -90,8 +117,7 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                                 },
                                 include: {
                                     messages: { orderBy: { createdAt: 'asc' } },
-                                    assignee: { select: { id: true, fullName: true, avatarUrl: true } },
-                                    wooCustomer: { select: { id: true, firstName: true, lastName: true, email: true, totalSpent: true, ordersCount: true } }
+                                    assignee: { select: { id: true, fullName: true, avatarUrl: true } }
                                 }
                             });
                             Logger.info('[PublicChat] Linked existing conversation to WooCommerce customer', {
@@ -102,7 +128,7 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                     }
                 }
 
-                return conversation;
+                return toPublicConversation(conversation);
             } catch (error) {
                 Logger.error('Public chat conversation error', { error });
                 return reply.code(500).send({ error: 'Failed to start conversation' });
@@ -138,7 +164,7 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                 }
 
                 const msg = await chatService.addMessage(conversationId, sanitized, 'CUSTOMER', undefined, false, conversation.accountId);
-                return msg;
+                return toPublicMessage(msg);
             } catch (error) {
                 Logger.error('Public message error', { error });
                 return reply.code(500).send({ error: 'Failed to send message' });
@@ -162,11 +188,11 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
                 }
 
                 const messages = await prisma.message.findMany({
-                    where: whereClause,
+                    where: { ...whereClause, isInternal: false, OR: [{ scheduledFor: null }, { scheduledFor: { lte: new Date() } }] },
                     orderBy: { createdAt: 'asc' }
                 });
 
-                return messages;
+                return messages.map(toPublicMessage);
             } catch (error) {
                 Logger.error('Public poll error', { error });
                 return reply.code(500).send({ error: 'Failed to fetch messages' });
@@ -177,4 +203,3 @@ export const createPublicChatRoutes = (chatService: ChatService): FastifyPluginA
 
 // Legacy export for backward compatibility
 export { createPublicChatRoutes as createPublicChatRouter };
-

@@ -16,6 +16,34 @@ import { BACKUP_DIR } from './constants';
 
 const gunzip = promisify(zlib.gunzip);
 
+const UNSUPPORTED_RESTORE_TABLES = ['products', 'customers'] as const;
+
+export function getUnsupportedRestoreTables(backupData: AccountBackup): string[] {
+    return UNSUPPORTED_RESTORE_TABLES.filter((table) => {
+        const records = backupData.data[table];
+        return Array.isArray(records) && records.length > 0;
+    });
+}
+
+function resolveBackupFilePath(accountId: string, filename: string): string {
+    if (path.basename(filename) !== filename) {
+        throw new Error('Invalid backup filename');
+    }
+
+    const backupRoot = path.resolve(BACKUP_DIR);
+    const accountBackupDir = path.resolve(backupRoot, accountId);
+    if (!accountBackupDir.startsWith(`${backupRoot}${path.sep}`)) {
+        throw new Error('Invalid backup account path');
+    }
+
+    const filePath = path.resolve(accountBackupDir, filename);
+    if (!filePath.startsWith(`${accountBackupDir}${path.sep}`)) {
+        throw new Error('Invalid backup file path');
+    }
+
+    return filePath;
+}
+
 /**
  * Restore account data from a backup
  * WARNING: This is a destructive operation that replaces existing data
@@ -37,7 +65,7 @@ export async function restoreFromBackup(backupId: string): Promise<RestoreResult
 
     try {
         // Read and decompress backup file
-        const filePath = path.join(BACKUP_DIR, backup.accountId, backup.filename);
+        const filePath = resolveBackupFilePath(backup.accountId, backup.filename);
         if (!fs.existsSync(filePath)) {
             throw new Error('Backup file not found on disk');
         }
@@ -46,6 +74,13 @@ export async function restoreFromBackup(backupId: string): Promise<RestoreResult
         const jsonData = await gunzip(compressed);
         const backupData: AccountBackup = JSON.parse(jsonData.toString('utf-8'));
 
+        const unsupportedTables = getUnsupportedRestoreTables(backupData);
+        if (unsupportedTables.length > 0) {
+            throw new Error(
+                `Restore is not supported for: ${unsupportedTables.join(', ')}. No account data was changed.`
+            );
+        }
+
         const restoredTables: string[] = [];
         const accountId = backup.accountId;
 
@@ -53,19 +88,6 @@ export async function restoreFromBackup(backupId: string): Promise<RestoreResult
         await prisma.$transaction(async (tx) => {
             // Note: We restore only certain tables that are safe to replace
             // We do NOT restore: users, account settings, sync states
-
-            // Restore products (will cascade delete variations, BOMs)
-            if (backupData.data.products?.length) {
-                await tx.wooProduct.deleteMany({ where: { accountId } });
-                // Products would need complex restoration - simplified here
-                restoredTables.push('products');
-            }
-
-            // Restore customers
-            if (backupData.data.customers?.length) {
-                await tx.wooCustomer.deleteMany({ where: { accountId } });
-                restoredTables.push('customers');
-            }
 
             // Restore canned responses
             if (backupData.data.cannedResponses?.length) {

@@ -77,6 +77,8 @@ const ShippingItemOverwritesPage = lazy(() => import('./pages/shipping/ShippingI
 const ShippingLabelsPage = lazy(() => import('./pages/shipping/ShippingLabelsPage').then(m => ({ default: m.ShippingLabelsPage })));
 const ShippingOperationsPage = lazy(() => import('./pages/shipping/ShippingOperationsPage').then(m => ({ default: m.ShippingOperationsPage })));
 const ShippingSettingsPage = lazy(() => import('./pages/shipping/ShippingSettingsPage').then(m => ({ default: m.ShippingSettingsPage })));
+const WholesaleCatalogsPage = lazy(() => import('./pages/wholesale/WholesaleCatalogsPage').then(m => ({ default: m.WholesaleCatalogsPage })));
+const CatalogViewPage = lazy(() => import('./pages/wholesale/CatalogViewPage').then(m => ({ default: m.CatalogViewPage })));
 
 // Analytics Sub-Pages
 const AnalyticsOverviewPage = lazy(() => import('./pages/analytics/AnalyticsOverviewPage').then(m => ({ default: m.AnalyticsOverviewPage })));
@@ -184,6 +186,8 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
     const mobileRouteMap: Record<string, string> = {
         [ROUTE_PATHS.dashboard]: ROUTE_PATHS.mobileDashboard,
         [ROUTE_PATHS.orders]: ROUTE_PATHS.mobileOrders,
+        [ROUTE_PATHS.contacts]: ROUTE_PATHS.mobileCustomers,
+        [ROUTE_PATHS.customers]: ROUTE_PATHS.mobileCustomers,
         [ROUTE_PATHS.inbox]: ROUTE_PATHS.mobileInbox,
         [ROUTE_PATHS.analytics]: ROUTE_PATHS.mobileAnalytics,
         [ROUTE_PATHS.inventory]: ROUTE_PATHS.mobileInventory,
@@ -203,6 +207,9 @@ function MobileRedirect({ children }: { children: React.ReactNode }) {
 
         // Handle dynamic routes like /orders/:id -> /m/orders/:id
         if (currentPath.startsWith(ROUTE_PREFIXES.orderDetails)) {
+            return <Navigate to={`/m${currentPath}${location.search}`} replace />;
+        }
+        if (currentPath.startsWith(ROUTE_PREFIXES.customerDetails) && currentPath !== ROUTE_PATHS.customerSegments) {
             return <Navigate to={`/m${currentPath}${location.search}`} replace />;
         }
         if (currentPath.startsWith(ROUTE_PREFIXES.inboxDetail)) {
@@ -254,6 +261,7 @@ function App() {
                                         <Route path={ROUTE_PATHS.privacyPolicy} element={<PrivacyPolicyPage />} />
                                         <Route path={ROUTE_PATHS.dataDeletion} element={<DataDeletionPage />} />
                                         <Route path={ROUTE_PATHS.termsOfService} element={<TermsOfServicePage />} />
+                                        <Route path={ROUTE_PATTERNS.catalogView} element={<CatalogViewPage />} />
                                         {/* Protected Routes */}
                                         <Route element={<ProtectedRoute />}>
                                             <Route path={ROUTE_PATHS.setup} element={<SetupWizard />} />
@@ -280,6 +288,7 @@ function App() {
                                                 <Route path={ROUTE_PATHS.supplyChain} element={<AccountGuard><SupplyChainPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventoryBomSync} element={<AccountGuard><BOMSyncPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventoryForecasts} element={<AccountGuard><InventoryForecastPage /></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.wholesaleCatalog} element={<AccountGuard><FeatureGuard featureKey="WHOLESALE_CATALOG"><WholesaleCatalogsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.productDetails} element={<AccountGuard><ProductEditPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.purchaseOrderNew} element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.purchaseOrderEdit} element={<AccountGuard><PurchaseOrderEditPage /></AccountGuard>} />

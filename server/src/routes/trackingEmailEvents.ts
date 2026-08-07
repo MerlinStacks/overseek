@@ -118,18 +118,51 @@ function extractBearerToken(headers: Record<string, unknown>): string {
 
 async function resolveAccountContext(accountId: string, bearerToken: string): Promise<AccountContext> {
     if (accountId) {
-        const [account, feature] = await Promise.all([
+        const [account, feature, emailAccounts] = await Promise.all([
             prisma.account.findUnique({
                 where: { id: accountId },
-                select: { id: true, wooUrl: true },
+                select: { id: true, wooUrl: true, webhookSecret: true },
             }),
             prisma.accountFeature.findUnique({
                 where: { accountId_featureKey: { accountId, featureKey: FEATURE_KEY } },
                 select: { config: true },
             }),
+            prisma.emailAccount.findMany({
+                where: { accountId, relayApiKey: { not: null } },
+                select: { id: true, relayApiKey: true },
+            }),
         ]);
 
-        return { account, feature, credentialMatched: false };
+        if (!account) return { account: null, feature, credentialMatched: false };
+
+        const config = (feature?.config || {}) as Record<string, unknown>;
+        const configuredToken = typeof config.webhookAuthToken === 'string' ? config.webhookAuthToken.trim() : '';
+        let credentialMatched = Boolean(bearerToken && (
+            (account.webhookSecret && hashSafeEquals(account.webhookSecret, bearerToken))
+            || (configuredToken && hashSafeEquals(configuredToken, bearerToken))
+        ));
+
+        if (bearerToken && !credentialMatched) {
+            for (const emailAccount of emailAccounts) {
+                try {
+                    if (emailAccount.relayApiKey && hashSafeEquals(decrypt(emailAccount.relayApiKey), bearerToken)) {
+                        credentialMatched = true;
+                        break;
+                    }
+                } catch (error) {
+                    Logger.warn('[TrackingEmailEvents] Failed to decrypt relay API key during webhook authentication', {
+                        emailAccountId: emailAccount.id,
+                        error,
+                    });
+                }
+            }
+        }
+
+        return {
+            account: { id: account.id, wooUrl: account.wooUrl },
+            feature,
+            credentialMatched,
+        };
     }
 
     if (!bearerToken) {
@@ -288,14 +321,8 @@ async function handleTrackingEmailEvent(
         return reply.code(403).send({ error: 'WooCommerce connection is not configured for this account' });
     }
 
-    const config = (feature?.config || {}) as Record<string, unknown>;
-    const configuredToken = typeof config.webhookAuthToken === 'string' ? config.webhookAuthToken.trim() : '';
-    if (configuredToken && !credentialMatched) {
-        const authHeader = String(request.headers.authorization || '');
-        const expected = `Bearer ${configuredToken}`;
-        if (authHeader !== expected) {
-            return reply.code(401).send({ error: 'Unauthorized' });
-        }
+    if (!credentialMatched) {
+        return reply.code(401).send({ error: 'Unauthorized' });
     }
 
     const normalizedStatus = normalizeShipmentStatus(event.event_status, event.event_name, event.description);

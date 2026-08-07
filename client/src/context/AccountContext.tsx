@@ -10,9 +10,9 @@ interface Account {
     sitemapUrl?: string | null;
     currency: string;
     wooUrl: string;
-    wooConsumerKey?: string;
-    webhookSecret?: string | null;
-    openRouterApiKey?: string;
+    wooCredentialsConfigured?: boolean;
+    webhookSecretConfigured?: boolean;
+    openRouterApiKeyConfigured?: boolean;
     aiModel?: string;
     embeddingModel?: string;
     appearance?: {

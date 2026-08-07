@@ -105,6 +105,12 @@ export class MaintenanceScheduler {
             jobId: 'review-delete-cleanup-daily'
         });
         Logger.info('Scheduled Review Delete Cleanup (Daily at 03:45 UTC)');
+
+        await this.queue.add('wholesale-catalog-maintenance', {}, {
+            repeat: { pattern: '15 4 * * *' },
+            jobId: 'wholesale-catalog-maintenance-daily'
+        });
+        Logger.info('Scheduled Wholesale Catalog Maintenance (Daily at 04:15 UTC)');
     }
 
     /**
@@ -139,6 +145,18 @@ export class MaintenanceScheduler {
         }).catch(() => {
             // Script may not exist in older deployments - safe to ignore
         });
+    }
+
+    static async dispatchWholesaleCatalogMaintenance() {
+        const [{ WholesaleRetentionService }, { sendWholesaleValidityReminders }] = await Promise.all([
+            import('../wholesale/retention'),
+            import('../wholesale/reminders'),
+        ]);
+        const [retention, reminders] = await Promise.all([
+            WholesaleRetentionService.cleanup(),
+            sendWholesaleValidityReminders(),
+        ]);
+        Logger.info('[Scheduler] Wholesale catalog maintenance completed', { retention, reminders });
     }
 
     /**

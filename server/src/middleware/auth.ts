@@ -61,7 +61,8 @@ const STRICT_ACCOUNT_ROUTES = [
     '/sms',
     '/internal-products',
     '/status-center',
-    '/shipping'
+    '/shipping',
+    '/wholesale-catalog'
 ];
 
 /**

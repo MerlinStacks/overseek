@@ -2,6 +2,8 @@ import { esClient } from '../utils/elastic';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { Prisma } from '@prisma/client';
+import { WooService } from './woo';
+import { IndexingService } from './search/IndexingService';
 
 type ContactStatus = 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
 type ContactListStatus = ContactStatus | 'BLOCKED';
@@ -19,6 +21,51 @@ interface AdvancedFilterGroup {
     conditions: AdvancedFilterCondition[];
 }
 
+export interface CustomerProfileUpdate {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    company?: string;
+    abn?: string;
+    address1?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+}
+
+function jsonObject(value: unknown): Record<string, any> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
+}
+
+function extractAbn(rawData: unknown): string {
+    const raw = jsonObject(rawData);
+    const metadata = Array.isArray(raw.meta_data) ? raw.meta_data : [];
+    const meta = metadata.find((item: unknown) => {
+        const key = String(jsonObject(item).key || '').toLowerCase();
+        return key === 'abn' || key === '_billing_abn' || key === 'billing_abn';
+    });
+    return String(raw.abn || jsonObject(raw.billing).abn || jsonObject(meta).value || '');
+}
+
+function mergeBillingAddress(customerBillingValue: unknown, orderBillingValue: unknown): Record<string, any> {
+    const customerBilling = jsonObject(customerBillingValue);
+    const orderBilling = jsonObject(orderBillingValue);
+    const merged = { ...orderBilling };
+    for (const [key, value] of Object.entries(customerBilling)) {
+        if (value !== '' && value != null) merged[key] = value;
+    }
+    return merged;
+}
+
+function customerIdentifierWhere(accountId: string, customerId: string): Prisma.WooCustomerWhereInput {
+    return !isNaN(Number(customerId))
+        ? { accountId, wooId: Number(customerId) }
+        : { accountId, id: customerId };
+}
+
 const CONTACT_STATUS_METHODS: Record<ContactStatus, { marketing: boolean; transactional: boolean }> = {
     UNVERIFIED: { marketing: false, transactional: true },
     SUBSCRIBED: { marketing: true, transactional: true },
@@ -33,7 +80,7 @@ function normalizeContactStatus(rawStatus: unknown): ContactStatus {
     if (value === 'UNVERIFIED' || value === 'SUBSCRIBED' || value === 'BOUNCED' || value === 'UNSUBSCRIBED' || value === 'SOFT_BOUNCED' || value === 'COMPLAINT') {
         return value;
     }
-    return 'SUBSCRIBED';
+    return 'UNVERIFIED';
 }
 
 export class CustomersService {
@@ -757,13 +804,12 @@ export class CustomersService {
 
         // Check if looking up by WooID (numeric) or internal UUID
         const isWooId = !isNaN(Number(customerId));
-        const whereClause = isWooId
-            ? { accountId, wooId: Number(customerId) }
-            : { accountId, id: customerId };
+        const whereClause = customerIdentifierWhere(accountId, customerId);
 
         Logger.debug(`CustomerDetails lookup`, { customerId, accountId, isWooId });
         Logger.debug(`CustomerDetails whereClause`, { whereClause });
 
+        let recordSource: 'database' | 'search-fallback' = 'database';
         let customer = await prisma.wooCustomer.findFirst({
             where: whereClause
         });
@@ -788,6 +834,7 @@ export class CustomersService {
                 });
 
                 if (esRes.hits.hits.length > 0) {
+                    recordSource = 'search-fallback';
                     const source = esRes.hits.hits[0]._source as any;
                     // Map ES source to match Prisma shape approx
                     customer = {
@@ -803,7 +850,7 @@ export class CustomersService {
                         rawData: source.rawData || {}, // Might be missing
                         // Mock other required fields
                         updatedAt: new Date(),
-                        createdAt: new Date()
+                        createdAt: new Date(source.dateCreated || Date.now())
                     } as any;
                 }
             } catch (e) {
@@ -818,15 +865,24 @@ export class CustomersService {
 
         // 2. Related entities
         const normalizedEmail = customer.email.trim().toLowerCase();
+        const customerRawData = jsonObject(customer.rawData);
+        const previousEmails = Array.isArray(customerRawData.previousEmails)
+            ? customerRawData.previousEmails.map((email: unknown) => String(email).trim().toLowerCase()).filter(Boolean)
+            : [];
+        const contactEmails = [...new Set([normalizedEmail, ...previousEmails])];
+        const orderWhere: Prisma.WooOrderWhereInput = {
+            accountId,
+            OR: [
+                { wooCustomerId: customer.wooId },
+                {
+                    wooCustomerId: null,
+                    billingEmail: { in: contactEmails, mode: 'insensitive' }
+                }
+            ]
+        };
         const [orders, orderStats, automationEnrollments, activitySessions, suppression, inboxConversations] = await Promise.all([
             prisma.wooOrder.findMany({
-                where: {
-                    accountId,
-                    rawData: {
-                        path: ['customer_id'],
-                        equals: customer.wooId
-                    }
-                },
+                where: orderWhere,
                 select: {
                     id: true,
                     wooId: true,
@@ -834,19 +890,14 @@ export class CustomersService {
                     status: true,
                     total: true,
                     currency: true,
-                    dateCreated: true
+                    dateCreated: true,
+                    rawData: true
                 },
                 orderBy: { dateCreated: 'desc' },
                 take: 10
             }),
             prisma.wooOrder.aggregate({
-                where: {
-                    accountId,
-                    rawData: {
-                        path: ['customer_id'],
-                        equals: customer.wooId
-                    }
-                },
+                where: orderWhere,
                 _count: {
                     id: true
                 },
@@ -857,7 +908,7 @@ export class CustomersService {
             prisma.automationEnrollment.findMany({
                 where: {
                     automation: { accountId },
-                    email: customer.email
+                    email: { in: contactEmails, mode: 'insensitive' }
                 },
                 include: {
                     automation: { select: { name: true } }
@@ -870,7 +921,7 @@ export class CustomersService {
                     accountId,
                     OR: [
                         { wooCustomerId: customer.wooId },
-                        { email: customer.email }
+                        { email: { in: contactEmails, mode: 'insensitive' } }
                     ]
                 },
                 select: {
@@ -896,10 +947,10 @@ export class CustomersService {
                 orderBy: { lastActiveAt: 'desc' },
                 take: 5
             }),
-            prisma.emailUnsubscribe.findFirst({
+            prisma.emailUnsubscribe.findMany({
                 where: {
                     accountId,
-                    email: { equals: normalizedEmail, mode: 'insensitive' }
+                    email: { in: contactEmails, mode: 'insensitive' }
                 },
                 select: { scope: true }
             }),
@@ -910,7 +961,7 @@ export class CustomersService {
                     mergedIntoId: null,
                     OR: [
                         { wooCustomerId: customer.id },
-                        { guestEmail: { equals: normalizedEmail, mode: 'insensitive' } }
+                        { guestEmail: { in: contactEmails, mode: 'insensitive' } }
                     ]
                 },
                 select: {
@@ -943,7 +994,7 @@ export class CustomersService {
                     accountId,
                     source: 'AUTOMATION',
                     sourceId: { in: automationIds },
-                    to: { equals: customer.email, mode: 'insensitive' },
+                    to: { in: contactEmails, mode: 'insensitive' },
                     createdAt: { gte: firstEnrollmentAt }
                 },
                 select: {
@@ -991,26 +1042,57 @@ export class CustomersService {
         const effectiveOrdersCount = customer.ordersCount > 0 ? customer.ordersCount : (orderStats._count.id || 0);
 
         const persistedStatus = normalizeContactStatus((customer.rawData as Record<string, unknown> | null)?.contactStatus);
-        const contactStatus: ContactStatus = suppression?.scope === 'ALL'
+        const strongestSuppression = suppression.some(item => item.scope === 'ALL')
+            ? 'ALL'
+            : suppression.some(item => item.scope === 'MARKETING') ? 'MARKETING' : null;
+        const contactStatus: ContactStatus = strongestSuppression === 'ALL'
             ? 'COMPLAINT'
-            : suppression?.scope === 'MARKETING'
+            : strongestSuppression === 'MARKETING'
                 ? (persistedStatus === 'SUBSCRIBED' ? 'UNSUBSCRIBED' : persistedStatus)
                 : persistedStatus;
 
+        const latestOrderRawData = jsonObject(orders[0]?.rawData);
+        const billing = jsonObject(customerRawData.billing);
+        const fallbackBilling = jsonObject(latestOrderRawData.billing);
+        const billingAddress = mergeBillingAddress(billing, fallbackBilling);
+        const addressFields = ['company', 'phone', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country'];
+        const customerHasUsefulBilling = addressFields.some(field => billing[field] !== '' && billing[field] != null);
+        const usedOrderBilling = addressFields.some(field => (billing[field] === '' || billing[field] == null) && fallbackBilling[field] !== '' && fallbackBilling[field] != null);
+
         return {
             customer: {
-                ...customer,
+                id: customer.id,
+                wooId: customer.wooId,
+                firstName: customer.firstName,
+                lastName: customer.lastName,
+                email: customer.email,
+                dateCreated: customer.createdAt,
+                createdAt: customer.createdAt,
+                updatedAt: customer.updatedAt,
+                billingAddress,
+                company: String(billingAddress.company || ''),
+                abn: extractAbn(customerRawData) || extractAbn(latestOrderRawData),
                 totalSpent: effectiveTotalSpent,
                 ordersCount: effectiveOrdersCount,
                 contactStatus
             },
-            orders,
+            orders: orders.map(({ rawData: _rawData, ...order }) => order),
             automations: automationEnrollments.map((enrollment) => ({
                 ...enrollment,
                 emailLogs: automationEmailLogsByEnrollment.get(enrollment.id) || []
             })),
             activity: activitySessions,
             sendingMethods: CONTACT_STATUS_METHODS[contactStatus],
+            metadata: {
+                recordSource,
+                billingSource: usedOrderBilling
+                    ? customerHasUsefulBilling ? 'customer-and-order' : 'latest-order'
+                    : customerHasUsefulBilling ? 'woocommerce-customer' : 'none',
+                statsSource: dbTotalSpent > 0 || customer.ordersCount > 0 ? 'woocommerce-customer' : 'local-orders',
+                isLocalOnly: customer.wooId < 0,
+                wooId: customer.wooId,
+                lastSyncedAt: customer.updatedAt
+            },
             inboxConversations: inboxConversations.map((conversation) => ({
                 id: conversation.id,
                 title: conversation.title,
@@ -1028,58 +1110,147 @@ export class CustomersService {
         };
     }
 
-    static async updateContactStatus(accountId: string, customerId: string, nextStatus: ContactStatus) {
-        const customer = await prisma.wooCustomer.findFirst({ where: { accountId, id: customerId } });
+    static async updateCustomerProfile(accountId: string, customerId: string, profile: CustomerProfileUpdate) {
+        const customer = await prisma.wooCustomer.findFirst({
+            where: customerIdentifierWhere(accountId, customerId)
+        });
         if (!customer) return null;
 
-        const existingRawData = (customer.rawData as Record<string, unknown> | null) ?? {};
-        const normalizedEmail = customer.email.trim().toLowerCase();
+        const existingRaw = jsonObject(customer.rawData);
+        const existingBilling = jsonObject(existingRaw.billing);
+        const existingMeta = Array.isArray(existingRaw.meta_data) ? existingRaw.meta_data : [];
+        const existingAbnMeta = existingMeta.find((item: unknown) => {
+            const key = String(jsonObject(item).key || '').toLowerCase();
+            return key === 'abn' || key === '_billing_abn' || key === 'billing_abn';
+        });
+        const metaWithoutAbn = existingMeta.filter((item: unknown) => {
+            const key = String(jsonObject(item).key || '').toLowerCase();
+            return key !== 'abn' && key !== '_billing_abn' && key !== 'billing_abn';
+        });
+        const billing: Record<string, any> = {
+            ...existingBilling,
+            first_name: profile.firstName,
+            last_name: profile.lastName,
+            email: profile.email,
+            phone: profile.phone || '',
+            company: profile.company || '',
+            address_1: profile.address1 || '',
+            address_2: profile.address2 || '',
+            city: profile.city || '',
+            state: profile.state || '',
+            postcode: profile.postcode || '',
+            country: profile.country || ''
+        };
+        delete billing.abn;
+        const wooPayload = {
+            first_name: profile.firstName,
+            last_name: profile.lastName,
+            email: profile.email,
+            billing,
+            meta_data: [...metaWithoutAbn, { ...jsonObject(existingAbnMeta), key: 'abn', value: profile.abn || '' }]
+        };
 
-        await prisma.wooCustomer.update({
-            where: { id: customer.id },
-            data: {
-                rawData: {
-                    ...existingRawData,
-                    contactStatus: nextStatus
+        let savedRaw: Record<string, any> = { ...existingRaw, ...wooPayload, abn: profile.abn || '' };
+        // Negative IDs represent inbox-created contacts which do not yet exist in WooCommerce.
+        if (customer.wooId > 0) {
+            const woo = await WooService.forAccount(accountId);
+            const updatedWooCustomer = await woo.updateCustomer(customer.wooId, wooPayload);
+            savedRaw = { ...jsonObject(updatedWooCustomer), contactStatus: existingRaw.contactStatus, abn: profile.abn || '' };
+        }
+
+        const nextEmail = profile.email.trim().toLowerCase();
+        const previousEmail = customer.email.trim().toLowerCase();
+        const previousSuppressions = previousEmail === nextEmail ? [] : await prisma.emailUnsubscribe.findMany({
+            where: { accountId, email: { equals: previousEmail, mode: 'insensitive' } },
+            select: { scope: true, reason: true }
+        });
+
+        const updatedCustomer = await prisma.$transaction(async (tx) => {
+            // Re-read immediately before writing so a contact-status change made while Woo responded is retained.
+            const latest = await tx.wooCustomer.findFirst({ where: { accountId, id: customer.id } });
+            if (!latest) throw new Error('Customer was removed while the profile was being updated');
+            const latestRaw = jsonObject(latest.rawData);
+            const savedBilling = jsonObject(savedRaw.billing);
+            delete savedBilling.abn;
+            const latestPreviousEmails = Array.isArray(latestRaw.previousEmails)
+                ? latestRaw.previousEmails.map((email: unknown) => String(email).trim().toLowerCase()).filter(Boolean)
+                : [];
+            savedRaw = {
+                ...latestRaw,
+                ...savedRaw,
+                contactStatus: latestRaw.contactStatus,
+                billing: savedBilling,
+                previousEmails: previousEmail === nextEmail
+                    ? latestPreviousEmails
+                    : [...new Set([...latestPreviousEmails, previousEmail])]
+            };
+
+            if (previousSuppressions.length > 0) {
+                const strongest = previousSuppressions.some(item => item.scope === 'ALL') ? 'ALL' : 'MARKETING';
+                const reason = previousSuppressions.find(item => item.scope === strongest)?.reason || 'Copied when contact email changed';
+                await tx.emailUnsubscribe.deleteMany({
+                    where: { accountId, email: { equals: nextEmail, mode: 'insensitive' } }
+                });
+                await tx.emailUnsubscribe.create({ data: { accountId, email: nextEmail, scope: strongest, reason } });
+            }
+
+            return tx.wooCustomer.update({
+                where: { id: customer.id },
+                data: {
+                    firstName: profile.firstName,
+                    lastName: profile.lastName,
+                    email: nextEmail,
+                    rawData: savedRaw as Prisma.InputJsonValue
                 }
+            });
+        });
+        try {
+            await IndexingService.indexCustomer(accountId, updatedCustomer);
+        } catch (error) {
+            Logger.warn('Failed to reindex updated customer profile', { accountId, customerId: customer.id, error });
+        }
+        return updatedCustomer;
+    }
+
+    static async updateContactStatus(accountId: string, customerId: string, nextStatus: ContactStatus) {
+        const customer = await prisma.wooCustomer.findFirst({ where: customerIdentifierWhere(accountId, customerId) });
+        if (!customer) return null;
+
+        await prisma.$transaction(async (tx) => {
+            const latestCustomer = await tx.wooCustomer.findFirst({ where: { accountId, id: customer.id } });
+            if (!latestCustomer) throw new Error('Customer was removed while contact status was updating');
+            const existingRawData = jsonObject(latestCustomer.rawData);
+            const normalizedEmail = latestCustomer.email.trim().toLowerCase();
+            await tx.wooCustomer.update({
+                where: { id: customer.id },
+                data: { rawData: { ...existingRawData, contactStatus: nextStatus } }
+            });
+            // Delete case variants before creating the normalized authoritative row.
+            await tx.emailUnsubscribe.deleteMany({
+                where: { accountId, email: { equals: normalizedEmail, mode: 'insensitive' } }
+            });
+            if (nextStatus !== 'SUBSCRIBED') {
+                const blocksAll = nextStatus === 'BOUNCED' || nextStatus === 'COMPLAINT';
+                await tx.emailUnsubscribe.create({
+                    data: {
+                        accountId,
+                        email: normalizedEmail,
+                        scope: blocksAll ? 'ALL' : 'MARKETING',
+                        reason: nextStatus === 'COMPLAINT'
+                            ? 'Marked as complaint in customer profile'
+                            : nextStatus === 'BOUNCED'
+                                ? 'Marked as hard bounce in customer profile'
+                                : `Marked as ${nextStatus.toLowerCase().replace('_', ' ')} in customer profile`
+                    }
+                });
             }
         });
 
-        if (nextStatus === 'SUBSCRIBED') {
-            await prisma.emailUnsubscribe.deleteMany({
-                where: {
-                    accountId,
-                    email: { equals: normalizedEmail, mode: 'insensitive' }
-                }
-            });
-        } else if (nextStatus === 'BOUNCED' || nextStatus === 'COMPLAINT') {
-            await prisma.emailUnsubscribe.upsert({
-                where: { accountId_email: { accountId, email: normalizedEmail } },
-                create: {
-                    accountId,
-                    email: normalizedEmail,
-                    scope: 'ALL',
-                    reason: nextStatus === 'COMPLAINT' ? 'Marked as complaint in customer profile' : 'Marked as hard bounce in customer profile'
-                },
-                update: {
-                    scope: 'ALL',
-                    reason: nextStatus === 'COMPLAINT' ? 'Marked as complaint in customer profile' : 'Marked as hard bounce in customer profile'
-                }
-            });
-        } else {
-            await prisma.emailUnsubscribe.upsert({
-                where: { accountId_email: { accountId, email: normalizedEmail } },
-                create: {
-                    accountId,
-                    email: normalizedEmail,
-                    scope: 'MARKETING',
-                    reason: `Marked as ${nextStatus.toLowerCase().replace('_', ' ')} in customer profile`
-                },
-                update: {
-                    scope: 'MARKETING',
-                    reason: `Marked as ${nextStatus.toLowerCase().replace('_', ' ')} in customer profile`
-                }
-            });
+        try {
+            const updatedCustomer = await prisma.wooCustomer.findFirst({ where: { accountId, id: customer.id } });
+            if (updatedCustomer) await IndexingService.indexCustomer(accountId, updatedCustomer);
+        } catch (error) {
+            Logger.warn('Failed to reindex customer contact status', { accountId, customerId: customer.id, error });
         }
 
         return {

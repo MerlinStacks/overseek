@@ -1,6 +1,11 @@
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import crypto from 'crypto';
 import { EventBus, EVENTS } from '../services/events';
 import { Logger } from '../utils/logger';
+import { prisma } from '../utils/prisma';
+import { decrypt } from '../utils/encryption';
+
+const FEATURE_KEY = 'TRACKING_EMAIL_EVENTS';
 
 type ArtworkStatus =
     | 'uploaded'
@@ -88,6 +93,55 @@ function mapArtworkStatusToTrigger(status: ArtworkStatus): { eventName: string; 
     }
 }
 
+function extractBearerToken(headers: Record<string, unknown>): string {
+    const authorization = typeof headers.authorization === 'string' ? headers.authorization.trim() : '';
+    const match = authorization.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() : '';
+}
+
+function hashSafeEquals(a: string, b: string): boolean {
+    return a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
+async function authenticateArtworkEvent(accountId: string, bearerToken: string): Promise<boolean> {
+    if (!bearerToken) return false;
+
+    const [account, feature, emailAccounts] = await Promise.all([
+        prisma.account.findUnique({
+            where: { id: accountId },
+            select: { webhookSecret: true },
+        }),
+        prisma.accountFeature.findUnique({
+            where: { accountId_featureKey: { accountId, featureKey: FEATURE_KEY } },
+            select: { config: true },
+        }),
+        prisma.emailAccount.findMany({
+            where: { accountId, relayApiKey: { not: null } },
+            select: { id: true, relayApiKey: true },
+        }),
+    ]);
+
+    if (!account) return false;
+    if (account.webhookSecret && hashSafeEquals(account.webhookSecret, bearerToken)) return true;
+
+    const config = (feature?.config || {}) as Record<string, unknown>;
+    const configuredToken = typeof config.webhookAuthToken === 'string' ? config.webhookAuthToken.trim() : '';
+    if (configuredToken && hashSafeEquals(configuredToken, bearerToken)) return true;
+
+    for (const emailAccount of emailAccounts) {
+        try {
+            if (emailAccount.relayApiKey && hashSafeEquals(decrypt(emailAccount.relayApiKey), bearerToken)) return true;
+        } catch (error) {
+            Logger.warn('[ArtworkEvents] Failed to decrypt relay API key during webhook authentication', {
+                emailAccountId: emailAccount.id,
+                error,
+            });
+        }
+    }
+
+    return false;
+}
+
 async function handleArtworkEvent(
     request: FastifyRequest<{
         Params?: { accountId?: string };
@@ -109,6 +163,10 @@ async function handleArtworkEvent(
         || event.account_id;
     if (!accountId) {
         return reply.code(400).send({ error: 'Invalid payload: missing account_id' });
+    }
+
+    if (!await authenticateArtworkEvent(accountId, extractBearerToken(request.headers))) {
+        return reply.code(401).send({ error: 'Unauthorized' });
     }
 
     const normalizedStatus = normalizeArtworkStatus(event.event_status, event.event_name);

@@ -15,6 +15,7 @@ import { redisClient } from '../utils/redis';
 import { isExcludedOrderStatus, normalizeOrderStatus } from '../constants/orderStatus';
 import { campaignTrackingService } from '../services/CampaignTrackingService';
 import { emailListService } from '../services/EmailListService';
+import { reconcileWholesaleProductsBestEffort } from '../services/wholesale/reconciliation';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 const PAID_ATTRIBUTION_STATUSES = ['processing', 'on-hold', 'completed'];
@@ -239,6 +240,8 @@ export async function processWebhookPayload(
     if (topic === 'product.deleted') {
         try {
             const wooId = body.id as number;
+            const local = await prisma.wooProduct.findUnique({ where: { accountId_wooId: { accountId, wooId } }, select: { id: true } });
+            if (local) await reconcileWholesaleProductsBestEffort(accountId, [local.id], { deleted: true });
             await prisma.wooProduct.deleteMany({ where: { accountId, wooId } });
             await IndexingService.deleteProduct(accountId, wooId);
             Logger.info('Processed product.deleted webhook', { productId: wooId, accountId });
@@ -257,6 +260,8 @@ export async function processWebhookPayload(
         if (isTrashed) {
             try {
                 const wooId = body.id as number;
+                const local = await prisma.wooProduct.findUnique({ where: { accountId_wooId: { accountId, wooId } }, select: { id: true } });
+                if (local) await reconcileWholesaleProductsBestEffort(accountId, [local.id], { deleted: true });
                 await prisma.wooProduct.deleteMany({ where: { accountId, wooId } });
                 await IndexingService.deleteProduct(accountId, wooId);
                 Logger.info('Processed trashed product webhook as delete', { productId: wooId, accountId });
@@ -274,10 +279,14 @@ export async function processWebhookPayload(
                 where: { accountId_wooId: { accountId, wooId: body.id as number } },
                 update: {
                     name: (body.name as string) || 'Unknown',
+                    sku: (body.sku as string) || null,
                     status: (body.status as string) || null,
                     catalogVisibility: (body.catalog_visibility as string) || 'visible',
                     dateCreated: parseWooDate(body.date_created_gmt || body.date_created),
                     stockStatus: (body.stock_status as string) || null,
+                    stockQuantity: (body.stock_quantity as number) ?? null,
+                    price: body.price === '' ? null : body.price as any,
+                    images: Array.isArray(body.images) ? body.images as any : [],
                     permalink: (body.permalink as string) || null,
                     mainImage: Array.isArray(body.images) && typeof body.images[0]?.src === 'string' ? body.images[0].src : null,
                     rawData: body as any
@@ -286,10 +295,14 @@ export async function processWebhookPayload(
                     account: { connect: { id: accountId } },
                     wooId: body.id as number,
                     name: (body.name as string) || 'Unknown',
+                    sku: (body.sku as string) || null,
                     status: (body.status as string) || null,
                     catalogVisibility: (body.catalog_visibility as string) || 'visible',
                     dateCreated: parseWooDate(body.date_created_gmt || body.date_created),
                     stockStatus: (body.stock_status as string) || null,
+                    stockQuantity: (body.stock_quantity as number) ?? null,
+                    price: body.price === '' ? null : body.price as any,
+                    images: Array.isArray(body.images) ? body.images as any : [],
                     permalink: (body.permalink as string) || null,
                     mainImage: Array.isArray(body.images) && typeof body.images[0]?.src === 'string' ? body.images[0].src : null,
                     rawData: body as any
@@ -298,6 +311,7 @@ export async function processWebhookPayload(
         } catch (err: any) {
             Logger.warn('[Webhook] Failed to upsert product to DB', { accountId, productId: body.id, error: err.message });
         }
+        if (persistedProduct) await reconcileWholesaleProductsBestEffort(accountId, [persistedProduct.id]);
 
         try {
             await IndexingService.indexProduct(accountId, persistedProduct

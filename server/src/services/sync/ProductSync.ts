@@ -9,6 +9,7 @@ import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 import { parseWooDate } from '../../utils/wooDates';
 import { WooProductSchema, WooProduct, safeParseVariations } from './wooSchemas';
+import { reconcileWholesaleProductsBestEffort } from '../wholesale/reconciliation';
 
 
 export class ProductSync extends BaseSync {
@@ -31,6 +32,7 @@ export class ProductSync extends BaseSync {
         let variationFailures = 0;
         let totalVariationsSynced = 0;
         const variationReconciliationParentIds = new Set<string>();
+        const wholesaleReconciliationProductIds = new Set<string>();
 
         const syncStartedAt = new Date();
 
@@ -169,6 +171,7 @@ export class ProductSync extends BaseSync {
                 }
             });
             const productMap = new Map(upsertedProducts.map(p => [p.wooId, p]));
+            upsertedProducts.forEach(product => wholesaleReconciliationProductIds.add(product.id));
 
             // Process scoring and indexing
             const scoringResults: { seoScore: number; merchantCenterScore: number }[] = [];
@@ -394,6 +397,7 @@ export class ProductSync extends BaseSync {
                             ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
                         });
                         if (chunk.length === 0) break;
+                        await reconcileWholesaleProductsBestEffort(accountId, chunk.map(product => product.id), { deleted: true });
                         await Promise.allSettled(
                             chunk.map(p => IndexingService.deleteProduct(accountId, p.wooId))
                         );
@@ -451,10 +455,11 @@ export class ProductSync extends BaseSync {
             if (trashedWooIds.length > 0) {
                 const staleProducts = await prisma.wooProduct.findMany({
                     where: { accountId, wooId: { in: trashedWooIds } },
-                    select: { wooId: true }
+                    select: { id: true, wooId: true }
                 });
 
                 if (staleProducts.length > 0) {
+                    await reconcileWholesaleProductsBestEffort(accountId, staleProducts.map(product => product.id), { deleted: true });
                     await Promise.allSettled(staleProducts.map(p => IndexingService.deleteProduct(accountId, p.wooId)));
                     const { count } = await prisma.wooProduct.deleteMany({
                         where: { accountId, wooId: { in: staleProducts.map(p => p.wooId) } }
@@ -474,6 +479,8 @@ export class ProductSync extends BaseSync {
                 error: error.message
             });
         }
+
+        await reconcileWholesaleProductsBestEffort(accountId, [...wholesaleReconciliationProductIds]);
 
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }

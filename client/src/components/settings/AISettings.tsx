@@ -76,7 +76,7 @@ export function AISettings() {
 
     useEffect(() => {
         if (currentAccount) {
-            setApiKey(currentAccount.openRouterApiKey || '');
+            setApiKey('');
             if (currentAccount.aiModel) {
                 setSelectedModel(currentAccount.aiModel);
             }
@@ -129,7 +129,7 @@ export function AISettings() {
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    openRouterApiKey: apiKey,
+                    ...(apiKey.trim() ? { openRouterApiKey: apiKey.trim() } : {}),
                     aiModel: selectedModel,
                     embeddingModel: selectedEmbeddingModel
                 })
@@ -307,4 +307,3 @@ export function AISettings() {
         </div>
     );
 }
-

@@ -28,6 +28,19 @@ export function parseEmailContent(content: string): { subject: string | null; bo
     return { subject: null, body: content };
 }
 
+/** Converts a stored email message (including its optional Subject prefix) into safe preview text. */
+export function emailMessageToPreview(content: string, maxLength = 240): string {
+    const { body } = parseEmailContent(content || '');
+    const text = stripHtmlForAnalysis(body)
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
 /**
  * Cleans up raw email metadata and MIME header fragments from content.
  * Email replies often contain leaked header fragments like:

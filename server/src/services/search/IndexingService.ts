@@ -186,18 +186,23 @@ export class IndexingService {
     }
 
     static async indexCustomer(accountId: string, customer: any, refresh: boolean = true) {
+        const externalId = customer.wooId ?? customer.id;
+        const rawData = customer.rawData || customer;
         await esClient.index({
             index: 'customers',
-            id: `${accountId}_${customer.id}`,
+            id: `${accountId}_${externalId}`,
             document: {
                 accountId,
-                id: customer.id,
+                id: customer.wooId != null ? customer.id : externalId,
+                wooId: externalId,
                 email: customer.email,
-                firstName: customer.first_name,
-                lastName: customer.last_name,
-                totalSpent: parseFloat(customer.total_spent || '0'),
-                ordersCount: customer.orders_count || 0,
-                dateCreated: customer.date_created
+                firstName: customer.firstName ?? customer.first_name,
+                lastName: customer.lastName ?? customer.last_name,
+                totalSpent: parseFloat(String(customer.totalSpent ?? customer.total_spent ?? 0)),
+                ordersCount: customer.ordersCount ?? customer.orders_count ?? 0,
+                dateCreated: customer.dateCreated ?? customer.date_created ?? customer.createdAt,
+                rawData,
+                contactStatus: rawData.contactStatus
             },
             refresh
         });

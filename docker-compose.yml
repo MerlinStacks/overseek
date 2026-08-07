@@ -94,6 +94,7 @@ services:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       PORT: 3000
       REDIS_HOST: redis
+      PRIVATE_UPLOADS_DIR: /app/server/private-uploads
       # V8 heap at 6GB + ~1-1.5GB for Prisma Rust engine / native buffers /
       # HTTP(S) socket pools puts steady-state around 5.5-6.5GB. The container
       # has 8GB to leave headroom for transient spikes (large WooCommerce
@@ -101,6 +102,7 @@ services:
       NODE_OPTIONS: "--max-old-space-size=6144"
     volumes:
       - uploads_data:/app/server/uploads
+      - private_uploads_data:/app/server/private-uploads
       - geoip_data:/app/server/data
     mem_limit: 8g
     memswap_limit: 8g
@@ -158,6 +160,7 @@ volumes:
   elasticsearch_data:
   redis_data:
   uploads_data:
+  private_uploads_data:
   geoip_data:
 
 

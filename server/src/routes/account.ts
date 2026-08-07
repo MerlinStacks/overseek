@@ -14,6 +14,7 @@ import { OrderTaggingService } from '../services/OrderTaggingService';
 import { AuditService, AuditActions } from '../services/AuditService';
 import { seedDefaultBlockRules } from '../services/tracking/CrawlerService';
 import { invalidateExcludedIpsCache } from '../services/tracking/IpExclusionService';
+import { sanitizeAccountResponse } from '../utils/accountResponse';
 
 async function isSuperAdminUser(userId: string): Promise<boolean> {
     const user = await prisma.user.findUnique({
@@ -68,12 +69,12 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                     where: { id: account.id },
                     data: { weightUnit: storeSettings.weightUnit, dimensionUnit: storeSettings.dimensionUnit, currency: storeSettings.currency }
                 });
-                return updatedAccount;
+                return sanitizeAccountResponse(updatedAccount);
             } catch (settingsError) {
                 Logger.warn('Failed to fetch WooCommerce store settings during account creation', { accountId: account.id, error: settingsError });
             }
 
-            return account;
+            return sanitizeAccountResponse(account);
         } catch (error: any) {
             if (error.code === 'P2003') return reply.code(401).send({ error: 'User invalid' });
             Logger.error('Create Account error', { error });
@@ -91,7 +92,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { users: { some: { userId } } },
                 include: { features: true }
             });
-            return accounts;
+            return accounts.map(sanitizeAccountResponse);
         } catch (error) {
             return reply.code(500).send({ error: 'Internal server error' });
         }
@@ -123,8 +124,8 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
             if (typeof domain === 'string') data.domain = domain.trim();
             if (typeof sitemapUrl === 'string') data.sitemapUrl = sitemapUrl.trim();
             if (typeof wooUrl === 'string') data.wooUrl = wooUrl.trim();
-            if (typeof wooConsumerKey === 'string') data.wooConsumerKey = wooConsumerKey.trim();
-            if (typeof openRouterApiKey === 'string') data.openRouterApiKey = openRouterApiKey.trim();
+            if (typeof wooConsumerKey === 'string' && wooConsumerKey.trim()) data.wooConsumerKey = wooConsumerKey.trim();
+            if (typeof openRouterApiKey === 'string' && openRouterApiKey.trim()) data.openRouterApiKey = openRouterApiKey.trim();
             if (typeof aiModel === 'string') data.aiModel = aiModel.trim();
             if (appearance && typeof appearance === 'object' && !Array.isArray(appearance)) data.appearance = appearance;
             if (typeof revenueTaxInclusive === 'boolean') data.revenueTaxInclusive = revenueTaxInclusive;
@@ -141,7 +142,8 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (refreshGoldPrice) {
                 await GoldPriceService.updateAccountPrices(accountId);
-                return await prisma.account.findUnique({ where: { id: accountId } });
+                const refreshed = await prisma.account.findUnique({ where: { id: accountId } });
+                return refreshed ? sanitizeAccountResponse(refreshed) : reply.code(404).send({ error: 'Account not found' });
             }
 
             // Check if any of the new gold price fields are being updated
@@ -157,14 +159,16 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
                 if (goldPrice !== undefined) {
                     await GoldPriceService.updateAccountPrice(accountId, parseFloat(goldPrice));
                 }
-                return await prisma.account.findUnique({ where: { id: accountId } });
+                const refreshed = await prisma.account.findUnique({ where: { id: accountId } });
+                return refreshed ? sanitizeAccountResponse(refreshed) : reply.code(404).send({ error: 'Account not found' });
             } else if (goldPrice !== undefined) {
                 await GoldPriceService.updateAccountPrice(accountId, parseFloat(goldPrice));
-                return await prisma.account.findUnique({ where: { id: accountId } });
+                const refreshed = await prisma.account.findUnique({ where: { id: accountId } });
+                return refreshed ? sanitizeAccountResponse(refreshed) : reply.code(404).send({ error: 'Account not found' });
             }
 
             const updated = await prisma.account.update({ where: { id: accountId }, data });
-            return updated;
+            return sanitizeAccountResponse(updated);
         } catch (error) {
             return reply.code(500).send({ error: 'Failed to update account' });
         }
@@ -426,6 +430,14 @@ const accountRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{ Params: { accountId: string } }>('/:accountId/sync-settings', async (request, reply) => {
         try {
             const { accountId } = request.params;
+            const userId = request.user!.id;
+            const membership = await prisma.accountUser.findUnique({
+                where: { userId_accountId: { userId, accountId } },
+            });
+            if (!membership || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
+                return reply.code(403).send({ error: 'Forbidden' });
+            }
+
             const wooService = await WooService.forAccount(accountId);
             const storeSettings = await wooService.getStoreSettings();
 

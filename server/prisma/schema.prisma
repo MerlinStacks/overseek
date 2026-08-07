@@ -47,6 +47,11 @@ model User {
   messageReactions      MessageReaction[]
   scheduledMessages     Message[]            @relation("ScheduledMessages")
   conversationNotes     ConversationNote[]   @relation("UserConversationNotes")
+  wholesaleDefaultsApproved     WholesaleCatalogDefaults[]   @relation("WholesaleDefaultsApprover")
+  wholesaleRevisionsCreated     WholesaleCatalogRevision[]   @relation("WholesaleRevisionCreator")
+  wholesaleGenerationsRequested WholesaleCatalogGeneration[] @relation("WholesaleGenerationRequester")
+  wholesaleGenerationsApproved  WholesaleCatalogGeneration[] @relation("WholesaleGenerationApprover")
+  wholesaleSharesCreated        WholesaleCatalogShare[]      @relation("WholesaleShareCreator")
 }
 
 model RefreshToken {
@@ -252,6 +257,20 @@ model Account {
 
   // Real User Monitoring
   webVitalSamples       WebVitalSample[]
+
+  // Wholesale catalogs
+  wholesaleCatalogDefaults    WholesaleCatalogDefaults?
+  wholesaleBrandProfile       WholesaleBrandProfile?
+  wholesaleProductProfiles    WholesaleProductProfile[]
+  wholesalePriceTiers         WholesalePriceTier[]
+  wholesaleCatalogs           WholesaleCatalog[]
+  wholesaleCatalogProducts    WholesaleCatalogProduct[]
+  wholesaleCatalogRevisions   WholesaleCatalogRevision[]
+  wholesaleCatalogGenerations WholesaleCatalogGeneration[]
+  wholesaleCatalogShares      WholesaleCatalogShare[]
+  wholesaleCatalogViewers     WholesaleCatalogViewer[]
+  wholesaleViewerSessions     WholesaleCatalogViewerSession[]
+  wholesaleCatalogAccessLogs  WholesaleCatalogAccessLog[]
 }
 
 // --------------------------------------
@@ -718,6 +737,8 @@ model WooProduct {
 
   usedInBOMItems     BOMItem[]           @relation("ProductAsBOMComponent")
   purchaseOrderItems PurchaseOrderItem[]
+  wholesaleProfile           WholesaleProductProfile?
+  wholesaleCatalogPlacements WholesaleCatalogProduct[]
 
   @@unique([accountId, wooId])
   @@index([accountId, sku])                   // SKU search/lookup
@@ -1332,6 +1353,7 @@ model WooCustomer {
   conversations Conversation[]
   reviews       WooReview[]
   emailListMemberships EmailListMember[]
+  wholesaleCatalogShares WholesaleCatalogShare[]
 
   @@unique([accountId, wooId])
   @@index([accountId, email])
@@ -3366,4 +3388,393 @@ model WebVitalSample {
   @@index([accountId, metric, createdAt])
   @@index([accountId, pageType, metric])
   @@index([createdAt])  // For 90-day cleanup job
+}
+
+// ------------------------------------
+// Wholesale Catalogs
+// ------------------------------------
+
+enum WholesalePersonalisationType {
+  ENGRAVE
+  SUBLIMATE
+  UV
+  DTF
+  EMBROIDERY
+}
+
+enum WholesaleTaxBasis {
+  INCLUSIVE
+  EXCLUSIVE
+}
+
+enum WholesaleCatalogStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum WholesaleCatalogSuspensionReason {
+  OUT_OF_STOCK
+  NO_PRICE_TIERS
+}
+
+enum WholesaleCatalogGenerationStatus {
+  QUEUED
+  RENDERING
+  AWAITING_APPROVAL
+  APPROVED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum WholesaleCatalogValidityArtifactStatus {
+  CURRENT
+  UPDATING
+  FAILED
+}
+
+enum WholesaleCatalogShareArtifactStatus {
+  QUEUED
+  RENDERING
+  READY
+  FAILED
+  EXPIRED
+}
+
+model WholesaleCatalogDefaults {
+  id        String @id @default(uuid())
+  accountId String @unique
+
+  priceTaxBasis         WholesaleTaxBasis
+  gstRate               Decimal           @db.Decimal(7, 4)
+  termsDocument         Json
+  confidentialityNotice String            @db.Text
+  privacyNotice         String            @db.Text
+  setupChecklist        Json
+  version               String
+  termsHash             String
+  approvedById          String?
+  approvedAt            DateTime?
+
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  approvedBy User?   @relation("WholesaleDefaultsApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WholesaleBrandProfile {
+  id        String @id @default(uuid())
+  accountId String @unique
+
+  logoUrl         String?
+  primaryColor    String?
+  accentColor     String?
+  headingFont     String?
+  bodyFont        String?
+  businessDetails Json
+  importSources   Json
+  importedAt      DateTime?
+  reviewedAt      DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WholesaleProductProfile {
+  id        String @id @default(uuid())
+  accountId String
+  productId String @unique
+
+  notesDocument        Json?
+  personalisationTypes WholesalePersonalisationType[]
+  imageUrl             String?
+  priceTaxBasis        WholesaleTaxBasis
+  priceSetVersion      Int                            @default(1)
+
+  account    Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  product    WooProduct           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceTiers WholesalePriceTier[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, productId])
+}
+
+model WholesalePriceTier {
+  id        String @id @default(uuid())
+  accountId String
+  profileId String
+
+  minimumQuantity Int
+  unitPrice       Decimal? @db.Decimal(12, 4)
+  isPoa           Boolean  @default(false)
+  sortOrder       Int
+
+  account Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  profile WholesaleProductProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([profileId, minimumQuantity])
+  @@index([accountId, profileId])
+}
+
+model WholesaleCatalog {
+  id        String @id @default(uuid())
+  accountId String
+
+  name                     String
+  publicTitle              String
+  subtitle                 String?
+  coverText                String?                @db.Text
+  pricesIncludeTax         Boolean
+  supplementaryPriceNotice String?
+  brandingOverrides        Json
+  paymentCallout           Json
+  termsSections            Json
+  footerDetails            Json
+  defaultsVersion          String
+  status                   WholesaleCatalogStatus @default(DRAFT)
+
+  account     Account                      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  products    WholesaleCatalogProduct[]
+  revisions   WholesaleCatalogRevision[]
+  generations WholesaleCatalogGeneration[]
+  shares      WholesaleCatalogShare[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, status])
+  @@index([accountId, updatedAt])
+}
+
+model WholesaleCatalogProduct {
+  id        String @id @default(uuid())
+  accountId String
+  catalogId String
+  productId String
+
+  categoryKey       String?
+  categoryLabel     String?
+  categorySortOrder Int                               @default(0)
+  isSuspended       Boolean                           @default(false)
+  suspensionReason  WholesaleCatalogSuspensionReason?
+  suspendedAt       DateTime?
+  restoreAllowed    Boolean                           @default(true)
+
+  account Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  catalog WholesaleCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  product WooProduct       @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([catalogId, productId])
+  @@index([accountId, catalogId])
+  @@index([accountId, catalogId, categorySortOrder])
+}
+
+model WholesaleCatalogRevision {
+  id        String @id @default(uuid())
+  accountId String
+  catalogId String
+
+  revisionNumber Int
+  snapshot       Json
+  createdById    String
+
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  catalog   WholesaleCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  createdBy User             @relation("WholesaleRevisionCreator", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([catalogId, revisionNumber])
+  @@index([accountId, catalogId, createdAt])
+}
+
+model WholesaleCatalogGeneration {
+  id        String @id @default(uuid())
+  accountId String
+  catalogId String
+
+  requestedById String
+  approvedById  String?
+  retryOfId     String?
+  status        WholesaleCatalogGenerationStatus @default(QUEUED)
+  versionNumber Int?
+
+  progressStage     String?
+  progressPercent   Int       @default(0)
+  cancelRequestedAt DateTime?
+  masterFilePath    String?
+  basePagesPath     String?
+  fileSize          Int?
+  pageCount         Int?
+  productCount      Int
+  inputSnapshot     Json
+  errorMessage      String?   @db.Text
+  startedAt         DateTime?
+  completedAt       DateTime?
+  approvedAt        DateTime?
+  approvalNote      String?   @db.Text
+
+  effectiveDate          DateTime
+  validUntil             DateTime
+  originalGeneratedAt    DateTime?
+  validityArtifactStatus WholesaleCatalogValidityArtifactStatus @default(CURRENT)
+  validityRevision       Int                                    @default(1)
+  staleAt                DateTime?
+  staleReasons           Json?
+  expiresAt              DateTime?
+
+  account     Account                      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  catalog     WholesaleCatalog             @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  requestedBy User                         @relation("WholesaleGenerationRequester", fields: [requestedById], references: [id])
+  approvedBy  User?                        @relation("WholesaleGenerationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  retryOf     WholesaleCatalogGeneration?  @relation("WholesaleGenerationRetries", fields: [retryOfId], references: [id], onDelete: SetNull)
+  retries     WholesaleCatalogGeneration[] @relation("WholesaleGenerationRetries")
+  shares      WholesaleCatalogShare[]      @relation("WholesaleGenerationShares")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([catalogId, versionNumber])
+  @@index([accountId, catalogId, createdAt])
+  @@index([accountId, status, createdAt])
+  @@index([accountId, retryOfId])
+}
+
+model WholesaleCatalogShare {
+  id           String  @id @default(uuid())
+  accountId    String
+  catalogId    String
+  generationId String
+  customerId   String?
+  createdById  String
+
+  customerSnapshot Json
+  tokenHash        String?   @unique
+  passwordHash     String?
+  expiresAt        DateTime
+  activatedAt      DateTime?
+  revokedAt        DateTime?
+  failedAttempts   Int       @default(0)
+  lockedUntil      DateTime?
+  lastAccessedAt   DateTime?
+
+  artifactStatus        WholesaleCatalogShareArtifactStatus @default(QUEUED)
+  artifactError         String?                             @db.Text
+  personalizedPdfPath   String?
+  personalizedPagesPath String?
+  personalizedFileName  String?
+
+  confidentialityTextSnapshot String    @db.Text
+  confidentialityHash         String
+  privacyNoticeSnapshot       String    @db.Text
+  emailedAt                   DateTime?
+
+  account    Account                         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  catalog    WholesaleCatalog                @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  generation WholesaleCatalogGeneration      @relation("WholesaleGenerationShares", fields: [generationId], references: [id], onDelete: Cascade)
+  customer   WooCustomer?                    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy  User                            @relation("WholesaleShareCreator", fields: [createdById], references: [id])
+  viewers    WholesaleCatalogViewer[]
+  sessions   WholesaleCatalogViewerSession[]
+  accessLogs WholesaleCatalogAccessLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, catalogId])
+  @@index([accountId, generationId])
+  @@index([accountId, customerId, createdAt])
+  @@index([accountId, expiresAt])
+}
+
+model WholesaleCatalogViewer {
+  id        String @id @default(uuid())
+  accountId String
+  shareId   String
+
+  name                        String
+  email                       String
+  firstAccessedAt             DateTime?
+  lastAccessedAt              DateTime?
+  confidentialityAcceptedAt   DateTime?
+  acceptedConfidentialityText String?   @db.Text
+  acceptedConfidentialityHash String?
+  notifiedAt                  DateTime?
+  anonymizedAt                DateTime?
+
+  account    Account                         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  share      WholesaleCatalogShare           @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  sessions   WholesaleCatalogViewerSession[]
+  accessLogs WholesaleCatalogAccessLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shareId, email])
+  @@index([accountId, shareId, createdAt])
+}
+
+model WholesaleCatalogViewerSession {
+  id        String  @id @default(uuid())
+  accountId String
+  shareId   String
+  viewerId  String?
+
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  ipAddress      String?
+  userAgent      String?   @db.Text
+  deviceSummary  String?
+  lastActivityAt DateTime  @default(now())
+
+  account    Account                     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  share      WholesaleCatalogShare       @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  viewer     WholesaleCatalogViewer?     @relation(fields: [viewerId], references: [id], onDelete: SetNull)
+  accessLogs WholesaleCatalogAccessLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, shareId, expiresAt])
+  @@index([accountId, viewerId])
+}
+
+model WholesaleCatalogAccessLog {
+  id        String  @id @default(uuid())
+  accountId String
+  shareId   String
+  viewerId  String?
+  sessionId String?
+
+  eventType  String
+  success    Boolean
+  ipAddress  String?
+  userAgent  String?  @db.Text
+  pageNumber Int?
+  isScanner  Boolean  @default(false)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  account Account                        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  share   WholesaleCatalogShare          @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  viewer  WholesaleCatalogViewer?        @relation(fields: [viewerId], references: [id], onDelete: SetNull)
+  session WholesaleCatalogViewerSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, shareId, createdAt])
+  @@index([accountId, viewerId, createdAt])
+  @@index([accountId, sessionId, createdAt])
+  @@index([accountId, eventType, createdAt])
 }

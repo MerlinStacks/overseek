@@ -7,6 +7,7 @@ import { EmailAccountBodySchema, TestConnectionBodySchema, TestRelayBodySchema }
 import { EmailService } from '../../services/EmailService';
 import { decrypt } from '../../utils/encryption';
 import { getEmailAccountIdOrReply, parseBodyOrReply } from './routeHelpers';
+import { PermissionService } from '../../services/PermissionService';
 
 const emailService = new EmailService();
 
@@ -213,7 +214,12 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.post('/test-relay', async (request, reply) => {
-        const accountId = request.accountId;
+        const accountId = getEmailAccountIdOrReply(request, reply);
+        if (!accountId) return;
+        const userId = request.user?.id;
+        if (!userId || !(await PermissionService.hasPermission(userId, accountId, '*'))) {
+            return reply.code(403).send({ success: false, error: 'Admin permission required' });
+        }
         const parsed = parseBodyOrReply(reply, TestRelayBodySchema.safeParse(request.body));
         if (!parsed) return;
         const { relayEndpoint, relayApiKey, relayProfileId, emailAccountId, testEmail } = parsed;
@@ -227,6 +233,15 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
             const emailAccount = await prisma.emailAccount.findFirst({ where: { id: emailAccountId, accountId } });
             if (!emailAccount?.relayApiKey) {
                 return reply.code(400).send({ success: false, error: 'No API key found for this account. Please enter one.' });
+            }
+            let storedEndpoint: URL;
+            try {
+                storedEndpoint = new URL(emailAccount.relayEndpoint || '');
+            } catch {
+                return reply.code(400).send({ success: false, error: 'Stored relay endpoint is invalid. Please save the account again.' });
+            }
+            if (storedEndpoint.protocol !== 'https:' || storedEndpoint.toString() !== parsedUrl.toString()) {
+                return reply.code(400).send({ success: false, error: 'Stored API key can only be tested with its saved relay endpoint' });
             }
             apiKeyToUse = decrypt(emailAccount.relayApiKey);
         }
@@ -243,6 +258,7 @@ const emailAccountRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const response = await fetch(parsedUrl.toString(), {
                 method: 'POST',
+                redirect: 'error',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Relay-Key': apiKeyToUse!,

@@ -53,14 +53,11 @@ export function WebhookSettings() {
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-    // Get current webhook secret from account
-    const rawData = currentAccount as unknown as { webhookSecret?: string; wooConsumerSecret?: string };
-    const [secretInput, setSecretInput] = useState(rawData?.webhookSecret || '');
+    const [secretInput, setSecretInput] = useState('');
 
     // Update local state when account changes
     useEffect(() => {
-        const data = currentAccount as unknown as { webhookSecret?: string };
-        setSecretInput(data?.webhookSecret || '');
+        setSecretInput('');
     }, [currentAccount]);
 
     // Get the base API URL - prefer browser origin for correct public URL display
@@ -92,6 +89,7 @@ export function WebhookSettings() {
             });
 
             if (response.ok) {
+                setSecretInput('');
                 setSaveMessage({ type: 'success', text: 'Webhook secret saved!' });
                 refreshAccounts?.();
             } else {
@@ -161,7 +159,7 @@ export function WebhookSettings() {
                 </div>
                 <div className="flex gap-2">
                     <input
-                        type="text"
+                        type="password"
                         value={secretInput}
                         onChange={(e) => setSecretInput(e.target.value)}
                         placeholder="Paste your WooCommerce webhook secret here"
@@ -169,7 +167,7 @@ export function WebhookSettings() {
                     />
                     <button
                         onClick={handleSaveSecret}
-                        disabled={isSaving}
+                        disabled={isSaving || !secretInput.trim()}
                         className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-medium"
                     >
                         {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -177,7 +175,9 @@ export function WebhookSettings() {
                     </button>
                 </div>
                 <p className="text-xs text-gray-500">
-                    Copy the secret from your WooCommerce webhook configuration and paste it here. This validates webhook signatures.
+                    {currentAccount?.webhookSecretConfigured
+                        ? 'A secret is configured. Enter a new value only to replace it.'
+                        : 'Copy the secret from your WooCommerce webhook configuration and paste it here. This validates webhook signatures.'}
                 </p>
             </div>
 

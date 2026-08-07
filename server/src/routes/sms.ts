@@ -4,8 +4,21 @@ import { TwilioService } from '../services/TwilioService';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { requireAuthFastify } from '../middleware/auth';
+import { PermissionService } from '../services/PermissionService';
 
 const TWILIO_SID_PATTERN = /^AC[a-f0-9]{32}$/i;
+
+function getPublicSmsUrl(path: '/status' | '/webhook'): string {
+    const apiUrl = process.env.API_URL?.trim().replace(/\/+$/, '');
+    return apiUrl ? `${apiUrl}/api/sms${path}` : '';
+}
+
+export function sanitizeSmsSettingsResponse<T extends Record<string, any>>(settings: T) {
+    const safeSettings = { ...settings };
+    const authTokenConfigured = Boolean(safeSettings.authToken);
+    delete safeSettings.authToken;
+    return { ...safeSettings, authTokenConfigured };
+}
 
 export const createSmsRoutes = (chatService: ChatService) => async (fastify: FastifyInstance) => {
 
@@ -34,6 +47,22 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
             request.raw.on('error', reject);
         });
         return Object.fromEntries(new URLSearchParams(raw).entries());
+    };
+
+    const requireSmsSettingsPermission = async (request: any, reply: any): Promise<boolean> => {
+        const accountId = request.accountId;
+        const userId = request.user?.id;
+        if (!accountId || !userId) {
+            reply.status(400).send({ error: 'Missing account context' });
+            return false;
+        }
+
+        const allowed = await PermissionService.hasPermission(userId, accountId, 'manage_sms_settings');
+        if (!allowed) {
+            reply.status(403).send({ error: 'Forbidden' });
+            return false;
+        }
+        return true;
     };
 
     fastify.get('/logs', { preHandler: requireAuthFastify }, async (request, reply) => {
@@ -77,15 +106,17 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
     fastify.get('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
         const accountId = request.accountId;
         if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
+        if (!(await requireSmsSettingsPermission(request, reply))) return;
 
         const settings = await TwilioService.getSettings(accountId);
-        return settings || {};
+        return settings ? sanitizeSmsSettingsResponse(settings) : {};
     });
 
     // Update SMS Settings
     fastify.post('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
         const accountId = request.accountId;
         if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
+        if (!(await requireSmsSettingsPermission(request, reply))) return;
 
         const data = request.body as any;
         
@@ -113,7 +144,7 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
                 : Number.parseFloat(String(data.smsCostPerSegment || 0))
         });
 
-        return settings;
+        return sanitizeSmsSettingsResponse(settings);
     });
 
     // Twilio delivery receipts update the original outbound attempt by Message SID.
@@ -130,8 +161,7 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
         }
 
         const signature = request.headers['x-twilio-signature'];
-        const appUrl = process.env.APP_URL?.trim().replace(/\/+$/, '');
-        const callbackUrl = appUrl ? `${appUrl}/api/sms/status` : '';
+        const callbackUrl = getPublicSmsUrl('/status');
         if (typeof signature !== 'string' || !callbackUrl || !TwilioService.validateRequest(settings.authToken, signature, callbackUrl, params)) {
             Logger.warn('[SMS Status] Invalid Twilio signature', { messageId, accountId: settings.accountId });
             return reply.status(403).send({ error: 'Forbidden' });
@@ -185,13 +215,13 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
                 return reply.status(404).send({ error: 'Account not found' });
             }
 
-            // 2. Validate Signature (Optional but recommended)
-            // const signature = request.headers['x-twilio-signature'] as string;
-            // const url = `https://${request.hostname}${request.url}`;
-            // if (!TwilioService.validateRequest(settings.authToken, signature, url, params)) {
-            //     Logger.warn('[SMS Webhook] Invalid signature');
-            //     return reply.status(403).send({ error: 'Forbidden' });
-            // }
+            // 2. Validate the signature against the exact public webhook URL configured in Twilio.
+            const signature = request.headers['x-twilio-signature'];
+            const webhookUrl = getPublicSmsUrl('/webhook');
+            if (typeof signature !== 'string' || !webhookUrl || !TwilioService.validateRequest(settings.authToken, signature, webhookUrl, params)) {
+                Logger.warn('[SMS Webhook] Invalid Twilio signature', { accountId: settings.accountId });
+                return reply.status(403).send({ error: 'Forbidden' });
+            }
 
             // 3. Find or Create Conversation
             let conversation = await prisma.conversation.findFirst({

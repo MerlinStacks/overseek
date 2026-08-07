@@ -43,8 +43,6 @@ export function TrackingScriptHelper() {
 
     // Public API URL for external clients (derived from browser location)
     const publicApiUrl = getPublicApiUrl();
-    const trackingAuthToken = currentAccount?.webhookSecret || '';
-
     const sendTestEvent = async () => {
         setTestStatus('loading');
         try {
@@ -56,7 +54,6 @@ export function TrackingScriptHelper() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(trackingAuthToken ? { Authorization: `Bearer ${trackingAuthToken}` } : {})
                 },
                 body: JSON.stringify({
                     accountId: currentAccount?.id,
@@ -139,18 +136,18 @@ export function TrackingScriptHelper() {
     const [configCopied, setConfigCopied] = useState(false);
     const [emailPrefsCopied, setEmailPrefsCopied] = useState(false);
 
-    const emailPreferencesAuthToken = trackingAuthToken;
+    const webhookAuthTokenPlaceholder = 'REPLACE_WITH_WEBHOOK_SECRET';
 
     const connectionConfig = JSON.stringify({
         apiUrl: publicApiUrl,
         accountId: currentAccount?.id || '',
-        webhookAuthToken: trackingAuthToken
+        webhookAuthToken: webhookAuthTokenPlaceholder
     }, null, 2);
 
     const emailPreferencesConfig = JSON.stringify({
         apiBaseUrl: publicApiUrl,
         accountId: currentAccount?.id || '',
-        authToken: emailPreferencesAuthToken || 'Set a webhook secret in Settings > Webhooks first',
+        authToken: webhookAuthTokenPlaceholder,
         endpoint: `${publicApiUrl}/api/email-preferences`
     }, null, 2);
 
@@ -233,11 +230,11 @@ export function TrackingScriptHelper() {
                     </button>
                 </div>
 
-                {!emailPreferencesAuthToken && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-                        Set a webhook secret in <a href="/settings?tab=webhooks" className="font-medium underline">Settings &gt; Webhooks</a> before using this from Workflow Suite. That secret is used as the API auth token.
-                    </div>
-                )}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                    {currentAccount?.webhookSecretConfigured
+                        ? 'Replace REPLACE_WITH_WEBHOOK_SECRET with the configured webhook secret. Existing secrets are never displayed.'
+                        : <span>Set a webhook secret in <a href="/settings?tab=webhooks" className="font-medium underline">Settings &gt; Webhooks</a>, then replace REPLACE_WITH_WEBHOOK_SECRET with that value.</span>}
+                </div>
 
                 <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed border border-slate-800 shadow-xs">
                     <code>{emailPreferencesConfig}</code>

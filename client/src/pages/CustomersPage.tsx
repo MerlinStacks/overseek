@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { AlertCircle, Search, Users, Mail, ShoppingBag, Calendar, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -34,7 +34,7 @@ interface Contact {
 }
 
 function getContactStatusBadge(status: Contact['contactStatus']) {
-    switch (status || 'SUBSCRIBED') {
+    switch (status || 'UNVERIFIED') {
         case 'UNVERIFIED':
             return { label: 'Unverified', className: 'bg-gray-100 text-gray-700 border-gray-200' };
         case 'SUBSCRIBED':
@@ -56,6 +56,7 @@ function getContactStatusBadge(status: Contact['contactStatus']) {
 
 export function CustomersPage() {
     const navigate = useNavigate();
+    const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
@@ -372,12 +373,12 @@ export function CustomersPage() {
                                         key={`${contact.isCustomer ? 'customer' : 'contact'}-${contact.id}`}
                                         className={`${contact.isCustomer ? 'cursor-pointer' : ''} hover:bg-gray-50 transition-colors focus-within:bg-blue-50`}
                                         onClick={() => {
-                                            if (contact.isCustomer) navigate(`/customers/${encodeURIComponent(contact.id)}`);
+                                            if (contact.isCustomer) navigate(`/customers/${encodeURIComponent(contact.id)}`, { state: { contactsPath: `${location.pathname}${location.search}` } });
                                         }}
                                         onKeyDown={(event) => {
                                             if (contact.isCustomer && (event.key === 'Enter' || event.key === ' ')) {
                                                 event.preventDefault();
-                                                navigate(`/customers/${encodeURIComponent(contact.id)}`);
+                                                navigate(`/customers/${encodeURIComponent(contact.id)}`, { state: { contactsPath: `${location.pathname}${location.search}` } });
                                             }
                                         }}
                                         role={contact.isCustomer ? 'link' : undefined}
