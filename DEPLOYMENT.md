@@ -76,6 +76,32 @@ docker compose up -d
 
 ---
 
+## Wholesale Catalog Runtime Requirements
+
+The account-gated Wholesale Catalog Generator uses the API container, PostgreSQL, Redis/BullMQ, and persistent private storage.
+
+- The API image includes `poppler-utils` to rasterize generated PDFs into protected customer-viewer pages. Deploy the current API image rather than reusing an older locally built image.
+- `PRIVATE_UPLOADS_DIR` is set to `/app/server/private-uploads` by `docker-compose.yml` and backed by the `private_uploads_data` named volume. Keep this volume mounted, writable by the API container, and private. Never expose it through Nginx or a public static-file route.
+- PostgreSQL stores catalog definitions, immutable generation metadata, shares, viewer sessions, analytics, and retention state. API startup runs `prisma migrate deploy`, including the wholesale catalog migration, before starting the service.
+- Redis must be healthy for generation, personalized share rendering, validity reminders, and retention queues. A healthy HTTP API alone does not prove that catalog jobs can run.
+- Generated artifacts can contain confidential pricing and recipient details. Include the private volume in an encrypted backup policy only when required, restrict restore access, and preserve the configured retention cleanup jobs.
+- Outbound account email must be configured before staff can activate a customer share.
+
+After deploying an API image containing the catalog feature:
+
+```bash
+# Confirm the migration completed and all dependencies are ready
+docker compose logs api
+curl http://localhost:3000/health/ready
+
+# Confirm the private artifact volume is mounted
+docker compose exec api test -w /app/server/private-uploads
+```
+
+Before enabling `WHOLESALE_CATALOG` for a pilot account, generate and approve a representative catalog, exercise retry/restart recovery, create and revoke an expiring customer share, verify customer/viewer watermarks, and confirm retention cleanup. See the [wholesale catalog rollout checklist](./docs/wholesale-catalog-generator-plan.md#deployment-and-pilot-checklist).
+
+---
+
 ## Health Endpoints
 
 - `/health` — Basic check

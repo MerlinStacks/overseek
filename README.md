@@ -43,11 +43,12 @@ It is built for teams that want practical ownership of their commerce data inste
 - **Email marketing:** email hub, flows, broadcasts, customer segments, lists, suppression/blocked contacts, delivery logs, and email settings.
 - **Analytics:** revenue, attribution, cohorts, CLV, reports, live acquisition views, crawler/bot shield, and conversion API health checks.
 - **Growth:** paid ads, reviews, SEO keywords, SEO content tools, product feeds, and optional AI manager features.
+- **Wholesale catalogs:** account-gated wholesale pricing and product content, multiple branded A4 PDF catalogs, queued generation and approval, and protected customer-specific sharing with expiring links and watermarked page viewing.
 - **Customers and team:** customer profiles, segmentation, role-based permissions, team management, policies/SOPs, help center, and superadmin tools.
 - **Mobile PWA:** installed-app routes for dashboard, orders, inbox, analytics, inventory, customers, live visitors, notifications, profile, and settings.
 - **Developer access:** shared core package, MCP server, CLI package, Docker Compose deployment, and WooCommerce connector plugin.
 
-Some modules are account-feature gated, including email, shipping, feeds, AI manager, and bot shield.
+Some modules are account-feature gated, including email, shipping, wholesale catalogs, feeds, AI manager, and bot shield. Wholesale catalogs also use granular view, edit, generate, and share permissions.
 
 ## Quick Start
 
@@ -149,6 +150,7 @@ overseek/
 
 ## Related Docs
 
+- [Wholesale catalog generator plan and rollout checklist](./docs/wholesale-catalog-generator-plan.md)
 - [WooCommerce plugin README](./overseek-wc-plugin/README.md)
 - [Print agent README](./print-agent/README.md)
 
