@@ -257,8 +257,7 @@ export function useInbox() {
         if (!token || !currentAccount) return;
         const requestAccountId = currentAccount.id;
 
-        let request: Promise<ConversationResponse | null>;
-        request = fetch(`/api/chat/${conversationId}?limit=100`, {
+        const request: Promise<ConversationResponse | null> = fetch(`/api/chat/${conversationId}?limit=100`, {
             headers: buildHeaders(token, requestAccountId),
         })
             .then(res => res.ok ? res.json() : null)
