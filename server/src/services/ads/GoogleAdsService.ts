@@ -77,7 +77,7 @@ export class GoogleAdsService {
                 WHERE segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
             `;
 
-            const { rows, currency } = await this.searchRows(adAccountId, query);
+            const { rows, currency } = await GoogleAdsService.searchRows(adAccountId, query);
             const row = rows[0];
 
             if (!row?.metrics) return null;
@@ -145,7 +145,7 @@ export class GoogleAdsService {
                 ORDER BY metrics.cost_micros DESC
             `;
 
-            const { rows: results, currency } = await this.searchRows(adAccountId, query);
+            const { rows: results, currency } = await GoogleAdsService.searchRows(adAccountId, query);
 
             return results.map((row: any) => {
                 const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
@@ -198,7 +198,7 @@ export class GoogleAdsService {
                 ORDER BY segments.date ASC
             `;
 
-            const { rows: results } = await this.searchRows(adAccountId, query);
+            const { rows: results } = await GoogleAdsService.searchRows(adAccountId, query);
 
             return results.map((row: any) => ({
                 date: resourceValue(row.segments, 'date') || '',
@@ -243,7 +243,7 @@ export class GoogleAdsService {
                 LIMIT ${limit}
             `;
 
-            const { rows: results, currency } = await this.searchRows(adAccountId, query);
+            const { rows: results, currency } = await GoogleAdsService.searchRows(adAccountId, query);
 
             return results.map((row: any) => {
                 const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
@@ -315,7 +315,7 @@ export class GoogleAdsService {
                 LIMIT 500
             `;
 
-            const { rows: results, currency } = await this.searchRows(adAccountId, query);
+            const { rows: results, currency } = await GoogleAdsService.searchRows(adAccountId, query);
 
             return results.map((row: any) => {
                 const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
@@ -389,7 +389,7 @@ export class GoogleAdsService {
                 LIMIT ${limit}
             `;
 
-            const { rows: results, currency } = await this.searchRows(adAccountId, query);
+            const { rows: results, currency } = await GoogleAdsService.searchRows(adAccountId, query);
 
             return results.map((row: any) => {
                 const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
@@ -524,7 +524,7 @@ export class GoogleAdsService {
                     AND ad_group.status = 'ENABLED'
             `;
 
-            const { rows: results } = await this.searchRows(adAccountId, query);
+            const { rows: results } = await GoogleAdsService.searchRows(adAccountId, query);
 
             return results.map((row: any) => ({
                 id: resourceValue(row.adGroup ?? row.ad_group, 'id')?.toString() || '',
@@ -600,7 +600,7 @@ export class GoogleAdsService {
                     AND campaign_criterion.type = 'KEYWORD'
             `;
 
-            const { rows: results } = await this.searchRows(adAccountId, query);
+            const { rows: results } = await GoogleAdsService.searchRows(adAccountId, query);
             return results
                 .map((row: any) => (row.campaignCriterion ?? row.campaign_criterion)?.keyword?.text || '')
                 .filter(Boolean);
@@ -697,7 +697,7 @@ export class GoogleAdsService {
                   AND segments.date BETWEEN '${formatDateGAQL(startDate)}' AND '${formatDateGAQL(endDate)}'
             `;
 
-            const { rows: results } = await this.searchRows(adAccountId, query);
+            const { rows: results } = await GoogleAdsService.searchRows(adAccountId, query);
 
             if (!results || results.length === 0) return null;
 
