@@ -1617,6 +1617,16 @@ model Message {
   isInternal Boolean   @default(false) // For private notes
   readAt     DateTime?
 
+  // Immediate outbound delivery lifecycle. Existing/inbound/internal messages are SENT.
+  deliveryStatus      MessageDeliveryStatus @default(SENT)
+  deliveryChannel     String?
+  deliveryProvider    String?
+  providerMessageId   String?
+  deliveryError       String?               @db.Text
+  deliveryAttemptedAt DateTime?
+  deliveredAt         DateTime?
+  clientRequestId     String?
+
   // Email threading: stores RFC 5322 Message-ID for In-Reply-To matching
   emailMessageId String?
   
@@ -1624,7 +1634,7 @@ model Message {
   scheduledFor   DateTime?
   scheduledBy    String?    // User ID who scheduled it
   
-  // Stored attachments for scheduled messages (JSON array of { filename, path, contentType })
+  // Stored attachments for scheduled messages (JSON array of { filename, storageKey, contentType })
   attachmentPaths Json?     // Attachment metadata preserved until message is sent
 
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -1635,6 +1645,13 @@ model Message {
   
   @@index([scheduledFor]) // For efficient scheduled message queries
   @@index([conversationId, createdAt(sort: Desc)])  // Thread rendering with ORDER BY
+  @@unique([conversationId, clientRequestId])
+}
+
+enum MessageDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
 }
 
 model MessageReaction {

@@ -15,7 +15,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
-import { ChatService } from '../services/ChatService';
+import { ChatService, InvalidChatCursorError } from '../services/ChatService';
 import { BlockedContactService } from '../services/BlockedContactService';
 import { EmailService } from '../services/EmailService';
 import { TwilioService } from '../services/TwilioService';
@@ -36,6 +36,7 @@ import { createBulkActionRoutes } from './chat/bulkActions';
 import { createMessageRoutes } from './chat/messages';
 import { schedulingRoutes } from './chat/scheduling';
 import { notesRoutes } from './chat/notes';
+import { requireInboxMutationAccess } from './chat/authorization';
 
 // Ensure attachments directory exists
 const attachmentsDir = path.join(__dirname, '../../uploads/attachments');
@@ -45,6 +46,14 @@ if (!fs.existsSync(attachmentsDir)) {
 
 const MAX_RELAY_ATTACHMENTS = 10;
 const MAX_RELAY_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+function parseQueryLimit(value: string | undefined, defaultValue: number, maximum: number): number | null {
+    if (value === undefined) return defaultValue;
+    if (!/^\d+$/.test(value)) return null;
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 1) return null;
+    return Math.min(parsed, maximum);
+}
 
 function buildBlockedContactFilter(blockedEmails: string[]): Prisma.ConversationWhereInput {
     if (blockedEmails.length === 0) return {};
@@ -92,6 +101,15 @@ function extractWooCustomerPhone(rawData: unknown): string | null {
     return null;
 }
 
+function normalizeSearchLabels<T extends { labels: Array<{ label: { id: string; name: string; color: string } }> }>(
+    conversations: T[]
+) {
+    return conversations.map(({ labels, ...conversation }) => ({
+        ...conversation,
+        labels: labels.map(({ label }) => label)
+    }));
+}
+
 export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync => {
     return async (fastify) => {
         fastify.addHook('preHandler', requireAuthFastify);
@@ -131,7 +149,12 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
                 if (!(await ensureEmailFeatureEnabled(accountId, reply))) return;
 
-                const limit = Math.min(parseInt(query.limit || '50', 10), 100);
+                const limit = parseQueryLimit(query.limit, 50, 100);
+                if (limit === null) return reply.code(400).send({ error: 'limit must be a positive integer' });
+                const sort = query.sort || 'updated';
+                if (sort !== 'updated' && sort !== 'priority') {
+                    return reply.code(400).send({ error: 'Invalid sort' });
+                }
                 // Fetch one extra to determine if there are more results
                 const conversations = await chatService.listConversations(
                     accountId,
@@ -142,7 +165,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     {
                         wooCustomerId: query.wooCustomerId,
                         guestEmail: query.guestEmail,
-                        sort: query.sort || 'updated'
+                        sort
                     }
                 );
 
@@ -152,9 +175,14 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 return {
                     conversations: result,
                     hasMore,
-                    nextCursor: hasMore ? result[result.length - 1]?.id : null
+                    nextCursor: hasMore && result.length > 0
+                        ? ChatService.createConversationCursor(result[result.length - 1], sort)
+                        : null
                 };
             } catch (error) {
+                if (error instanceof InvalidChatCursorError) {
+                    return reply.code(400).send({ error: error.message });
+                }
                 Logger.error('Failed to fetch conversations', { error });
                 return reply.code(500).send({ error: 'Failed to fetch conversations' });
             }
@@ -163,14 +191,21 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         // GET /conversations/search - Global search across conversations
         fastify.get('/conversations/search', async (request, reply) => {
             try {
-                const { q, limit = '20', status = 'ALL' } = request.query as { q?: string; limit?: string; status?: string };
+                const { q, limit, status = 'ALL', assignedTo, labelId } = request.query as {
+                    q?: string;
+                    limit?: string;
+                    status?: string;
+                    assignedTo?: string;
+                    labelId?: string;
+                };
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
                 if (!q || q.trim().length < 2) return reply.code(400).send({ error: 'Search query must be at least 2 characters' });
 
                 const rawQuery = q.trim();
                 const searchTerm = rawQuery.toLowerCase();
-                const maxResults = Math.min(parseInt(limit, 10), 50);
+                const maxResults = parseQueryLimit(limit, 20, 50);
+                if (maxResults === null) return reply.code(400).send({ error: 'limit must be a positive integer' });
 
                 // Supports search patterns:
                 // - "file:pdf" to find attachment file types
@@ -233,9 +268,24 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     return reply.code(400).send({ error: 'Invalid status filter' });
                 }
 
+                if (labelId) {
+                    const label = await prisma.conversationLabel.findFirst({
+                        where: { id: labelId, accountId },
+                        select: { id: true }
+                    });
+                    if (!label) return reply.code(400).send({ error: 'Label not found in this account' });
+                }
+
                 const baseWhere: Prisma.ConversationWhereInput = {
                     accountId,
                     ...(statusFilter ? { status: statusFilter } : {}),
+                    ...(assignedTo === '__unassigned__'
+                        ? { assignedTo: null }
+                        : assignedTo
+                            ? { assignedTo }
+                            : {}),
+                    ...(labelId ? { labels: { some: { labelId } } } : {}),
+                    mergedIntoId: null,
                     ...buildBlockedContactFilter(await BlockedContactService.listBlockedEmails(accountId))
                 };
 
@@ -251,7 +301,12 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const includePayload = {
                     wooCustomer: { select: { firstName: true, lastName: true, email: true } },
                     messages: { take: 1, orderBy: { createdAt: 'desc' as const } },
-                    assignee: { select: { fullName: true } }
+                    assignee: { select: { fullName: true } },
+                    labels: {
+                        select: {
+                            label: { select: { id: true, name: true, color: true } }
+                        }
+                    }
                 };
 
                 const directMatches = await prisma.conversation.findMany({
@@ -265,7 +320,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 });
 
                 if (directMatches.length >= maxResults) {
-                    return { results: directMatches, query: q };
+                    return { results: normalizeSearchLabels(directMatches), query: q };
                 }
 
                 const messageFilters: Prisma.ConversationWhereInput[] = [
@@ -274,7 +329,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 ];
 
                 if (messageFilters.length === 0) {
-                    return { results: directMatches, query: q };
+                    return { results: normalizeSearchLabels(directMatches), query: q };
                 }
 
                 const messageMatches = await prisma.conversation.findMany({
@@ -296,7 +351,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
                     .slice(0, maxResults);
 
-                return { results: conversations, query: q };
+                return { results: normalizeSearchLabels(conversations), query: q };
             } catch (error) {
                 Logger.error('Failed to search conversations', { error });
                 return reply.code(500).send({ error: 'Failed to search conversations' });
@@ -309,20 +364,24 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const { accountId: bodyAccountId, wooCustomerId, visitorToken } = request.body as any;
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 if (bodyAccountId && bodyAccountId !== accountId) {
                     return reply.code(400).send({ error: 'Account ID mismatch' });
                 }
-                if (wooCustomerId !== undefined && typeof wooCustomerId !== 'string') {
-                    return reply.code(400).send({ error: 'wooCustomerId must be a string' });
+                if (wooCustomerId !== undefined && (typeof wooCustomerId !== 'string' || !wooCustomerId.trim())) {
+                    return reply.code(400).send({ error: 'wooCustomerId must be a non-empty string' });
                 }
-                if (visitorToken !== undefined && typeof visitorToken !== 'string') {
-                    return reply.code(400).send({ error: 'visitorToken must be a string' });
+                if (visitorToken !== undefined && (typeof visitorToken !== 'string' || !visitorToken.trim())) {
+                    return reply.code(400).send({ error: 'visitorToken must be a non-empty string' });
                 }
 
                 const conv = await chatService.createConversation(accountId, wooCustomerId, visitorToken);
                 return conv;
-            } catch (error) {
+            } catch (error: any) {
                 Logger.error('Failed to create conversation', { error });
+                if (error?.message === 'Customer not found in this account') {
+                    return reply.code(400).send({ error: error.message });
+                }
                 return reply.code(500).send({ error: 'Failed to create conversation' });
             }
         });
@@ -356,6 +415,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const accountId = request.accountId;
                 const userId = request.user?.id;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 if (!(await ensureEmailFeatureEnabled(accountId, reply))) return;
 
                 let to, cc, subject, body, emailAccountId;
@@ -449,8 +509,6 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     });
                 }
 
-                await chatService.addMessage(conversation.id, fullContent, 'AGENT', userId, false, accountId);
-
                 const emailService = new EmailService();
                 await emailService.sendEmail(accountId, emailAccountId, to, subject, body, attachments, {
                     source: 'INBOX',
@@ -469,6 +527,8 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     }
                 }
 
+                await chatService.addMessage(conversation.id, fullContent, 'AGENT', userId, false, accountId);
+
                 Logger.info('Composed and sent new email', { conversationId: conversation.id, to });
                 return { success: true, conversationId: conversation.id };
             } catch (error: any) {
@@ -483,6 +543,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const accountId = request.accountId;
                 const userId = request.user?.id;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await requireInboxMutationAccess(request, reply))) return;
 
                 let to: string | undefined;
                 let body: string | undefined;
@@ -526,11 +587,11 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 });
 
                 const plainBody = toSmsPlainText(body);
-                await chatService.addMessage(conversation.id, plainBody, 'AGENT', userId, false, accountId);
                 await TwilioService.sendSms(accountId, normalizedTo, plainBody, {
                     source: 'MANUAL',
                     sourceId: conversation.id
                 });
+                await chatService.addMessage(conversation.id, plainBody, 'AGENT', userId, false, accountId);
 
                 Logger.info('Composed and sent new SMS', { conversationId: conversation.id, to });
                 return { success: true, conversationId: conversation.id };
@@ -589,6 +650,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         });
 
         fastify.post('/settings', async (request, _reply) => {
+            if (!(await requireInboxMutationAccess(request, _reply))) return;
             const accountId = request.accountId;
             if (!accountId) return {};
             const { enabled, businessHours, autoReply, position, showOnMobile, primaryColor, headerText, welcomeMessage, businessTimezone } = request.body as any;
@@ -604,13 +666,25 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
         });
 
         // GET /:id
-        fastify.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/:id', async (request, reply) => {
-            const accountId = request.accountId;
-            if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
-            const limit = Math.min(Math.max(parseInt(request.query.limit || '100', 10) || 100, 1), 200);
-            const conv = await chatService.getConversation(accountId, request.params.id, { messageLimit: limit });
-            if (!conv) return reply.code(404).send({ error: 'Not found' });
-            return conv;
+        fastify.get<{ Params: { id: string }; Querystring: { limit?: string; before?: string } }>('/:id', async (request, reply) => {
+            try {
+                const accountId = request.accountId;
+                if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                const limit = parseQueryLimit(request.query.limit, 100, 200);
+                if (limit === null) return reply.code(400).send({ error: 'limit must be a positive integer' });
+                const conv = await chatService.getConversation(accountId, request.params.id, {
+                    messageLimit: limit,
+                    before: request.query.before
+                });
+                if (!conv) return reply.code(404).send({ error: 'Not found' });
+                return conv;
+            } catch (error) {
+                if (error instanceof InvalidChatCursorError) {
+                    return reply.code(400).send({ error: error.message });
+                }
+                Logger.error('Failed to fetch conversation', { error, conversationId: request.params.id });
+                return reply.code(500).send({ error: 'Failed to fetch conversation' });
+            }
         });
 
         // GET /:id/available-channels
@@ -731,15 +805,32 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const { id } = request.params;
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 if (status && !['OPEN', 'PENDING', 'RESOLVED', 'CLOSED'].includes(status)) {
                     return reply.code(400).send({ error: 'Invalid conversation status' });
                 }
-                if (wooCustomerId !== undefined && typeof wooCustomerId !== 'string') {
-                    return reply.code(400).send({ error: 'wooCustomerId must be a string' });
+                if (wooCustomerId !== undefined && (typeof wooCustomerId !== 'string' || !wooCustomerId.trim())) {
+                    return reply.code(400).send({ error: 'wooCustomerId must be a non-empty string' });
                 }
-                if (Object.prototype.hasOwnProperty.call(body, 'assignedTo') && body.assignedTo !== null && typeof body.assignedTo !== 'string') {
-                    return reply.code(400).send({ error: 'assignedTo must be a string or null' });
+                if (Object.prototype.hasOwnProperty.call(body, 'assignedTo')
+                    && body.assignedTo !== null
+                    && (typeof body.assignedTo !== 'string' || !body.assignedTo.trim())) {
+                    return reply.code(400).send({ error: 'assignedTo must be a non-empty string or null' });
                 }
+
+                const [assignee, customer] = await Promise.all([
+                    body.assignedTo
+                        ? prisma.accountUser.findUnique({
+                            where: { userId_accountId: { userId: body.assignedTo, accountId } },
+                            select: { id: true }
+                        })
+                        : Promise.resolve({ id: 'unassigned' }),
+                    wooCustomerId
+                        ? prisma.wooCustomer.findFirst({ where: { id: wooCustomerId, accountId }, select: { id: true } })
+                        : Promise.resolve({ id: 'unlinked' })
+                ]);
+                if (!assignee) return reply.code(400).send({ error: 'Assignee is not a member of this account' });
+                if (!customer) return reply.code(400).send({ error: 'Customer not found in this account' });
 
                 if (status) await chatService.updateStatus(accountId, id, status);
                 if (Object.prototype.hasOwnProperty.call(body, 'assignedTo')) {
@@ -747,8 +838,11 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 }
                 if (wooCustomerId) await chatService.linkCustomer(accountId, id, wooCustomerId);
                 return { success: true };
-            } catch (error) {
+            } catch (error: any) {
                 Logger.error('Failed to update conversation', { error, conversationId: request.params.id });
+                if (error?.message?.includes('not a member') || error?.message?.includes('not found in this account')) {
+                    return reply.code(400).send({ error: error.message });
+                }
                 return reply.code(500).send({ error: 'Failed to update conversation' });
             }
         });
@@ -759,6 +853,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                 const { sourceId } = request.body as any;
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 if (!sourceId || typeof sourceId !== 'string') {
                     return reply.code(400).send({ error: 'sourceId is required' });
                 }
@@ -768,8 +863,14 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
 
                 await chatService.mergeConversations(accountId, request.params.id, sourceId);
                 return { success: true };
-            } catch (error) {
+            } catch (error: any) {
                 Logger.error('Failed to merge conversations', { error, targetId: request.params.id });
+                if (error?.message?.includes('merged') || error?.message?.includes('itself')) {
+                    return reply.code(400).send({ error: error.message });
+                }
+                if (error?.message === 'Conversation not found') {
+                    return reply.code(404).send({ error: error.message });
+                }
                 return reply.code(500).send({ error: 'Failed to merge conversations' });
             }
         });
@@ -779,6 +880,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
             try {
                 const accountId = request.accountId;
                 if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
+                if (!(await requireInboxMutationAccess(request, reply))) return;
 
                 await chatService.markAsRead(accountId, request.params.id);
                 return { success: true };

@@ -12,6 +12,7 @@ import { LabelService } from '../../services/LabelService';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
 import { invalidateCache } from '../../utils/cache';
+import { requireInboxMutationAccess } from './authorization';
 
 /**
  * Creates bulk action routes.
@@ -28,6 +29,7 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
             try {
                 const accountId = request.accountId;
                 const userId = request.user?.id;
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 const { conversationIds, action, labelId, assignToUserId } = request.body as {
                     conversationIds: string[];
                     action: 'close' | 'open' | 'assign' | 'addLabel' | 'removeLabel';
@@ -67,6 +69,13 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
                     case 'assign': {
                         if (!assignToUserId) {
                             return reply.code(400).send({ error: 'assignToUserId is required for assign action' });
+                        }
+                        const membership = await prisma.accountUser.findUnique({
+                            where: { userId_accountId: { userId: assignToUserId, accountId: accountId! } },
+                            select: { id: true }
+                        });
+                        if (!membership) {
+                            return reply.code(400).send({ error: 'Assignee is not a member of this account' });
                         }
                         const assignResult = await prisma.conversation.updateMany({
                             where: { id: { in: conversationIds }, accountId },
@@ -116,6 +125,7 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
             try {
                 const accountId = request.accountId;
                 const userId = request.user?.id;
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 const { targetId, sourceIds } = request.body as {
                     targetId: string;
                     sourceIds: string[];
@@ -128,38 +138,28 @@ export const createBulkActionRoutes = (chatService: ChatService): FastifyPluginA
                 if (!sourceIds || !Array.isArray(sourceIds) || sourceIds.length === 0) {
                     return reply.code(400).send({ error: 'sourceIds array is required' });
                 }
+                const uniqueSourceIds = [...new Set(sourceIds)];
+                if (uniqueSourceIds.length !== sourceIds.length || uniqueSourceIds.includes(targetId)) {
+                    return reply.code(400).send({ error: 'Merge sources must be unique and cannot include the target' });
+                }
 
-                // Verify target conversation exists and belongs to this account
-                const targetConv = await prisma.conversation.findFirst({
-                    where: { id: targetId, accountId }
+                // Validate the whole merge set before mutating any conversation.
+                const conversations = await prisma.conversation.findMany({
+                    where: { id: { in: [targetId, ...uniqueSourceIds] }, accountId },
+                    select: { id: true, mergedIntoId: true }
                 });
-
-                if (!targetConv) {
-                    return reply.code(404).send({ error: 'Target conversation not found' });
+                if (conversations.length !== uniqueSourceIds.length + 1) {
+                    return reply.code(404).send({ error: 'One or more conversations were not found' });
+                }
+                if (conversations.some((conversation) => conversation.mergedIntoId)) {
+                    return reply.code(400).send({ error: 'Already merged conversations cannot be merged again' });
                 }
 
                 // Merge each source into target sequentially
                 let mergedCount = 0;
-                for (const sourceId of sourceIds) {
-                    try {
-                        // Why: verify sourceId belongs to this account to prevent
-                        // cross-account data theft via guessed conversation IDs.
-                        const sourceConv = await prisma.conversation.findFirst({
-                            where: { id: sourceId, accountId }
-                        });
-                        if (!sourceConv) {
-                            Logger.warn('Bulk merge: source not in account', { sourceId, accountId });
-                            continue;
-                        }
-                        await chatService.mergeConversations(accountId!, targetId, sourceId);
-                        mergedCount++;
-                    } catch (mergeError: any) {
-                        Logger.warn('Failed to merge individual conversation', {
-                            targetId,
-                            sourceId,
-                            error: mergeError.message
-                        });
-                    }
+                for (const sourceId of uniqueSourceIds) {
+                    await chatService.mergeConversations(accountId!, targetId, sourceId);
+                    mergedCount++;
                 }
 
                 Logger.info('Bulk merge completed', {

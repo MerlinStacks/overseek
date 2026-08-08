@@ -138,13 +138,13 @@ export class EmailIngestion {
         if (conversation.status !== 'OPEN') {
             await prisma.conversation.update({
                 where: { id: conversation.id },
-                data: { status: 'OPEN', updatedAt: new Date() }
+                data: { status: 'OPEN', isRead: false, snoozedUntil: null, updatedAt: new Date() }
             });
             Logger.info('[EmailIngestion] Reopened conversation', { conversationId: conversation.id });
         } else {
             await prisma.conversation.update({
                 where: { id: conversation.id },
-                data: { updatedAt: new Date() }
+                data: { isRead: false, updatedAt: new Date() }
             });
         }
 
@@ -379,7 +379,7 @@ export class EmailIngestion {
         const attachmentLinks = (input.attachments || [])
             .map((attachment) => `[Attachment: ${attachment.filename}](${attachment.url})`)
             .join('\n');
-        await prisma.message.create({
+        const message = await prisma.message.create({
             data: {
                 conversationId: conversation.id,
                 content: `Subject: ${input.subject}\n\n${reviewText}${attachmentLinks ? `\n\n${attachmentLinks}` : ''}`,
@@ -387,6 +387,18 @@ export class EmailIngestion {
                 emailMessageId: input.messageId
             }
         });
+
+        await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { status: 'OPEN', isRead: false, snoozedUntil: null, updatedAt: new Date() }
+        });
+        this.io.to(`conversation:${conversation.id}`).emit('message:new', message);
+        this.io.to(`account:${input.accountId}`).emit('conversation:updated', {
+            id: conversation.id,
+            lastMessage: message,
+            updatedAt: message.createdAt
+        });
+        await invalidateCache('inbox', `conversations:${input.accountId}`);
 
         return true;
     }

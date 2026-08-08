@@ -162,6 +162,10 @@ describe('EmailIngestion', () => {
                 })
             })
         );
+        expect(mockConversationUpdate).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 'conv-1' },
+            data: expect.objectContaining({ isRead: false })
+        }));
     });
 
     it('reuses existing customer profile and does not create or unsubscribe again', async () => {

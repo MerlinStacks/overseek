@@ -10,15 +10,33 @@ import { prisma } from '../../utils/prisma';
 import { ChatService } from '../../services/ChatService';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
-import { routeMessageToChannel, sendEmailWithAttachments } from '../../utils/ChannelRouter';
+import { routeMessageToChannel, sendEmailWithAttachments, validateMessageChannel } from '../../utils/ChannelRouter';
+import type { DeliveryResult } from '../../utils/ChannelRouter';
 import path from 'path';
 import fs from 'fs';
 import { getRouteAccountIdOrReply } from '../routeHelpers';
 import { isAccountFeatureEnabled } from '../../utils/accountFeatures';
+import { requireInboxMutationAccess } from './authorization';
 
 const attachmentsDir = path.join(__dirname, '../../../uploads/attachments');
 const MAX_RELAY_ATTACHMENTS = 10;
 const MAX_RELAY_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const SAFE_DELIVERY_ERROR = 'Delivery to customer failed';
+const DELIVERY_FINALIZATION_ERROR = 'Message was delivered but server finalization failed';
+
+type OwnedConversation = {
+    id: string;
+    accountId: string;
+    channel: string;
+    priority?: string | null;
+    assignedTo?: string | null;
+};
+
+function providerForChannel(channel: string): string {
+    if (channel === 'FACEBOOK' || channel === 'INSTAGRAM') return 'META';
+    if (channel === 'SMS') return 'TWILIO';
+    return channel;
+}
 
 function getPublicAttachmentUrl(filename: string): string {
     const appUrl = (process.env.APP_URL || process.env.CLIENT_URL || 'http://localhost:5173')
@@ -53,8 +71,178 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
         const ensureConversationOwnership = async (conversationId: string, accountId: string) => {
             return prisma.conversation.findFirst({
                 where: { id: conversationId, accountId },
-                select: { id: true }
+                select: { id: true, accountId: true, channel: true, priority: true, assignedTo: true }
             });
+        };
+
+        const emitDeliveredMessage = (conversation: OwnedConversation, message: any) => {
+            const io = (chatService as unknown as { io?: { to: (room: string) => { emit: (event: string, data: unknown) => void } } }).io;
+            if (!io) return;
+
+            io.to(`conversation:${conversation.id}`).emit('message:new', {
+                ...message,
+                accountId: conversation.accountId,
+                priority: conversation.priority,
+                assignedTo: conversation.assignedTo
+            });
+            io.to(`account:${conversation.accountId}`).emit('conversation:updated', {
+                id: conversation.id,
+                lastMessage: message,
+                updatedAt: message.createdAt,
+                priority: conversation.priority
+            });
+        };
+
+        const deliverExternalMessage = async ({
+            conversation,
+            content,
+            userId,
+            clientRequestId,
+            channel,
+            deliver,
+            allowContentRefresh = false
+        }: {
+            conversation: OwnedConversation;
+            content: string;
+            userId?: string;
+            clientRequestId?: string;
+            channel: string;
+            deliver: () => Promise<DeliveryResult>;
+            allowContentRefresh?: boolean;
+        }): Promise<{
+            message: any;
+            httpStatus: number;
+            reused: boolean;
+            conflict?: boolean;
+            error?: string;
+        }> => {
+            let message = clientRequestId
+                ? await prisma.message.findFirst({ where: { conversationId: conversation.id, clientRequestId } })
+                : null;
+
+            if (message?.deliveryStatus === 'SENT') return { message, httpStatus: 200, reused: true };
+            if (message?.deliveryStatus === 'PENDING') return { message, httpStatus: 409, reused: true };
+            if (message && !allowContentRefresh && (message.content !== content || message.deliveryChannel !== channel)) {
+                return { message, httpStatus: 409, reused: true, conflict: true };
+            }
+
+            const attemptedAt = new Date();
+            if (message) {
+                const claimed = await prisma.message.updateMany({
+                    where: { id: message.id, deliveryStatus: 'FAILED' },
+                    data: {
+                        ...(allowContentRefresh ? { content } : {}),
+                        deliveryStatus: 'PENDING',
+                        deliveryChannel: channel,
+                        deliveryProvider: providerForChannel(channel),
+                        deliveryError: null,
+                        deliveryAttemptedAt: attemptedAt
+                    }
+                });
+                if (claimed.count === 0) {
+                    message = await prisma.message.findFirst({ where: { id: message.id } });
+                    return { message, httpStatus: message?.deliveryStatus === 'SENT' ? 200 : 409, reused: true };
+                }
+                message = await prisma.message.findFirst({ where: { id: message.id } });
+            } else {
+                try {
+                    message = await prisma.message.create({
+                        data: {
+                            conversationId: conversation.id,
+                            content,
+                            senderType: 'AGENT',
+                            senderId: userId,
+                            isInternal: false,
+                            deliveryStatus: 'PENDING',
+                            deliveryChannel: channel,
+                            deliveryProvider: providerForChannel(channel),
+                            deliveryAttemptedAt: attemptedAt,
+                            clientRequestId
+                        }
+                    });
+                } catch (error: any) {
+                    if (error?.code !== 'P2002' || !clientRequestId) throw error;
+                    message = await prisma.message.findFirst({ where: { conversationId: conversation.id, clientRequestId } });
+                    return { message, httpStatus: message?.deliveryStatus === 'SENT' ? 200 : 409, reused: true };
+                }
+            }
+
+            let result: DeliveryResult;
+            try {
+                result = await deliver();
+            } catch (error: any) {
+                Logger.error('[ChannelRouting] Failed to route message', {
+                    channel,
+                    conversationId: conversation.id,
+                    error: error?.message || error
+                });
+                const failed = await prisma.message.update({
+                    where: { id: message!.id },
+                    data: { deliveryStatus: 'FAILED', deliveryError: SAFE_DELIVERY_ERROR }
+                });
+                return { message: failed, httpStatus: 502, reused: false };
+            }
+
+            const sentData = {
+                deliveryStatus: 'SENT' as const,
+                deliveryProvider: result.provider,
+                providerMessageId: result.providerMessageId,
+                deliveryError: null,
+                deliveredAt: new Date()
+            };
+            let delivered: any;
+            try {
+                delivered = await prisma.message.update({
+                    where: { id: message!.id },
+                    data: sentData
+                });
+            } catch (error: any) {
+                Logger.error('[ChannelRouting] Failed to persist successful delivery', {
+                    channel,
+                    conversationId: conversation.id,
+                    messageId: message!.id,
+                    providerMessageId: result.providerMessageId,
+                    error: error?.message || error
+                });
+
+                try {
+                    const persisted = await prisma.message.updateMany({
+                        where: { id: message!.id, deliveryStatus: 'PENDING' },
+                        data: sentData
+                    });
+                    const current = await prisma.message.findFirst({ where: { id: message!.id } });
+                    if (persisted.count !== 1 && current?.deliveryStatus !== 'SENT') throw error;
+                    delivered = current || { ...message, ...sentData };
+                } catch (fallbackError: any) {
+                    Logger.error('[ChannelRouting] Successful delivery remains safely claimed for recovery', {
+                        channel,
+                        conversationId: conversation.id,
+                        messageId: message!.id,
+                        providerMessageId: result.providerMessageId,
+                        error: fallbackError?.message || fallbackError
+                    });
+                    return { message, httpStatus: 500, reused: false, error: DELIVERY_FINALIZATION_ERROR };
+                }
+            }
+
+            try {
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { updatedAt: new Date(), status: 'OPEN' }
+                });
+            } catch (error: any) {
+                Logger.error('[ChannelRouting] Failed to finalize conversation after successful delivery', {
+                    channel,
+                    conversationId: conversation.id,
+                    messageId: message!.id,
+                    providerMessageId: result.providerMessageId,
+                    error: error?.message || error
+                });
+                return { message: delivered, httpStatus: 500, reused: false, error: DELIVERY_FINALIZATION_ERROR };
+            }
+
+            emitDeliveredMessage(conversation, delivered);
+            return { message: delivered, httpStatus: 200, reused: false };
         };
 
         const ensureMessageOwnership = async (messageId: string, accountId: string) => {
@@ -81,36 +269,66 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 const userId = request.user?.id;
                 const accountId = getRouteAccountIdOrReply(request, reply);
                 if (!accountId) return;
+                if (!(await requireInboxMutationAccess(request, reply))) return;
 
-                if (!content?.trim()) {
+                if (typeof content !== 'string' || !content.trim()) {
                     return reply.code(400).send({ error: 'Message content is required' });
                 }
+                if (type !== undefined && type !== 'AGENT') {
+                    return reply.code(400).send({ error: 'Authenticated messages must use AGENT sender type' });
+                }
+                if (isInternal !== undefined && typeof isInternal !== 'boolean') {
+                    return reply.code(400).send({ error: 'isInternal must be a boolean' });
+                }
+                if (channel !== undefined && typeof channel !== 'string') {
+                    return reply.code(400).send({ error: 'channel must be a string' });
+                }
+                if (clientRequestId !== undefined && (typeof clientRequestId !== 'string' || !clientRequestId.trim() || clientRequestId.length > 200)) {
+                    return reply.code(400).send({ error: 'clientRequestId must be a non-empty string of at most 200 characters' });
+                }
 
-                if (!(await ensureConversationOwnership(request.params.id, accountId))) {
+                const conversation = await ensureConversationOwnership(request.params.id, accountId);
+                if (!conversation) {
                     return reply.code(404).send({ error: 'Conversation not found' });
                 }
 
-                // Store the message first
-                const msg = await chatService.addMessage(request.params.id, content, type || 'AGENT', userId, isInternal, accountId, clientRequestId);
-
-                // If internal note, don't route externally
                 if (isInternal) {
+                    const msg = await chatService.addMessage(request.params.id, content.trim(), 'AGENT', userId, true, accountId, clientRequestId);
                     return { ...msg, ...(clientRequestId ? { clientRequestId } : {}) };
                 }
+                if (!clientRequestId) {
+                    return reply.code(400).send({ error: 'clientRequestId is required for external messages' });
+                }
 
-                // Route to external channel if specified
-                if (channel) {
-                    if (channel === 'EMAIL' && !(await ensureEmailFeatureEnabled(accountId, reply))) {
+                const deliveryChannel = channel || conversation.channel;
+                if (deliveryChannel) {
+                    if (deliveryChannel === 'EMAIL' && !(await ensureEmailFeatureEnabled(accountId, reply))) {
                         return;
                     }
                     try {
-                        await routeMessageToChannel(request.params.id, content, channel, accountId, emailAccountId);
-                    } catch (routingError: any) {
-                        Logger.error('[ChannelRouting] Failed to route message', { channel, error: routingError.message });
-                        // Don't fail the request - message is still stored
+                        await validateMessageChannel(request.params.id, deliveryChannel, accountId, emailAccountId);
+                    } catch (validationError: any) {
+                        return reply.code(400).send({ error: validationError?.message || 'Channel is unavailable' });
                     }
+
+                    const result = await deliverExternalMessage({
+                        conversation: conversation as OwnedConversation,
+                        content: content.trim(),
+                        userId,
+                        clientRequestId: clientRequestId?.trim(),
+                        channel: deliveryChannel,
+                        deliver: () => routeMessageToChannel(request.params.id, content.trim(), deliveryChannel, accountId, emailAccountId)
+                    });
+                    if (result.httpStatus !== 200) {
+                        return reply.code(result.httpStatus).send({
+                            error: result.conflict ? 'clientRequestId already belongs to a different message' : result.error || result.message?.deliveryError || 'Message delivery is already pending',
+                            message: result.message
+                        });
+                    }
+                    return { ...result.message, ...(clientRequestId ? { clientRequestId } : {}) };
                 }
 
+                const msg = await chatService.addMessage(request.params.id, content.trim(), 'AGENT', userId, false, accountId, clientRequestId);
                 return { ...msg, ...(clientRequestId ? { clientRequestId } : {}) };
             } catch (error: any) {
                 Logger.error('Failed to send message', { conversationId: request.params.id, error: error?.message || error });
@@ -124,6 +342,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
             try {
                 const accountId = getRouteAccountIdOrReply(request, reply);
                 if (!accountId) return;
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 if (!(await ensureConversationOwnership(request.params.id, accountId))) {
                     return reply.code(404).send({ error: 'Conversation not found' });
                 }
@@ -176,14 +395,16 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 const conversationId = request.params.id;
                 const authContext = getUserAndAccountOrReply(request, reply);
                 if (!authContext) return;
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 const { userId, accountId } = authContext;
-                if (!(await ensureConversationOwnership(conversationId, accountId))) {
+                const conversation = await ensureConversationOwnership(conversationId, accountId);
+                if (!conversation) {
                     return reply.code(404).send({ error: 'Conversation not found' });
                 }
 
                 // Parse multipart data
                 let content = '';
-                let type: 'AGENT' | 'SYSTEM' = 'AGENT';
+                let requestedType = 'AGENT';
                 let isInternal = false;
                 let channel: string | undefined;
                 let emailAccountId: string | undefined;
@@ -253,7 +474,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                                     content = value;
                                     break;
                                 case 'type':
-                                    type = value as 'AGENT' | 'SYSTEM';
+                                    requestedType = value;
                                     break;
                                 case 'isInternal':
                                     isInternal = value === 'true';
@@ -278,35 +499,76 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                     fullContent += '\n\n**Attachments:**\n' + attachmentLinks.join('\n');
                 }
 
-                // Add message to conversation
-                const msg = await chatService.addMessage(conversationId, fullContent, type, userId, isInternal, accountId, clientRequestId);
+                if (!fullContent.trim()) {
+                    cleanupAttachments();
+                    return reply.code(400).send({ error: 'Message content or attachment is required' });
+                }
+                if (requestedType !== 'AGENT') {
+                    cleanupAttachments();
+                    return reply.code(400).send({ error: 'Authenticated messages must use AGENT sender type' });
+                }
+                if (clientRequestId !== undefined && (!clientRequestId.trim() || clientRequestId.length > 200)) {
+                    cleanupAttachments();
+                    return reply.code(400).send({ error: 'clientRequestId must be a non-empty string of at most 200 characters' });
+                }
 
-                // Route externally when this is not an internal note.
-                // Why: attachment sends previously swallowed routing errors, so agents saw
-                // success while customers never received the message/attachments.
-                if (!isInternal) {
+                if (isInternal) {
+                    const msg = await chatService.addMessage(conversationId, fullContent.trim(), 'AGENT', userId, true, accountId, clientRequestId);
+                    return {
+                        success: true,
+                        message: msg,
+                        ...(clientRequestId ? { clientRequestId } : {}),
+                        attachmentCount: attachmentLinks.length
+                    };
+                }
+                if (!clientRequestId) {
+                    cleanupAttachments();
+                    return reply.code(400).send({ error: 'clientRequestId is required for external messages' });
+                }
+
+                const deliveryChannel = channel || conversation.channel;
+                if (deliveryChannel) {
+                    if (deliveryChannel === 'EMAIL' && !(await ensureEmailFeatureEnabled(accountId, reply))) {
+                        cleanupAttachments();
+                        return;
+                    }
                     try {
-                        if (attachments.length > 0 && channel === 'EMAIL') {
-                            if (!(await ensureEmailFeatureEnabled(accountId, reply))) return;
-                            await sendEmailWithAttachments(conversationId, content, attachments, accountId, emailAccountId);
-                        } else if (channel) {
-                            if (channel === 'EMAIL' && !(await ensureEmailFeatureEnabled(accountId, reply))) {
-                                return;
-                            }
-                            await routeMessageToChannel(conversationId, fullContent, channel, accountId, emailAccountId);
-                        }
-                    } catch (routingError: any) {
-                        Logger.error('[message-with-attachments] External routing failed', {
-                            error: routingError?.message,
-                            conversationId,
-                            channel,
-                            hasAttachments: attachments.length > 0
-                        });
-                        return reply.code(502).send({
-                            error: 'Message saved, but delivery to customer failed. Please retry or check channel configuration.'
+                        await validateMessageChannel(conversationId, deliveryChannel, accountId, emailAccountId, attachments.length > 0);
+                    } catch (validationError: any) {
+                        cleanupAttachments();
+                        return reply.code(400).send({ error: validationError?.message || 'Channel is unavailable' });
+                    }
+
+                    const result = await deliverExternalMessage({
+                        conversation: conversation as OwnedConversation,
+                        content: fullContent.trim(),
+                        userId,
+                        clientRequestId: clientRequestId?.trim(),
+                        channel: deliveryChannel,
+                        allowContentRefresh: true,
+                        deliver: () => attachments.length > 0 && deliveryChannel === 'EMAIL'
+                            ? sendEmailWithAttachments(conversationId, content, attachments, accountId, emailAccountId)
+                            : routeMessageToChannel(conversationId, fullContent.trim(), deliveryChannel, accountId, emailAccountId)
+                    });
+                    if (result.reused) cleanupAttachments();
+                    if (result.httpStatus !== 200) {
+                        return reply.code(result.httpStatus).send({
+                            success: false,
+                            error: result.error || result.message?.deliveryError || 'Message delivery is already pending',
+                            message: result.message,
+                            attachmentCount: attachmentLinks.length
                         });
                     }
+
+                    return {
+                        success: true,
+                        message: result.message,
+                        ...(clientRequestId ? { clientRequestId } : {}),
+                        attachmentCount: attachmentLinks.length
+                    };
                 }
+
+                const msg = await chatService.addMessage(conversationId, fullContent.trim(), 'AGENT', userId, isInternal, accountId, clientRequestId);
 
                 return {
                     success: true,
@@ -327,6 +589,7 @@ export const createMessageRoutes = (chatService: ChatService): FastifyPluginAsyn
                 const { emoji } = request.body as any;
                 const authContext = getUserAndAccountOrReply(request, reply);
                 if (!authContext) return;
+                if (!(await requireInboxMutationAccess(request, reply))) return;
                 const { userId, accountId } = authContext;
 
                 if (!emoji) return reply.code(400).send({ error: 'Emoji is required' });

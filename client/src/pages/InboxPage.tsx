@@ -25,6 +25,8 @@ export function InboxPage() {
         selectedId,
         setSelectedId,
         messages,
+        hasMoreMessages,
+        isLoadingOlderMessages,
         isLoading,
         isComposeOpen,
         setIsComposeOpen,
@@ -37,6 +39,7 @@ export function InboxPage() {
         setShowResolved,
         hasMore,
         isLoadingMore,
+        listRevision,
         activeConversation,
         recipientEmail,
         recipientName,
@@ -44,6 +47,7 @@ export function InboxPage() {
         user,
         fetchConversations,
         loadMoreConversations,
+        loadOlderMessages,
         handlePreloadConversation,
         handleSendMessage,
         handleStatusChange,
@@ -117,6 +121,7 @@ export function InboxPage() {
                 showResolved={showResolved}
                 onShowResolvedChange={setShowResolved}
                 onRefresh={fetchConversations}
+                refreshRevision={listRevision}
             />
 
             {/* Main Chat Area */}
@@ -125,6 +130,9 @@ export function InboxPage() {
                     <ChatWindow
                         conversationId={selectedId}
                         messages={messages}
+                        hasMoreMessages={hasMoreMessages}
+                        isLoadingOlderMessages={isLoadingOlderMessages}
+                        onLoadOlderMessages={loadOlderMessages}
                         onSendMessage={handleSendMessage}
                         recipientEmail={recipientEmail}
                         recipientName={recipientName}

@@ -9,6 +9,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { BlockedContactService } from '../../services/BlockedContactService';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
+import { requireInboxMutationAccess } from './authorization';
 
 export const blockedContactRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -16,6 +17,7 @@ export const blockedContactRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /block - Block a contact by email
     fastify.post('/block', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
@@ -34,6 +36,7 @@ export const blockedContactRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /:id/block - Block contact by conversation ID (for mobile/PWA)
     fastify.post<{ Params: { id: string } }>('/:id/block', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
@@ -86,6 +89,7 @@ export const blockedContactRoutes: FastifyPluginAsync = async (fastify) => {
     // DELETE /block/:email - Unblock a contact
     fastify.delete<{ Params: { email: string } }>('/block/:email', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 

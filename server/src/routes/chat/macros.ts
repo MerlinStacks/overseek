@@ -8,6 +8,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
+import { requireInboxMutationAccess } from './authorization';
 
 export const macroRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -24,6 +25,7 @@ export const macroRoutes: FastifyPluginAsync = async (fastify) => {
 
     // POST /macros - Create a new macro
     fastify.post('/macros', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account required' });
         const { name, icon, color, actions } = request.body as any;
@@ -34,6 +36,7 @@ export const macroRoutes: FastifyPluginAsync = async (fastify) => {
 
     // PUT /macros/:id - Update a macro
     fastify.put<{ Params: { id: string } }>('/macros/:id', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account required' });
         const { name, icon, color, actions, sortOrder } = request.body as any;
@@ -52,6 +55,7 @@ export const macroRoutes: FastifyPluginAsync = async (fastify) => {
 
     // DELETE /macros/:id - Delete a macro
     fastify.delete<{ Params: { id: string } }>('/macros/:id', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account required' });
 
@@ -67,6 +71,7 @@ export const macroRoutes: FastifyPluginAsync = async (fastify) => {
 
     // POST /macros/:id/execute - Execute a macro on a conversation
     fastify.post<{ Params: { id: string } }>('/macros/:id/execute', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account required' });
         const { conversationId } = request.body as any;

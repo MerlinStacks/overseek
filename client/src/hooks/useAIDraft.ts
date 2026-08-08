@@ -5,7 +5,7 @@
  * Extracted from ChatWindow.tsx for improved modularity.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -28,20 +28,39 @@ export function useAIDraft({ conversationId, currentInput, onDraftGenerated }: U
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+    const activeRequestRef = useRef<AbortController | null>(null);
+    const identityRef = useRef({ conversationId, accountId: currentAccount?.id });
+    identityRef.current = { conversationId, accountId: currentAccount?.id };
+
+    useEffect(() => {
+        activeRequestRef.current?.abort();
+        activeRequestRef.current = null;
+        setIsGeneratingDraft(false);
+        return () => {
+            activeRequestRef.current?.abort();
+            activeRequestRef.current = null;
+        };
+    }, [conversationId, currentAccount?.id]);
 
     const handleGenerateAIDraft = useCallback(async () => {
         if (!token || !currentAccount || isGeneratingDraft) return;
+        const requestConversationId = conversationId;
+        const requestAccountId = currentAccount.id;
+        const controller = new AbortController();
+        activeRequestRef.current?.abort();
+        activeRequestRef.current = controller;
 
         setIsGeneratingDraft(true);
         try {
-            const res = await fetch(`/api/chat/${conversationId}/ai-draft`, {
+            const res = await fetch(`/api/chat/${requestConversationId}/ai-draft`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
+                    'x-account-id': requestAccountId,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ currentDraft: currentInput || '' })
+                body: JSON.stringify({ currentDraft: currentInput || '' }),
+                signal: controller.signal,
             });
 
             if (!res.ok) {
@@ -51,13 +70,17 @@ export function useAIDraft({ conversationId, currentInput, onDraftGenerated }: U
             }
 
             const data = await res.json();
-            if (data.draft) {
+            if (!controller.signal.aborted && identityRef.current.conversationId === requestConversationId && identityRef.current.accountId === requestAccountId && data.draft) {
                 onDraftGenerated(data.draft);
             }
         } catch (error) {
+            if (controller.signal.aborted) return;
             Logger.error('AI draft generation failed:', { error: error });
         } finally {
-            setIsGeneratingDraft(false);
+            if (activeRequestRef.current === controller) {
+                activeRequestRef.current = null;
+                setIsGeneratingDraft(false);
+            }
         }
     }, [token, currentAccount, conversationId, currentInput, onDraftGenerated, isGeneratingDraft]);
 

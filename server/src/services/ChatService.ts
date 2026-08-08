@@ -15,6 +15,50 @@ import { EventBus, EVENTS } from './events';
 import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
 import type { Prisma } from '@prisma/client';
 
+type ConversationSort = 'updated' | 'priority';
+type PriorityTier = 'HIGH' | 'MEDIUM' | 'LOW';
+
+type ConversationCursor = {
+    v: 1;
+    type: 'conversation';
+    sort: ConversationSort;
+    updatedAt: string;
+    id: string;
+    priority?: PriorityTier;
+};
+
+type MessageCursor = {
+    v: 1;
+    type: 'message';
+    createdAt: string;
+    id: string;
+};
+
+export class InvalidChatCursorError extends Error {
+    constructor() {
+        super('Invalid cursor');
+    }
+}
+
+function encodeCursor(cursor: ConversationCursor | MessageCursor): string {
+    return Buffer.from(JSON.stringify(cursor)).toString('base64url');
+}
+
+function decodeCursor<T extends ConversationCursor | MessageCursor>(cursor: string, type: T['type']): T {
+    try {
+        const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as T;
+        const dateValue = parsed.type === 'message' ? parsed.createdAt : parsed.updatedAt;
+        if (parsed.v !== 1 || parsed.type !== type || typeof parsed.id !== 'string'
+            || typeof dateValue !== 'string' || !Number.isFinite(Date.parse(dateValue))) {
+            throw new InvalidChatCursorError();
+        }
+        return parsed;
+    } catch (error) {
+        if (error instanceof InvalidChatCursorError) throw error;
+        throw new InvalidChatCursorError();
+    }
+}
+
 export class ChatService {
     private io: Server;
     private emailIngestion: EmailIngestion;
@@ -47,6 +91,34 @@ export class ChatService {
         };
     }
 
+    private static normalizePriority(priority?: string): PriorityTier {
+        if (priority === 'HIGH' || priority === 'LOW') return priority;
+        return 'MEDIUM';
+    }
+
+    static createConversationCursor(
+        conversation: { id: string; updatedAt: Date | string; priority?: string },
+        sort: ConversationSort
+    ): string {
+        return encodeCursor({
+            v: 1,
+            type: 'conversation',
+            sort,
+            updatedAt: new Date(conversation.updatedAt).toISOString(),
+            id: conversation.id,
+            ...(sort === 'priority' ? { priority: ChatService.normalizePriority(conversation.priority) } : {})
+        });
+    }
+
+    static createMessageCursor(message: { id: string; createdAt: Date | string }): string {
+        return encodeCursor({
+            v: 1,
+            type: 'message',
+            createdAt: new Date(message.createdAt).toISOString(),
+            id: message.id
+        });
+    }
+
     /**
      * List conversations with caching and pagination for performance.
      * Cached for 30 seconds to reduce database load.
@@ -60,7 +132,7 @@ export class ChatService {
         options?: {
             wooCustomerId?: string;
             guestEmail?: string;
-            sort?: 'updated' | 'priority';
+            sort?: ConversationSort;
         }
     ) {
         const cacheKey = `conversations:${accountId}:${status || 'all'}:${assignedTo || 'all'}:${limit}:${cursor || 'start'}:${options?.wooCustomerId || 'any-customer'}:${options?.guestEmail || 'any-email'}:${options?.sort || 'updated'}`;
@@ -71,53 +143,103 @@ export class ChatService {
                 const blockedContactFilter = ChatService.buildBlockedContactFilter(
                     await BlockedContactService.listBlockedEmails(accountId)
                 );
-                const conversations = await prisma.conversation.findMany({
-                    take: limit,
-                    skip: cursor ? 1 : 0,
-                    cursor: cursor ? { id: cursor } : undefined,
-                    where: {
-                        accountId: String(accountId),
-                        ...(status ? { status } : {}),
-                        ...(assignedTo === '__unassigned__'
-                            ? { assignedTo: null }
-                            : assignedTo
-                                ? { assignedTo }
-                                : {}),
-                        ...(options?.wooCustomerId ? { wooCustomerId: options.wooCustomerId } : {}),
-                        ...(options?.guestEmail ? { guestEmail: options.guestEmail } : {}),
-                        mergedIntoId: null,
-                        ...blockedContactFilter
-                    } satisfies Prisma.ConversationWhereInput,
-                    include: {
-                        // Only fetch fields needed for display
-                        wooCustomer: {
-                            select: {
-                                id: true,
-                                firstName: true,
-                                lastName: true,
-                                email: true,
-                                ordersCount: true,
-                                totalSpent: true,
-                                wooId: true
-                            }
-                        },
-                        assignee: { select: { id: true, fullName: true, avatarUrl: true } },
-                        // Only need last 2 messages for preview and timing
-                        messages: {
-                            orderBy: { createdAt: 'desc' },
-                            take: 2,
-                            select: { content: true, createdAt: true, senderType: true }
-                        },
-                        labels: {
-                            select: {
-                                label: {
-                                    select: { id: true, name: true, color: true }
-                                }
-                            }
+                const sort = options?.sort || 'updated';
+                const decodedCursor = cursor
+                    ? decodeCursor<ConversationCursor>(cursor, 'conversation')
+                    : undefined;
+                if (decodedCursor && (decodedCursor.sort !== sort
+                    || (sort === 'priority' && !decodedCursor.priority))) {
+                    throw new InvalidChatCursorError();
+                }
+
+                const baseWhere = {
+                    accountId: String(accountId),
+                    ...(status ? { status } : {}),
+                    ...(assignedTo === '__unassigned__'
+                        ? { assignedTo: null }
+                        : assignedTo
+                            ? { assignedTo }
+                            : {}),
+                    ...(options?.wooCustomerId ? { wooCustomerId: options.wooCustomerId } : {}),
+                    ...(options?.guestEmail ? { guestEmail: options.guestEmail } : {}),
+                    mergedIntoId: null,
+                    ...blockedContactFilter
+                } satisfies Prisma.ConversationWhereInput;
+                const include = {
+                    wooCustomer: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            email: true,
+                            ordersCount: true,
+                            totalSpent: true,
+                            wooId: true
                         }
                     },
-                    orderBy: { updatedAt: 'desc' }
+                    assignee: { select: { id: true, fullName: true, avatarUrl: true } },
+                    messages: {
+                        orderBy: { createdAt: 'desc' as const },
+                        take: 2,
+                        select: { content: true, createdAt: true, senderType: true }
+                    },
+                    labels: {
+                        select: {
+                            label: {
+                                select: { id: true, name: true, color: true }
+                            }
+                        }
+                    }
+                } satisfies Prisma.ConversationInclude;
+                const orderBy: Prisma.ConversationOrderByWithRelationInput[] = [
+                    { updatedAt: 'desc' },
+                    { id: 'desc' }
+                ];
+                const after = (date: string, id: string): Prisma.ConversationWhereInput => ({
+                    OR: [
+                        { updatedAt: { lt: new Date(date) } },
+                        { updatedAt: new Date(date), id: { lt: id } }
+                    ]
                 });
+
+                let conversations;
+                if (sort === 'updated') {
+                    conversations = await prisma.conversation.findMany({
+                        take: limit,
+                        where: {
+                            ...baseWhere,
+                            ...(decodedCursor ? after(decodedCursor.updatedAt, decodedCursor.id) : {})
+                        },
+                        include,
+                        orderBy
+                    });
+                } else {
+                    const tiers: Array<{ name: PriorityTier; where: Prisma.ConversationWhereInput }> = [
+                        { name: 'HIGH', where: { priority: 'HIGH' } },
+                        { name: 'MEDIUM', where: { priority: { notIn: ['HIGH', 'LOW'] } } },
+                        { name: 'LOW', where: { priority: 'LOW' } }
+                    ];
+                    const startTier = decodedCursor
+                        ? tiers.findIndex(tier => tier.name === decodedCursor.priority)
+                        : 0;
+                    if (startTier < 0) throw new InvalidChatCursorError();
+
+                    const tierPages = await Promise.all(tiers.slice(startTier).map((tier, index) =>
+                        prisma.conversation.findMany({
+                            take: limit,
+                            where: {
+                                ...baseWhere,
+                                ...tier.where,
+                                ...(decodedCursor && index === 0
+                                    ? after(decodedCursor.updatedAt, decodedCursor.id)
+                                    : {})
+                            },
+                            include,
+                            orderBy
+                        })
+                    ));
+                    conversations = tierPages.flat().slice(0, limit);
+                }
 
                 // Why: truncate message content before caching. Full message
                 // bodies can be KBs each; list previews only need a snippet.
@@ -125,25 +247,18 @@ export class ChatService {
                 const enriched = conversations.map(c => {
                     const priorityData = ChatService.buildPriorityData(c);
                     return {
-                    ...c,
-                    priorityScore: priorityData.score,
-                    priorityTier: priorityData.tier,
-                    priorityReasons: priorityData.reasons,
-                    messages: c.messages.map(m => ({
-                        ...m,
-                        content: m.content.length > 200
-                            ? m.content.slice(0, 200) + '...'
-                            : m.content
-                    }))
+                        ...c,
+                        priorityScore: priorityData.score,
+                        priorityTier: priorityData.tier,
+                        priorityReasons: priorityData.reasons,
+                        messages: c.messages.map(m => ({
+                            ...m,
+                            content: m.content.length > 200
+                                ? m.content.slice(0, 200) + '...'
+                                : m.content
+                        }))
                     };
                 });
-
-                if (options?.sort === 'priority') {
-                    return enriched.sort((a, b) => {
-                        if (b.priorityScore !== a.priorityScore) return b.priorityScore - a.priorityScore;
-                        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-                    });
-                }
 
                 return enriched;
             },
@@ -225,6 +340,15 @@ export class ChatService {
     }
 
     async createConversation(accountId: string, wooCustomerId?: string, visitorToken?: string) {
+        if (wooCustomerId !== undefined && !wooCustomerId.trim()) throw new Error('Customer ID is required');
+        if (wooCustomerId) {
+            const customer = await prisma.wooCustomer.findFirst({
+                where: { id: wooCustomerId, accountId },
+                select: { id: true }
+            });
+            if (!customer) throw new Error('Customer not found in this account');
+        }
+
         const existing = await prisma.conversation.findFirst({
             where: {
                 accountId: String(accountId),
@@ -247,15 +371,27 @@ export class ChatService {
         });
     }
 
-    async getConversation(accountId: string, id: string, options?: { messageLimit?: number }) {
+    async getConversation(accountId: string, id: string, options?: { messageLimit?: number; before?: string }) {
         const messageLimit = Math.min(Math.max(options?.messageLimit || 100, 1), 200);
+        const before = options?.before
+            ? decodeCursor<MessageCursor>(options.before, 'message')
+            : undefined;
         const blockedContactFilter = ChatService.buildBlockedContactFilter(
             await BlockedContactService.listBlockedEmails(accountId)
         );
         const conversation = await prisma.conversation.findFirst({
             where: { id, accountId, ...blockedContactFilter },
             include: {
-                messages: { orderBy: { createdAt: 'desc' }, take: messageLimit + 1 },
+                messages: {
+                    where: before ? {
+                        OR: [
+                            { createdAt: { lt: new Date(before.createdAt) } },
+                            { createdAt: new Date(before.createdAt), id: { lt: before.id } }
+                        ]
+                    } : undefined,
+                    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+                    take: messageLimit + 1
+                },
                 wooCustomer: true,
                 assignee: true,
                 mergedFrom: {
@@ -273,7 +409,11 @@ export class ChatService {
 
         if (!conversation) return null;
         const hasMoreMessages = conversation.messages.length > messageLimit;
-        const messages = (hasMoreMessages ? conversation.messages.slice(0, messageLimit) : conversation.messages).reverse();
+        const messagePage = hasMoreMessages
+            ? conversation.messages.slice(0, messageLimit)
+            : conversation.messages;
+        const oldestReturnedMessage = messagePage[messagePage.length - 1];
+        const messages = messagePage.reverse();
 
         // Fetch email tracking data for this conversation
         const emailLogs = await prisma.emailLog.findMany({
@@ -310,7 +450,14 @@ export class ChatService {
             return msg;
         });
 
-        return { ...conversation, messages: enrichedMessages, hasMoreMessages };
+        return {
+            ...conversation,
+            messages: enrichedMessages,
+            hasMoreMessages,
+            nextMessageCursor: hasMoreMessages && oldestReturnedMessage
+                ? ChatService.createMessageCursor(oldestReturnedMessage)
+                : null
+        };
     }
 
     async addMessage(
@@ -364,7 +511,7 @@ export class ChatService {
                 where: { id: conversationId },
                 data: {
                     updatedAt: new Date(),
-                    status: 'OPEN',
+                    ...(!isInternal ? { status: 'OPEN' } : {}),
                     // Mark as unread when customer sends a message
                     ...(senderType === 'CUSTOMER' ? { isRead: false } : {})
                 }
@@ -418,6 +565,14 @@ export class ChatService {
     }
 
     async assignConversation(accountId: string, id: string, userId: string | null) {
+        if (userId) {
+            const membership = await prisma.accountUser.findUnique({
+                where: { userId_accountId: { userId, accountId } },
+                select: { id: true }
+            });
+            if (!membership) throw new Error('Assignee is not a member of this account');
+        }
+
         const existing = await prisma.conversation.findFirst({
             where: { id, accountId },
             select: { id: true }
@@ -508,31 +663,55 @@ export class ChatService {
     }
 
     async mergeConversations(accountId: string, targetId: string, sourceId: string) {
+        if (targetId === sourceId) throw new Error('Cannot merge a conversation into itself');
+
         const [target, source] = await Promise.all([
             prisma.conversation.findFirst({
                 where: { id: targetId, accountId },
-                select: { id: true }
+                select: { id: true, mergedIntoId: true, isRead: true }
             }),
             prisma.conversation.findFirst({
                 where: { id: sourceId, accountId },
-                select: { id: true }
+                select: { id: true, mergedIntoId: true, isRead: true }
             })
         ]);
         if (!target || !source) {
             throw new Error('Conversation not found');
         }
+        if (target.mergedIntoId || source.mergedIntoId) {
+            throw new Error('Already merged conversations cannot be merged again');
+        }
 
         // Why: wrap in transaction so partial failure (e.g., crash after moving
         // messages but before closing source) doesn't leave orphaned data.
         await prisma.$transaction(async (tx) => {
+            const claim = await tx.conversation.updateMany({
+                where: { id: source.id, accountId, mergedIntoId: null },
+                data: { status: 'CLOSED', mergedIntoId: target.id }
+            });
+            if (claim.count !== 1) {
+                throw new Error('Already merged conversations cannot be merged again');
+            }
+
             await tx.message.updateMany({
                 where: { conversationId: source.id },
                 data: { conversationId: target.id }
             });
-            await tx.conversation.update({
-                where: { id: source.id },
-                data: { status: 'CLOSED', mergedIntoId: target.id }
+            await tx.conversation.updateMany({
+                where: { accountId, mergedIntoId: source.id },
+                data: { mergedIntoId: target.id }
             });
+            // Assert after the unlocked work; a successful update locks the target through commit.
+            const targetAssertion = await tx.conversation.updateMany({
+                where: { id: target.id, accountId, mergedIntoId: null },
+                data: {
+                    updatedAt: new Date(),
+                    ...(!source.isRead ? { isRead: false } : {})
+                }
+            });
+            if (targetAssertion.count !== 1) {
+                throw new Error('Already merged conversations cannot be merged again');
+            }
             await tx.message.create({
                 data: {
                     conversationId: target.id,
@@ -541,22 +720,38 @@ export class ChatService {
                 }
             });
         });
-        return { success: true };
+        await this.invalidateConversationCache(accountId);
+        const payload = { targetId, sourceId };
+        this.io.to(`conversation:${targetId}`).emit('conversation:merged', payload);
+        this.io.to(`conversation:${sourceId}`).emit('conversation:merged', payload);
+        this.io.to(`account:${accountId}`).emit('conversation:merged', payload);
+        this.io.to(`account:${accountId}`).emit('conversation:updated', { id: targetId });
+        return { success: true, ...payload };
     }
 
     async linkCustomer(accountId: string, conversationId: string, wooCustomerId: string) {
-        const existing = await prisma.conversation.findFirst({
-            where: { id: conversationId, accountId },
-            select: { id: true }
-        });
+        if (!wooCustomerId.trim()) throw new Error('Customer ID is required');
+        const [existing, customer] = await Promise.all([
+            prisma.conversation.findFirst({
+                where: { id: conversationId, accountId },
+                select: { id: true }
+            }),
+            prisma.wooCustomer.findFirst({
+                where: { id: wooCustomerId, accountId },
+                select: { id: true }
+            })
+        ]);
         if (!existing) {
             throw new Error('Conversation not found');
         }
+        if (!customer) throw new Error('Customer not found in this account');
 
-        return prisma.conversation.update({
+        const conversation = await prisma.conversation.update({
             where: { id: existing.id },
             data: { wooCustomerId }
         });
+        await this.invalidateConversationCache(accountId);
+        return conversation;
     }
 
         async handleIncomingEmail(emailData: IncomingEmailData) {

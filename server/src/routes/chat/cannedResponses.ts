@@ -8,6 +8,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
+import { requireInboxMutationAccess } from './authorization';
 
 export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -37,6 +38,7 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.post('/canned-labels', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const { name, color } = request.body as any;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
@@ -56,6 +58,7 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.put<{ Params: { id: string } }>('/canned-labels/:id', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const { name, color } = request.body as any;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
@@ -84,6 +87,7 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.delete<{ Params: { id: string } }>('/canned-labels/:id', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
@@ -110,6 +114,7 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.post('/canned-responses', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const { shortcut, content, labelId } = request.body as any;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
@@ -129,6 +134,7 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.put<{ Params: { id: string } }>('/canned-responses/:id', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const { shortcut, content, labelId } = request.body as any;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
@@ -155,6 +161,7 @@ export const cannedResponseRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.delete<{ Params: { id: string } }>('/canned-responses/:id', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 

@@ -10,6 +10,11 @@ import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
 import { invalidateCache } from '../../utils/cache';
+import {
+    InvalidScheduledAttachmentError,
+    resolveScheduledAttachments,
+} from '../../services/scheduler/ScheduledAttachmentResolver';
+import { requireInboxMutationAccess } from './authorization';
 
 export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -19,6 +24,7 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /:id/messages/schedule - Schedule a message for later
     fastify.post<{ Params: { id: string } }>('/:id/messages/schedule', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const { content, scheduledFor, isInternal, attachments } = request.body as any;
             const userId = request.user?.id;
             const accountId = request.accountId;
@@ -32,7 +38,7 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const scheduledDate = new Date(scheduledFor);
-            if (scheduledDate <= new Date()) {
+            if (Number.isNaN(scheduledDate.getTime()) || scheduledDate <= new Date()) {
                 return reply.code(400).send({ error: 'Scheduled time must be in the future' });
             }
 
@@ -44,10 +50,10 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(404).send({ error: 'Conversation not found' });
             }
 
-            // attachments should be array of { filename, path, contentType }
-            const attachmentPaths = attachments && Array.isArray(attachments) && attachments.length > 0
-                ? attachments
-                : null;
+            const attachmentReferences = attachments === undefined || attachments === null
+                ? []
+                : (await resolveScheduledAttachments(attachments, accountId)).references;
+            const attachmentPaths = attachmentReferences.length > 0 ? attachmentReferences : null;
 
             const message = await prisma.message.create({
                 data: {
@@ -69,6 +75,9 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
             });
             return { success: true, message };
         } catch (error) {
+            if (error instanceof InvalidScheduledAttachmentError) {
+                return reply.code(400).send({ error: error.message });
+            }
             Logger.error('Failed to schedule message', { error });
             return reply.code(500).send({ error: 'Failed to schedule message' });
         }
@@ -77,6 +86,7 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
     // DELETE /messages/:id/schedule - Cancel a scheduled message
     fastify.delete<{ Params: { id: string } }>('/messages/:id/schedule', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const message = await prisma.message.findUnique({
                 where: { id: request.params.id },
                 select: { scheduledFor: true, scheduledBy: true, conversation: { select: { accountId: true } } },
@@ -111,6 +121,7 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /:id/snooze - Snooze a conversation
     fastify.post<{ Params: { id: string } }>('/:id/snooze', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const { until } = request.body as any;
             const accountId = request.accountId;
 
@@ -123,7 +134,7 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const snoozeUntil = new Date(until);
-            if (snoozeUntil <= new Date()) {
+            if (Number.isNaN(snoozeUntil.getTime()) || snoozeUntil <= new Date()) {
                 return reply.code(400).send({ error: 'Snooze time must be in the future' });
             }
 
@@ -158,6 +169,7 @@ export const schedulingRoutes: FastifyPluginAsync = async (fastify) => {
     // DELETE /:id/snooze - Cancel snooze (reopen conversation)
     fastify.delete<{ Params: { id: string } }>('/:id/snooze', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const accountId = request.accountId;
             if (!accountId) {
                 return reply.code(400).send({ error: 'Account ID required' });

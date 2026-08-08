@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Logger } from '../../utils/logger';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MessageSquare, Mail, Camera as Instagram, MessageCircle as Facebook, Music2, Search, Archive, CheckCheck, Plus, Zap } from 'lucide-react';
@@ -79,12 +79,20 @@ export function MobileInbox() {
     const [activeFilter, setActiveFilter] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [composeDraft, setComposeDraft] = useState<SharedComposeDraft | null>(null);
+    const listControllerRef = useRef<AbortController | null>(null);
+    const accountIdRef = useRef(currentAccount?.id);
+    accountIdRef.current = currentAccount?.id;
 
     const fetchConversations = useCallback(async (initialLoad = false) => {
         if (!currentAccount || !token) {
             setLoading(false);
             return;
         }
+
+        listControllerRef.current?.abort();
+        const controller = new AbortController();
+        listControllerRef.current = controller;
+        const requestAccountId = currentAccount.id;
 
         try {
             if (initialLoad) {
@@ -94,13 +102,15 @@ export function MobileInbox() {
             const response = await fetch('/api/chat/conversations?status=OPEN&limit=50', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
-                }
+                    'X-Account-ID': requestAccountId
+                },
+                signal: controller.signal,
             });
 
             if (!response.ok) throw new Error('Failed to fetch');
 
             const data = await response.json();
+            if (controller.signal.aborted || accountIdRef.current !== requestAccountId) return;
             const rawConvos = Array.isArray(data) ? data : (data.conversations || []);
             const convos = rawConvos.map((c: ConversationApiResponse) => {
                 const customerName = c.wooCustomer
@@ -123,18 +133,29 @@ export function MobileInbox() {
             setConversations(convos);
             setError(null);
         } catch (error) {
+            if (controller.signal.aborted) return;
             Logger.error('[MobileInbox] Error:', { error: error });
             setError('Could not load inbox. Pull down or tap retry to refresh.');
         } finally {
-            if (initialLoad) setLoading(false);
+            if (!controller.signal.aborted && accountIdRef.current === requestAccountId) {
+                if (initialLoad) setLoading(false);
+                if (listControllerRef.current === controller) listControllerRef.current = null;
+            }
         }
     }, [currentAccount, token]);
 
     useEffect(() => {
+        listControllerRef.current?.abort();
+        setConversations([]);
+        setError(null);
+        setLoading(Boolean(currentAccount?.id && token));
         fetchConversations(true);
         const handleRefresh = () => fetchConversations();
         window.addEventListener('mobile-refresh', handleRefresh);
-        return () => window.removeEventListener('mobile-refresh', handleRefresh);
+        return () => {
+            listControllerRef.current?.abort();
+            window.removeEventListener('mobile-refresh', handleRefresh);
+        };
     }, [fetchConversations]);
 
     useEffect(() => {

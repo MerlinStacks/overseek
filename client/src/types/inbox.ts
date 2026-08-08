@@ -8,8 +8,26 @@ export interface InboxMessage {
     isInternal: boolean;
     conversationId?: string;
     clientRequestId?: string;
+    deliveryStatus?: 'PENDING' | 'SENT' | 'FAILED';
+    deliveryError?: string | null;
+    deliveryChannel?: string | null;
     [key: string]: unknown;
 }
+
+export interface MessageSendResponse {
+    message?: InboxMessage;
+    error?: string;
+}
+
+export type SendMessageHandler = (
+    content: string,
+    type: 'AGENT' | 'SYSTEM',
+    isInternal: boolean,
+    channel?: ConversationChannel,
+    emailAccountId?: string,
+    clientRequestId?: string,
+    persistedMessage?: InboxMessage,
+) => Promise<void>;
 
 interface InboxWooCustomer {
     id?: string;

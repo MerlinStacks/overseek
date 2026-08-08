@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useSocket } from '../../context/SocketContext';
 import { useCannedResponses } from '../../hooks/useCannedResponses';
+import type { MessageSendResponse } from '../../types/inbox';
 
 interface MessageApiResponse {
     id: string;
@@ -20,6 +21,9 @@ interface MessageApiResponse {
     senderType?: 'AGENT' | 'CUSTOMER' | 'SYSTEM';
     createdAt?: string;
     sender?: { fullName?: string };
+    clientRequestId?: string;
+    deliveryStatus?: 'PENDING' | 'SENT' | 'FAILED';
+    deliveryError?: string | null;
 }
 
 export interface MobileChatMessage {
@@ -28,6 +32,9 @@ export interface MobileChatMessage {
     direction: 'inbound' | 'outbound';
     createdAt: string;
     senderName?: string;
+    clientRequestId?: string;
+    deliveryStatus?: 'PENDING' | 'SENT' | 'FAILED';
+    deliveryError?: string | null;
 }
 
 export interface MobileChatConversation {
@@ -53,6 +60,19 @@ function haptic() {
     if ('vibrate' in navigator) navigator.vibrate(10);
 }
 
+function toMobileMessage(message: MessageApiResponse, fallbackBody = ''): MobileChatMessage {
+    return {
+        id: message.id,
+        body: message.content || fallbackBody,
+        direction: message.senderType === 'CUSTOMER' ? 'inbound' : 'outbound',
+        createdAt: message.createdAt || new Date().toISOString(),
+        senderName: message.sender?.fullName || (message.senderType === 'AGENT' ? 'Agent' : 'Customer'),
+        clientRequestId: message.clientRequestId,
+        deliveryStatus: message.deliveryStatus,
+        deliveryError: message.deliveryError,
+    };
+}
+
 export function useMobileChat(conversationId: string | undefined) {
     const { token, user } = useAuth();
     const { currentAccount } = useAccount();
@@ -66,6 +86,7 @@ export function useMobileChat(conversationId: string | undefined) {
     const [showMenu, setShowMenu] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+    const [sendError, setSendError] = useState<string | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -74,6 +95,14 @@ export function useMobileChat(conversationId: string | undefined) {
     const isNearBottomRef = useRef(true);
     const previousMessageCountRef = useRef(0);
     const fetchControllerRef = useRef<AbortController | null>(null);
+    const sendControllerRef = useRef<AbortController | null>(null);
+    const uploadControllerRef = useRef<AbortController | null>(null);
+    const draftControllerRef = useRef<AbortController | null>(null);
+    const actionControllerRef = useRef<AbortController | null>(null);
+    const retrySendRef = useRef<{ conversationId: string; accountId: string; content: string; clientRequestId: string } | null>(null);
+    const retryUploadRef = useRef<{ conversationId: string; accountId: string; fingerprint: string; clientRequestId: string } | null>(null);
+    const identityRef = useRef({ conversationId, accountId: currentAccount?.id });
+    identityRef.current = { conversationId, accountId: currentAccount?.id };
 
     // Canned responses
     const {
@@ -116,6 +145,7 @@ export function useMobileChat(conversationId: string | undefined) {
             const headers = buildHeaders(token, currentAccount.id);
 
             const convRes = await fetch(`/api/chat/${conversationId}`, { headers, signal: controller.signal });
+            if (controller.signal.aborted || identityRef.current.conversationId !== conversationId || identityRef.current.accountId !== currentAccount.id) return;
             if (!convRes.ok) {
                 setConversation(null);
                 setMessages([]);
@@ -127,7 +157,7 @@ export function useMobileChat(conversationId: string | undefined) {
             }
 
             const conv = await convRes.json();
-            if (controller.signal.aborted) return;
+            if (controller.signal.aborted || identityRef.current.conversationId !== conversationId || identityRef.current.accountId !== currentAccount.id) return;
             const customerName = conv.wooCustomer
                 ? `${conv.wooCustomer.firstName || ''} ${conv.wooCustomer.lastName || ''}`.trim() || conv.wooCustomer.email
                 : conv.guestName || conv.guestEmail || 'Unknown';
@@ -151,13 +181,7 @@ export function useMobileChat(conversationId: string | undefined) {
             });
 
             if (conv.messages && Array.isArray(conv.messages)) {
-                setMessages(conv.messages.map((m: MessageApiResponse) => ({
-                    id: m.id,
-                    body: m.content || '',
-                    direction: m.senderType === 'AGENT' ? 'outbound' as const : 'inbound' as const,
-                    createdAt: m.createdAt || '',
-                    senderName: m.sender?.fullName || (m.senderType === 'AGENT' ? 'Agent' : 'Customer'),
-                })));
+                setMessages(conv.messages.map((m: MessageApiResponse) => toMobileMessage(m)));
             } else {
                 setMessages([]);
             }
@@ -180,70 +204,115 @@ export function useMobileChat(conversationId: string | undefined) {
 
         setSending(true);
         haptic();
+        const requestConversationId = conversationId;
+        const requestAccountId = currentAccount.id;
+        const content = newMessage.trim();
+        const retry = retrySendRef.current;
+        const clientRequestId = retry?.conversationId === requestConversationId && retry.accountId === requestAccountId && retry.content === content
+            ? retry.clientRequestId
+            : `mobile-${requestConversationId}-${crypto.randomUUID()}`;
+        retrySendRef.current = { conversationId: requestConversationId, accountId: requestAccountId, content, clientRequestId };
+        const controller = new AbortController();
+        sendControllerRef.current?.abort();
+        sendControllerRef.current = controller;
 
         try {
-            const res = await fetch(`/api/chat/${conversationId}/messages`, {
+            const res = await fetch(`/api/chat/${requestConversationId}/messages`, {
                 method: 'POST',
-                headers: buildHeaders(token, currentAccount.id, true),
+                headers: buildHeaders(token, requestAccountId, true),
                 body: JSON.stringify({
-                    content: newMessage.trim(),
+                    content,
                     channel: conversation.channel.toUpperCase(),
+                    clientRequestId,
                 }),
+                signal: controller.signal,
             });
 
-            if (!res.ok) throw new Error(`Send failed with status ${res.status}`);
+            const data = await res.json().catch(() => ({})) as MessageApiResponse & MessageSendResponse;
+            if (controller.signal.aborted || identityRef.current.conversationId !== requestConversationId || identityRef.current.accountId !== requestAccountId) return;
+            const sent = res.ok ? data : data.message;
+            if (sent?.id) {
+                const mobileMessage = toMobileMessage(sent, content);
+                setMessages(prev => {
+                    const index = prev.findIndex(message => message.id === mobileMessage.id || Boolean(mobileMessage.clientRequestId && message.clientRequestId === mobileMessage.clientRequestId));
+                    return index >= 0 ? prev.map((message, i) => i === index ? mobileMessage : message) : [...prev, mobileMessage];
+                });
+            }
+            if (!res.ok) throw new Error(data.error || data.message?.deliveryError || `Send failed with status ${res.status}`);
 
-            const sent = await res.json();
-            setMessages(prev => prev.some(message => message.id === sent.id) ? prev : [...prev, {
-                id: sent.id || Date.now().toString(),
-                body: newMessage.trim(),
-                direction: 'outbound' as const,
-                createdAt: sent.createdAt || new Date().toISOString(),
-            }]);
+            retrySendRef.current = null;
+            setSendError(null);
             setNewMessage('');
             inputRef.current?.focus();
         } catch (error) {
+            if (controller.signal.aborted) return;
             Logger.error('[MobileChat] Send error:', { error });
+            if (identityRef.current.conversationId === requestConversationId && identityRef.current.accountId === requestAccountId) {
+                setSendError(error instanceof Error ? error.message : 'Message delivery failed');
+            }
         } finally {
-            setSending(false);
+            if (sendControllerRef.current === controller) {
+                sendControllerRef.current = null;
+                setSending(false);
+            }
         }
     }, [newMessage, sending, currentAccount, token, conversationId, conversation]);
 
     const handleResolve = useCallback(async () => {
         setShowMenu(false);
-        if (!currentAccount || !token) return;
+        if (!currentAccount || !token || !conversationId) return false;
+        const requestConversationId = conversationId;
+        const requestAccountId = currentAccount.id;
+        actionControllerRef.current?.abort();
+        const controller = new AbortController();
+        actionControllerRef.current = controller;
         try {
-            const res = await fetch(`/api/chat/${conversationId}`, {
+            const res = await fetch(`/api/chat/${requestConversationId}`, {
                 method: 'PUT',
-                headers: buildHeaders(token, currentAccount.id, true),
+                headers: buildHeaders(token, requestAccountId, true),
                 body: JSON.stringify({ status: 'CLOSED' }),
+                signal: controller.signal,
             });
+            if (controller.signal.aborted || identityRef.current.conversationId !== requestConversationId || identityRef.current.accountId !== requestAccountId) return false;
             if (!res.ok) {
                 throw new Error(`Resolve failed with status ${res.status}`);
             }
             return true; // Signal navigation to caller
         } catch (error) {
+            if (controller.signal.aborted) return false;
             Logger.error('[MobileChat] Resolve error:', { error });
             return false;
+        } finally {
+            if (actionControllerRef.current === controller) actionControllerRef.current = null;
         }
     }, [currentAccount, token, conversationId]);
 
     const handleBlock = useCallback(async () => {
         setShowMenu(false);
-        if (!currentAccount || !token || !conversationId) return;
+        if (!currentAccount || !token || !conversationId) return false;
+        const requestConversationId = conversationId;
+        const requestAccountId = currentAccount.id;
+        actionControllerRef.current?.abort();
+        const controller = new AbortController();
+        actionControllerRef.current = controller;
         try {
-            const res = await fetch(`/api/chat/${conversationId}/block`, {
+            const res = await fetch(`/api/chat/${requestConversationId}/block`, {
                 method: 'POST',
-                headers: buildHeaders(token, currentAccount.id, true),
+                headers: buildHeaders(token, requestAccountId, true),
                 body: JSON.stringify({ reason: 'Blocked from mobile' }),
+                signal: controller.signal,
             });
+            if (controller.signal.aborted || identityRef.current.conversationId !== requestConversationId || identityRef.current.accountId !== requestAccountId) return false;
             if (!res.ok) {
                 throw new Error(`Block failed with status ${res.status}`);
             }
             return true; // Signal navigation to caller
         } catch (error) {
+            if (controller.signal.aborted) return false;
             Logger.error('[MobileChat] Block error:', { error });
             return false;
+        } finally {
+            if (actionControllerRef.current === controller) actionControllerRef.current = null;
         }
     }, [currentAccount, token, conversationId]);
 
@@ -253,39 +322,62 @@ export function useMobileChat(conversationId: string | undefined) {
 
         setIsUploading(true);
         haptic();
+        const requestConversationId = conversationId;
+        const requestAccountId = currentAccount.id;
+        const fingerprint = `${file.name}:${file.size}:${file.lastModified}`;
+        const retry = retryUploadRef.current;
+        const clientRequestId = retry?.conversationId === requestConversationId && retry.accountId === requestAccountId && retry.fingerprint === fingerprint
+            ? retry.clientRequestId
+            : `mobile-attachment-${requestConversationId}-${crypto.randomUUID()}`;
+        retryUploadRef.current = { conversationId: requestConversationId, accountId: requestAccountId, fingerprint, clientRequestId };
+        const controller = new AbortController();
+        uploadControllerRef.current?.abort();
+        uploadControllerRef.current = controller;
 
         try {
             const formData = new FormData();
             formData.append('file', file);
             formData.append('content', '');
             formData.append('channel', conversation.channel.toUpperCase());
+            formData.append('clientRequestId', clientRequestId);
 
-            const res = await fetch(`/api/chat/${conversationId}/message-with-attachments`, {
+            const res = await fetch(`/api/chat/${requestConversationId}/message-with-attachments`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id,
+                    'X-Account-ID': requestAccountId,
                 },
                 body: formData,
+                signal: controller.signal,
             });
 
-            if (!res.ok) throw new Error(`Upload failed with status ${res.status}`);
-
-            const { message } = await res.json();
+            const data = await res.json().catch(() => ({})) as MessageSendResponse;
+            if (controller.signal.aborted || identityRef.current.conversationId !== requestConversationId || identityRef.current.accountId !== requestAccountId) return;
+            const { message } = data;
             if (message) {
-                setMessages(prev => prev.some(item => item.id === message.id) ? prev : [...prev, {
-                    id: message.id,
-                    body: message.content || `📎 ${file.name}`,
-                    direction: 'outbound' as const,
-                    createdAt: message.createdAt || new Date().toISOString(),
-                }]);
+                const mobileMessage = toMobileMessage(message, `Attachment: ${file.name}`);
+                setMessages(prev => {
+                    const index = prev.findIndex(item => item.id === mobileMessage.id || Boolean(mobileMessage.clientRequestId && item.clientRequestId === mobileMessage.clientRequestId));
+                    return index >= 0 ? prev.map((item, i) => i === index ? mobileMessage : item) : [...prev, mobileMessage];
+                });
             }
+            if (!res.ok) throw new Error(data.error || data.message?.deliveryError || `Upload failed with status ${res.status}`);
+
+            retryUploadRef.current = null;
+            setSendError(null);
             inputRef.current?.focus();
         } catch (error) {
+            if (controller.signal.aborted) return;
             Logger.error('[MobileChat] Upload error:', { error });
+            if (identityRef.current.conversationId === requestConversationId && identityRef.current.accountId === requestAccountId) {
+                setSendError(error instanceof Error ? error.message : 'Attachment delivery failed');
+            }
         } finally {
-            setIsUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
+            if (uploadControllerRef.current === controller) {
+                uploadControllerRef.current = null;
+                setIsUploading(false);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            }
         }
     }, [currentAccount, token, conversationId, conversation]);
 
@@ -294,23 +386,34 @@ export function useMobileChat(conversationId: string | undefined) {
 
         setIsGeneratingDraft(true);
         haptic();
+        const requestConversationId = conversationId;
+        const requestAccountId = currentAccount.id;
+        const controller = new AbortController();
+        draftControllerRef.current?.abort();
+        draftControllerRef.current = controller;
 
         try {
-            const res = await fetch(`/api/chat/${conversationId}/ai-draft`, {
+            const res = await fetch(`/api/chat/${requestConversationId}/ai-draft`, {
                 method: 'POST',
-                headers: buildHeaders(token, currentAccount.id, true),
+                headers: buildHeaders(token, requestAccountId, true),
                 body: JSON.stringify({ currentDraft: newMessage || '' }),
+                signal: controller.signal,
             });
 
             if (res.ok) {
                 const { draft } = await res.json();
+                if (controller.signal.aborted || identityRef.current.conversationId !== requestConversationId || identityRef.current.accountId !== requestAccountId) return;
                 setNewMessage(draft);
                 inputRef.current?.focus();
             }
         } catch (error) {
+            if (controller.signal.aborted) return;
             Logger.error('[MobileChat] AI draft error:', { error });
         } finally {
-            setIsGeneratingDraft(false);
+            if (draftControllerRef.current === controller) {
+                draftControllerRef.current = null;
+                setIsGeneratingDraft(false);
+            }
         }
     }, [currentAccount, token, isGeneratingDraft, conversationId, newMessage]);
 
@@ -319,6 +422,8 @@ export function useMobileChat(conversationId: string | undefined) {
     // -------------------------------------------------------
 
     const handleInputChange = useCallback((value: string) => {
+        if (retrySendRef.current?.content !== value.trim()) retrySendRef.current = null;
+        setSendError(null);
         setNewMessage(value);
         handleInputForCanned(value);
     }, [handleInputForCanned]);
@@ -363,11 +468,28 @@ export function useMobileChat(conversationId: string | undefined) {
     }, [fetchConversation]);
 
     useEffect(() => {
+        sendControllerRef.current?.abort();
+        uploadControllerRef.current?.abort();
+        draftControllerRef.current?.abort();
+        actionControllerRef.current?.abort();
+        retrySendRef.current = null;
+        retryUploadRef.current = null;
         setConversation(null);
         setMessages([]);
+        setNewMessage('');
+        setSending(false);
+        setIsUploading(false);
+        setIsGeneratingDraft(false);
+        setSendError(null);
         setShowMenu(false);
         isNearBottomRef.current = true;
         previousMessageCountRef.current = 0;
+        return () => {
+            sendControllerRef.current?.abort();
+            uploadControllerRef.current?.abort();
+            draftControllerRef.current?.abort();
+            actionControllerRef.current?.abort();
+        };
     }, [conversationId, currentAccount?.id]);
 
     useEffect(() => {
@@ -402,13 +524,7 @@ export function useMobileChat(conversationId: string | undefined) {
 
             setMessages(prev => {
                 if (prev.some(msg => msg.id === payload.id)) return prev;
-                return [...prev, {
-                    id: payload.id,
-                    body: payload.content || '',
-                    direction: payload.senderType === 'AGENT' ? 'outbound' : 'inbound',
-                    createdAt: payload.createdAt || new Date().toISOString(),
-                    senderName: payload.sender?.fullName || (payload.senderType === 'AGENT' ? 'Agent' : 'Customer'),
-                }];
+                return [...prev, toMobileMessage(payload)];
             });
         };
 
@@ -447,6 +563,7 @@ export function useMobileChat(conversationId: string | undefined) {
         setShowMenu,
         isUploading,
         isGeneratingDraft,
+        sendError,
 
         // Refs
         messagesEndRef,

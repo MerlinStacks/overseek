@@ -10,6 +10,7 @@ import { prisma } from '../../utils/prisma';
 import { LabelService } from '../../services/LabelService';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
+import { requireInboxMutationAccess } from './authorization';
 
 export const notesRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
@@ -40,6 +41,7 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // POST /:id/notes - Create a note
     fastify.post<{ Params: { id: string } }>('/:id/notes', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
         const { content } = request.body as any;
@@ -67,6 +69,7 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
 
     // DELETE /:id/notes/:noteId - Delete a note
     fastify.delete<{ Params: { id: string; noteId: string } }>('/:id/notes/:noteId', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         // Why: verify ownership chain (note → conversation → account) to prevent cross-account deletion
         const note = await prisma.conversationNote.findUnique({
             where: { id: request.params.noteId },
@@ -100,6 +103,7 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /:id/labels/:labelId - Assign a label to conversation
     fastify.post<{ Params: { id: string; labelId: string } }>('/:id/labels/:labelId', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             const assignment = await labelService.assignLabel(accountId, request.params.id, request.params.labelId);
@@ -116,6 +120,7 @@ export const notesRoutes: FastifyPluginAsync = async (fastify) => {
     // DELETE /:id/labels/:labelId - Remove a label from conversation
     fastify.delete<{ Params: { id: string; labelId: string } }>('/:id/labels/:labelId', async (request, reply) => {
         try {
+            if (!(await requireInboxMutationAccess(request, reply))) return;
             const accountId = request.accountId;
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
             await labelService.removeLabel(accountId, request.params.id, request.params.labelId);

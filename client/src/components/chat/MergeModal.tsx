@@ -45,6 +45,7 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
 
     useEffect(() => {
         if (!isOpen || !token || !currentAccount) return;
+        const controller = new AbortController();
 
         const fetchConversations = async () => {
             setIsLoading(true);
@@ -53,21 +54,26 @@ export function MergeModal({ isOpen, onClose, onMerge, currentConversationId }: 
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'x-account-id': currentAccount.id
-                    }
+                    },
+                    signal: controller.signal,
                 });
                 if (res.ok) {
-                    const data = await res.json();
+                    const data: unknown = await res.json();
+                    const items = Array.isArray(data)
+                        ? data
+                        : (data as { conversations?: Conversation[] }).conversations || [];
                     // Filter out current conversation
-                    setConversations(data.filter((c: Conversation) => c.id !== currentConversationId));
+                    if (!controller.signal.aborted) setConversations(items.filter((c: Conversation) => c.id !== currentConversationId));
                 }
             } catch (error) {
-                Logger.error('Failed to fetch conversations:', { error: error });
+                if (!controller.signal.aborted) Logger.error('Failed to fetch conversations:', { error: error });
             } finally {
-                setIsLoading(false);
+                if (!controller.signal.aborted) setIsLoading(false);
             }
         };
 
         fetchConversations();
+        return () => controller.abort();
     }, [isOpen, token, currentAccount, currentConversationId]);
 
     const handleMerge = async (targetId: string) => {

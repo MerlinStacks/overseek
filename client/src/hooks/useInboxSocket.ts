@@ -52,6 +52,30 @@ export function useInboxSocket({
 }: UseInboxSocketParams) {
     useEffect(() => {
         if (!socket || !accountId || !token) return;
+        let active = true;
+        let readTimer: ReturnType<typeof setTimeout> | undefined;
+
+        const persistRead = () => {
+            if (!selectedId) return;
+            if (readTimer) clearTimeout(readTimer);
+            const conversationId = selectedId;
+            readTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/chat/${conversationId}/read`, {
+                        method: 'POST',
+                        headers: buildHeaders(token, accountId),
+                    });
+                    if (!active || !response.ok) return;
+                    startTransition(() => {
+                        setConversations(previous => previous.map(conversation =>
+                            conversation.id === conversationId ? { ...conversation, isRead: true } : conversation
+                        ));
+                    });
+                } catch (error) {
+                    if (active) Logger.error('Failed to mark incoming message as read', { error, conversationId });
+                }
+            }, 250);
+        };
 
         /**
          * Fetches a full conversation object when we receive an update
@@ -59,12 +83,12 @@ export function useInboxSocket({
          */
         const fetchNewConversation = async (id: string) => {
             try {
-                const res = await fetch(`/api/chat/${id}`, {
+                const res = await fetch(`/api/chat/${id}?limit=100`, {
                     headers: buildHeaders(token, accountId),
                 });
                 if (res.ok) {
                     const newConv = await res.json() as InboxConversation;
-                    if (!shouldIncludeConversation(newConv)) return;
+                    if (!active || !shouldIncludeConversation(newConv)) return;
                     setConversations(prev => {
                         if (prev.find(c => c.id === id)) return prev;
                         return [newConv, ...prev];
@@ -105,6 +129,7 @@ export function useInboxSocket({
                     if (prev.find(m => m.id === lastMessage.id || (lastMessage.clientRequestId && m.clientRequestId === lastMessage.clientRequestId))) return prev;
                     return [...prev, lastMessage];
                 });
+                if (lastMessage.senderType === 'CUSTOMER') persistRead();
             }
         };
 
@@ -128,6 +153,7 @@ export function useInboxSocket({
                     messagesCache.current.set(conversationId, updated);
                     return updated;
                 });
+                if (msg.senderType === 'CUSTOMER') persistRead();
             } else {
                 const cached = messagesCache.current.get(conversationId);
                 if (cached) {
@@ -141,6 +167,8 @@ export function useInboxSocket({
         socket.on('message:new', handleMessageNew);
 
         return () => {
+            active = false;
+            if (readTimer) clearTimeout(readTimer);
             socket.off('conversation:updated', handleConversationUpdated);
             socket.off('conversation:read', handleConversationRead);
             socket.off('message:new', handleMessageNew);

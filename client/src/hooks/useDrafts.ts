@@ -30,13 +30,10 @@ function writeDraft(conversationId: string, content: string): void {
  * Drafts are stored in localStorage keyed by conversation ID.
  */
 export function useDrafts() {
-    // Store latest args so the single debounced function always writes the
-    // most recent values when it fires.
     const latestArgsRef = useRef<{ conversationId: string; content: string }>({
         conversationId: '',
         content: ''
     });
-
     const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
 
     // Create the debounced writer once after mount and clean up on unmount.

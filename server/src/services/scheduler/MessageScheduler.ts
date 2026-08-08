@@ -8,6 +8,11 @@
  */
 import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
+import { resolveScheduledAttachments } from './ScheduledAttachmentResolver';
+
+const SAFE_SCHEDULED_DELIVERY_ERROR = 'Scheduled delivery to customer failed';
+const UNSUPPORTED_SCHEDULED_CHANNEL_ERROR = 'Scheduled delivery is not supported for this channel';
+const DELIVERY_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 export class MessageScheduler {
     private static emailPollingInterval: NodeJS.Timeout | null = null;
@@ -114,10 +119,17 @@ export class MessageScheduler {
      */
     private static async processScheduledMessages() {
         const now = new Date();
+        const staleClaimBefore = new Date(now.getTime() - DELIVERY_CLAIM_LEASE_MS);
 
         const dueMessages = await prisma.message.findMany({
             where: {
                 scheduledFor: { lte: now, not: null },
+                OR: [
+                    { providerMessageId: { not: null } },
+                    { deliveryStatus: { not: 'PENDING' } },
+                    { deliveryStatus: 'PENDING', deliveryAttemptedAt: null },
+                    { deliveryStatus: 'PENDING', deliveryAttemptedAt: { lte: staleClaimBefore } },
+                ],
             },
             include: {
                 conversation: {
@@ -139,7 +151,7 @@ export class MessageScheduler {
         // account would hit the DB once per message without this cache.
         const { getDefaultEmailAccount } = await import('../../utils/getDefaultEmailAccount');
         const emailAccountCache = new Map<string, any>();
-        const emailMessages = dueMessages.filter(m => m.conversation.channel === 'EMAIL');
+        const emailMessages = dueMessages.filter(m => !m.isInternal && m.conversation.channel === 'EMAIL');
         const uniqueAccountIds = [...new Set(emailMessages.map(m => m.conversation.accountId))];
         await Promise.all(uniqueAccountIds.map(async (aid) => {
             const account = await getDefaultEmailAccount(aid);
@@ -147,9 +159,71 @@ export class MessageScheduler {
         }));
 
         for (const message of dueMessages) {
-            try {
-                let shouldClearSchedule = false;
+            // A provider acknowledgement is durable before schedule cleanup. Recover cleanup
+            // without contacting the provider again if a previous finalization failed.
+            if (message.providerMessageId) {
+                try {
+                    await prisma.message.updateMany({
+                        where: {
+                            id: message.id,
+                            scheduledFor: { lte: now, not: null },
+                            providerMessageId: message.providerMessageId,
+                        },
+                        data: { scheduledFor: null, attachmentPaths: null },
+                    });
+                } catch (error) {
+                    Logger.error(`[Scheduler] Failed to finalize delivered scheduled message ${message.id}`, { error });
+                }
+                continue;
+            }
 
+            const attemptedAt = new Date();
+            const claimed = await prisma.message.updateMany({
+                where: {
+                    id: message.id,
+                    scheduledFor: { lte: now, not: null },
+                    providerMessageId: null,
+                    OR: [
+                        { deliveryStatus: { not: 'PENDING' } },
+                        { deliveryStatus: 'PENDING', deliveryAttemptedAt: null },
+                        { deliveryStatus: 'PENDING', deliveryAttemptedAt: { lte: staleClaimBefore } },
+                    ],
+                },
+                data: {
+                    deliveryStatus: 'PENDING',
+                    deliveryChannel: message.conversation.channel,
+                    deliveryProvider: null,
+                    providerMessageId: null,
+                    deliveryError: null,
+                    deliveryAttemptedAt: attemptedAt,
+                    deliveredAt: null,
+                },
+            });
+
+            if (claimed.count === 0) continue;
+
+            if (message.isInternal) {
+                try {
+                    await prisma.message.update({
+                        where: { id: message.id },
+                        data: {
+                            scheduledFor: null,
+                            deliveryStatus: 'SENT',
+                            deliveryChannel: null,
+                            deliveryProvider: null,
+                            deliveryError: null,
+                            deliveredAt: new Date(),
+                            attachmentPaths: null,
+                        },
+                    });
+                } catch (error) {
+                    Logger.error(`[Scheduler] Failed to finalize scheduled internal note ${message.id}`, { error });
+                }
+                continue;
+            }
+
+            let providerSucceeded = false;
+            try {
                 if (message.conversation.channel === 'EMAIL') {
                     const emailService = await this.getEmailService();
 
@@ -157,31 +231,26 @@ export class MessageScheduler {
                         || message.conversation.guestEmail;
 
                     if (!recipientEmail) {
-                        Logger.warn('[Scheduler] Skipping scheduled message with no recipient email', {
-                            messageId: message.id,
-                            conversationId: message.conversationId
-                        });
-                        continue;
+                        throw new Error('Scheduled email recipient is unavailable');
                     }
 
                     const emailAccount = emailAccountCache.get(message.conversation.accountId);
                     if (!emailAccount) {
-                        Logger.warn('[Scheduler] Skipping scheduled message with no sending account', {
-                            messageId: message.id,
-                            accountId: message.conversation.accountId
-                        });
-                        continue;
+                        throw new Error('Scheduled email sender account is unavailable');
                     }
 
                     const attachments = message.attachmentPaths
-                        ? (message.attachmentPaths as Array<{ filename: string; path: string; contentType: string }>)
+                        ? (await resolveScheduledAttachments(
+                            message.attachmentPaths,
+                            message.conversation.accountId,
+                        )).attachments
                         : undefined;
 
                     const subject = message.conversation.title
                         ? (message.conversation.title.startsWith('Re:') ? message.conversation.title : `Re: ${message.conversation.title}`)
                         : 'Re: Conversation';
 
-                    await emailService.sendEmail(
+                    const result = await emailService.sendEmail(
                         message.conversation.accountId,
                         emailAccount.id,
                         recipientEmail,
@@ -191,23 +260,78 @@ export class MessageScheduler {
                         { category: 'TRANSACTIONAL' }
                     );
 
-                    Logger.info(`[Scheduler] Sent scheduled message ${message.id}`, {
-                        attachmentCount: attachments?.length || 0
-                    });
-                    shouldClearSchedule = true;
+                    const providerMessageId = result && typeof result === 'object' && 'messageId' in result
+                        && typeof result.messageId === 'string' && result.messageId
+                        ? result.messageId
+                        : null;
+                    if (!providerMessageId) {
+                        throw new Error('Email provider did not confirm scheduled delivery');
+                    }
+                    providerSucceeded = true;
+
+                    // First persist a non-redeliverable provider acknowledgement. Schedule
+                    // cleanup is deliberately separate so it can be safely recovered.
+                    const sentData = {
+                        deliveryStatus: 'SENT' as const,
+                        deliveryProvider: 'EMAIL',
+                        providerMessageId,
+                        deliveryError: null,
+                        deliveredAt: new Date(),
+                    };
+                    try {
+                        await prisma.message.update({
+                            where: { id: message.id },
+                            data: sentData,
+                        });
+                    } catch (error) {
+                        Logger.error(`[Scheduler] Failed to persist provider acknowledgement for scheduled message ${message.id}`, { error });
+                        const persisted = await prisma.message.updateMany({
+                            where: {
+                                id: message.id,
+                                OR: [
+                                    {
+                                        deliveryStatus: 'PENDING',
+                                        deliveryAttemptedAt: attemptedAt,
+                                        providerMessageId: null,
+                                    },
+                                    { deliveryStatus: 'SENT', providerMessageId },
+                                ],
+                            },
+                            data: sentData,
+                        });
+                        if (persisted.count === 0) throw error;
+                    }
+
+                    try {
+                        await prisma.message.update({
+                            where: { id: message.id },
+                            data: { scheduledFor: null, attachmentPaths: null },
+                        });
+                        Logger.info(`[Scheduler] Sent scheduled message ${message.id}`, {
+                            attachmentCount: attachments?.length || 0
+                        });
+                    } catch (error) {
+                        Logger.error(`[Scheduler] Provider delivered scheduled message ${message.id}, but finalization failed`, { error });
+                    }
                 } else {
-                    shouldClearSchedule = true;
+                    throw new Error(UNSUPPORTED_SCHEDULED_CHANNEL_ERROR);
                 }
-
-                if (shouldClearSchedule) {
-                    await prisma.message.update({
-                        where: { id: message.id },
-                        data: { scheduledFor: null, attachmentPaths: null },
-                    });
-                }
-
             } catch (error) {
+                if (providerSucceeded) {
+                    Logger.error(`[Scheduler] Provider delivered scheduled message ${message.id}; acknowledgement remains claimed for recovery`, { error });
+                    continue;
+                }
                 Logger.error(`[Scheduler] Failed to send scheduled message ${message.id}`, { error });
+                await prisma.message.update({
+                    where: { id: message.id },
+                    data: {
+                        scheduledFor: null,
+                        deliveryStatus: 'FAILED',
+                        deliveryError: message.conversation.channel === 'EMAIL'
+                            ? SAFE_SCHEDULED_DELIVERY_ERROR
+                            : UNSUPPORTED_SCHEDULED_CHANNEL_ERROR,
+                    },
+                });
             }
         }
     }
@@ -272,4 +396,3 @@ export class MessageScheduler {
         }
     }
 }
-

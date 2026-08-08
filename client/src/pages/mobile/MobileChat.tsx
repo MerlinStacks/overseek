@@ -75,6 +75,7 @@ export function MobileChat() {
         setShowMenu,
         isUploading,
         isGeneratingDraft,
+        sendError,
         messagesEndRef,
         messagesContainerRef,
         inputRef,
@@ -193,7 +194,9 @@ export function MobileChat() {
                                     className={`flex mb-2 ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
                                 >
                                     <div
-                                        className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-lg shadow-black/10 ${msg.direction === 'outbound'
+                                        className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-lg shadow-black/10 ${msg.deliveryStatus === 'FAILED'
+                                            ? 'rounded-br-lg border border-rose-400/40 bg-rose-500/20 text-rose-50'
+                                            : msg.direction === 'outbound'
                                             ? 'rounded-br-lg bg-indigo-500 text-white'
                                             : 'rounded-bl-lg border border-white/10 bg-slate-900 text-white'
                                             }`}
@@ -214,6 +217,11 @@ export function MobileChat() {
                                         <p className={`mt-2 text-[11px] font-medium ${msg.direction === 'outbound' ? 'text-indigo-100/80' : 'text-slate-500'}`}>
                                             {formatTime(msg.createdAt)}
                                         </p>
+                                        {msg.deliveryStatus === 'FAILED' && (
+                                            <p role="alert" className="mt-2 text-xs font-bold text-rose-200">
+                                                {msg.deliveryError || 'Delivery failed. Retry from the composer.'}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -261,6 +269,12 @@ export function MobileChat() {
                     className="hidden"
                     accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
                 />
+
+                {sendError && (
+                    <div role="alert" className="border-b border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-100">
+                        {sendError}. Retry to send again.
+                    </div>
+                )}
 
                 <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
                     <button

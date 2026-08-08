@@ -12,6 +12,11 @@ const mockFindUnique = vi.fn();
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 const mockCount = vi.fn();
+const mockAccountUserFindUnique = vi.fn();
+const mockWooCustomerFindFirst = vi.fn();
+const mockConversationUpdateMany = vi.fn();
+const mockMessageCreate = vi.fn();
+const mockMessageUpdateMany = vi.fn();
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
@@ -21,15 +26,19 @@ vi.mock('../../utils/prisma', () => ({
             findUnique: (...args: any[]) => mockFindUnique(...args),
             create: (...args: any[]) => mockCreate(...args),
             update: (...args: any[]) => mockUpdate(...args),
+            updateMany: (...args: any[]) => mockConversationUpdateMany(...args),
             count: (...args: any[]) => mockCount(...args),
         },
         message: {
             findMany: vi.fn().mockResolvedValue([]),
-            create: vi.fn().mockResolvedValue({ id: 'msg-1', content: 'Test' }),
-            updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+            create: (...args: any[]) => mockMessageCreate(...args),
+            updateMany: (...args: any[]) => mockMessageUpdateMany(...args),
         },
         wooCustomer: {
-            findFirst: vi.fn().mockResolvedValue(null),
+            findFirst: (...args: any[]) => mockWooCustomerFindFirst(...args),
+        },
+        accountUser: {
+            findUnique: (...args: any[]) => mockAccountUserFindUnique(...args),
         },
         account: {
             findFirst: vi.fn().mockResolvedValue({ id: 'account-1', name: 'Test Account' }),
@@ -39,7 +48,11 @@ vi.mock('../../utils/prisma', () => ({
         },
         accountFeature: {
             findFirst: vi.fn().mockResolvedValue(null),
-        }
+        },
+        $transaction: async (callback: any) => callback({
+            conversation: { update: mockUpdate, updateMany: mockConversationUpdateMany },
+            message: { create: mockMessageCreate, updateMany: mockMessageUpdateMany }
+        })
     }
 }));
 
@@ -121,9 +134,27 @@ describe('ChatService', () => {
         } as unknown as Server;
 
         chatService = new ChatService(mockIo);
+        mockAccountUserFindUnique.mockResolvedValue({ id: 'membership-1' });
+        mockWooCustomerFindFirst.mockResolvedValue({ id: 'woo-cust-123' });
+        mockMessageCreate.mockResolvedValue({ id: 'msg-1', content: 'Test' });
+        mockMessageUpdateMany.mockResolvedValue({ count: 1 });
+        mockConversationUpdateMany.mockResolvedValue({ count: 1 });
     });
 
     describe('listConversations', () => {
+        const conversation = (id: string, priority: string, updatedAt: string) => ({
+            id,
+            accountId,
+            priority,
+            updatedAt: new Date(updatedAt),
+            status: 'OPEN',
+            isRead: true,
+            messages: [],
+            wooCustomer: null,
+            assignee: null,
+            labels: []
+        });
+
         it('should return conversations for the account', async () => {
             const mockConversations = [
                 {
@@ -222,9 +253,74 @@ describe('ChatService', () => {
                 })
             );
         });
+
+        it('paginates persisted priority tiers in one global order without duplicates', async () => {
+            const rows = [
+                conversation('high-new', 'HIGH', '2026-01-05T00:00:00.000Z'),
+                conversation('high-old', 'HIGH', '2026-01-01T00:00:00.000Z'),
+                conversation('medium-new', 'MEDIUM', '2026-01-06T00:00:00.000Z'),
+                conversation('medium-old', 'MEDIUM', '2026-01-02T00:00:00.000Z'),
+                conversation('low-new', 'LOW', '2026-01-07T00:00:00.000Z')
+            ];
+            mockFindMany.mockImplementation(async ({ where, take }) => {
+                const priority = where.priority;
+                let matches = rows.filter(row => priority === 'HIGH' || priority === 'LOW'
+                    ? row.priority === priority
+                    : !['HIGH', 'LOW'].includes(row.priority));
+                const boundary = where.OR?.[0]?.updatedAt?.lt as Date | undefined;
+                const boundaryId = where.OR?.[1]?.id?.lt as string | undefined;
+                if (boundary) {
+                    matches = matches.filter(row => row.updatedAt < boundary
+                        || (row.updatedAt.getTime() === boundary.getTime() && row.id < boundaryId!));
+                }
+                return matches
+                    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || b.id.localeCompare(a.id))
+                    .slice(0, take);
+            });
+
+            const first = await chatService.listConversations(accountId, undefined, undefined, 3, undefined, { sort: 'priority' });
+            const cursor = ChatService.createConversationCursor(first[2], 'priority');
+            const second = await chatService.listConversations(accountId, undefined, undefined, 3, cursor, { sort: 'priority' });
+            const ids = [...first, ...second].map(row => row.id);
+
+            expect(ids).toEqual(['high-new', 'high-old', 'medium-new', 'medium-old', 'low-new']);
+            expect(new Set(ids).size).toBe(ids.length);
+        });
+
+        it('uses updatedAt and id as the updated-order keyset', async () => {
+            const rows = [
+                conversation('z', 'MEDIUM', '2026-01-05T00:00:00.000Z'),
+                conversation('y', 'HIGH', '2026-01-05T00:00:00.000Z'),
+                conversation('x', 'LOW', '2026-01-04T00:00:00.000Z')
+            ];
+            mockFindMany.mockImplementation(async ({ where, take }) => {
+                const boundary = where.OR?.[0]?.updatedAt?.lt as Date | undefined;
+                const boundaryId = where.OR?.[1]?.id?.lt as string | undefined;
+                return rows
+                    .filter(row => !boundary || row.updatedAt < boundary
+                        || (row.updatedAt.getTime() === boundary.getTime() && row.id < boundaryId!))
+                    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || b.id.localeCompare(a.id))
+                    .slice(0, take);
+            });
+
+            const first = await chatService.listConversations(accountId, undefined, undefined, 2, undefined, { sort: 'updated' });
+            const cursor = ChatService.createConversationCursor(first[1], 'updated');
+            const second = await chatService.listConversations(accountId, undefined, undefined, 2, cursor, { sort: 'updated' });
+
+            expect([...first, ...second].map(row => row.id)).toEqual(['z', 'y', 'x']);
+        });
     });
 
     describe('createConversation', () => {
+        it('rejects a customer from another account before creating', async () => {
+            mockWooCustomerFindFirst.mockResolvedValueOnce(null);
+
+            await expect(chatService.createConversation(accountId, 'foreign-customer')).rejects.toThrow(
+                'Customer not found in this account'
+            );
+            expect(mockCreate).not.toHaveBeenCalled();
+        });
+
         it('should return existing open conversation if found', async () => {
             const existingConversation = {
                 id: 'existing-conv-1',
@@ -293,6 +389,46 @@ describe('ChatService', () => {
             expect(result).not.toBeNull();
             expect(result!.id).toBe(conversationId);
         });
+
+        it('uses the oldest returned message as the cursor across pages without overlap', async () => {
+            const messages = [
+                { id: 'm5', senderType: 'CUSTOMER', createdAt: new Date('2026-01-05T00:00:00.000Z'), content: '5' },
+                { id: 'm4', senderType: 'CUSTOMER', createdAt: new Date('2026-01-04T00:00:00.000Z'), content: '4' },
+                { id: 'm3', senderType: 'CUSTOMER', createdAt: new Date('2026-01-04T00:00:00.000Z'), content: '3' },
+                { id: 'm2', senderType: 'CUSTOMER', createdAt: new Date('2026-01-02T00:00:00.000Z'), content: '2' },
+                { id: 'm1', senderType: 'CUSTOMER', createdAt: new Date('2026-01-01T00:00:00.000Z'), content: '1' }
+            ];
+            mockFindFirst.mockImplementation(async ({ include }) => {
+                const where = include.messages.where;
+                const boundary = where?.OR?.[0]?.createdAt?.lt as Date | undefined;
+                const boundaryId = where?.OR?.[1]?.id?.lt as string | undefined;
+                const page = messages
+                    .filter(message => !boundary || message.createdAt < boundary
+                        || (message.createdAt.getTime() === boundary.getTime() && message.id < boundaryId!))
+                    .slice(0, include.messages.take);
+                return { id: conversationId, accountId, messages: page, wooCustomer: null, assignee: null, mergedFrom: [] };
+            });
+
+            const first = await chatService.getConversation(accountId, conversationId, { messageLimit: 2 });
+            const second = await chatService.getConversation(accountId, conversationId, {
+                messageLimit: 2,
+                before: first!.nextMessageCursor!
+            });
+            const third = await chatService.getConversation(accountId, conversationId, {
+                messageLimit: 2,
+                before: second!.nextMessageCursor!
+            });
+            const ids = [...first!.messages, ...second!.messages, ...third!.messages].map(message => message.id);
+
+            expect(first!.messages.map(message => message.id)).toEqual(['m4', 'm5']);
+            expect(second!.messages.map(message => message.id)).toEqual(['m2', 'm3']);
+            expect(third!.messages.map(message => message.id)).toEqual(['m1']);
+            expect(first!.hasMoreMessages).toBe(true);
+            expect(second!.hasMoreMessages).toBe(true);
+            expect(third!.hasMoreMessages).toBe(false);
+            expect(ids).toHaveLength(messages.length);
+            expect(new Set(ids).size).toBe(ids.length);
+        });
     });
 
     describe('updateStatus', () => {
@@ -328,6 +464,15 @@ describe('ChatService', () => {
                     data: { assignedTo: userId }
                 })
             );
+        });
+
+        it('rejects an assignee who is not an account member', async () => {
+            mockAccountUserFindUnique.mockResolvedValueOnce(null);
+
+            await expect(chatService.assignConversation(accountId, conversationId, 'foreign-user')).rejects.toThrow(
+                'Assignee is not a member of this account'
+            );
+            expect(mockUpdate).not.toHaveBeenCalled();
         });
     });
 
@@ -368,7 +513,123 @@ describe('ChatService', () => {
         });
     });
 
+    describe('mergeConversations', () => {
+        it('rejects conversations that are already merged', async () => {
+            mockFindFirst
+                .mockResolvedValueOnce({ id: 'target', mergedIntoId: null, isRead: true })
+                .mockResolvedValueOnce({ id: 'source', mergedIntoId: 'other', isRead: false });
+
+            await expect(chatService.mergeConversations(accountId, 'target', 'source')).rejects.toThrow(
+                'Already merged conversations cannot be merged again'
+            );
+            expect(mockMessageUpdateMany).not.toHaveBeenCalled();
+        });
+
+        it('atomically redirects merge children and notifies the account room', async () => {
+            mockFindFirst
+                .mockResolvedValueOnce({ id: 'target', mergedIntoId: null, isRead: true })
+                .mockResolvedValueOnce({ id: 'source', mergedIntoId: null, isRead: false });
+            mockUpdate.mockResolvedValue({ id: 'updated', accountId });
+
+            await chatService.mergeConversations(accountId, 'target', 'source');
+
+            expect(mockConversationUpdateMany).toHaveBeenNthCalledWith(1, {
+                where: { id: 'source', accountId, mergedIntoId: null },
+                data: { status: 'CLOSED', mergedIntoId: 'target' }
+            });
+            expect(mockConversationUpdateMany).toHaveBeenCalledWith({
+                where: { accountId, mergedIntoId: 'source' },
+                data: { mergedIntoId: 'target' }
+            });
+            expect(mockConversationUpdateMany).toHaveBeenCalledWith({
+                where: { id: 'target', accountId, mergedIntoId: null },
+                data: { updatedAt: expect.any(Date), isRead: false }
+            });
+            expect(mockIo.to).toHaveBeenCalledWith(`account:${accountId}`);
+            expect(mockIo.emit).toHaveBeenCalledWith('conversation:merged', { targetId: 'target', sourceId: 'source' });
+        });
+
+        it('rolls back A <- B when A becomes merged into C during the transaction', async () => {
+            mockFindFirst
+                .mockResolvedValueOnce({ id: 'A', mergedIntoId: null, isRead: true })
+                .mockResolvedValueOnce({ id: 'B', mergedIntoId: null, isRead: true });
+            let targetMergedInto: string | null = null;
+            mockConversationUpdateMany.mockImplementation(async ({ where }) => {
+                if (where.mergedIntoId === 'B' && !where.id) {
+                    targetMergedInto = 'C';
+                    return { count: 0 };
+                }
+                if (where.id === 'A') return { count: targetMergedInto === null ? 1 : 0 };
+                return { count: 1 };
+            });
+
+            await expect(chatService.mergeConversations(accountId, 'A', 'B')).rejects.toThrow(
+                'Already merged conversations cannot be merged again'
+            );
+
+            expect(mockConversationUpdateMany).toHaveBeenNthCalledWith(3, {
+                where: { id: 'A', accountId, mergedIntoId: null },
+                data: { updatedAt: expect.any(Date) }
+            });
+            expect(mockMessageCreate).not.toHaveBeenCalled();
+            expect(mockIo.emit).not.toHaveBeenCalledWith('conversation:merged', expect.anything());
+        });
+
+        it('allows only one concurrent transaction to claim the same source', async () => {
+            mockFindFirst.mockImplementation(async ({ where }) => ({
+                id: where.id,
+                mergedIntoId: null,
+                isRead: true
+            }));
+            let sourceClaimed = false;
+            mockConversationUpdateMany.mockImplementation(async ({ where }) => {
+                if (where.id === 'source') {
+                    if (sourceClaimed) return { count: 0 };
+                    sourceClaimed = true;
+                }
+                return { count: 1 };
+            });
+
+            const results = await Promise.allSettled([
+                chatService.mergeConversations(accountId, 'target-a', 'source'),
+                chatService.mergeConversations(accountId, 'target-b', 'source')
+            ]);
+
+            expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+            expect(results.filter(result => result.status === 'rejected')).toHaveLength(1);
+            expect(results.find(result => result.status === 'rejected')).toMatchObject({
+                reason: expect.objectContaining({ message: 'Already merged conversations cannot be merged again' })
+            });
+            expect(mockMessageUpdateMany).toHaveBeenCalledTimes(1);
+            expect(mockMessageCreate).toHaveBeenCalledTimes(1);
+            expect(mockConversationUpdateMany).toHaveBeenCalledWith({
+                where: { id: 'source', accountId, mergedIntoId: null },
+                data: { status: 'CLOSED', mergedIntoId: expect.stringMatching(/^target-/) }
+            });
+        });
+    });
+
     describe('addMessage', () => {
+        it('does not reopen a closed conversation for an internal note', async () => {
+            mockFindFirst.mockResolvedValueOnce({
+                id: conversationId,
+                accountId,
+                status: 'CLOSED',
+                wooCustomer: null,
+                guestEmail: null,
+                priority: 'MEDIUM',
+                assignedTo: null,
+                channel: 'EMAIL'
+            });
+            mockUpdate.mockResolvedValueOnce({ id: conversationId, accountId, status: 'CLOSED' });
+
+            await chatService.addMessage(conversationId, 'Private note', 'AGENT', 'user-1', true, accountId);
+
+            expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.not.objectContaining({ status: 'OPEN' })
+            }));
+        });
+
         it('should not emit inbox updates for blocked customer messages', async () => {
             vi.mocked(BlockedContactService.isBlocked).mockResolvedValueOnce(true);
             mockFindFirst.mockResolvedValueOnce({
@@ -411,6 +672,16 @@ describe('ChatService', () => {
                     data: { wooCustomerId }
                 })
             );
+        });
+
+        it('rejects a customer owned by another account', async () => {
+            mockFindFirst.mockResolvedValueOnce({ id: conversationId });
+            mockWooCustomerFindFirst.mockResolvedValueOnce(null);
+
+            await expect(chatService.linkCustomer(accountId, conversationId, 'foreign-customer')).rejects.toThrow(
+                'Customer not found in this account'
+            );
+            expect(mockUpdate).not.toHaveBeenCalled();
         });
     });
 });

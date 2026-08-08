@@ -10,10 +10,11 @@ import { useSocket } from '../context/SocketContext';
 import { useDrafts } from './useDrafts';
 import { ConversationChannel } from '../components/chat/ChannelSelector';
 import { lintOutboundMessage, type OutboundSafetyIssue } from '../utils/outboundSafety';
+import type { SendMessageHandler } from '../types/inbox';
 
 interface UseMessageSendOptions {
     conversationId: string;
-    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string, clientRequestId?: string) => Promise<void>;
+    onSendMessage: SendMessageHandler;
     recipientEmail?: string;
     isLiveChat?: boolean;
     emailAccountId?: string;
@@ -36,6 +37,8 @@ interface UseMessageSendReturn {
     setInput: (value: string) => void;
     /** Whether sending is in progress */
     isSending: boolean;
+    /** Last visible send failure */
+    sendError: string | null;
     /** Currently pending send (for undo UI) */
     pendingSend: PendingSend | null;
     /** Whether a message is an internal note */
@@ -90,6 +93,7 @@ export function useMessageSend({
     const [input, setInput] = useState('');
     const [isInternal, setIsInternal] = useState(false);
     const [isSending, setIsSending] = useState(false);
+    const [sendError, setSendError] = useState<string | null>(null);
     const [signatureEnabled, setSignatureEnabled] = useState(true);
     const [quotedMessage, setQuotedMessage] = useState<{ id: string; content: string; senderType: string } | null>(null);
     const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
@@ -98,6 +102,7 @@ export function useMessageSend({
     const [requiresSafetyApproval, setRequiresSafetyApproval] = useState(false);
     const isDraftingRef = useRef(false);
     const draftStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const retryRequestRef = useRef<{ conversationId: string; content: string; clientRequestId: string } | null>(null);
 
     // Ref that always holds the latest pendingSend - avoids stale closure
     // when the conversation-switch effect fires.
@@ -106,6 +111,8 @@ export function useMessageSend({
 
     // Load draft when conversation changes
     useEffect(() => {
+        retryRequestRef.current = null;
+        setSendError(null);
         if (conversationId) {
             const savedDraft = getDraft(conversationId);
             setInput(savedDraft);
@@ -184,9 +191,7 @@ export function useMessageSend({
 
     // Auto-save draft on input change
     useEffect(() => {
-        if (conversationId && input) {
-            saveDraft(conversationId, input);
-        }
+        if (conversationId) saveDraft(conversationId, input);
     }, [input, conversationId, saveDraft]);
 
     /**
@@ -241,6 +246,7 @@ export function useMessageSend({
         // Strip HTML to check for actual content
         const plainText = input.replace(/<[^>]*>/g, '').trim();
         if (!plainText || isSending || pendingSend) return;
+        setSendError(null);
 
         if (!isInternal) {
             const issues = lintOutboundMessage(plainText);
@@ -256,7 +262,11 @@ export function useMessageSend({
         setRequiresSafetyApproval(false);
 
         const finalContent = prepareContent(input);
-        const clientRequestId = `client-${conversationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const retryRequest = retryRequestRef.current;
+        const clientRequestId = retryRequest?.conversationId === conversationId && retryRequest.content === finalContent
+            ? retryRequest.clientRequestId
+            : `client-${conversationId}-${crypto.randomUUID()}`;
+        retryRequestRef.current = { conversationId, content: finalContent, clientRequestId };
 
         // Store content and start undo timer with countdown
         const startSeconds = Math.ceil(UNDO_DELAY_MS / 1000);
@@ -265,7 +275,13 @@ export function useMessageSend({
             setIsSending(true);
             try {
                 await onSendMessage(finalContent, 'AGENT', isInternal, channel, emailAccountId, clientRequestId);
+                retryRequestRef.current = null;
                 clearDraft(conversationId);
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Message delivery failed';
+                Logger.error('Message send failed', { error: errorMessage, conversationId });
+                setSendError(errorMessage);
+                setInput(current => current || input);
             } finally {
                 setIsSending(false);
                 setPendingSend(null);
@@ -350,16 +366,16 @@ export function useMessageSend({
     }, [input, token, currentAccount, conversationId, prepareContent, isInternal, clearDraft]);
 
     useEffect(() => {
-        if (!requiresSafetyApproval && safetyIssues.length === 0) return;
         // Message edits should force a new linting pass before approval.
         setRequiresSafetyApproval(false);
         setSafetyIssues([]);
-    }, [input, isInternal, requiresSafetyApproval, safetyIssues.length]);
+    }, [input, isInternal]);
 
     return {
         input,
         setInput,
         isSending,
+        sendError,
         pendingSend,
         isInternal,
         setIsInternal,

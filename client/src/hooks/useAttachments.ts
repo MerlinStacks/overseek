@@ -10,10 +10,11 @@ import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import type { ConversationChannel } from '../components/chat/ChannelSelector';
+import type { MessageSendResponse, SendMessageHandler } from '../types/inbox';
 
 interface UseAttachmentsOptions {
     conversationId: string;
-    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string, clientRequestId?: string) => Promise<void>;
+    onSendMessage: SendMessageHandler;
 }
 
 /** 10 MB per file — matches inbox relay limit. */
@@ -46,13 +47,26 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
+    const activeUploadRef = useRef<XMLHttpRequest | null>(null);
+    const requestSequenceRef = useRef(0);
+    const identityRef = useRef({ conversationId, accountId: currentAccount?.id });
+    identityRef.current = { conversationId, accountId: currentAccount?.id };
 
     // Clear staged attachments when switching conversations
     useEffect(() => {
+        requestSequenceRef.current += 1;
+        activeUploadRef.current?.abort();
+        activeUploadRef.current = null;
         setStagedAttachments([]);
+        setIsUploading(false);
         setUploadProgress(0);
         setAttachmentError(null);
-    }, [conversationId]);
+        return () => {
+            requestSequenceRef.current += 1;
+            activeUploadRef.current?.abort();
+            activeUploadRef.current = null;
+        };
+    }, [conversationId, currentAccount?.id]);
 
     const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -106,6 +120,11 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
         if (stagedAttachments.length === 0) {
             return onSendMessage(content, type, isInternal, channel, emailAccId, clientRequestId);
         }
+        if (!token || !currentAccount) return;
+
+        const requestConversationId = conversationId;
+        const requestAccountId = currentAccount.id;
+        const requestSequence = ++requestSequenceRef.current;
 
         // Upload attachments with message content
         setIsUploading(true);
@@ -126,45 +145,62 @@ export function useAttachments({ conversationId, onSendMessage }: UseAttachments
             });
 
             const xhr = new XMLHttpRequest();
+            activeUploadRef.current = xhr;
 
             await new Promise<void>((resolve, reject) => {
                 xhr.upload.onprogress = (event) => {
-                    if (event.lengthComputable) {
+                    if (requestSequence === requestSequenceRef.current && event.lengthComputable) {
                         setUploadProgress(Math.round((event.loaded / event.total) * 100));
                     }
                 };
 
-                xhr.onload = () => {
+                xhr.onload = async () => {
+                    let data: MessageSendResponse = {};
+                    try {
+                        data = JSON.parse(xhr.responseText) as MessageSendResponse;
+                    } catch {
+                        // Some successful responses may not include JSON.
+                    }
+
+                    if (data.message) {
+                        try {
+                            await onSendMessage(content, type, isInternal, channel, emailAccId, clientRequestId, data.message);
+                        } catch (error) {
+                            reject(error);
+                            return;
+                        }
+                    }
                     if (xhr.status >= 200 && xhr.status < 300) {
                         resolve();
                     } else {
-                        try {
-                            const data = JSON.parse(xhr.responseText);
-                            reject(new Error(data.error || 'Failed to send message with attachments'));
-                        } catch {
-                            reject(new Error('Failed to send'));
-                        }
+                        reject(new Error(data.error || data.message?.deliveryError || 'Failed to send message with attachments'));
                     }
                 };
 
                 xhr.onerror = () => reject(new Error('Network error'));
+                xhr.onabort = () => reject(new DOMException('Upload aborted', 'AbortError'));
 
-                xhr.open('POST', `/api/chat/${conversationId}/message-with-attachments`);
+                xhr.open('POST', `/api/chat/${requestConversationId}/message-with-attachments`);
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-                xhr.setRequestHeader('x-account-id', currentAccount?.id || '');
+                xhr.setRequestHeader('x-account-id', requestAccountId);
                 xhr.send(formData);
             });
 
+            if (identityRef.current.conversationId !== requestConversationId || identityRef.current.accountId !== requestAccountId) return;
             // Clear staged attachments on success
             clearAttachments();
             setAttachmentError(null);
         } catch (error) {
+            if (requestSequence !== requestSequenceRef.current || (error instanceof DOMException && error.name === 'AbortError')) return;
             Logger.error('Failed to send message with attachments', { error });
             const message = error instanceof Error ? error.message : 'Failed to send message with attachments';
             setAttachmentError(message);
             throw error;
         } finally {
-            setIsUploading(false);
+            if (requestSequence === requestSequenceRef.current) {
+                activeUploadRef.current = null;
+                setIsUploading(false);
+            }
         }
     }, [stagedAttachments, onSendMessage, conversationId, token, currentAccount?.id, clearAttachments]);
 

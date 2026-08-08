@@ -7,6 +7,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { LabelService } from '../services/LabelService';
 import { requireAuthFastify } from '../middleware/auth';
+import { requireInboxMutationAccess } from './chat/authorization';
 import { z } from 'zod';
 
 const labelService = new LabelService();
@@ -41,6 +42,7 @@ const labelsRoutes: FastifyPluginAsync = async (fastify) => {
      * POST /labels - Create a new label
      */
     fastify.post('/', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) {
             return reply.status(400).send({ error: 'Account ID required' });
@@ -85,6 +87,7 @@ const labelsRoutes: FastifyPluginAsync = async (fastify) => {
      * PUT /labels/:id - Update a label
      */
     fastify.put<{ Params: { id: string } }>('/:id', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) {
             return reply.status(400).send({ error: 'Account ID required' });
@@ -110,6 +113,7 @@ const labelsRoutes: FastifyPluginAsync = async (fastify) => {
      * DELETE /labels/:id - Delete a label
      */
     fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
+        if (!(await requireInboxMutationAccess(request, reply))) return;
         const accountId = request.accountId;
         if (!accountId) {
             return reply.status(400).send({ error: 'Account ID required' });

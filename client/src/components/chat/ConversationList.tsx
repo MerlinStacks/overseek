@@ -19,6 +19,20 @@ interface Label {
     _count?: { conversations: number };
 }
 
+type ConversationLabel = NonNullable<Conversation['labels']>[number];
+type SearchConversation = Omit<Conversation, 'labels'> & {
+    labels?: Array<ConversationLabel | { label?: ConversationLabel }>;
+};
+
+export function normalizeSearchConversation(conversation: SearchConversation): Conversation {
+    return {
+        ...conversation,
+        labels: conversation.labels
+            ?.map(item => 'id' in item ? item : item.label)
+            .filter((label): label is ConversationLabel => Boolean(label?.id)),
+    };
+}
+
 interface ConversationListProps {
     conversations: Conversation[];
     selectedId: string | null;
@@ -36,6 +50,7 @@ interface ConversationListProps {
     onFilterChange?: (filter: FilterType) => void;
     showResolved?: boolean;
     onShowResolvedChange?: (show: boolean) => void;
+    refreshRevision?: number;
 }
 
 type FilterType = 'all' | 'mine' | 'unassigned';
@@ -55,7 +70,8 @@ export function ConversationList({
     filter = 'all',
     onFilterChange,
     showResolved = false,
-    onShowResolvedChange
+    onShowResolvedChange,
+    refreshRevision = 0
 }: ConversationListProps) {
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const { hasDraft } = useDrafts();
@@ -65,6 +81,7 @@ export function ConversationList({
     // Bulk Selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const previousConversationIdsRef = useRef(new Set(conversations.map(conversation => conversation.id)));
 
     // Label filter
     const [allLabels, setAllLabels] = useState<Label[]>([]);
@@ -92,22 +109,41 @@ export function ConversationList({
     // Fetch available labels
     useEffect(() => {
         if (!token || !currentAccount) return;
+        const controller = new AbortController();
+        setAllLabels([]);
+        setSelectedLabelId(null);
         fetch('/api/labels', {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'x-account-id': currentAccount.id
-            }
+            },
+            signal: controller.signal,
         })
             .then(res => res.json())
             .then((data: unknown) => setAllLabels((data as { labels?: Label[] }).labels || []))
-            .catch(e => Logger.error('Failed to fetch labels', { error: e }));
+            .catch(e => {
+                if (!controller.signal.aborted) Logger.error('Failed to fetch labels', { error: e });
+            });
+        return () => controller.abort();
     }, [token, currentAccount]);
 
-    // Clear selection when conversations change
+    // Remove only conversations known to have disappeared, not every selection on identity refresh.
+    useEffect(() => {
+        const currentIds = new Set(conversations.map(conversation => conversation.id));
+        const removedIds = new Set([...previousConversationIdsRef.current].filter(id => !currentIds.has(id)));
+        previousConversationIdsRef.current = currentIds;
+        if (removedIds.size === 0) return;
+        setSelectedIds(previous => {
+            const next = new Set([...previous].filter(id => !removedIds.has(id)));
+            setIsSelectionMode(next.size > 0);
+            return next.size === previous.size ? previous : next;
+        });
+    }, [conversations]);
+
     useEffect(() => {
         setSelectedIds(new Set());
         setIsSelectionMode(false);
-    }, [conversations]);
+    }, [currentAccount?.id]);
 
     const toggleSelection = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -124,9 +160,14 @@ export function ConversationList({
     // Debounced search
     useEffect(() => {
         if (!isSearchMode || !token || !currentAccount) {
+            activeSearchController.current?.abort();
+            searchRequestIdRef.current += 1;
             setSearchResults([]);
+            setIsSearching(false);
             return;
         }
+
+        setSearchResults([]);
 
         const timeout = setTimeout(async () => {
             setIsSearching(true);
@@ -137,6 +178,9 @@ export function ConversationList({
             try {
                 const params = new URLSearchParams({ q: searchQuery });
                 params.set('status', showResolved ? 'ALL' : 'OPEN');
+                if (filter === 'mine' && currentUserId) params.set('assignedTo', currentUserId);
+                if (filter === 'unassigned') params.set('assignedTo', '__unassigned__');
+                if (selectedLabelId) params.set('labelId', selectedLabelId);
                 const res = await fetch(`/api/chat/conversations/search?${params.toString()}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -148,7 +192,13 @@ export function ConversationList({
                     const data: unknown = await res.json();
                     // Only apply newest in-flight result to avoid stale overwrite.
                     if (requestId === searchRequestIdRef.current) {
-                        setSearchResults((data as { results?: Conversation[] }).results || []);
+                        const results = ((data as { results?: SearchConversation[] }).results || []).map(normalizeSearchConversation);
+                        setSearchResults(results.filter(conversation => {
+                            if (filter === 'mine' && conversation.assignedTo !== currentUserId) return false;
+                            if (filter === 'unassigned' && conversation.assignedTo) return false;
+                            if (selectedLabelId && !conversation.labels?.some(label => label.id === selectedLabelId)) return false;
+                            return true;
+                        }));
                     }
                 }
             } catch (e: unknown) {
@@ -165,7 +215,7 @@ export function ConversationList({
             clearTimeout(timeout);
             activeSearchController.current?.abort();
         };
-    }, [searchQuery, token, currentAccount, isSearchMode, showResolved]);
+    }, [searchQuery, token, currentAccount, isSearchMode, showResolved, filter, currentUserId, selectedLabelId, refreshRevision]);
 
     // Memoized: Use search results when searching, otherwise normal filtered list
     const filteredConversations = useMemo(() => {

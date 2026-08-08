@@ -41,6 +41,8 @@ interface MessageBubbleProps {
         senderId?: string;
         readAt?: string | null;
         status?: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'PENDING';
+        deliveryStatus?: 'PENDING' | 'SENT' | 'FAILED';
+        deliveryError?: string | null;
         reactions?: Record<string, Array<{ userId: string; userName: string | null }>>;
         pendingUndo?: boolean;
         remainingSeconds?: number;
@@ -75,6 +77,7 @@ export const MessageBubble = memo(function MessageBubble({
     const isMe = message.senderType === 'AGENT';
     const isSystem = message.senderType === 'SYSTEM';
     const isPendingUndo = Boolean(message.pendingUndo);
+    const deliveryStatus = message.deliveryStatus || message.status;
 
     const { subject, body } = useMemo(() => parseEmailContent(message.content), [message.content]);
     const { mainContent, quotedContent, quotedPreview, quotedLineCount, quotedAttachmentCount } = useMemo(() => parseQuotedContent(body), [body]);
@@ -403,8 +406,13 @@ export const MessageBubble = memo(function MessageBubble({
                         {/* Status indicators for sent messages */}
                         {isMe && !message.isInternal && !isPendingUndo && (
                             <span className="flex items-center gap-0.5">
-                                {message.status === 'FAILED' ? (
-                                    <AlertCircle size={12} className="text-red-500" />
+                                {deliveryStatus === 'FAILED' ? (
+                                    <span className="flex items-center gap-1 text-red-600" title={message.deliveryError || 'Delivery failed'}>
+                                        <AlertCircle size={12} />
+                                        Delivery failed
+                                    </span>
+                                ) : deliveryStatus === 'PENDING' ? (
+                                    <span className="text-amber-600">Sending…</span>
                                 ) : message.firstOpenedAt ? (
                                     <Eye size={12} className="text-purple-500" />
                                 ) : (

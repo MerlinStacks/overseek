@@ -3,7 +3,7 @@
  * Delegates compose, typing, and send logic to extracted hooks and components.
  * Memoized to prevent re-renders from parent state changes (e.g. conversation list updates).
  */
-import { useState, useEffect, useRef, useMemo, memo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, memo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 
@@ -14,6 +14,7 @@ import { useConversationPresence } from '../../hooks/useConversationPresence';
 import { useAttachments } from '../../hooks/useAttachments';
 import { useAIDraft } from '../../hooks/useAIDraft';
 import type { CannedResponse, CustomerContext } from '../../hooks/useCannedResponses';
+import type { SendMessageHandler } from '../../types/inbox';
 
 // Sub-components
 import { MessageBubble } from './MessageBubble';
@@ -33,6 +34,8 @@ interface Message {
     senderId?: string;
     readAt?: string | null;
     status?: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'PENDING';
+    deliveryStatus?: 'PENDING' | 'SENT' | 'FAILED';
+    deliveryError?: string | null;
     reactions?: Record<string, Array<{ userId: string; userName: string | null }>>;
     pendingUndo?: boolean;
     remainingSeconds?: number;
@@ -58,7 +61,7 @@ interface CustomerData {
 interface ChatWindowProps {
     conversationId: string;
     messages: Message[];
-    onSendMessage: (content: string, type: 'AGENT' | 'SYSTEM', isInternal: boolean, channel?: ConversationChannel, emailAccountId?: string, clientRequestId?: string) => Promise<void>;
+    onSendMessage: SendMessageHandler;
     recipientEmail?: string;
     recipientName?: string;
     status?: string;
@@ -84,6 +87,9 @@ interface ChatWindowProps {
     emailAccounts: Array<{ id: string; name: string; email: string; isDefault?: boolean }>;
     selectedEmailAccountId: string;
     onEmailAccountChange: (id: string) => void;
+    hasMoreMessages: boolean;
+    isLoadingOlderMessages: boolean;
+    onLoadOlderMessages: () => Promise<void>;
 }
 
 export const ChatWindow = memo(function ChatWindow({
@@ -115,9 +121,15 @@ export const ChatWindow = memo(function ChatWindow({
     // Email accounts (lifted from hook)
     emailAccounts,
     selectedEmailAccountId,
-    onEmailAccountChange
+    onEmailAccountChange,
+    hasMoreMessages,
+    isLoadingOlderMessages,
+    onLoadOlderMessages,
 }: ChatWindowProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
+    const isNearBottomRef = useRef(true);
+    const olderMessagesScrollRef = useRef<{ height: number; top: number } | null>(null);
     const { user } = useAuth();
     const { socket } = useSocket();
 
@@ -166,6 +178,14 @@ export const ChatWindow = memo(function ChatWindow({
         setShowSearch(false);
         setSearchQuery('');
         setActiveDraftingAgents([]);
+        setShowSnoozeModal(false);
+        setShowAssignModal(false);
+        setShowMergeModal(false);
+        setShowScheduleModal(false);
+        setLightboxImage(null);
+        setShowCannedManager(false);
+        isNearBottomRef.current = true;
+        olderMessagesScrollRef.current = null;
     }, [conversationId]);
 
     // Track other agents currently drafting in this thread (collision safety).
@@ -205,8 +225,34 @@ export const ChatWindow = memo(function ChatWindow({
     useEffect(() => {
         const isSwitching = prevConversationIdRef.current !== conversationId;
         prevConversationIdRef.current = conversationId;
-        bottomRef.current?.scrollIntoView({ behavior: isSwitching ? 'instant' : 'smooth' });
+        if (isSwitching || isNearBottomRef.current) {
+            bottomRef.current?.scrollIntoView({ behavior: isSwitching ? 'instant' : 'smooth' });
+        }
     }, [messages, conversationId]);
+
+    useLayoutEffect(() => {
+        const snapshot = olderMessagesScrollRef.current;
+        const container = messagesContainerRef.current;
+        if (!snapshot || !container) return;
+        container.scrollTop = snapshot.top + container.scrollHeight - snapshot.height;
+        olderMessagesScrollRef.current = null;
+    }, [messages]);
+
+    const handleLoadOlderMessages = () => {
+        const container = messagesContainerRef.current;
+        const snapshot = container
+            ? { height: container.scrollHeight, top: container.scrollTop }
+            : null;
+        if (container) {
+            olderMessagesScrollRef.current = snapshot;
+            isNearBottomRef.current = false;
+        }
+        void onLoadOlderMessages().finally(() => {
+            window.setTimeout(() => {
+                if (olderMessagesScrollRef.current === snapshot) olderMessagesScrollRef.current = null;
+            }, 0);
+        });
+    };
 
     // Detect '/' trigger for canned responses
     useEffect(() => {
@@ -286,7 +332,27 @@ export const ChatWindow = memo(function ChatWindow({
             )}
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-100">
+            <div
+                ref={messagesContainerRef}
+                onScroll={() => {
+                    const container = messagesContainerRef.current;
+                    if (!container) return;
+                    isNearBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+                }}
+                className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-100"
+            >
+                {hasMoreMessages && !searchQuery.trim() && (
+                    <div className="flex justify-center pb-2">
+                        <button
+                            type="button"
+                            onClick={handleLoadOlderMessages}
+                            disabled={isLoadingOlderMessages}
+                            className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+                        >
+                            {isLoadingOlderMessages ? 'Loading older messages...' : 'Load older messages'}
+                        </button>
+                    </div>
+                )}
                 {filteredMessages.map((msg) => (
                     <MessageBubble
                         key={msg.id}
@@ -306,6 +372,11 @@ export const ChatWindow = memo(function ChatWindow({
             </div>
 
             {/* Reply Composer */}
+            {messageSend.sendError && (
+                <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {messageSend.sendError}. Your message has been restored so you can retry.
+                </div>
+            )}
             <ChatComposer
                 conversationId={conversationId}
                 recipientEmail={recipientEmail}
