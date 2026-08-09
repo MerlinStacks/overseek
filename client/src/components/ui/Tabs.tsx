@@ -5,6 +5,7 @@ interface Tab {
     label: string;
     icon?: React.ReactNode;
     content: React.ReactNode;
+    keepMounted?: boolean;
 }
 
 interface TabsProps {
@@ -31,6 +32,7 @@ export function Tabs({
     const isValidTab = tabs.some(tab => tab.id === rawActiveTab);
     const fallbackTab = defaultTab || tabs[0]?.id || '';
     const activeTab = isValidTab ? rawActiveTab : fallbackTab;
+    const [visitedTabs, setVisitedTabs] = useState(() => new Set([activeTab]));
 
     useEffect(() => {
         if (fallbackTab && !isValidTab && controlledActiveTab === undefined) {
@@ -46,6 +48,13 @@ export function Tabs({
     }
 
     const handleTabChange = (tabId: string) => {
+        setVisitedTabs((current) => {
+            if (current.has(activeTab) && current.has(tabId)) return current;
+            const next = new Set(current);
+            next.add(activeTab);
+            next.add(tabId);
+            return next;
+        });
         if (controlledActiveTab === undefined) {
             setUncontrolledActiveTab(tabId);
         }
@@ -81,7 +90,7 @@ export function Tabs({
                         key={tab.id}
                         className={`transition-all duration-300 ease-out transform ${activeTab === tab.id ? 'opacity-100 translate-y-0 relative z-10' : 'opacity-0 translate-y-2 absolute inset-0 -z-10 pointer-events-none'}`}
                     >
-                        {(mountInactiveTabs || activeTab === tab.id) ? tab.content : null}
+                        {(mountInactiveTabs || activeTab === tab.id || (tab.keepMounted && visitedTabs.has(tab.id))) ? tab.content : null}
                     </div>
                 ))}
             </div>

@@ -27,6 +27,7 @@ export interface WholesalePriceTier {
     minimumQuantity: number;
     unitPrice: string | null;
     isPoa: boolean;
+    leadTimeDays?: number | null;
     rangeLabel?: string;
 }
 
@@ -54,6 +55,7 @@ export interface WholesaleProductSummary {
     wooId: number;
     name: string;
     sku: string | null;
+    baseTurnaroundDays?: number | null;
     imageUrl: string | null;
     mainImage?: string | null;
     categoryLabel?: string | null;
@@ -193,7 +195,8 @@ export interface WholesaleShareCustomerSnapshot {
 }
 
 export interface WholesaleProductHistorySnapshot {
-    priceTiers?: Array<{ minimumQuantity: number; unitPrice: string | null; isPoa: boolean }>;
+    priceTiers?: Array<{ minimumQuantity: number; unitPrice: string | null; isPoa: boolean; leadTimeDays?: number | null }>;
+    baseTurnaroundDays?: number | null;
     priceTaxBasis?: WholesaleTaxBasis;
     personalisationTypes?: WholesaleProcess[];
 }

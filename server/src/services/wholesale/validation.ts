@@ -11,6 +11,7 @@ const tierBaseSchema = z.object({
         z.string().regex(/^\d+(?:\.\d{1,4})?$/).refine(value => Number.isFinite(Number(value)) && Number(value) > 0),
     ]).nullable().optional(),
     isPoa: z.boolean().default(false),
+    leadTimeDays: z.number().int().min(0).max(3650).nullable().optional(),
 }).strict();
 
 export const priceTiersSchema = z.array(tierBaseSchema).max(5).superRefine((tiers, ctx) => {
@@ -67,6 +68,10 @@ export const productProfileSchema = z.object({
     imageUrl: z.url().max(2048).nullable().optional(),
     priceTaxBasis: taxBasisSchema,
     priceTiers: priceTiersSchema,
+}).strict();
+
+export const productSettingsSchema = productProfileSchema.extend({
+    baseTurnaroundDays: z.number().int().min(0).max(3650).nullable().optional(),
 }).strict();
 
 export type PriceTierInput = z.infer<typeof priceTiersSchema>[number];

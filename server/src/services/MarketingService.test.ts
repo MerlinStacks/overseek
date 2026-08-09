@@ -34,6 +34,15 @@ const mocks = vi.hoisted(() => ({
             update: vi.fn(),
             create: vi.fn(),
             deleteMany: vi.fn(),
+        },
+        automationEnrollment: {
+            groupBy: vi.fn(),
+        },
+        automationRunEvent: {
+            findMany: vi.fn(),
+        },
+        automationGoalEvent: {
+            groupBy: vi.fn(),
         }
     },
     emailService: {
@@ -176,6 +185,59 @@ describe('MarketingService Optimization', () => {
 
         expect(mocks.segmentService.getSegmentCount).toHaveBeenCalledWith(accountId, segmentId);
         expect(mocks.segmentService.iterateCustomersInSegment).toHaveBeenCalledWith(accountId, segmentId, 1000);
+    });
+
+    it('counts completed flows only when a contact action completed', async () => {
+        mocks.prisma.marketingAutomation.findMany.mockResolvedValue([
+            { id: 'automation-1', accountId: 'acc-1', name: 'Care Guide' }
+        ]);
+        mocks.prisma.automationEnrollment.groupBy
+            .mockResolvedValueOnce([{ automationId: 'automation-1', status: 'COMPLETED', _count: 3 }])
+            .mockResolvedValueOnce([]);
+        mocks.prisma.automationRunEvent.findMany
+            .mockResolvedValueOnce([
+                {
+                    automationId: 'automation-1',
+                    enrollmentId: 'condition-only',
+                    outcome: 'true',
+                    metadata: { nodeType: 'CONDITION' }
+                },
+                {
+                    automationId: 'automation-1',
+                    enrollmentId: 'action-completed',
+                    outcome: 'EMAIL_SENT',
+                    metadata: { nodeType: 'ACTION' }
+                },
+                {
+                    automationId: 'automation-1',
+                    enrollmentId: 'action-completed',
+                    outcome: 'NEXT',
+                    metadata: { nodeType: 'ACTION' }
+                },
+                {
+                    automationId: 'automation-1',
+                    enrollmentId: 'action-skipped',
+                    outcome: 'EMAIL_SKIPPED',
+                    metadata: { nodeType: 'ACTION' }
+                }
+            ])
+            .mockResolvedValueOnce([]);
+        mocks.prisma.automationGoalEvent.groupBy.mockResolvedValue([]);
+
+        const result = await marketingService.listAutomations('acc-1');
+
+        expect(result[0].metrics.completedInFlow).toBe(1);
+        expect(mocks.prisma.automationRunEvent.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            where: expect.objectContaining({
+                eventType: 'NODE_EXECUTED',
+                enrollment: { status: 'COMPLETED' },
+                NOT: [
+                    { outcome: { contains: 'SKIPPED', mode: 'insensitive' } },
+                    { outcome: { contains: 'FAILED', mode: 'insensitive' } },
+                    { outcome: 'EMAIL_NOT_CONFIGURED' }
+                ]
+            })
+        }));
     });
 
     it('loads dynamic products once for the whole campaign', async () => {

@@ -137,7 +137,7 @@ export function SettingsPage() {
         const contentByTab: Record<TabId, React.ReactNode> = {
             general: <GeneralSettings />,
             appearance: (
-                <SettingsCard title="Whitelabeling & Appearance" description="Customize the look and feel of your dashboard.">
+                <SettingsCard title="Branding & Appearance" description="Manage shared branding for your dashboard, emails, and wholesale catalogs.">
                     <AppearanceSettings />
                 </SettingsCard>
             ),

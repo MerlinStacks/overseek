@@ -1,6 +1,6 @@
 import z from 'zod';
 import { prisma } from '../../utils/prisma';
-import { deriveWooCategory, getProductReadiness, inferTierRanges, normalizeNotes, normalizePrice, productProfileSchema, stableHash } from './validation';
+import { deriveWooCategory, getProductReadiness, inferTierRanges, normalizeNotes, normalizePrice, productSettingsSchema, stableHash } from './validation';
 import { markApprovedGenerationsStale } from './staleness';
 import { reconcileEligibility } from './eligibility';
 
@@ -30,18 +30,20 @@ const productInclude = {
 };
 
 export class WholesaleProductService {
-    static auditSnapshot(profile: any) {
+    static auditSnapshot(profile: any, baseTurnaroundDays?: number | null) {
         if (!profile) return null;
         return {
             priceTiers: (profile.priceTiers || []).map((tier: any) => ({
                 minimumQuantity: tier.minimumQuantity,
                 unitPrice: tier.unitPrice == null ? null : String(tier.unitPrice),
                 isPoa: !!tier.isPoa,
+                leadTimeDays: tier.leadTimeDays ?? null,
                 sortOrder: tier.sortOrder,
             })),
             priceTaxBasis: profile.priceTaxBasis,
             personalisationTypes: [...(profile.personalisationTypes || [])].map(String).sort(),
             notesHash: stableHash(normalizeNotes(profile.notesDocument)),
+            baseTurnaroundDays: baseTurnaroundDays ?? null,
         };
     }
 
@@ -82,6 +84,7 @@ export class WholesaleProductService {
             rrp: String(product.rawData?.regular_price || product.price || '') || null,
             readiness: getProductReadiness(product),
             profile: product.wholesaleProfile ? serializeProfile(product.wholesaleProfile) : null,
+            baseTurnaroundDays: product.baseTurnaroundDays ?? null,
         })).filter((product: any) => !options.eligibleOnly || (product.readiness.eligible && !suspendedIds.has(product.id)));
         const total = summarized.length;
         const start = (options.page - 1) * options.limit;
@@ -92,17 +95,21 @@ export class WholesaleProductService {
         const product = await (prisma as any).wooProduct.findFirst({ where: { id: productId, accountId }, include: productInclude });
         if (!product) throw new WholesaleNotFoundError('Product not found');
         return {
-            product: { id: product.id, wooId: product.wooId, name: product.name, sku: product.sku, mainImage: product.mainImage },
+            product: { id: product.id, wooId: product.wooId, name: product.name, sku: product.sku, mainImage: product.mainImage, baseTurnaroundDays: product.baseTurnaroundDays ?? null },
             profile: product.wholesaleProfile ? serializeProfile(product.wholesaleProfile) : null,
             readiness: getProductReadiness(product),
         };
     }
 
-    static async save(accountId: string, productId: string, input: z.infer<typeof productProfileSchema>) {
+    static async save(accountId: string, productId: string, input: z.infer<typeof productSettingsSchema>) {
         const product = await (prisma as any).wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true } });
         if (!product) throw new WholesaleNotFoundError('Product not found');
         const existing = await (prisma as any).wholesaleProductProfile.findFirst({ where: { productId, accountId }, select: { id: true, priceSetVersion: true } });
         const profile = await (prisma as any).$transaction(async (tx: any) => {
+            await tx.wooProduct.update({
+                where: { id: productId },
+                data: { baseTurnaroundDays: input.baseTurnaroundDays ?? null },
+            });
             const saved = existing
                 ? await tx.wholesaleProductProfile.update({
                     where: { id: existing.id },
@@ -132,6 +139,7 @@ export class WholesaleProductService {
                     minimumQuantity: tier.minimumQuantity,
                     unitPrice: tier.isPoa ? null : normalizePrice(tier.unitPrice!),
                     isPoa: tier.isPoa,
+                    leadTimeDays: tier.leadTimeDays ?? null,
                     sortOrder,
                 })) });
                 const eligibleProduct = await tx.wooProduct.findFirst({

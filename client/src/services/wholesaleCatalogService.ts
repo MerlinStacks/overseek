@@ -61,7 +61,8 @@ async function getSharePdf(api: WholesaleApiClient, shareId: string) {
 export function createWholesaleCatalogService(api: WholesaleApiClient) {
     return {
         getProduct: (productId: string) => api.get<{ product: WholesaleProductSummary; profile: WholesaleProductProfile | null; readiness: WholesaleProductSummary['readiness'] }>(`${ROOT}/products/${productId}`),
-        saveProduct: (productId: string, profile: WholesaleProductProfile) => api.put<{ profile: WholesaleProductProfile }>(`${ROOT}/products/${productId}`, {
+        saveProduct: (productId: string, profile: WholesaleProductProfile, baseTurnaroundDays: number | null) => api.put<{ profile: WholesaleProductProfile }>(`${ROOT}/products/${productId}`, {
+            baseTurnaroundDays,
             notesDocument: profile.notesDocument,
             personalisationTypes: profile.personalisationTypes,
             imageUrl: profile.imageUrl || null,
@@ -70,6 +71,7 @@ export function createWholesaleCatalogService(api: WholesaleApiClient) {
                 minimumQuantity: tier.minimumQuantity,
                 unitPrice: tier.isPoa ? null : tier.unitPrice,
                 isPoa: tier.isPoa,
+                leadTimeDays: tier.leadTimeDays ?? null,
             })),
         }),
         getProductHistory: (productId: string, page = 1, limit = 10) => api.get<WholesaleProductHistoryPage>(`${ROOT}/products/${productId}/history?page=${page}&limit=${limit}`),

@@ -3,6 +3,7 @@ import http from 'http';
 import https from 'https';
 import net from 'net';
 import { prisma } from '../../utils/prisma';
+import { createPinnedLookup } from './pinnedLookup';
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 8000;
@@ -44,7 +45,7 @@ async function fetchHomepage(rawUrl: string, deadline: number, redirects = 0): P
         const transport = resolved.url.protocol === 'https:' ? https : http;
         const request = transport.get(resolved.url, {
             headers: { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'Overseek-Branding-Review/1.0' },
-            lookup: (_hostname, _options, callback: any) => callback(null, resolved.address, resolved.family),
+            lookup: createPinnedLookup(resolved.address, resolved.family),
             timeout: Math.min(TIMEOUT_MS, Math.max(1, deadline - Date.now())),
         }, response => {
             const status = response.statusCode || 0;

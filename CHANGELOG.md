@@ -50,6 +50,7 @@ All notable changes to this project will be documented in this file.
 - Extra brace syntax error in statusCenter.ts
 - Security, reliability, and correctness fixes across 50+ files
 - Removed unnecessary wholesale settings coupling from the general WooCommerce service to preserve content-route test isolation
+- Fixed wholesale branding and remote-image requests failing under Node's multi-address DNS lookup mode with `Invalid IP address: undefined`
 
 ### Changed
 - Merged sturdy-v2 fork — consolidated codebases with lint fixes

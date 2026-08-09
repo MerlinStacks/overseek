@@ -245,6 +245,39 @@ describe('CustomersService', () => {
                     createdAt: { gte: enteredAt }
                 })
             }));
+            expect(mockAutomationEnrollmentFindMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: expect.objectContaining({
+                    runEvents: {
+                        some: {
+                            eventType: 'NODE_EXECUTED',
+                            metadata: { path: ['nodeType'], equals: 'action' },
+                            NOT: [
+                                { outcome: { contains: 'SKIPPED', mode: 'insensitive' } },
+                                { outcome: { contains: 'FAILED', mode: 'insensitive' } },
+                                { outcome: 'EMAIL_NOT_CONFIGURED' }
+                            ]
+                        }
+                    }
+                })
+            }));
+        });
+
+        it('does not include enrollments without a completed action', async () => {
+            mockFindFirst.mockResolvedValueOnce({
+                id: customerId,
+                accountId,
+                email: 'skipped@example.com',
+                wooId: 456,
+                totalSpent: 0,
+                ordersCount: 0,
+                rawData: {}
+            });
+            mockAutomationEnrollmentFindMany.mockResolvedValueOnce([]);
+
+            const result = await CustomersService.getCustomerDetails(accountId, customerId);
+
+            expect(result?.automations).toEqual([]);
+            expect(mockEmailLogFindMany).not.toHaveBeenCalled();
         });
     });
 

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Check, Loader2, RotateCcw, Save, Sparkles } from 'lucide-react';
+import { forwardRef, useImperativeHandle, useState } from 'react';
+import { Check, Loader2, RotateCcw, Sparkles } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -108,9 +108,17 @@ function GoogleProductCategoryInput({
 
 interface FeedWritesPanelProps {
     productWooId: number;
+    onDirtyChange?: (isDirty: boolean) => void;
 }
 
-export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
+export interface FeedWritesPanelRef {
+    save: () => Promise<boolean>;
+}
+
+export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelProps>(function FeedWritesPanel({
+    productWooId,
+    onDirtyChange,
+}, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const toast = useToast();
@@ -156,7 +164,7 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
     const googleCategories = googleCategoriesData?.options || [];
     const googleCategoryIds = new Set(googleCategories.map((option) => option.id));
 
-    const { mutateAsync: saveWrites, isPending: isSaving } = useApiMutation<
+    const { mutateAsync: saveWrites } = useApiMutation<
         { success: boolean },
         { fields: Record<string, string | null> }
     >({
@@ -192,6 +200,7 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
         const draftKey = `${row.rowId}:${field}`;
         setDrafts((current) => ({ ...current, [draftKey]: value }));
         setDirtyKeys((current) => new Set(current).add(draftKey));
+        onDirtyChange?.(true);
     };
 
     const getGoogleCategoryId = (value: string) => {
@@ -226,7 +235,8 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
     };
 
     const handleSave = async () => {
-        if (!data || dirtyKeys.size === 0) return;
+        if (dirtyKeys.size === 0) return true;
+        if (!data) return false;
 
         let invalidLengthField: string | undefined;
         for (const row of data.rows) {
@@ -240,7 +250,7 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
         if (invalidLengthField) {
             const characterLimit = getFeedWriteCharacterLimit(invalidLengthField)!;
             toast.error(`${formatFeedFieldLabel(invalidLengthField)} must be ${characterLimit.toLocaleString()} characters or fewer.`);
-            return;
+            return false;
         }
 
         const fields: Record<string, string | null> = {};
@@ -266,19 +276,24 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
         }));
         if (hasInvalidGoogleCategory) {
             toast.error('Please choose an official Google product category from the dropdown.');
-            return;
+            return false;
         }
 
         try {
             await saveWrites({ fields });
             setDrafts({});
             setDirtyKeys(new Set());
+            onDirtyChange?.(false);
             await refetch();
             toast.success(`${CHANNELS.find((channel) => channel.id === activeChannel)?.label} feed writes saved.`);
+            return true;
         } catch (saveError: any) {
             toast.error(saveError?.message || 'Failed to save feed writes');
+            return false;
         }
     };
+
+    useImperativeHandle(ref, () => ({ save: handleSave }));
 
     const rows = data?.rows || [];
 
@@ -287,28 +302,20 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
         if (dirtyKeys.size > 0 && !window.confirm('Discard unsaved feed writes and change channel?')) return;
         setDrafts({});
         setDirtyKeys(new Set());
+        onDirtyChange?.(false);
         setActiveChannel(channel);
     };
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="rounded-xl border border-slate-200 bg-white/80 p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800/80">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
                     <div>
                         <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Feed Writes</h2>
                         <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
                             Override matched feed fields for this product. Title and description writes are shared across every platform.
                         </p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={dirtyKeys.size === 0 || isSaving}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                        {isSaving ? 'Saving...' : 'Save Feed Writes'}
-                    </button>
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
@@ -454,4 +461,4 @@ export function FeedWritesPanel({ productWooId }: FeedWritesPanelProps) {
             })}
         </div>
     );
-}
+});

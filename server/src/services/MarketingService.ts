@@ -588,11 +588,16 @@ export class MarketingService {
                     automationId: { in: automationIds },
                     eventType: 'NODE_EXECUTED',
                     enrollment: { status: 'COMPLETED' },
-                    NOT: { outcome: { contains: 'SKIPPED', mode: 'insensitive' } }
+                    NOT: [
+                        { outcome: { contains: 'SKIPPED', mode: 'insensitive' } },
+                        { outcome: { contains: 'FAILED', mode: 'insensitive' } },
+                        { outcome: 'EMAIL_NOT_CONFIGURED' }
+                    ]
                 },
                 select: {
                     automationId: true,
                     enrollmentId: true,
+                    outcome: true,
                     metadata: true
                 }
             }),
@@ -635,7 +640,9 @@ export class MarketingService {
         const completedEnrollmentIdsByAutomation = new Map<string, Set<string>>();
         for (const event of completedActionEvents) {
             const metadata = (event.metadata && typeof event.metadata === 'object') ? event.metadata as Record<string, unknown> : {};
-            if (String(metadata.nodeType || '').toUpperCase() === 'TRIGGER') continue;
+            if (String(metadata.nodeType || '').toUpperCase() !== 'ACTION') continue;
+            const outcome = String(event.outcome || '').toUpperCase();
+            if (outcome.includes('SKIPPED') || outcome.includes('FAILED') || outcome === 'EMAIL_NOT_CONFIGURED') continue;
 
             const enrollmentIds = completedEnrollmentIdsByAutomation.get(event.automationId) || new Set<string>();
             enrollmentIds.add(event.enrollmentId);

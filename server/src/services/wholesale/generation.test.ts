@@ -25,7 +25,7 @@ function snapshotFixture() {
             products: [{
                 categoryLabel: null, isSuspended: false,
                 product: {
-                    id: 'product-1', wooId: 9, name: 'Zulu Cup', sku: 'zc-1', status: 'publish', stockStatus: 'instock',
+                    id: 'product-1', wooId: 9, name: 'Zulu Cup', sku: 'zc-1', status: 'publish', stockStatus: 'instock', baseTurnaroundDays: 4,
                     mainImage: 'https://images.example.test/cup.jpg',
                     rawData: { regular_price: '19.9', categories: [{ id: 2, slug: 'awards', name: 'Awards' }] },
                     variations: [
@@ -35,7 +35,7 @@ function snapshotFixture() {
                     ],
                     wholesaleProfile: {
                         imageUrl: null, notesDocument: '  Gift boxed  ', personalisationTypes: ['UV'], priceTaxBasis: 'EXCLUSIVE', priceSetVersion: 3,
-                        priceTiers: [{ minimumQuantity: 10, unitPrice: { toString: () => '7.5' }, isPoa: false }],
+                        priceTiers: [{ minimumQuantity: 10, unitPrice: { toString: () => '7.5' }, isPoa: false, leadTimeDays: 7 }],
                     },
                 },
             }],
@@ -51,7 +51,8 @@ describe('wholesale generation snapshot', () => {
         expect(snapshot.categories[0].products[0]).toMatchObject({
             name: 'Zulu Cup', sku: 'zc-1', displayRrp: '$21.89', rrpAmount: '21.89', notes: 'Gift boxed',
             gstStatement: 'Prices include 10% GST',
-            tiers: [{ minimumQuantity: 10, rangeLabel: '10+', unitPriceAmount: '8.25', displayUnitPrice: '$8.25', displaySaving: 'Save $13.64/unit', isPoa: false }],
+            baseTurnaroundDays: 4,
+            tiers: [{ minimumQuantity: 10, rangeLabel: '10+', unitPriceAmount: '8.25', displayUnitPrice: '$8.25', displaySaving: 'Save $13.64/unit', isPoa: false, leadTimeDays: 7 }],
             variantGroups: [{ imageUrl: 'https://images.example.test/blue.jpg', labels: ['Colour: Navy | SKU NAVY', 'Colour: Blue | SKU BLUE'] }],
         });
     });

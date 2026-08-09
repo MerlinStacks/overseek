@@ -2,6 +2,7 @@ import dns from 'dns/promises';
 import http from 'http';
 import https from 'https';
 import net from 'net';
+import { createPinnedLookup } from './pinnedLookup';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const TIMEOUT_MS = 8000;
@@ -123,7 +124,7 @@ export async function fetchImageSecurely(rawUrl: string, redirects = 0, deadline
         const transport = resolved.url.protocol === 'https:' ? https : http;
         const request = transport.get(resolved.url, {
             headers: { Accept: 'image/png,image/jpeg,image/webp', 'User-Agent': 'Overseek-Wholesale-Renderer/1.0' },
-            lookup: (_hostname, _options, callback: any) => callback(null, resolved.address, resolved.family),
+            lookup: createPinnedLookup(resolved.address, resolved.family),
             timeout: Math.min(TIMEOUT_MS, Math.max(1, deadline - Date.now())),
         }, response => {
             const status = response.statusCode || 0;

@@ -7,7 +7,7 @@ import { AuditActions, AuditService } from '../../services/AuditService';
 import { WholesaleCatalogService, WholesaleConflictError, catalogInputSchema } from '../../services/wholesale/catalogs';
 import { WholesaleNotFoundError, WholesaleProductService, WholesaleValidationError } from '../../services/wholesale/products';
 import { WholesaleSettingsService, brandingSchema, defaultsSchema } from '../../services/wholesale/settings';
-import { productProfileSchema } from '../../services/wholesale/validation';
+import { productSettingsSchema } from '../../services/wholesale/validation';
 import { WholesaleGenerationService } from '../../services/wholesale/generations';
 import { isAccountFeatureEnabled } from '../../utils/accountFeatures';
 import { Logger } from '../../utils/logger';
@@ -375,15 +375,15 @@ const wholesaleCatalogRoutes: FastifyPluginAsync = async fastify => {
         const denied = await requirePermission(request, reply, 'edit_wholesale_catalog');
         if (denied) return denied;
         const params = productParamsSchema.safeParse(request.params);
-        const parsed = productProfileSchema.safeParse(request.body);
+        const parsed = productSettingsSchema.safeParse(request.body);
         if (!params.success) return reply.code(400).send({ error: 'Invalid product id' });
         if (!parsed.success) return reply.code(400).send({ error: 'Invalid pricing profile', details: parsed.error.flatten() });
         try {
             const previous = await WholesaleProductService.get(request.accountId!, params.data.productId);
             const profile = await WholesaleProductService.save(request.accountId!, params.data.productId, parsed.data);
             await AuditService.log(request.accountId!, request.user!.id, AuditActions.WHOLESALE_PRODUCT_UPDATED, 'WHOLESALE_PRODUCT', params.data.productId, {
-                old: WholesaleProductService.auditSnapshot(previous.profile),
-                new: WholesaleProductService.auditSnapshot(profile),
+                old: WholesaleProductService.auditSnapshot(previous.profile, previous.product.baseTurnaroundDays),
+                new: WholesaleProductService.auditSnapshot(profile, parsed.data.baseTurnaroundDays),
                 priceSetVersion: profile.priceSetVersion,
             });
             return { profile };

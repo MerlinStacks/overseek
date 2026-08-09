@@ -188,7 +188,8 @@ function legalFooterText(snapshot: WholesaleSnapshot) {
 
 function tierLine(tier: any) {
     const price = tier.isPoa ? 'Contact us' : printable(tier.displayUnitPrice);
-    return `${printable(tier.rangeLabel)}  ${price}${tier.displaySaving ? `  ·  ${tier.displaySaving}` : ''}`;
+    const leadTime = tier.leadTimeDays == null ? '' : `  ·  ${tier.leadTimeDays} business day${tier.leadTimeDays === 1 ? '' : 's'}`;
+    return `${printable(tier.rangeLabel)}  ${price}${tier.displaySaving ? `  ·  ${tier.displaySaving}` : ''}${leadTime}`;
 }
 
 function drawProcessIcon(doc: PDFKit.PDFDocument, key: ProcessKey, x: number, y: number, size = 9) {

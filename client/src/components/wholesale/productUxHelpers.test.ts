@@ -12,7 +12,7 @@ describe('wholesale product UX helpers', () => {
         expect(formatHistorySnapshot({
             priceTaxBasis: 'EXCLUSIVE', personalisationTypes: ['ENGRAVE', 'UV'],
             priceTiers: [{ minimumQuantity: 10, unitPrice: '8.50', isPoa: false }, { minimumQuantity: 100, unitPrice: null, isPoa: true }],
-        })).toEqual({ tiers: '10+: $8.50, 100+: POA', tax: 'Tax exclusive', badges: 'ENGRAVE, UV' });
+        })).toEqual({ tiers: '10+: $8.50, 100+: POA', tax: 'Tax exclusive', badges: 'ENGRAVE, UV', turnaround: 'No base turnaround' });
     });
 
     it('defaults share notifications on and reflects mute state', () => {

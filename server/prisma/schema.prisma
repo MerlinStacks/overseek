@@ -721,6 +721,9 @@ model WooProduct {
 
   binLocation String? // Warehouse bin location
 
+  // Customer-facing production turnaround, independent of supplier lead times.
+  baseTurnaroundDays Int?
+
   // Local stock management (can override WooCommerce)
   stockQuantity Int?              // Local stock on hand (null = use WooCommerce rawData)
   manageStock   Boolean @default(false)  // Whether to use local stock instead of WooCommerce
@@ -3530,6 +3533,7 @@ model WholesalePriceTier {
   minimumQuantity Int
   unitPrice       Decimal? @db.Decimal(12, 4)
   isPoa           Boolean  @default(false)
+  leadTimeDays    Int?
   sortOrder       Int
 
   account Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)

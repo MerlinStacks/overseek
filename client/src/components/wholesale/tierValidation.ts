@@ -25,6 +25,7 @@ export function validateWholesaleTiers(tiers: WholesalePriceTier[]): string[] {
         if (quantities.has(tier.minimumQuantity) || tier.minimumQuantity <= previousQuantity) errors.push('Minimum quantities must be unique and ascending.');
         quantities.add(tier.minimumQuantity);
         previousQuantity = tier.minimumQuantity;
+        if (tier.leadTimeDays != null && (!Number.isInteger(tier.leadTimeDays) || tier.leadTimeDays < 0 || tier.leadTimeDays > 3650)) errors.push(`${row} lead time must be a whole number from 0 to 3650 days.`);
 
         if (tier.isPoa) {
             poaSeen = true;

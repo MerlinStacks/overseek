@@ -29,6 +29,12 @@ describe('wholesale tier helpers', () => {
         expect(errors).toContain('Numeric prices must be non-increasing.');
     });
 
+    it('validates optional quantity-break lead times', () => {
+        expect(validateWholesaleTiers([{ minimumQuantity: 10, unitPrice: '5', isPoa: false, leadTimeDays: 1.5 }]))
+            .toContain('Tier 1 lead time must be a whole number from 0 to 3650 days.');
+        expect(validateWholesaleTiers([{ minimumQuantity: 10, unitPrice: '5', isPoa: false, leadTimeDays: 7 }])).toEqual([]);
+    });
+
     it('requires confirmation only before removing the final tier', () => {
         const tier = { minimumQuantity: 10, unitPrice: '10', isPoa: false };
         expect(requiresFinalTierRemovalConfirmation([tier], 0)).toBe(true);

@@ -5,7 +5,7 @@
  * State management delegated to useProductEdit hook.
  */
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot, Rss, BookOpen } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -34,7 +34,7 @@ import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import type { MerchantIssue } from '../components/Seo/MerchantCenterPanel';
 import type { MerchantCenterIssue } from '../components/Seo/MerchantCenterScoreBadge';
 import type { ProductVariant as VariantType } from '../components/products/variantTypes';
-import { FeedWritesPanel } from '../components/products/FeedWritesPanel';
+import { FeedWritesPanel, type FeedWritesPanelRef } from '../components/products/FeedWritesPanel';
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { usePermissions } from '../hooks/usePermissions';
 import { WholesaleProductPanel } from '../components/wholesale/WholesaleProductPanel';
@@ -138,6 +138,24 @@ function ProductEditPageContent({
     const hasWholesaleCatalog = useAccountFeature('WHOLESALE_CATALOG');
     const { hasPermission } = usePermissions();
     const canViewWholesale = hasWholesaleCatalog && hasPermission('view_wholesale_catalog');
+    const feedWritesPanelRef = useRef<FeedWritesPanelRef>(null);
+    const [hasUnsavedFeedWrites, setHasUnsavedFeedWrites] = useState(false);
+    const [isSavingFeedWrites, setIsSavingFeedWrites] = useState(false);
+    const hasAnyUnsavedChanges = hasUnsavedChanges || hasUnsavedFeedWrites;
+
+    const handleSaveAll = useCallback(async () => {
+        if (isSaving || isSyncing || isSavingFeedWrites) return;
+
+        const productSaved = await handleSave();
+        if (!productSaved || !feedWritesPanelRef.current) return;
+
+        setIsSavingFeedWrites(true);
+        try {
+            await feedWritesPanelRef.current.save();
+        } finally {
+            setIsSavingFeedWrites(false);
+        }
+    }, [handleSave, isSaving, isSavingFeedWrites, isSyncing]);
 
     const previewImage = (formData.images as Array<{ src?: string }> | undefined)?.[0]?.src || product.mainImage;
     const statusTone = saveState === 'error'
@@ -164,7 +182,8 @@ function ProductEditPageContent({
     const lastSyncLabel = lastSyncedAt
         ? `Synced ${formatDistanceToNow(lastSyncedAt, { addSuffix: true })}`
         : null;
-    const saveDisabled = isSaving || isSyncing;
+    const saveDisabled = isSaving || isSyncing || isSavingFeedWrites;
+    const isSavingAnything = isSaving || isSavingFeedWrites;
 
     const tabs = [
         {
@@ -334,7 +353,14 @@ function ProductEditPageContent({
             id: 'feed-writes',
             label: 'Feed Writes',
             icon: <Rss size={16} />,
-            content: <FeedWritesPanel productWooId={product.wooId} />
+            content: (
+                <FeedWritesPanel
+                    ref={feedWritesPanelRef}
+                    productWooId={product.wooId}
+                    onDirtyChange={setHasUnsavedFeedWrites}
+                />
+            ),
+            keepMounted: true
         }] : []),
         ...(canViewWholesale ? [{
             id: 'wholesale',
@@ -370,13 +396,13 @@ function ProductEditPageContent({
             if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return;
             event.preventDefault();
             if (!saveDisabled) {
-                handleSave();
+                void handleSaveAll();
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleSave, saveDisabled]);
+    }, [handleSaveAll, saveDisabled]);
 
     const handleTabChange = (tabId: string) => {
         const next = new URLSearchParams(searchParams);
@@ -407,7 +433,7 @@ function ProductEditPageContent({
                                     <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" issues={product.merchantCenterIssues as MerchantCenterIssue[] | undefined} />
                                     <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${statusTone}`}>
                                         {statusIcon}
-                                        {hasUnsavedChanges ? 'Unsaved changes' : savedLabel || 'All changes saved'}
+                                        {hasAnyUnsavedChanges ? 'Unsaved changes' : savedLabel || 'All changes saved'}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
@@ -467,12 +493,12 @@ function ProductEditPageContent({
                                 Views
                             </button>
                             <button
-                                onClick={handleSave}
+                                onClick={() => void handleSaveAll()}
                                 disabled={saveDisabled}
                                 className="flex items-center gap-2 px-6 py-2 bg-blue-600/90 text-white font-medium rounded-lg hover:bg-blue-600 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all backdrop-blur-xs"
                             >
-                                {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                                {isSaving ? 'Saving...' : 'Save Changes'}
+                                {isSavingAnything ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                                {isSavingAnything ? 'Saving...' : 'Save Changes'}
                             </button>
                         </div>
                     </div>
@@ -484,7 +510,10 @@ function ProductEditPageContent({
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-2 font-medium">
                             {statusIcon}
-                            <span>{saveMessage || (hasUnsavedChanges ? 'You have unsaved changes.' : 'All product changes are saved.')}</span>
+                            <span>{hasUnsavedFeedWrites
+                                ? 'You have unsaved feed writes.'
+                                : saveMessage || (hasUnsavedChanges ? 'You have unsaved changes.' : 'All product changes are saved.')}
+                            </span>
                         </div>
                         <div className="text-xs opacity-80">
                             <span>Shortcut: Ctrl/Cmd+S</span>
@@ -505,7 +534,7 @@ function ProductEditPageContent({
                 <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-gray-900">
-                            {hasUnsavedChanges ? 'Unsaved changes' : savedLabel || 'All changes saved'}
+                            {hasAnyUnsavedChanges ? 'Unsaved changes' : savedLabel || 'All changes saved'}
                         </div>
                         <div className="truncate text-xs text-gray-500">
                             {lastSyncLabel || 'Sync when you want the latest WooCommerce data'}
@@ -520,11 +549,11 @@ function ProductEditPageContent({
                             {isSyncing ? 'Syncing...' : 'Sync'}
                         </button>
                         <button
-                            onClick={handleSave}
+                            onClick={() => void handleSaveAll()}
                             disabled={saveDisabled}
                             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                         >
-                            {isSaving ? 'Saving...' : 'Save'}
+                            {isSavingAnything ? 'Saving...' : 'Save'}
                         </button>
                     </div>
                 </div>

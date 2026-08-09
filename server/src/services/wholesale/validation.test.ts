@@ -11,11 +11,17 @@ import {
 describe('wholesale tier validation', () => {
     it('accepts descending numeric prices followed by POA', () => {
         const result = priceTiersSchema.safeParse([
-            { minimumQuantity: 10, unitPrice: '12.5000', isPoa: false },
-            { minimumQuantity: 25, unitPrice: 10, isPoa: false },
+            { minimumQuantity: 10, unitPrice: '12.5000', isPoa: false, leadTimeDays: 5 },
+            { minimumQuantity: 25, unitPrice: 10, isPoa: false, leadTimeDays: null },
             { minimumQuantity: 100, unitPrice: null, isPoa: true },
         ]);
         expect(result.success).toBe(true);
+    });
+
+    it('rejects fractional, negative, and excessively long lead times', () => {
+        for (const leadTimeDays of [-1, 1.5, 3651]) {
+            expect(priceTiersSchema.safeParse([{ minimumQuantity: 10, unitPrice: 10, isPoa: false, leadTimeDays }]).success).toBe(false);
+        }
     });
 
     it.each([

@@ -338,7 +338,7 @@ export function useProductEdit(productId: string | undefined) {
     const handleSave = useCallback(async () => {
         const acct = accountRef.current;
         const tkn = tokenRef.current;
-        if (!acct || !productId || !tkn) return;
+        if (!acct || !productId || !tkn) return false;
         setIsSaving(true);
         setSaveState('saving');
         setSaveMessage('Saving changes...');
@@ -408,11 +408,13 @@ export function useProductEdit(productId: string | undefined) {
                 fetchProduct(true, true),
                 fetchViews()
             ]);
+            return true;
         } catch (error) {
             Logger.error('An error occurred', { error });
             setSaveState('error');
             setSaveMessage(error instanceof Error ? error.message : 'Failed to save changes');
             showToast('Failed to save changes', 'error');
+            return false;
         } finally {
             setIsSaving(false);
         }

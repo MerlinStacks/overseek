@@ -4,6 +4,7 @@ import { Check, RefreshCw } from 'lucide-react';
 import { useAccount } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { WholesaleBrandingSettings } from './WholesaleBrandingSettings';
 
 export function AppearanceSettings() {
     const { currentAccount, refreshAccounts } = useAccount();
@@ -24,19 +25,17 @@ export function AppearanceSettings() {
     });
 
     useEffect(() => {
-        if (currentAccount?.appearance) {
-            const app = currentAccount.appearance;
-            setSettings({
-                appName: app.appName || 'OverSeek',
-                primaryColor: app.primaryColor || '#2563eb',
-                logoUrl: app.logoUrl || '',
-                socialLinks: app.socialLinks?.length ? app.socialLinks : [
-                    { label: 'Facebook', href: '' },
-                    { label: 'Instagram', href: '' },
-                    { label: 'TikTok', href: '' },
-                ]
-            });
-        }
+        const app = currentAccount?.appearance;
+        setSettings({
+            appName: app?.appName || 'OverSeek',
+            primaryColor: app?.primaryColor || '#2563eb',
+            logoUrl: app?.logoUrl || '',
+            socialLinks: app?.socialLinks?.length ? app.socialLinks : [
+                { label: 'Facebook', href: '' },
+                { label: 'Instagram', href: '' },
+                { label: 'TikTok', href: '' },
+            ]
+        });
     }, [currentAccount]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,7 +53,7 @@ export function AppearanceSettings() {
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    appearance: settings
+                    appearance: { ...(currentAccount.appearance || {}), ...settings }
                 })
             });
 
@@ -173,6 +172,8 @@ export function AppearanceSettings() {
                     {isSaving ? 'Saving...' : 'Save Appearance'}
                 </button>
             </div>
+
+            <WholesaleBrandingSettings />
         </div>
     );
 }

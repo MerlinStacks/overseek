@@ -27,6 +27,7 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
     const api = useApi();
     const toast = useToast();
     const [profile, setProfile] = useState<WholesaleProductProfile>(EMPTY_PROFILE);
+    const [baseTurnaroundDays, setBaseTurnaroundDays] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadSucceeded, setLoadSucceeded] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -56,6 +57,7 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
             .then(([result, defaults, productHistory]) => {
                 if (!active) return;
                 setMainImage(result.product.mainImage || result.product.imageUrl || null);
+                setBaseTurnaroundDays(result.product.baseTurnaroundDays ?? null);
                 setProfile(result.profile ? {
                     ...result.profile,
                     notesDocument: typeof result.profile.notesDocument === 'string' ? result.profile.notesDocument : '',
@@ -73,6 +75,9 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
         setProfile(current => ({ ...current, [key]: value }));
     };
     const validationErrors = validateWholesaleTiers(profile.priceTiers);
+    if (baseTurnaroundDays != null && (!Number.isInteger(baseTurnaroundDays) || baseTurnaroundDays < 0 || baseTurnaroundDays > 3650)) {
+        validationErrors.push('Base turnaround must be a whole number from 0 to 3650 days.');
+    }
     const notes = typeof profile.notesDocument === 'string' ? profile.notesDocument : '';
     const ranges = inferWholesaleTierRanges(profile.priceTiers);
 
@@ -85,7 +90,7 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
         setSaving(true);
         setError('');
         try {
-            const result = await createWholesaleCatalogService(api).saveProduct(productId, profile);
+            const result = await createWholesaleCatalogService(api).saveProduct(productId, profile, baseTurnaroundDays);
             setProfile(result.profile);
             await loadHistory(1);
             setRemovalWarning(false);
@@ -129,6 +134,11 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
                             </select>
                             <p className="mt-1 text-xs text-slate-500">All tier prices use this tax basis.</p>
                         </div>
+                        <div>
+                            <label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-100">Base turnaround (business days)</label>
+                            <input type="number" min={0} max={3650} step={1} value={baseTurnaroundDays ?? ''} disabled={!canEdit} onChange={event => setBaseTurnaroundDays(event.target.value === '' ? null : Number(event.target.value))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" placeholder="Not set" />
+                            <p className="mt-1 text-xs text-slate-500">The product-level default. Quantity breaks can override it below.</p>
+                        </div>
                     </div>
                 </div>
                 <div className="mt-6">
@@ -145,14 +155,15 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
             <section className="rounded-2xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/80">
                 <div className="mb-4 flex items-center justify-between">
                     <div><h3 className="font-semibold text-slate-900 dark:text-white">Quantity pricing</h3><p className="text-sm text-slate-500">Ranges are calculated automatically from each minimum quantity.</p></div>
-                    <button type="button" disabled={!canEdit || profile.priceTiers.length >= 5} onClick={() => setField('priceTiers', [...profile.priceTiers, { minimumQuantity: (profile.priceTiers[profile.priceTiers.length - 1]?.minimumQuantity || 0) + 1, unitPrice: '', isPoa: false }])} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><Plus size={16} /> Add tier</button>
+                    <button type="button" disabled={!canEdit || profile.priceTiers.length >= 5} onClick={() => setField('priceTiers', [...profile.priceTiers, { minimumQuantity: (profile.priceTiers[profile.priceTiers.length - 1]?.minimumQuantity || 0) + 1, unitPrice: '', isPoa: false, leadTimeDays: null }])} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><Plus size={16} /> Add tier</button>
                 </div>
                 <div className="space-y-3">
                     {profile.priceTiers.map((tier, index) => (
-                        <div key={index} className="grid items-end gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-[120px_100px_1fr_auto_auto] dark:border-slate-700">
+                        <div key={index} className="grid items-end gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-[120px_100px_1fr_150px_auto_auto] dark:border-slate-700">
                             <label className="text-xs text-slate-500">Range<input value={ranges[index]} readOnly className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" /></label>
                             <label className="text-xs text-slate-500">Min qty<input type="number" min={1} step={1} value={tier.minimumQuantity} disabled={!canEdit} onChange={event => setField('priceTiers', profile.priceTiers.map((item, itemIndex) => itemIndex === index ? { ...item, minimumQuantity: Number(event.target.value) } : item))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" /></label>
                             <label className="text-xs text-slate-500">Unit price<input type="number" min="0.0001" step="0.01" value={tier.unitPrice || ''} disabled={!canEdit || tier.isPoa} onChange={event => setField('priceTiers', profile.priceTiers.map((item, itemIndex) => itemIndex === index ? { ...item, unitPrice: event.target.value } : item))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900" /></label>
+                            <label className="text-xs text-slate-500">Lead time (days)<input type="number" min={0} max={3650} step={1} value={tier.leadTimeDays ?? ''} placeholder={baseTurnaroundDays == null ? 'Not set' : `Base: ${baseTurnaroundDays}`} disabled={!canEdit} onChange={event => setField('priceTiers', profile.priceTiers.map((item, itemIndex) => itemIndex === index ? { ...item, leadTimeDays: event.target.value === '' ? null : Number(event.target.value) } : item))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" /></label>
                             <label className="flex h-10 items-center gap-2 text-sm text-slate-700 dark:text-slate-200"><input type="checkbox" checked={tier.isPoa} disabled={!canEdit} onChange={event => setField('priceTiers', profile.priceTiers.map((item, itemIndex) => itemIndex === index ? { ...item, isPoa: event.target.checked, unitPrice: event.target.checked ? null : '' } : item))} /> POA</label>
                             <button type="button" aria-label={`Remove tier ${index + 1}`} disabled={!canEdit} onClick={() => {
                                 const finalTier = requiresFinalTierRemovalConfirmation(profile.priceTiers, index);
@@ -178,5 +189,5 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
 }
 
 function HistorySnapshot({ label, value }: { label: string; value: ReturnType<typeof formatHistorySnapshot> }) {
-    return <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/70"><div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div><div>{value.tiers}</div><div className="mt-1 text-xs text-slate-500">{value.tax} · {value.badges}</div></div>;
+    return <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/70"><div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div><div>{value.tiers}</div><div className="mt-1 text-xs text-slate-500">{value.tax} · {value.badges} · {value.turnaround}</div></div>;
 }

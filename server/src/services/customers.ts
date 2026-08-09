@@ -908,7 +908,18 @@ export class CustomersService {
             prisma.automationEnrollment.findMany({
                 where: {
                     automation: { accountId },
-                    email: { in: contactEmails, mode: 'insensitive' }
+                    email: { in: contactEmails, mode: 'insensitive' },
+                    runEvents: {
+                        some: {
+                            eventType: 'NODE_EXECUTED',
+                            metadata: { path: ['nodeType'], equals: 'action' },
+                            NOT: [
+                                { outcome: { contains: 'SKIPPED', mode: 'insensitive' } },
+                                { outcome: { contains: 'FAILED', mode: 'insensitive' } },
+                                { outcome: 'EMAIL_NOT_CONFIGURED' }
+                            ]
+                        }
+                    }
                 },
                 include: {
                     automation: { select: { name: true } }

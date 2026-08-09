@@ -13,4 +13,16 @@ describe('wholesale catalog client service', () => {
         expect(api.patch).toHaveBeenCalledWith('/api/wholesale-catalog/shares/share-1/notifications', { muted: true });
         expect(api.post).toHaveBeenCalledWith('/api/wholesale-catalog/shares/share-1/rotate-password', {});
     });
+
+    it('serializes base turnaround and quantity-break lead times', async () => {
+        const api = { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() } as WholesaleApiClient;
+        await createWholesaleCatalogService(api).saveProduct('product-1', {
+            notesDocument: '', personalisationTypes: [], imageUrl: null, priceTaxBasis: 'EXCLUSIVE',
+            priceTiers: [{ minimumQuantity: 10, unitPrice: '5.00', isPoa: false, leadTimeDays: 7 }],
+        }, 4);
+        expect(api.put).toHaveBeenCalledWith('/api/wholesale-catalog/products/product-1', expect.objectContaining({
+            baseTurnaroundDays: 4,
+            priceTiers: [{ minimumQuantity: 10, unitPrice: '5.00', isPoa: false, leadTimeDays: 7 }],
+        }));
+    });
 });

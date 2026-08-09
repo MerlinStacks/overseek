@@ -146,6 +146,7 @@ function flattenCatalog(catalog: any) {
                     wooId: placement.product.wooId,
                     name: placement.product.name,
                     sku: placement.product.sku,
+                    baseTurnaroundDays: placement.product.baseTurnaroundDays ?? null,
                     imageUrl: placement.product.wholesaleProfile?.imageUrl || placement.product.mainImage,
                     categoryLabel: placement.categoryLabel || deriveWooCategory(placement.product.rawData).label,
                     rrp: String(placement.product.rawData?.regular_price || placement.product.price || '') || null,

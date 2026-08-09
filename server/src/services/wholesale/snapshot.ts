@@ -149,6 +149,7 @@ export function normalizeWholesaleSnapshot(input: {
             ...(convertedRrp == null ? {} : { displayRrp: displayMoney(symbol, convertedRrp), rrpAmount: decimal(convertedRrp, 2) }),
             sourceRrp: text(product.rawData?.regular_price),
             stockFingerprint: `${product.stockStatus || ''}|${(product.variations || []).map((item: any) => item.stockStatus || '').sort().join(',')}`,
+            baseTurnaroundDays: product.baseTurnaroundDays ?? null,
             notes: normalizeNotes(profile.notesDocument),
             personalisationTypes: [...(profile.personalisationTypes || [])].map(String).sort(),
             gstStatement,
@@ -166,6 +167,7 @@ export function normalizeWholesaleSnapshot(input: {
                     };
                 })()),
                 isPoa: !!tier.isPoa,
+                leadTimeDays: tier.leadTimeDays ?? product.baseTurnaroundDays ?? null,
             })),
             variantGroups: [...variantGroups.values()],
         });
