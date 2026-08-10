@@ -131,7 +131,7 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
                         <Ruler size={14} /> Dimensions &amp; Weight
                     </h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 2xl:grid-cols-4 gap-4">
                         <div>
                             <label className="block text-xs font-medium text-gray-500 mb-1">Weight ({weightUnit})</label>
                             <input
@@ -178,4 +178,3 @@ export function LogisticsPanel({ formData, weightUnit = 'kg', dimensionUnit = 'c
         </div>
     );
 }
-

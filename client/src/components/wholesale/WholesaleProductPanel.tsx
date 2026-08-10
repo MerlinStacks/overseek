@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import { createWholesaleCatalogService } from '../../services/wholesaleCatalogService';
 import type { WholesaleProcess, WholesaleProductHistoryPage, WholesaleProductProfile } from '../../types/wholesaleCatalog';
 import { inferWholesaleTierRanges, requiresFinalTierRemovalConfirmation, validateWholesaleTiers } from './tierValidation';
-import { formatHistorySnapshot, isLowResolutionImage } from './productUxHelpers';
+import { formatHistorySnapshot } from './productUxHelpers';
 
 const PROCESS_OPTIONS: Array<{ value: WholesaleProcess; label: string }> = [
     { value: 'ENGRAVE', label: 'Engraving' },
@@ -57,8 +57,6 @@ export const WholesaleProductPanel = forwardRef<WholesaleProductPanelRef, Wholes
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [removalWarning, setRemovalWarning] = useState(false);
-    const [mainImage, setMainImage] = useState<string | null>(null);
-    const [imageWarning, setImageWarning] = useState('');
     const [history, setHistory] = useState<WholesaleProductHistoryPage>({ events: [], total: 0, page: 1, limit: 10, totalPages: 0 });
     const [historyLoading, setHistoryLoading] = useState(false);
     const [savedSnapshot, setSavedSnapshot] = useState(() => editableSnapshot(EMPTY_PROFILE, null));
@@ -81,7 +79,6 @@ export const WholesaleProductPanel = forwardRef<WholesaleProductPanelRef, Wholes
         Promise.all([service.getProduct(productId), service.getDefaults(), service.getProductHistory(productId, 1)])
             .then(([result, defaults, productHistory]) => {
                 if (!active) return;
-                setMainImage(result.product.imageUrl || result.product.mainImage || null);
                 const nextTurnaroundDays = result.product.baseTurnaroundDays ?? null;
                 const nextProfile = result.profile ? {
                     ...result.profile,
@@ -140,8 +137,6 @@ export const WholesaleProductPanel = forwardRef<WholesaleProductPanelRef, Wholes
         }
     };
     useImperativeHandle(ref, () => ({ save }));
-    const previewImage = mainImage;
-
     if (loading) return <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-6 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><Loader2 className="animate-spin" size={18} /> Loading wholesale settings...</div>;
     if (!loadSucceeded) return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"><p>{error || 'Unable to load wholesale pricing.'}</p><button type="button" onClick={() => load()} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-red-700 px-3 py-2 text-sm font-semibold text-white"><RefreshCw size={16} /> Retry</button></div>;
 
@@ -157,17 +152,6 @@ export const WholesaleProductPanel = forwardRef<WholesaleProductPanelRef, Wholes
                         <div className={`mt-1 text-xs ${notes.length > 250 ? 'font-medium text-amber-600' : 'text-slate-500'}`}>{notes.length}/1000{notes.length > 250 ? ' - longer notes may crowd catalog layouts' : ''}</div>
                     </div>
                     <div className="space-y-5">
-                        <div>
-                            <div className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Catalog image</div>
-                            <p className="text-xs text-slate-500">Uses the product's default image from your store.</p>
-                            {previewImage ? <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900"><img key={previewImage} src={previewImage} alt="Selected catalog product" onLoad={event => { const image = event.currentTarget; setImageWarning(isLowResolutionImage(image.naturalWidth, image.naturalHeight) ? `Low-resolution image: ${image.naturalWidth} x ${image.naturalHeight}px. Use at least 800 x 800px for best PDF quality.` : ''); }} onError={() => setImageWarning('The selected image could not be loaded.')} className="aspect-[4/3] w-full object-contain" /></div> : <div className="mt-3 rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500 dark:border-slate-700">No product image available.</div>}
-                            {imageWarning && <div role="status" className="mt-2 flex gap-2 text-xs font-medium text-amber-700 dark:text-amber-300"><AlertTriangle size={15} className="shrink-0" /> {imageWarning}</div>}
-                        </div>
-                        <div>
-                            <div className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Tax basis</div>
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{profile.priceTaxBasis === 'INCLUSIVE' ? 'Tax inclusive' : 'Tax exclusive'}</div>
-                            <p className="mt-1 text-xs text-slate-500">Uses the wholesale default configured for this store.</p>
-                        </div>
                         <div>
                             <label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-100">Base turnaround (business days)</label>
                             <input type="number" min={0} max={3650} step={1} value={baseTurnaroundDays ?? ''} disabled={!canEdit} onChange={event => setBaseTurnaroundDays(event.target.value === '' ? null : Number(event.target.value))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" placeholder="Not set" />

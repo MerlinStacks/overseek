@@ -269,42 +269,46 @@ function ProductEditPageContent({
             label: 'Pricing & Inventory',
             icon: <DollarSign size={16} />,
             content: (
-                <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <PricingPanel
-                        formData={{
-                            price: formData.price,
-                            salePrice: formData.salePrice,
-                            cogs: formData.cogs,
-                            miscCosts: (formData.miscCosts as unknown as MiscCost[]) || []
-                        }}
-                        onChange={updateFormData}
-                    />
-                    <GoldPricePanel
-                        product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied, goldPriceType: (formData.goldPriceType as GoldPriceType), weight: formData.weight }}
-                        onChange={updateFormData}
-                        hasVariants={!!(product.variations?.length)}
-                    />
-                    <LogisticsPanel
-                        formData={formData}
-                        productWooId={product.wooId}
-                        weightUnit={currentAccount?.weightUnit}
-                        dimensionUnit={currentAccount?.dimensionUnit}
-                        variants={variants as unknown as Array<{ id: number; sku?: string; attributes?: Array<{ name: string; option: string }>; stock_quantity?: number | null; stock_status?: string }>}
-                        onChange={updateFormData}
-                        stockPanelRef={stockPanelRef}
-                    />
-                    {!product.type?.includes('variable') && !product.variations?.length && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-                            <BOMPanel
-                                ref={bomPanelRef}
-                                productId={product.id}
-                                variants={[]}
-                                fixedVariationId={0}
-                                onSaveComplete={() => fetchProduct(true)}
-                                onCOGSUpdate={(cogs) => updateFormData({ cogs: cogs.toFixed(2) })}
-                            />
-                        </div>
-                    )}
+                <div className="grid grid-cols-1 items-start gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 md:grid-cols-2">
+                    <div className="space-y-6">
+                        <PricingPanel
+                            formData={{
+                                price: formData.price,
+                                salePrice: formData.salePrice,
+                                cogs: formData.cogs,
+                                miscCosts: (formData.miscCosts as unknown as MiscCost[]) || []
+                            }}
+                            onChange={updateFormData}
+                        />
+                        <GoldPricePanel
+                            product={{ ...product, isGoldPriceApplied: formData.isGoldPriceApplied, goldPriceType: (formData.goldPriceType as GoldPriceType), weight: formData.weight }}
+                            onChange={updateFormData}
+                            hasVariants={!!(product.variations?.length)}
+                        />
+                    </div>
+                    <div className="space-y-6">
+                        <LogisticsPanel
+                            formData={formData}
+                            productWooId={product.wooId}
+                            weightUnit={currentAccount?.weightUnit}
+                            dimensionUnit={currentAccount?.dimensionUnit}
+                            variants={variants as unknown as Array<{ id: number; sku?: string; attributes?: Array<{ name: string; option: string }>; stock_quantity?: number | null; stock_status?: string }>}
+                            onChange={updateFormData}
+                            stockPanelRef={stockPanelRef}
+                        />
+                        {!product.type?.includes('variable') && !product.variations?.length && (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+                                <BOMPanel
+                                    ref={bomPanelRef}
+                                    productId={product.id}
+                                    variants={[]}
+                                    fixedVariationId={0}
+                                    onSaveComplete={() => fetchProduct(true)}
+                                    onCOGSUpdate={(cogs) => updateFormData({ cogs: cogs.toFixed(2) })}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
             )
         },

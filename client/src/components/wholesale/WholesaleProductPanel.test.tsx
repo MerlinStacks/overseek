@@ -68,15 +68,15 @@ describe('WholesaleProductPanel safety', () => {
         await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
     });
 
-    it('shows inherited product image and store tax defaults instead of override inputs', async () => {
+    it('does not show product image or tax override controls', async () => {
         mocks.get.mockImplementation((url: string) => Promise.resolve(
             url.endsWith('/defaults') ? { defaults: { priceTaxBasis: 'INCLUSIVE' } } : getResult(url),
         ));
         render(<WholesaleProductPanel productId="product" canEdit />);
 
-        expect(await screen.findByText("Uses the product's default image from your store.")).toBeInTheDocument();
-        expect(screen.getByText('Tax inclusive')).toBeInTheDocument();
-        expect(screen.getByText('Uses the wholesale default configured for this store.')).toBeInTheDocument();
+        await screen.findByRole('button', { name: /save wholesale settings/i });
+        expect(screen.queryByText('Catalog image')).not.toBeInTheDocument();
+        expect(screen.queryByText('Tax basis')).not.toBeInTheDocument();
         expect(screen.queryByRole('textbox', { name: /catalog image/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('combobox', { name: /tax basis/i })).not.toBeInTheDocument();
     });
