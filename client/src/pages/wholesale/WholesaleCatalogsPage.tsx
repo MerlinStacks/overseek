@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, Copy, Loader2, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Settings2, Sparkles, Trash2, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Archive, ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, Cog, Copy, Loader2, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, X } from 'lucide-react';
 import { useApi } from '../../hooks/useApi';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useToast } from '../../context/ToastContext';
@@ -85,15 +84,22 @@ export function WholesaleCatalogsPage() {
             <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-700 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Wholesale Catalog</h1>
-                    <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Configure catalog-ready products, commercial terms, and controlled catalog revisions.</p>
+                    <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Review automatically included wholesale-priced products, commercial terms, and controlled catalog revisions.</p>
                 </div>
-                {canEdit && tab === 'catalogs' && <button onClick={() => { setEditingId(null); setCatalogForm({ ...EMPTY_CATALOG }); }} className="inline-flex w-fit items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><Plus size={18} /> New catalog</button>}
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setTab(current => current === 'setup' ? 'catalogs' : 'setup')}
+                        title="Defaults & setup"
+                        aria-label="Defaults & setup"
+                        aria-pressed={tab === 'setup'}
+                        className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${tab === 'setup' ? 'border-blue-600 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-400' : 'border-slate-200 bg-white/80 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700'}`}
+                    >
+                        <Cog size={18} />
+                    </button>
+                    {canEdit && <button onClick={() => { setTab('catalogs'); setEditingId(null); setCatalogForm({ ...EMPTY_CATALOG }); }} className="inline-flex w-fit items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><Plus size={18} /> New catalog</button>}
+                </div>
             </header>
-
-            <nav aria-label="Wholesale catalog sections" className="flex gap-6 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
-                {([{ id: 'catalogs', label: 'Catalogs', icon: BookOpen }, { id: 'setup', label: 'Defaults & setup', icon: Settings2 }] as const).map(item => <button key={item.id} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined} className={`-mb-px flex min-w-fit items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${tab === item.id ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200'}`}><item.icon size={17} />{item.label}</button>)}
-                <Link to="/settings?tab=appearance" className="-mb-px flex min-w-fit items-center gap-2 border-b-2 border-transparent px-1 pb-3 text-sm font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200"><PackageCheck size={17} /> Branding settings</Link>
-            </nav>
 
             {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{error}</div>}
             {tab === 'catalogs' && (loading ? <Loading label="Loading catalogs..." /> : <CatalogTable catalogs={catalogs} canEdit={canEdit} busy={busy} onOpen={setSelectedId} onEdit={catalog => { setEditingId(catalog.id); setCatalogForm(toCatalogInput(catalog)); }} onDuplicate={catalog => runCatalogAction(() => service.duplicateCatalog(catalog.id), 'Catalog duplicated.')} onArchive={catalog => runCatalogAction(() => service.updateCatalog(catalog.id, { ...toCatalogInput(catalog), status: 'ARCHIVED' }), 'Catalog archived.')} onDelete={catalog => { if (confirm(`Delete ${catalog.name}? This cannot be undone.`)) void runCatalogAction(() => service.deleteCatalog(catalog.id), 'Catalog deleted.'); }} />)}
@@ -118,7 +124,6 @@ function CatalogEditor({ value, editing, busy, service, onChange, onClose, onSav
         <section className="grid gap-4 sm:grid-cols-2"><Field label="Internal name" value={value.name} onChange={next => field('name', next)} required /><Field label="Public title" value={value.publicTitle} onChange={next => field('publicTitle', next)} required /><Field label="Public subtitle" value={value.subtitle || ''} onChange={next => field('subtitle', next || null)} /><label className="text-sm text-slate-600 dark:text-slate-300">Status<select value={value.status} onChange={event => field('status', event.target.value as WholesaleCatalogInput['status'])} className={inputClass}><option value="DRAFT">Draft</option><option value="ACTIVE">Active</option><option value="ARCHIVED">Archived</option></select></label><label className="sm:col-span-2 text-sm text-slate-600 dark:text-slate-300">Cover text<textarea rows={4} value={value.coverText || ''} onChange={event => field('coverText', event.target.value || null)} className={inputClass} /></label><Field label="Cover logo override URL" value={String(value.brandingOverrides.coverLogoUrl || '')} onChange={next => recordField('brandingOverrides', 'coverLogoUrl', next)} /><Field label="Cover accent color override" type="color" value={String(value.brandingOverrides.coverAccentColor || '#4f46e5')} onChange={next => recordField('brandingOverrides', 'coverAccentColor', next)} /><label className="sm:col-span-2 text-sm text-slate-600 dark:text-slate-300">Supplementary price notice<textarea rows={2} value={value.supplementaryPriceNotice || ''} onChange={event => field('supplementaryPriceNotice', event.target.value || null)} className={inputClass} /></label><label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"><input type="checkbox" checked={value.pricesIncludeTax} onChange={event => field('pricesIncludeTax', event.target.checked)} /> Prices include tax</label></section>
         <EditorSection title="Payment callout" description="Structured payment thresholds shown in the catalog."><div className="grid gap-4 sm:grid-cols-2"><Field label="Heading" value={String(value.paymentCallout.heading || '')} onChange={next => recordField('paymentCallout', 'heading', next)} /><Field label="Deposit percentage" type="number" value={String(value.paymentCallout.depositPercentage ?? '')} onChange={next => numericRecordField('depositPercentage', next)} /><Field label="Minimum deposit" type="number" value={String(value.paymentCallout.minimumDeposit ?? '')} onChange={next => numericRecordField('minimumDeposit', next)} /><Field label="High-value order threshold" type="number" value={String(value.paymentCallout.highValueThreshold ?? '')} onChange={next => numericRecordField('highValueThreshold', next)} /><label className="sm:col-span-2 text-sm text-slate-600 dark:text-slate-300">Support text<textarea rows={3} value={String(value.paymentCallout.supportText || value.paymentCallout.content || '')} onChange={event => recordField('paymentCallout', 'supportText', event.target.value)} className={inputClass} /></label></div></EditorSection>
         <EditorSection title="Catalog terms" description="Keep 1 to 12 ordered sections. New catalogs may already contain copied approved defaults."><TermsEditor sections={value.termsSections} disabled={false} service={service} onChange={sections => field('termsSections', sections)} /></EditorSection>
-        <EditorSection title="Footer details" description="Business, legal, and contact details rendered in the footer."><div className="grid gap-4 sm:grid-cols-2"><Field label="Business name" value={String(value.footerDetails.businessName || '')} onChange={next => recordField('footerDetails', 'businessName', next)} /><Field label="Business number" value={String(value.footerDetails.businessNumber || '')} onChange={next => recordField('footerDetails', 'businessNumber', next)} /><Field label="Contact email" type="email" value={String(value.footerDetails.contactEmail || '')} onChange={next => recordField('footerDetails', 'contactEmail', next)} /><Field label="Contact phone" value={String(value.footerDetails.contactPhone || '')} onChange={next => recordField('footerDetails', 'contactPhone', next)} /><Field label="Website" value={String(value.footerDetails.website || '')} onChange={next => recordField('footerDetails', 'website', next)} /><Field label="Legal name" value={String(value.footerDetails.legalName || '')} onChange={next => recordField('footerDetails', 'legalName', next)} /><label className="sm:col-span-2 text-sm text-slate-600 dark:text-slate-300">Legal notice<textarea rows={3} value={String(value.footerDetails.legalNotice || '')} onChange={event => recordField('footerDetails', 'legalNotice', event.target.value)} className={inputClass} /></label></div></EditorSection>
     </div><div className="mt-6 flex justify-end gap-3"><button onClick={onClose} className="rounded-xl px-4 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300">Cancel</button><button onClick={onSave} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 font-medium text-white disabled:opacity-50">{busy ? <Loader2 size={17} className="animate-spin" /> : <Save size={17} />} Save catalog</button></div></Modal>;
 }
 
@@ -128,35 +133,124 @@ function CatalogDetail(props: { catalogId: string; service: WholesaleService; ca
 }
 
 function CatalogDetailContent({ catalogId, service, canEdit, onClose, onChanged }: { catalogId: string; service: WholesaleService; canEdit: boolean; canGenerate: boolean; canShare: boolean; onClose: () => void; onChanged: () => Promise<void> }) {
-    const toast = useToast();
-    const detailContext = useContext(GenerationDetailContext);
-    const [catalog, setCatalog] = useState<WholesaleCatalog | null>(null);
-    const [eligible, setEligible] = useState<WholesaleProductSummary[]>([]);
-    const [revisions, setRevisions] = useState<WholesaleRevision[]>([]);
-    const [defaults, setDefaults] = useState<WholesaleDefaults>(EMPTY_DEFAULTS);
-    const [branding, setBranding] = useState<WholesaleBranding>(EMPTY_BRANDING);
-    const [selected, setSelected] = useState<string[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [busy, setBusy] = useState(false);
-    const load = useCallback(async () => {
-        setLoading(true);
-        try {
-            const [detail, products, history, defaultResult, brandingResult] = await Promise.all([service.getCatalog(catalogId), service.listProducts(true), service.listRevisions(catalogId), service.getDefaults(), service.getBranding()]);
-            setCatalog(detail.catalog); setEligible(products.products); setRevisions(history.revisions); setDefaults(defaultResult.defaults); setBranding(brandingResult.branding); setSelected((detail.catalog.products || []).map(item => item.productId));
-        } catch (reason) { toast.error(reason instanceof Error ? reason.message : 'Unable to load catalog details.'); }
-        finally { setLoading(false); }
-    }, [catalogId, service, toast]);
-    useEffect(() => { void load(); }, [load]);
-    useEffect(() => { const refresh = () => { void load(); void onChanged(); }; window.addEventListener(`wholesale-catalog-updated:${catalogId}`, refresh); return () => window.removeEventListener(`wholesale-catalog-updated:${catalogId}`, refresh); }, [catalogId, load, onChanged]);
-    const act = async (action: () => Promise<unknown>, message: string) => { setBusy(true); try { await action(); toast.success(message); await load(); await onChanged(); } catch (reason) { toast.error(reason instanceof Error ? reason.message : 'Action failed.'); } finally { setBusy(false); } };
-    const previewProducts = useMemo(() => {
-        const savedProducts = new Map((catalog?.products || []).map(item => [item.productId, { ...item.product, categoryLabel: item.categoryLabel || item.product.categoryLabel }]));
-        return selected.flatMap(id => { const product = eligible.find(item => item.id === id) || savedProducts.get(id); return product ? [product] : []; });
-    }, [catalog, eligible, selected]);
-    useEffect(() => {
-        detailContext?.setPreview(catalog ? { catalog, products: previewProducts, defaults, branding } : null);
-    }, [branding, catalog, defaults, detailContext?.setPreview, previewProducts]);
-    return <Modal title={catalog?.name || 'Catalog details'} onClose={onClose} wide>{loading ? <Loading label="Loading catalog details..." /> : catalog && <div className="space-y-8"><div className="flex flex-wrap items-center gap-3"><Status value={catalog.status} /><span className="text-sm text-slate-500">{selected.length} selected products</span></div><section><div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold text-slate-900 dark:text-white">Eligible products</h3><p className="text-sm text-slate-500">Only published, stocked products with SKU, image, and wholesale tiers appear here.</p></div>{canEdit && catalog.status !== 'ARCHIVED' && <button disabled={busy} onClick={() => act(() => service.reconcileProducts(catalogId, selected), 'Catalog products saved.')} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"><Save size={16} /> Save selection</button>}</div><div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700">{eligible.map(product => <label key={product.id} className="flex items-center gap-3 border-b border-slate-100 p-3 last:border-0 dark:border-slate-700"><input type="checkbox" checked={selected.includes(product.id)} disabled={!canEdit || catalog.status === 'ARCHIVED'} onChange={event => setSelected(current => event.target.checked ? [...current, product.id] : current.filter(id => id !== product.id))} /><img src={product.imageUrl || ''} alt="" className="h-10 w-10 rounded-lg bg-slate-100 object-cover" /><span className="min-w-0"><span className="block truncate font-medium text-slate-800 dark:text-slate-100">{product.name}</span><span className="text-xs text-slate-500">{product.sku}</span></span></label>)}{!eligible.length && <div className="p-8 text-center text-sm text-slate-500">No eligible products. Configure wholesale tiers from a product first.</div>}</div></section><section><h3 className="mb-3 font-semibold text-slate-900 dark:text-white">Revision history</h3><div className="space-y-2">{revisions.map(revision => <div key={revision.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 dark:border-slate-700"><div><span className="font-medium text-slate-800 dark:text-slate-100">Revision {revision.revisionNumber}</span><span className="ml-3 text-xs text-slate-500">{new Date(revision.createdAt).toLocaleString()}</span></div>{canEdit && catalog.status !== 'ARCHIVED' && <button disabled={busy} onClick={() => { if (confirm(`Restore revision ${revision.revisionNumber}?`)) void act(() => service.restoreRevision(catalogId, revision.id), 'Revision restored.'); }} className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50"><RotateCcw size={15} /> Restore</button>}</div>)}</div></section><div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700">PDF generation and sharing will be available in a later tranche. No generation or sharing action is currently performed.</div></div>}</Modal>;
+  const toast = useToast();
+  const detailContext = useContext(GenerationDetailContext);
+  const [catalog, setCatalog] = useState<WholesaleCatalog | null>(null);
+  const [revisions, setRevisions] = useState<WholesaleRevision[]>([]);
+  const [defaults, setDefaults] = useState<WholesaleDefaults>(EMPTY_DEFAULTS);
+  const [branding, setBranding] = useState<WholesaleBranding>(EMPTY_BRANDING);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [detail, history, defaultResult, brandingResult] = await Promise.all([service.getCatalog(catalogId), service.listRevisions(catalogId), service.getDefaults(), service.getBranding()]);
+      setCatalog(detail.catalog);
+      setRevisions(history.revisions);
+      setDefaults(defaultResult.defaults);
+      setBranding(brandingResult.branding);
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Unable to load catalog details.');
+    } finally {
+      setLoading(false);
+    }
+  }, [catalogId, service, toast]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    const refresh = () => {
+      void load();
+      void onChanged();
+    };
+    window.addEventListener(`wholesale-catalog-updated:${catalogId}`, refresh);
+    return () => window.removeEventListener(`wholesale-catalog-updated:${catalogId}`, refresh);
+  }, [catalogId, load, onChanged]);
+  const act = async (action: () => Promise<unknown>, message: string) => {
+    setBusy(true);
+    try {
+      await action();
+      toast.success(message);
+      await load();
+      await onChanged();
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Action failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const automaticProducts = useMemo(
+    () =>
+      (catalog?.products || []).filter((item) => !item.isSuspended).map((item) => ({
+        ...item.product,
+        categoryLabel: item.categoryLabel || item.product.categoryLabel,
+      })),
+    [catalog],
+  );
+  useEffect(() => {
+    detailContext?.setPreview(catalog ? { catalog, products: automaticProducts, defaults, branding } : null);
+  }, [automaticProducts, branding, catalog, defaults, detailContext?.setPreview]);
+  return (
+    <Modal title={catalog?.name || 'Catalog details'} onClose={onClose} wide>
+      {loading ? (
+        <Loading label="Loading catalog details..." />
+      ) : (
+        catalog && (
+          <div className="space-y-8">
+            <div className="flex flex-wrap items-center gap-3">
+              <Status value={catalog.status} />
+              <span className="text-sm text-slate-500">{automaticProducts.length} automatically included wholesale-priced {automaticProducts.length === 1 ? 'product' : 'products'}</span>
+            </div>
+            <section>
+              <div className="mb-3">
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">Automatically included wholesale-priced products</h3>
+                  <p className="text-sm text-slate-500">Active products with wholesale pricing are included automatically.</p>
+                </div>
+              </div>
+              <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                {automaticProducts.map((product) => (
+                  <div key={product.id} className="flex items-center gap-3 border-b border-slate-100 p-3 last:border-0 dark:border-slate-700">
+                    <img src={product.imageUrl || ''} alt="" className="h-10 w-10 rounded-lg bg-slate-100 object-cover" />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-slate-800 dark:text-slate-100">{product.name}</span>
+                      <span className="text-xs text-slate-500">{product.sku}</span>
+                    </span>
+                  </div>
+                ))}
+                {!automaticProducts.length && <div className="p-8 text-center text-sm text-slate-500">No active wholesale-priced products are automatically included.</div>}
+              </div>
+            </section>
+            <section>
+              <h3 className="mb-3 font-semibold text-slate-900 dark:text-white">Revision history</h3>
+              <div className="space-y-2">
+                {revisions.map((revision) => (
+                  <div key={revision.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                    <div>
+                      <span className="font-medium text-slate-800 dark:text-slate-100">Revision {revision.revisionNumber}</span>
+                      <span className="ml-3 text-xs text-slate-500">{new Date(revision.createdAt).toLocaleString()}</span>
+                    </div>
+                    {canEdit && catalog.status !== 'ARCHIVED' && (
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          if (confirm(`Restore revision ${revision.revisionNumber}?`)) void act(() => service.restoreRevision(catalogId, revision.id), 'Revision restored.');
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50"
+                      >
+                        <RotateCcw size={15} /> Restore
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+            <div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700">PDF generation and sharing will be available in a later tranche. No generation or sharing action is currently performed.</div>
+          </div>
+        )
+      )}
+    </Modal>
+  );
 }
 
 function DefaultsForm({ service, canEdit }: { service: ReturnType<typeof createWholesaleCatalogService>; canEdit: boolean }) {

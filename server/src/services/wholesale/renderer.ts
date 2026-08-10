@@ -177,7 +177,8 @@ function businessIdentity(snapshot: WholesaleSnapshot) {
 function legalFooterText(snapshot: WholesaleSnapshot) {
     const business = readableFields(snapshot.branding.businessDetails, {
         businessName: 'Business', legalName: 'Legal name', name: 'Business', website: 'Website', site: 'Website',
-        url: 'Website', abn: 'ABN', address: 'Address', phone: 'Phone', email: 'Email',
+        url: 'Website', abn: 'ABN', businessNumber: 'Business number', address: 'Address',
+        phone: 'Phone', contactPhone: 'Phone', email: 'Email', contactEmail: 'Email', legalNotice: 'Legal notice',
     });
     const legal = readableFields(snapshot.catalog.footerDetails, {
         confidentialityNotice: 'Confidentiality', privacyNotice: 'Privacy', legalNotice: 'Legal notice',

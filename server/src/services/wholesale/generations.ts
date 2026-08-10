@@ -2,7 +2,7 @@ import fs from 'fs';
 import { prisma } from '../../utils/prisma';
 import { QueueFactory, QUEUES } from '../queue/QueueFactory';
 import { AuditActions, AuditService } from '../AuditService';
-import { WholesaleConflictError } from './catalogs';
+import { syncAutomaticCatalogProducts, WholesaleConflictError } from './catalogs';
 import { WholesaleNotFoundError, WholesaleValidationError } from './products';
 import { getProductReadiness } from './validation';
 import { normalizeWholesaleSnapshot, snapshotProducts } from './snapshot';
@@ -22,7 +22,10 @@ function publicGeneration(generation: any) {
 
 async function ensureNoActive(tx: any, accountId: string) {
     // Serialize generation requests per account; the status predicate cannot be represented by a schema constraint.
-    await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', accountId);
+    // Advisory lock functions return PostgreSQL `void`. Prisma's query API tries
+    // to deserialize that result and fails before the transaction can continue,
+    // so execute the statement without requesting result rows.
+    await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', accountId);
     const staleBefore = new Date(Date.now() - 35 * 60 * 1000);
     const abandoned = await tx.wholesaleCatalogGeneration.findMany({
         where: { accountId, status: 'RENDERING', startedAt: { lte: staleBefore } }, select: { id: true },
@@ -116,6 +119,7 @@ export class WholesaleGenerationService {
         const effectiveDate = new Date();
         const generation = await (prisma as any).$transaction(async (tx: any) => {
             await ensureNoActive(tx, accountId);
+            await syncAutomaticCatalogProducts(tx, accountId, catalogId);
             const [account, catalog, defaults, branding] = await Promise.all([
                 tx.account.findUnique({ where: { id: accountId }, select: { id: true, name: true, currency: true, timezone: true } }),
                 tx.wholesaleCatalog.findFirst({
@@ -238,7 +242,7 @@ export class WholesaleGenerationService {
 
     static async extendValidity(accountId: string, generationId: string, userId: string, validUntilValue: string) {
         const result = await (prisma as any).$transaction(async (tx: any) => {
-            await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `wholesale-validity:${generationId}`);
+            await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `wholesale-validity:${generationId}`);
             const generation = await tx.wholesaleCatalogGeneration.findFirst({
                 where: { id: generationId, accountId }, include: { account: { select: { timezone: true } } },
             });

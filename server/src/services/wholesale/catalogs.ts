@@ -162,32 +162,45 @@ function flattenCatalog(catalog: any) {
     };
 }
 
-async function eligibleProducts(tx: any, accountId: string, productIds: string[]) {
-    const uniqueIds = [...new Set(productIds)];
+/**
+ * Catalog membership is derived from product wholesale pricing. Placements are
+ * retained as the rendering/category snapshot, but are not a user-managed
+ * selection anymore.
+ */
+export async function syncAutomaticCatalogProducts(tx: any, accountId: string, catalogId: string) {
+    const catalog = await tx.wholesaleCatalog.findFirst({ where: { id: catalogId, accountId }, select: { status: true } });
+    if (!catalog) throw new WholesaleNotFoundError('Catalog not found');
+    if (catalog.status === 'ARCHIVED') return;
+
     const products = await tx.wooProduct.findMany({
-        where: { accountId, id: { in: uniqueIds } },
+        where: { accountId },
         include: {
             variations: { select: { stockStatus: true } },
             wholesaleProfile: { include: { priceTiers: { select: { id: true } } } },
         },
     });
-    const eligible = products.filter((product: any) => getProductReadiness(product).eligible);
-    if (eligible.length !== uniqueIds.length) {
-        const valid = new Set(eligible.map((product: any) => product.id));
-        throw new WholesaleValidationError('Catalog products must be account-owned and eligible', {
-            productIds: uniqueIds.filter(id => !valid.has(id)),
+    const configured = products.filter((product: any) => getProductReadiness(product).hasPriceTiers);
+    const configuredIds = configured.map((product: any) => product.id);
+
+    await tx.wholesaleCatalogProduct.deleteMany({
+        where: { accountId, catalogId, ...(configuredIds.length ? { productId: { notIn: configuredIds } } : {}) },
+    });
+    for (const product of configured) {
+        const category = deriveWooCategory(product.rawData);
+        const inStock = getProductReadiness(product).inStock;
+        await tx.wholesaleCatalogProduct.upsert({
+            where: { catalogId_productId: { catalogId, productId: product.id } },
+            create: {
+                accountId, catalogId, productId: product.id,
+                categoryKey: category.key, categoryLabel: category.label, categorySortOrder: category.sortOrder,
+                isSuspended: !inStock, suspensionReason: inStock ? null : 'OUT_OF_STOCK', suspendedAt: inStock ? null : new Date(),
+            },
+            update: {
+                categoryKey: category.key, categoryLabel: category.label, categorySortOrder: category.sortOrder,
+                isSuspended: !inStock, suspensionReason: inStock ? null : 'OUT_OF_STOCK', suspendedAt: inStock ? null : new Date(),
+            },
         });
     }
-    return eligible;
-}
-
-async function replaceProducts(tx: any, accountId: string, catalogId: string, products: any[]) {
-    await tx.wholesaleCatalogProduct.deleteMany({ where: { accountId, catalogId } });
-    if (!products.length) return;
-    await tx.wholesaleCatalogProduct.createMany({ data: products.map(product => {
-        const category = deriveWooCategory(product.rawData);
-        return { accountId, catalogId, productId: product.id, categoryKey: category.key, categoryLabel: category.label, categorySortOrder: category.sortOrder };
-    }) });
 }
 
 export class WholesaleCatalogService {
@@ -210,6 +223,7 @@ export class WholesaleCatalogService {
 
     static async get(accountId: string, catalogId: string) {
         await reconcileEligibility(accountId);
+        await (prisma as any).$transaction((tx: any) => syncAutomaticCatalogProducts(tx, accountId, catalogId));
         const catalog = await (prisma as any).wholesaleCatalog.findFirst({ where: { id: catalogId, accountId }, include: detailInclude });
         if (!catalog) throw new WholesaleNotFoundError('Catalog not found');
         return flattenCatalog(catalog);
@@ -227,6 +241,7 @@ export class WholesaleCatalogService {
                 coverText: input.coverText || null,
                 supplementaryPriceNotice: input.supplementaryPriceNotice || null,
             } });
+            await syncAutomaticCatalogProducts(tx, accountId, catalog.id);
             await saveRevision(tx, accountId, catalog.id, userId);
             return catalog.id;
         });
@@ -246,27 +261,11 @@ export class WholesaleCatalogService {
     }
 
     static async reconcileProducts(accountId: string, catalogId: string, userId: string, productIds: string[]) {
-        await (prisma as any).$transaction(async (tx: any) => {
-            const catalog = await tx.wholesaleCatalog.findFirst({ where: { id: catalogId, accountId }, select: { status: true } });
-            if (!catalog) throw new WholesaleNotFoundError('Catalog not found');
-            if (catalog.status === 'ARCHIVED') throw new WholesaleConflictError('Archived catalogs cannot be reconciled');
-            const products = await eligibleProducts(tx, accountId, productIds);
-            const existing = await tx.wholesaleCatalogProduct.findMany({ where: { accountId, catalogId }, select: { productId: true, isSuspended: true } });
-            const selection = reconcilePlacementSelection(existing, productIds);
-            if (selection.deleteProductIds.length) {
-                await tx.wholesaleCatalogProduct.deleteMany({ where: { accountId, catalogId, productId: { in: selection.deleteProductIds } } });
-            }
-            for (const product of products) {
-                const category = deriveWooCategory(product.rawData);
-                await tx.wholesaleCatalogProduct.upsert({
-                    where: { catalogId_productId: { catalogId, productId: product.id } },
-                    create: { accountId, catalogId, productId: product.id, categoryKey: category.key, categoryLabel: category.label, categorySortOrder: category.sortOrder },
-                    update: { categoryKey: category.key, categoryLabel: category.label, categorySortOrder: category.sortOrder, isSuspended: false, suspensionReason: null, suspendedAt: null },
-                });
-            }
-            await saveRevision(tx, accountId, catalogId, userId);
-            await markApprovedGenerationsStale(accountId, { code: 'CATALOG_PRODUCTS_CHANGED', resourceType: 'WHOLESALE_CATALOG', resourceId: catalogId }, catalogId, tx);
-        });
+        // Kept for backwards-compatible clients. Product membership is now
+        // automatic, so submitted IDs are intentionally ignored.
+        void productIds;
+        void userId;
+        await (prisma as any).$transaction((tx: any) => syncAutomaticCatalogProducts(tx, accountId, catalogId));
         return this.get(accountId, catalogId);
     }
 
@@ -291,8 +290,6 @@ export class WholesaleCatalogService {
         const newId = await (prisma as any).$transaction(async (tx: any) => {
             const source = await tx.wholesaleCatalog.findFirst({ where: { id: catalogId, accountId }, include: { products: true } });
             if (!source) throw new WholesaleNotFoundError('Catalog not found');
-            const productIds = source.products.map((placement: any) => placement.productId);
-            const products = await eligibleProducts(tx, accountId, productIds);
             const duplicate = await tx.wholesaleCatalog.create({ data: {
                 accountId,
                 ...editableData(source),
@@ -300,7 +297,7 @@ export class WholesaleCatalogService {
                 publicTitle: `${source.publicTitle} v2`,
                 status: 'DRAFT',
             } });
-            await replaceProducts(tx, accountId, duplicate.id, products);
+            await syncAutomaticCatalogProducts(tx, accountId, duplicate.id);
             await saveRevision(tx, accountId, duplicate.id, userId);
             return duplicate.id;
         });

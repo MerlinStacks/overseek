@@ -104,7 +104,7 @@ export class WholesaleShareService {
         const tokenHash = sha256(token);
         const claimedAt = new Date();
         const activation = await (prisma as any).$transaction(async (tx: any) => {
-            await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `wholesale-share:${shareId}`);
+            await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `wholesale-share:${shareId}`);
             const share = await tx.wholesaleCatalogShare.findFirst({
                 where: { id: shareId, accountId }, include: { generation: true, catalog: { select: { publicTitle: true, status: true } } },
             });
@@ -152,7 +152,7 @@ export class WholesaleShareService {
         const passwordHash = await hashPassword(password);
         const tokenHash = sha256(token);
         await (prisma as any).$transaction(async (tx: any) => {
-            await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `wholesale-share:${shareId}`);
+            await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `wholesale-share:${shareId}`);
             const share = await tx.wholesaleCatalogShare.findFirst({ where: { id: shareId, accountId } });
             const now = new Date();
             if (!share || share.artifactStatus !== 'READY' || !share.activatedAt || share.revokedAt || share.expiresAt <= now) throw new Error('Share is not active');

@@ -497,7 +497,7 @@ function ProductEditPageContent({
                             <button
                                 onClick={handleSync}
                                 disabled={isSyncing || isLoading}
-                                className="flex items-center gap-2 px-4 py-2 bg-white/50 border border-gray-300/80 text-gray-700 font-medium rounded-lg hover:bg-white transition-colors backdrop-blur-xs disabled:opacity-50"
+                                className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-gray-300/80 bg-white/50 px-4 text-sm font-medium text-gray-700 backdrop-blur-xs transition-colors hover:bg-white disabled:opacity-50"
                             >
                                 {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
                                 <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
@@ -505,7 +505,7 @@ function ProductEditPageContent({
                             {hasDraft && (
                                 <button
                                     onClick={discardDraft}
-                                    className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 text-red-700 font-medium rounded-lg hover:bg-red-100 transition-colors backdrop-blur-xs"
+                                    className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 backdrop-blur-xs transition-colors hover:bg-red-100"
                                     title="Discard restored draft and reset to saved version"
                                 >
                                     <Trash2 size={18} />
@@ -515,7 +515,7 @@ function ProductEditPageContent({
                             <button
                                 onClick={fetchViews}
                                 disabled={saveDisabled}
-                                className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white/50 border border-gray-300/80 text-gray-700 font-medium rounded-lg hover:bg-white transition-colors backdrop-blur-xs disabled:opacity-50"
+                                className="hidden h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-gray-300/80 bg-white/50 px-4 text-sm font-medium text-gray-700 backdrop-blur-xs transition-colors hover:bg-white disabled:opacity-50 sm:flex"
                                 title="Refresh product views"
                             >
                                 <Eye size={16} />
@@ -524,7 +524,7 @@ function ProductEditPageContent({
                             <button
                                 onClick={() => void handleSaveAll()}
                                 disabled={saveDisabled}
-                                className="flex items-center gap-2 px-6 py-2 bg-blue-600/90 text-white font-medium rounded-lg hover:bg-blue-600 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all backdrop-blur-xs"
+                                className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-blue-600/90 px-4 text-sm font-medium text-white shadow-md shadow-blue-500/20 backdrop-blur-xs transition-all hover:bg-blue-600 disabled:opacity-50"
                             >
                                 {isSavingAnything ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                                 {isSavingAnything ? 'Saving...' : 'Save Changes'}
