@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acceptTermsSuggestion, applyBrandingCandidate, applyTaxImportCandidate, canExtendGenerationValidity, generationValidityMaximum, isValidValidityExtension, moveTermsSection, updateTermsSection } from './wholesaleEditorHelpers';
+import { acceptTermsSuggestion, applyBrandingCandidate, applyBrandingCandidates, applyTaxImportCandidate, canExtendGenerationValidity, generationValidityMaximum, isValidValidityExtension, moveTermsSection, updateTermsSection } from './wholesaleEditorHelpers';
 
 describe('wholesale editor helpers', () => {
     const sections = [{ heading: 'First', content: 'One' }, { heading: 'Second', content: 'Two' }];
@@ -22,7 +22,17 @@ describe('wholesale editor helpers', () => {
         const colored = applyBrandingCandidate(branding, 'colors', '#112233');
         expect(colored.primaryColor).toBe('#112233');
         expect(applyBrandingCandidate(colored, 'colors', '#445566').accentColor).toBe('#445566');
-        expect(applyBrandingCandidate(branding, 'contactHints', 'sales@store.test').businessDetails.contact).toBe('sales@store.test');
+        expect(applyBrandingCandidate(branding, 'contactHints', 'sales@store.test').businessDetails.contactEmail).toBe('sales@store.test');
+        expect(applyBrandingCandidate(branding, 'contactHints', '+61 400 000 000').businessDetails.contactPhone).toBe('+61 400 000 000');
+    });
+
+    it('fills blank branding fields without replacing existing values', () => {
+        const branding = { logoUrl: 'https://store.test/existing.png', primaryColor: null, accentColor: null, headingFont: null, bodyFont: null, businessDetails: { contactEmail: 'existing@store.test' } };
+        const result = applyBrandingCandidates(branding, { logoUrls: ['https://store.test/new.png'], colors: ['#112233', '#445566'], businessNames: ['Store'], contactHints: ['new@store.test', '+61 400 000 000'] });
+        expect(result.logoUrl).toBe(branding.logoUrl);
+        expect(result.primaryColor).toBe('#112233');
+        expect(result.accentColor).toBe('#445566');
+        expect(result.businessDetails).toMatchObject({ name: 'Store', contactEmail: 'existing@store.test', contactPhone: '+61 400 000 000' });
     });
 
     it('applies a reviewed tax candidate only to the unsaved tax fields', () => {

@@ -24,7 +24,27 @@ export function applyBrandingCandidate(branding: WholesaleBranding, kind: Brandi
         return branding.primaryColor ? { ...branding, accentColor: value } : { ...branding, primaryColor: value };
     }
     if (kind === 'businessNames') return { ...branding, businessDetails: { ...branding.businessDetails, name: value } };
-    return { ...branding, businessDetails: { ...branding.businessDetails, contact: value } };
+    const key = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? 'contactEmail'
+        : /^\+?[\d\s().-]{7,}$/.test(value) ? 'contactPhone'
+            : /\d.+\b(?:street|st|road|rd|avenue|ave|drive|dr|lane|ln|way|court|ct|boulevard|blvd)\b/i.test(value) ? 'address'
+                : null;
+    if (!key) return branding;
+    return { ...branding, businessDetails: { ...branding.businessDetails, [key]: value } };
+}
+
+/** Fill empty catalog fields from discovered candidates without overwriting reviewed values. */
+export function applyBrandingCandidates(branding: WholesaleBranding, candidates: WholesaleBrandingImportCandidates): WholesaleBranding {
+    let next = { ...branding, businessDetails: { ...branding.businessDetails } };
+    if (!next.logoUrl && candidates.logoUrls[0]) next.logoUrl = candidates.logoUrls[0];
+    if (!next.primaryColor && candidates.colors[0]) next.primaryColor = candidates.colors[0];
+    if (!next.accentColor && candidates.colors[1]) next.accentColor = candidates.colors[1];
+    if (!next.businessDetails.name && candidates.businessNames[0]) next.businessDetails.name = candidates.businessNames[0];
+    for (const hint of candidates.contactHints) {
+        const applied = applyBrandingCandidate(next, 'contactHints', hint);
+        const key = Object.keys(applied.businessDetails).find(candidateKey => applied.businessDetails[candidateKey] !== next.businessDetails[candidateKey]);
+        if (key && !next.businessDetails[key]) next = applied;
+    }
+    return next;
 }
 
 export function applyTaxImportCandidate(defaults: WholesaleDefaults, candidate: WholesaleTaxImportCandidate): WholesaleDefaults {
