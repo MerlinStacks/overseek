@@ -65,8 +65,6 @@ export function createWholesaleCatalogService(api: WholesaleApiClient) {
             baseTurnaroundDays,
             notesDocument: profile.notesDocument,
             personalisationTypes: profile.personalisationTypes,
-            imageUrl: profile.imageUrl || null,
-            priceTaxBasis: profile.priceTaxBasis,
             priceTiers: profile.priceTiers.map(tier => ({
                 minimumQuantity: tier.minimumQuantity,
                 unitPrice: tier.isPoa ? null : tier.unitPrice,

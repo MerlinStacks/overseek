@@ -1,6 +1,6 @@
 import z from 'zod';
 import { prisma } from '../../utils/prisma';
-import { deriveWooCategory, getProductReadiness } from './validation';
+import { deriveWooCategory, getDefaultProductImage, getProductReadiness } from './validation';
 import { WholesaleNotFoundError, WholesaleValidationError } from './products';
 import { markApprovedGenerationsStale } from './staleness';
 import { reconcileEligibility } from './eligibility';
@@ -147,7 +147,7 @@ function flattenCatalog(catalog: any) {
                     name: placement.product.name,
                     sku: placement.product.sku,
                     baseTurnaroundDays: placement.product.baseTurnaroundDays ?? null,
-                    imageUrl: placement.product.wholesaleProfile?.imageUrl || placement.product.mainImage,
+                    imageUrl: getDefaultProductImage(placement.product),
                     categoryLabel: placement.categoryLabel || deriveWooCategory(placement.product.rawData).label,
                     rrp: String(placement.product.rawData?.regular_price || placement.product.price || '') || null,
                     readiness: getProductReadiness(placement.product),

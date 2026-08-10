@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, Package, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot, Rss, BookOpen } from 'lucide-react';
+import { Save, Loader2, ExternalLink, RefreshCw, Box, Tag, DollarSign, Layers, Search, FileText, Clock, ShoppingCart, ImageOff, Eye, Trash2, AlertTriangle, CheckCircle2, CircleDot, Rss, BookOpen } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
@@ -38,7 +38,6 @@ import { FeedWritesPanel, type FeedWritesPanelRef } from '../components/products
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { usePermissions } from '../hooks/usePermissions';
 import { WholesaleProductPanel, type WholesaleProductPanelRef } from '../components/wholesale/WholesaleProductPanel';
-import { ProductVideoGallery } from '../components/products/ProductVideoGallery';
 
 type SupplierOption = { id: string; name: string };
 type GalleryImage = { id: string | number; src: string; alt?: string };
@@ -200,6 +199,20 @@ function ProductEditPageContent({
         : null;
     const saveDisabled = isSaving || isSyncing || isSavingFeedWrites || isSavingWholesale;
     const isSavingAnything = isSaving || isSavingFeedWrites || isSavingWholesale;
+    const statusMessage = hasUnsavedWholesaleChanges
+        ? 'You have unsaved wholesale pricing changes.'
+        : hasUnsavedFeedWrites
+            ? 'You have unsaved feed writes.'
+            : saveMessage || (hasUnsavedChanges ? 'You have unsaved changes.' : 'All product changes are saved.');
+    const compactStatusLabel = saveState === 'error'
+        ? 'Save failed'
+        : saveState === 'partial'
+            ? 'Partially saved'
+            : isSavingAnything
+                ? 'Saving...'
+                : hasAnyUnsavedChanges
+                    ? 'Unsaved changes'
+                    : savedLabel || 'All changes saved';
 
     const tabs = [
         {
@@ -238,16 +251,14 @@ function ProductEditPageContent({
                                     </div>
                                 )}
                             </div>
+                            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
+                                <ImageGallery
+                                    images={(formData.images as unknown as GalleryImage[]) || []}
+                                    onChange={(imgs) => updateFormData({ images: imgs })}
+                                    productId={product.wooId}
+                                />
+                            </div>
                             <WooCommerceInfoPanel categories={product.categories || []} tags={product.tags || []} />
-                        </div>
-                    </div>
-                    <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
-                        <ImageGallery
-                            images={(formData.images as unknown as GalleryImage[]) || []}
-                            onChange={(imgs) => updateFormData({ images: imgs })}
-                        />
-                        <div className="mt-6 border-t border-slate-200 pt-6">
-                            <ProductVideoGallery productId={product.wooId} embedded />
                         </div>
                     </div>
                 </div>
@@ -255,7 +266,7 @@ function ProductEditPageContent({
         },
         {
             id: 'pricing',
-            label: 'Pricing & Values',
+            label: 'Pricing & Inventory',
             icon: <DollarSign size={16} />,
             content: (
                 <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -273,15 +284,6 @@ function ProductEditPageContent({
                         onChange={updateFormData}
                         hasVariants={!!(product.variations?.length)}
                     />
-                </div>
-            )
-        },
-        {
-            id: 'logistics',
-            label: 'Inventory & Shipping',
-            icon: <Package size={16} />,
-            content: (
-                <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <LogisticsPanel
                         formData={formData}
                         productWooId={product.wooId}
@@ -402,8 +404,10 @@ function ProductEditPageContent({
         }
     ];
 
-       const tabIds = tabs.map(tab => tab.id);
-    const activeTab = tabIds.includes(activeTabParam || '') ? (activeTabParam as string) : tabIds[0];
+    const tabIds = tabs.map(tab => tab.id);
+    // Preserve old Inventory & Shipping links after merging that tab into Pricing & Inventory.
+    const requestedTab = activeTabParam === 'logistics' ? 'pricing' : activeTabParam;
+    const activeTab = tabIds.includes(requestedTab || '') ? (requestedTab as string) : tabIds[0];
 
     useEffect(() => {
         if (activeTabParam !== activeTab) {
@@ -453,9 +457,12 @@ function ProductEditPageContent({
                                 <div className="flex items-center gap-3 mt-1">
                                     <SeoScoreBadge score={seoResult.score || 0} size="sm" tests={seoResult.tests} />
                                     <MerchantCenterScoreBadge score={product.merchantCenterScore || 0} size="sm" issues={product.merchantCenterIssues as MerchantCenterIssue[] | undefined} />
-                                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${statusTone}`}>
+                                    <span
+                                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${statusTone}`}
+                                        title={`${statusMessage} Shortcut: Ctrl/Cmd+S`}
+                                    >
                                         {statusIcon}
-                                        {hasAnyUnsavedChanges ? 'Unsaved changes' : savedLabel || 'All changes saved'}
+                                        {compactStatusLabel}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
@@ -528,24 +535,6 @@ function ProductEditPageContent({
             </div>
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-                <div className={`rounded-xl border px-4 py-3 text-sm ${statusTone}`}>
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex items-center gap-2 font-medium">
-                            {statusIcon}
-                            <span>{hasUnsavedWholesaleChanges
-                                ? 'You have unsaved wholesale pricing changes.'
-                                : hasUnsavedFeedWrites
-                                ? 'You have unsaved feed writes.'
-                                : saveMessage || (hasUnsavedChanges ? 'You have unsaved changes.' : 'All product changes are saved.')}
-                            </span>
-                        </div>
-                        <div className="text-xs opacity-80">
-                            <span>Shortcut: Ctrl/Cmd+S</span>
-                            {savedLabel && <span className="ml-3">{savedLabel}</span>}
-                        </div>
-                    </div>
-                </div>
-
                 <Tabs
                     tabs={tabs}
                     mountInactiveTabs={false}

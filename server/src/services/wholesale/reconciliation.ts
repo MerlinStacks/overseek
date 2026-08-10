@@ -1,6 +1,6 @@
 import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
-import { getProductReadiness } from './validation';
+import { getDefaultProductImage, getProductReadiness } from './validation';
 
 function firstWooCategory(rawData: any) {
     const category = Array.isArray(rawData?.categories) ? rawData.categories.find((item: any) => item && typeof item === 'object') : null;
@@ -23,7 +23,7 @@ function currentVariantSignature(product: any) {
 export function wholesaleDisplayChanged(snapshotProduct: any, snapshotCategory: any, product: any) {
     if (!snapshotProduct) return true;
     const category = firstWooCategory(product.rawData);
-    const currentImage = product.wholesaleProfile?.imageUrl || product.rawData?.images?.[0]?.src || product.mainImage || null;
+    const currentImage = getDefaultProductImage(product);
     const snapshotVariants = (snapshotProduct.variantGroups || []).flatMap((group: any) =>
         (group.labels || []).map((label: string) => ({ stockStatus: 'instock', imageUrl: group.imageUrl, label })),
     ).sort((a: any, b: any) => JSON.stringify(a).localeCompare(JSON.stringify(b)));

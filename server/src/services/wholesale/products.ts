@@ -1,6 +1,6 @@
 import z from 'zod';
 import { prisma } from '../../utils/prisma';
-import { deriveWooCategory, getProductReadiness, inferTierRanges, normalizeNotes, normalizePrice, productSettingsSchema, stableHash } from './validation';
+import { deriveWooCategory, getDefaultProductImage, getProductReadiness, inferTierRanges, normalizeNotes, normalizePrice, productSettingsSchema, stableHash } from './validation';
 import { markApprovedGenerationsStale } from './staleness';
 import { reconcileEligibility } from './eligibility';
 
@@ -79,7 +79,7 @@ export class WholesaleProductService {
             sku: product.sku,
             status: product.status,
             stockStatus: product.stockStatus,
-            imageUrl: product.wholesaleProfile?.imageUrl || product.mainImage,
+            imageUrl: getDefaultProductImage(product),
             categoryLabel: deriveWooCategory(product.rawData).label,
             rrp: String(product.rawData?.regular_price || product.price || '') || null,
             readiness: getProductReadiness(product),
@@ -95,15 +95,19 @@ export class WholesaleProductService {
         const product = await (prisma as any).wooProduct.findFirst({ where: { id: productId, accountId }, include: productInclude });
         if (!product) throw new WholesaleNotFoundError('Product not found');
         return {
-            product: { id: product.id, wooId: product.wooId, name: product.name, sku: product.sku, mainImage: product.mainImage, baseTurnaroundDays: product.baseTurnaroundDays ?? null },
+            product: { id: product.id, wooId: product.wooId, name: product.name, sku: product.sku, imageUrl: getDefaultProductImage(product), mainImage: product.mainImage, baseTurnaroundDays: product.baseTurnaroundDays ?? null },
             profile: product.wholesaleProfile ? serializeProfile(product.wholesaleProfile) : null,
             readiness: getProductReadiness(product),
         };
     }
 
     static async save(accountId: string, productId: string, input: z.infer<typeof productSettingsSchema>) {
-        const product = await (prisma as any).wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true } });
+        const [product, defaults] = await Promise.all([
+            (prisma as any).wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true } }),
+            (prisma as any).wholesaleCatalogDefaults.findUnique({ where: { accountId }, select: { priceTaxBasis: true } }),
+        ]);
         if (!product) throw new WholesaleNotFoundError('Product not found');
+        const priceTaxBasis = defaults?.priceTaxBasis || 'EXCLUSIVE';
         const existing = await (prisma as any).wholesaleProductProfile.findFirst({ where: { productId, accountId }, select: { id: true, priceSetVersion: true } });
         const profile = await (prisma as any).$transaction(async (tx: any) => {
             await tx.wooProduct.update({
@@ -116,8 +120,8 @@ export class WholesaleProductService {
                     data: {
                         notesDocument: normalizeNotes(input.notesDocument),
                         personalisationTypes: input.personalisationTypes,
-                        imageUrl: input.imageUrl || null,
-                        priceTaxBasis: input.priceTaxBasis,
+                        imageUrl: null,
+                        priceTaxBasis,
                         priceSetVersion: existing.priceSetVersion + 1,
                     },
                 })
@@ -127,8 +131,8 @@ export class WholesaleProductService {
                         productId,
                         notesDocument: normalizeNotes(input.notesDocument),
                         personalisationTypes: input.personalisationTypes,
-                        imageUrl: input.imageUrl || null,
-                        priceTaxBasis: input.priceTaxBasis,
+                        imageUrl: null,
+                        priceTaxBasis,
                     },
                 });
             await tx.wholesalePriceTier.deleteMany({ where: { accountId, profileId: saved.id } });

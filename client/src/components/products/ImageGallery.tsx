@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Plus, Image as ImageIcon, ImageOff } from 'lucide-react';
+import { ProductVideoTile } from './ProductVideoGallery';
 
 interface Image {
     id: number | string;
@@ -10,9 +11,10 @@ interface Image {
 interface ImageGalleryProps {
     images: Image[];
     onChange: (images: Image[]) => void;
+    productId?: number;
 }
 
-export function ImageGallery({ images, onChange }: ImageGalleryProps) {
+export function ImageGallery({ images, onChange, productId }: ImageGalleryProps) {
     const [newUrl, setNewUrl] = useState('');
     const [failedImages, setFailedImages] = useState<Set<string | number>>(new Set());
 
@@ -56,12 +58,12 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
         <div className="space-y-4">
             <div className="space-y-1">
                 <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    <ImageIcon size={16} /> Product Images
+                    <ImageIcon size={16} /> Product media
                 </h3>
-                <p className="text-xs text-gray-500">The first image is used as the primary product preview.</p>
+                <p className="text-xs text-gray-500">Product photos and video. The first image is the primary preview.</p>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
                 {validImages.map((img, idx) => (
                     <div key={img.id} className="group relative aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
                         {failedImages.has(img.id) ? (
@@ -100,6 +102,8 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
                     </div>
                 ))}
 
+                {productId ? <ProductVideoTile productId={productId} /> : null}
+
                 {/* Add New Placeholder - For now just URL input trigger */}
                 <div className="aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center p-4">
                     <input
@@ -119,4 +123,3 @@ export function ImageGallery({ images, onChange }: ImageGalleryProps) {
         </div>
     );
 }
-

@@ -59,14 +59,14 @@ describe('wholesale product helpers', () => {
         }).eligible).toBe(true);
     });
 
-    it('does not require an RRP and rejects missing parent SKU', () => {
+    it('does not require an RRP and ignores legacy wholesale image overrides', () => {
         const readiness = getProductReadiness({
             status: 'publish',
             sku: null,
             stockStatus: 'instock',
             wholesaleProfile: { imageUrl: 'https://example.test/profile.jpg', priceTiers: [{}] },
         });
-        expect(readiness).toMatchObject({ eligible: false, hasSku: false, hasImage: true, hasPriceTiers: true });
+        expect(readiness).toMatchObject({ eligible: false, hasSku: false, hasImage: false, hasPriceTiers: true });
     });
 
     it('normalizes plain notes and derives the first safe Woo category', () => {

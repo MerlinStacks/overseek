@@ -66,7 +66,7 @@ export const productProfileSchema = z.object({
     notesDocument: notesDocumentSchema,
     personalisationTypes: z.array(badgeSchema).max(5).default([]),
     imageUrl: z.url().max(2048).nullable().optional(),
-    priceTaxBasis: taxBasisSchema,
+    priceTaxBasis: taxBasisSchema.optional(),
     priceTiers: priceTiersSchema,
 }).strict();
 
@@ -119,12 +119,16 @@ export interface EligibilityProduct {
     wholesaleProfile?: { imageUrl?: string | null; priceTiers?: unknown[] } | null;
 }
 
+export function getDefaultProductImage(product: Pick<EligibilityProduct, 'rawData' | 'mainImage'>): string | null {
+    return product.rawData?.images?.[0]?.src?.trim() || product.mainImage?.trim() || null;
+}
+
 export function getProductReadiness(product: EligibilityProduct) {
     const published = product.status === 'publish';
     const inStock = product.stockStatus === 'instock'
         || !!product.variations?.some(variation => variation.stockStatus === 'instock');
     const hasSku = !!product.sku?.trim();
-    const hasImage = !!(product.wholesaleProfile?.imageUrl || product.rawData?.images?.[0]?.src || product.mainImage)?.trim();
+    const hasImage = !!getDefaultProductImage(product);
     const hasPriceTiers = (product.wholesaleProfile?.priceTiers?.length || 0) > 0;
     return {
         eligible: published && inStock && hasSku && hasImage && hasPriceTiers,

@@ -3,8 +3,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WholesaleProductPanel, type WholesaleProductPanelRef } from './WholesaleProductPanel';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), success: vi.fn(), error: vi.fn() }));
-vi.mock('../../hooks/useApi', () => ({ useApi: () => ({ isReady: true, token: 'token', accountId: 'account', get: mocks.get, put: mocks.put, post: vi.fn(), patch: vi.fn(), delete: vi.fn() }) }));
+const mocks = vi.hoisted(() => {
+    const get = vi.fn();
+    const put = vi.fn();
+    return {
+        get, put, success: vi.fn(), error: vi.fn(),
+        api: { isReady: true, token: 'token', accountId: 'account', get, put, post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+    };
+});
+vi.mock('../../hooks/useApi', () => ({ useApi: () => mocks.api }));
 vi.mock('../../context/ToastContext', () => ({ useToast: () => ({ success: mocks.success, error: mocks.error, info: vi.fn(), toast: vi.fn() }) }));
 
 const productResult = {
@@ -55,6 +62,22 @@ describe('WholesaleProductPanel safety', () => {
         expect(mocks.put).toHaveBeenCalledWith('/api/wholesale-catalog/products/product', expect.objectContaining({
             priceTiers: [expect.objectContaining({ minimumQuantity: 10, unitPrice: '4' })],
         }));
+        const payload = mocks.put.mock.calls[0][1];
+        expect(payload).not.toHaveProperty('imageUrl');
+        expect(payload).not.toHaveProperty('priceTaxBasis');
         await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('shows inherited product image and store tax defaults instead of override inputs', async () => {
+        mocks.get.mockImplementation((url: string) => Promise.resolve(
+            url.endsWith('/defaults') ? { defaults: { priceTaxBasis: 'INCLUSIVE' } } : getResult(url),
+        ));
+        render(<WholesaleProductPanel productId="product" canEdit />);
+
+        expect(await screen.findByText("Uses the product's default image from your store.")).toBeInTheDocument();
+        expect(screen.getByText('Tax inclusive')).toBeInTheDocument();
+        expect(screen.getByText('Uses the wholesale default configured for this store.')).toBeInTheDocument();
+        expect(screen.queryByRole('textbox', { name: /catalog image/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('combobox', { name: /tax basis/i })).not.toBeInTheDocument();
     });
 });

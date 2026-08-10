@@ -34,7 +34,7 @@ function snapshotFixture() {
                         { sku: 'RED', stockStatus: 'outofstock', images: [], rawData: {} },
                     ],
                     wholesaleProfile: {
-                        imageUrl: null, notesDocument: '  Gift boxed  ', personalisationTypes: ['UV'], priceTaxBasis: 'EXCLUSIVE', priceSetVersion: 3,
+                        imageUrl: null, notesDocument: '  Gift boxed  ', personalisationTypes: ['UV'], priceTaxBasis: 'INCLUSIVE', priceSetVersion: 3,
                         priceTiers: [{ minimumQuantity: 10, unitPrice: { toString: () => '7.5' }, isPoa: false, leadTimeDays: 7 }],
                     },
                 },
@@ -65,7 +65,7 @@ describe('wholesale generation snapshot', () => {
         const base: any = {
             id: 'p', wooId: 1, sku: 'SKU', status: 'publish', stockStatus: 'instock', mainImage: null,
             rawData: { images: [{ src: 'https://images.example.test/raw.jpg' }], categories: [] }, variations: [],
-            wholesaleProfile: { imageUrl: null, notesDocument: null, personalisationTypes: [], priceTaxBasis: 'EXCLUSIVE', priceSetVersion: 1, priceTiers: [{ minimumQuantity: 1, unitPrice: 1, isPoa: false }] },
+            wholesaleProfile: { imageUrl: 'https://images.example.test/legacy-override.jpg', notesDocument: null, personalisationTypes: [], priceTaxBasis: 'EXCLUSIVE', priceSetVersion: 1, priceTiers: [{ minimumQuantity: 1, unitPrice: 1, isPoa: false }] },
         };
         const source: any = {
             account: { id: 'a', name: 'A', currency: 'USD', timezone: 'UTC' }, effectiveDate: new Date(), validUntil: new Date(Date.now() + 1000),

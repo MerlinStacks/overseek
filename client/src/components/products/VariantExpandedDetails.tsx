@@ -7,10 +7,12 @@
 import { DollarSign, TrendingUp } from 'lucide-react';
 import { ProductVariant } from './variantTypes';
 import { BOMPanel, BOMPanelRef } from './BOMPanel';
+import { VariantVideoEditor } from './ProductVideoGallery';
 
 interface VariantExpandedDetailsProps {
     variant: ProductVariant;
     productId: string;
+    productWooId: number;
     bomPanelRef: (ref: BOMPanelRef | null) => void;
     onSyncComplete?: (newStock: number) => void;
     onFieldChange: (field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => void;
@@ -26,6 +28,7 @@ interface VariantExpandedDetailsProps {
 export function VariantExpandedDetails({
     variant: v,
     productId,
+    productWooId,
     bomPanelRef,
     onSyncComplete,
     onFieldChange,
@@ -166,6 +169,8 @@ export function VariantExpandedDetails({
 
                     {/* Profit Margin Calculator */}
                     {canViewCogs && <ProfitMarginDisplay variant={v} bomCogs={bomCogs} goldCogs={goldCogs} />}
+
+                    <VariantVideoEditor productId={productWooId} variationId={v.id} />
 
                     {/* BOM Panel */}
                     <div className="border-l-2 border-blue-100 pl-4">

@@ -264,6 +264,7 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                         <VariantExpandedDetails
                                             variant={v}
                                             productId={product.id}
+                                            productWooId={product.wooId}
                                             bomPanelRef={(panelRef) => {
                                                 if (panelRef) bomPanelRefs.current.set(v.id, panelRef);
                                                 else bomPanelRefs.current.delete(v.id);

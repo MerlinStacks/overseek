@@ -1,4 +1,4 @@
-import { inferTierRanges, normalizeNotes } from './validation';
+import { getDefaultProductImage, inferTierRanges, normalizeNotes } from './validation';
 
 export interface WholesaleSnapshot {
     snapshotVersion: 1;
@@ -145,7 +145,7 @@ export function normalizeWholesaleSnapshot(input: {
             wooId: product.wooId,
             name: String(product.name || '').trim(),
             sku: String(product.sku || '').trim(),
-            imageUrl: text(profile.imageUrl) || text(product.rawData?.images?.[0]?.src) || text(product.mainImage),
+            imageUrl: getDefaultProductImage(product),
             ...(convertedRrp == null ? {} : { displayRrp: displayMoney(symbol, convertedRrp), rrpAmount: decimal(convertedRrp, 2) }),
             sourceRrp: text(product.rawData?.regular_price),
             stockFingerprint: `${product.stockStatus || ''}|${(product.variations || []).map((item: any) => item.stockStatus || '').sort().join(',')}`,
@@ -158,7 +158,7 @@ export function normalizeWholesaleSnapshot(input: {
                 minimumQuantity: tier.minimumQuantity,
                 rangeLabel: ranges[index].rangeLabel,
                 ...(tier.unitPrice == null ? {} : (() => {
-                    const amount = convertPrice(tier.unitPrice, profile.priceTaxBasis, includeTax, gstRate)!;
+                    const amount = convertPrice(tier.unitPrice, input.defaults.priceTaxBasis, includeTax, gstRate)!;
                     const saving = convertedRrp == null ? null : Math.max(0, Math.round((convertedRrp - amount + Number.EPSILON) * 100) / 100);
                     return {
                         unitPriceAmount: decimal(amount, 2),
