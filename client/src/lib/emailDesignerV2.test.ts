@@ -92,7 +92,7 @@ describe('emailDesignerV2', () => {
         expect(html).toContain('Complete checkout');
     });
 
-    it('wires order tracking blocks to AusPost order tracking merge tags', () => {
+    it('wires order tracking blocks to resolved order tracking merge tags', () => {
         const design = createDefaultEmailDesignV2({ title: 'Tracking test' });
         design.document.sections = [{
             id: 'section-order-tracking',
@@ -115,7 +115,7 @@ describe('emailDesignerV2', () => {
 
         const html = compileEmailDesignV2(design);
 
-        expect(html).toContain('href="{{order.auspostTrackingUrl}}"');
+        expect(html).toContain('href="{{order.trackingUrl}}"');
         expect(html).toContain('{{order.trackingNumber}}');
         expect(html).toContain('Track with AusPost');
     });

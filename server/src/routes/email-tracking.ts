@@ -12,6 +12,8 @@ const TRANSPARENT_GIF = Buffer.from(
     'base64'
 );
 
+const TRUSTED_EXTERNAL_REDIRECT_HOSTS = ['auspost.com.au'];
+
 function escapeHtml(value: string): string {
     return value
         .replace(/&/g, '&amp;')
@@ -88,13 +90,36 @@ function parseAllowedHost(raw: string | null | undefined): string | null {
     }
 }
 
-function getSafeRedirectUrl(rawUrl: string, allowedHosts: string[], reviewRequestMarker = '1'): string | null {
+function parseConfiguredSocialUrls(appearance: unknown): string[] {
+    if (!appearance || typeof appearance !== 'object' || Array.isArray(appearance)) return [];
+
+    const socialLinks = (appearance as { socialLinks?: unknown }).socialLinks;
+    if (!Array.isArray(socialLinks)) return [];
+
+    return socialLinks.flatMap((link) => {
+        if (!link || typeof link !== 'object' || Array.isArray(link)) return [];
+        const href = (link as { href?: unknown }).href;
+        if (typeof href !== 'string') return [];
+
+        try {
+            const parsed = new URL(href);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return [];
+            return [parsed.toString()];
+        } catch {
+            return [];
+        }
+    });
+}
+
+function getSafeRedirectUrl(rawUrl: string, allowedHosts: string[], allowedUrls: string[] = [], reviewRequestMarker = '1'): string | null {
     try {
         const parsed = new URL(rawUrl);
         if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
             return null;
         }
-        if (!allowedHosts.some(host => hostMatches(parsed.hostname, host))) {
+        const isAccountHost = allowedHosts.some(host => hostMatches(parsed.hostname, host));
+        const isConfiguredUrl = allowedUrls.some(url => url === parsed.toString());
+        if (!isAccountHost && !isConfiguredUrl) {
             return null;
         }
         return withReviewRequestMarker(parsed, reviewRequestMarker).toString();
@@ -423,7 +448,7 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const emailLog = await prisma.emailLog.findUnique({
                     where: { trackingId },
-                    include: { account: { select: { wooUrl: true, domain: true } } }
+                    include: { account: { select: { wooUrl: true, domain: true, appearance: true } } }
                 });
 
                 if (!emailLog) {
@@ -432,10 +457,12 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
 
                 const allowedHosts = [
                     parseAllowedHost(emailLog.account?.wooUrl),
-                    parseAllowedHost(emailLog.account?.domain)
+                    parseAllowedHost(emailLog.account?.domain),
+                    ...TRUSTED_EXTERNAL_REDIRECT_HOSTS
                 ].filter((host): host is string => Boolean(host));
+                const configuredSocialUrls = parseConfiguredSocialUrls(emailLog.account?.appearance);
 
-                redirectUrl = getSafeRedirectUrl(url, allowedHosts, trackingId);
+                redirectUrl = getSafeRedirectUrl(url, allowedHosts, configuredSocialUrls, trackingId);
 
                 if (!redirectUrl) {
                     return reply.code(400).send({ error: 'Invalid redirect URL' });

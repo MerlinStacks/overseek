@@ -33,6 +33,48 @@ const productIdParamSchema = z.object({
     id: z.coerce.number().int().positive()
 });
 
+const videoItemSchema = z.object({
+    video_url: z.string().trim().url().or(z.literal('')).nullable().optional(),
+    thumbnail_url: z.string().trim().url().or(z.literal('')).nullable().optional(),
+});
+
+const videoGalleryUpdateSchema = z.object({
+    policy: z.enum(['inherit_main', 'per_variation']).optional(),
+    product_video: videoItemSchema.optional(),
+    variations: z.array(videoItemSchema.extend({
+        variation_id: z.number().int().positive(),
+    })).optional(),
+});
+
+const MAX_PRODUCT_VIDEO_BYTES = 100 * 1024 * 1024;
+const ALLOWED_PRODUCT_VIDEO_MIME_TYPES = new Set([
+    'video/mp4',
+    'video/webm',
+    'video/ogg',
+    'video/quicktime',
+]);
+
+function withVideoMeta(rawData: unknown, videoUrl: string | null | undefined, thumbnailUrl: string | null | undefined, useSameVideo?: string): any {
+    const raw = rawData && typeof rawData === 'object' && !Array.isArray(rawData) ? { ...(rawData as Record<string, unknown>) } : {};
+    const metaData = Array.isArray(raw.meta_data) ? [...raw.meta_data] as Array<Record<string, unknown>> : [];
+    const setMeta = (key: string, value: string | null | undefined) => {
+        if (value === undefined) return;
+        const index = metaData.findIndex((item) => item?.key === key);
+        if (!value) {
+            if (index >= 0) metaData.splice(index, 1);
+        } else if (index >= 0) {
+            metaData[index] = { ...metaData[index], key, value };
+        } else {
+            metaData.push({ key, value });
+        }
+    };
+    setMeta('_tvpg_video_url', videoUrl);
+    setMeta('_tvpg_video_thumb_url', thumbnailUrl);
+    setMeta('_tvpg_use_same_video', useSameVideo);
+    raw.meta_data = metaData;
+    return raw;
+}
+
 const updateProductBodySchema = z.object({
     binLocation: z.string().optional(),
     name: z.string().optional(),
@@ -182,6 +224,113 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error: any) {
             Logger.error('Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch product' });
+        }
+    });
+
+    // Manage videos stored by True Video Product Gallery through the store plugin.
+    fastify.get<{ Params: { id: string } }>('/:id/video-gallery', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { id: wooId } = productIdParamSchema.parse(request.params);
+            const product = await prisma.wooProduct.findUnique({
+                where: { accountId_wooId: { accountId, wooId } },
+                select: { id: true },
+            });
+            if (!product) return reply.code(404).send({ error: 'Product not found' });
+
+            const woo = await WooService.forAccount(accountId);
+            return await woo.getProductVideoGallery(wooId);
+        } catch (error: any) {
+            Logger.error('Error fetching product video gallery', { error: error?.message || error });
+            return reply.code(error?.response?.status || 502).send({ error: error?.response?.data?.error?.message || error?.response?.data?.message || error?.message || 'Failed to fetch product videos' });
+        }
+    });
+
+    fastify.put<{ Params: { id: string } }>('/:id/video-gallery', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { id: wooId } = productIdParamSchema.parse(request.params);
+            const payload = videoGalleryUpdateSchema.parse(request.body);
+            const product = await prisma.wooProduct.findUnique({
+                where: { accountId_wooId: { accountId, wooId } },
+                select: { id: true, rawData: true },
+            });
+            if (!product) return reply.code(404).send({ error: 'Product not found' });
+
+            const woo = await WooService.forAccount(accountId);
+            const result = await woo.updateProductVideoGallery(wooId, payload);
+
+            // Keep feed generation current immediately; the next Woo sync will
+            // independently confirm these same post-meta values.
+            if (payload.product_video || payload.policy) {
+                await prisma.wooProduct.update({
+                    where: { id: product.id },
+                    data: {
+                        rawData: withVideoMeta(
+                            product.rawData,
+                            payload.product_video?.video_url,
+                            payload.product_video?.thumbnail_url,
+                            payload.policy ? (payload.policy === 'inherit_main' ? 'yes' : 'no') : undefined,
+                        ),
+                    },
+                });
+            }
+            for (const variation of payload.variations || []) {
+                const localVariation = await prisma.productVariation.findFirst({
+                    where: { productId: product.id, wooId: variation.variation_id },
+                    select: { id: true, rawData: true },
+                });
+                if (localVariation) {
+                    await prisma.productVariation.update({
+                        where: { id: localVariation.id },
+                        data: { rawData: withVideoMeta(localVariation.rawData, variation.video_url, variation.thumbnail_url) },
+                    });
+                }
+            }
+            await invalidateCache('products', accountId);
+            return result;
+        } catch (error: any) {
+            if (error instanceof z.ZodError) {
+                return reply.code(400).send({ error: 'Invalid video gallery data', details: error.issues });
+            }
+            Logger.error('Error updating product video gallery', { error: error?.message || error });
+            return reply.code(error?.response?.status || 502).send({ error: error?.response?.data?.error?.message || error?.response?.data?.message || error?.message || 'Failed to update product videos' });
+        }
+    });
+
+    fastify.post<{ Params: { id: string } }>('/:id/video-gallery/upload', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { id: wooId } = productIdParamSchema.parse(request.params);
+            const product = await prisma.wooProduct.findUnique({
+                where: { accountId_wooId: { accountId, wooId } },
+                select: { id: true },
+            });
+            if (!product) return reply.code(404).send({ error: 'Product not found' });
+
+            const upload = await request.file({ limits: { files: 1, fileSize: MAX_PRODUCT_VIDEO_BYTES } });
+            if (!upload) return reply.code(400).send({ error: 'No video file supplied' });
+            if (!ALLOWED_PRODUCT_VIDEO_MIME_TYPES.has(upload.mimetype)) {
+                upload.file.resume();
+                return reply.code(415).send({ error: 'Upload an MP4, WebM, OGG, or MOV video.' });
+            }
+            const buffer = await upload.toBuffer();
+            if (!buffer.length) return reply.code(400).send({ error: 'The uploaded video is empty' });
+
+            const woo = await WooService.forAccount(accountId);
+            return reply.code(201).send(await woo.uploadProductVideo({
+                filename: upload.filename,
+                mimetype: upload.mimetype,
+                buffer,
+            }));
+        } catch (error: any) {
+            if (error?.code === 'FST_REQ_FILE_TOO_LARGE') {
+                return reply.code(413).send({ error: 'Video files must be 100 MB or smaller.' });
+            }
+            Logger.error('Error uploading product video', { error: error?.message || error });
+            return reply.code(error?.response?.status || error?.status || 502).send({
+                error: error?.response?.data?.error?.message || error?.message || 'Failed to upload product video',
+            });
         }
     });
 

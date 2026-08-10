@@ -18,6 +18,10 @@ interface MergeTagContext {
     review?: any;
     cart?: any;
     shipment?: any;
+    trackingNumber?: string;
+    trackingUrl?: string;
+    carrier?: string;
+    serviceName?: string;
     store?: {
         url?: string;
     };
@@ -95,6 +99,24 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     const unsubscribeListUrl = context.unsubscribeListUrl || context.unsubscribe_list_url || '';
     if (unsubscribeListUrl) replaceMergeTag('{{unsubscribe_list_url}}', unsubscribeListUrl);
 
+    // Shipment events expose tracking data at the context root, while native
+    // shipping events also provide a nested shipment object. Woo order metadata
+    // can lag behind either event, so prefer it but fall back to event data.
+    const eventShipment = context.shipment || {};
+    const eventTrackingNumber = String(eventShipment.trackingNumber || context.trackingNumber || '').trim();
+    const orderTrackingItems = context.order ? getOrderTrackingItems(context.order) : [];
+    const primaryOrderTracking = orderTrackingItems[0];
+    const resolvedTrackingNumber = primaryOrderTracking?.trackingNumber || eventTrackingNumber;
+    const resolvedTrackingUrl = normalizeHttpUrl(
+        primaryOrderTracking?.trackingUrl || eventShipment.trackingUrl || context.trackingUrl
+    ) || buildAusPostTrackingUrl(resolvedTrackingNumber);
+
+    replaceMergeTag('{{order.trackingNumber}}', resolvedTrackingNumber);
+    replaceMergeTag('{{order.trackingUrl}}', resolvedTrackingUrl);
+    replaceMergeTag('{{order.auspostTrackingUrl}}', resolvedTrackingUrl);
+    replaceMergeTag('{{tracking_number}}', resolvedTrackingNumber);
+    replaceMergeTag('{{tracking_url}}', resolvedTrackingUrl);
+
     // Order merge tags
     if (context.order) {
         const order = context.order;
@@ -116,16 +138,6 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
         replaceMergeTag('{{order.taxTotal}}', formatCurrency(order.taxTotal ?? order.tax_total ?? order.totalTax ?? order.total_tax, order.currency));
         replaceMergeTag('{{order.total}}', formatCurrency(order.total, order.currency));
         replaceMergeTag('{{order.customerNote}}', order.customerNote || order.customer_note || '');
-
-        const trackingItems = getOrderTrackingItems(order);
-        const primaryTracking = trackingItems[0];
-        const trackingNumber = primaryTracking?.trackingNumber || '';
-        const trackingUrl = primaryTracking?.trackingUrl || buildAusPostTrackingUrl(trackingNumber);
-        replaceMergeTag('{{order.trackingNumber}}', trackingNumber);
-        replaceMergeTag('{{order.trackingUrl}}', trackingUrl);
-        replaceMergeTag('{{order.auspostTrackingUrl}}', buildAusPostTrackingUrl(trackingNumber));
-        replaceMergeTag('{{tracking_number}}', trackingNumber);
-        replaceMergeTag('{{tracking_url}}', trackingUrl);
 
         // Address blocks
         const formattedBillingAddress = formatAddress(billingAddress);
@@ -242,12 +254,12 @@ export function resolveMergeTags(html: string, context: MergeTagContext): string
     }
 
     // Shipment merge tags
-    if (context.shipment) {
-        const shipment = context.shipment;
-        result = result.replace(/\{\{shipment\.trackingNumber\}\}/g, shipment.trackingNumber || '');
-        result = result.replace(/\{\{shipment\.trackingUrl\}\}/g, shipment.trackingUrl || '');
-        result = result.replace(/\{\{shipment\.carrier\}\}/g, shipment.carrier || '');
-        result = result.replace(/\{\{shipment\.serviceName\}\}/g, shipment.serviceName || '');
+    if (context.shipment || eventTrackingNumber) {
+        const shipment = context.shipment || context;
+        result = result.replace(/\{\{shipment\.trackingNumber\}\}/g, resolvedTrackingNumber);
+        result = result.replace(/\{\{shipment\.trackingUrl\}\}/g, resolvedTrackingUrl);
+        result = result.replace(/\{\{shipment\.carrier\}\}/g, shipment.carrier || context.carrier || '');
+        result = result.replace(/\{\{shipment\.serviceName\}\}/g, shipment.serviceName || context.serviceName || '');
         result = result.replace(/\{\{shipment\.status\}\}/g, shipment.status ? String(shipment.status).replace(/_/g, ' ') : '');
         result = result.replace(/\{\{shipment\.latestScanDescription\}\}/g, shipment.latestScanDescription || '');
         result = result.replace(/\{\{shipment\.latestScanLocation\}\}/g, shipment.latestScanLocation || '');
@@ -348,6 +360,16 @@ function normalizeStoreUrl(rawUrl?: string): string {
     if (!trimmed) return '';
     if (/^https?:\/\//i.test(trimmed)) return trimmed;
     return `https://${trimmed}`;
+}
+
+function normalizeHttpUrl(rawUrl: unknown): string {
+    if (typeof rawUrl !== 'string' || !rawUrl.trim()) return '';
+    try {
+        const parsed = new URL(rawUrl.trim());
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : '';
+    } catch {
+        return '';
+    }
 }
 
 function buildAusPostTrackingUrl(trackingNumber: string): string {

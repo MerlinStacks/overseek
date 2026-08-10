@@ -224,7 +224,7 @@ function getVideoLink(rawData: any): string | null {
         || rawData?.videoUrl
         || rawData?.product_video_url
         || rawData?.productVideoUrl
-        || getRawMetaValue(rawData, ['video_link', '_video_link', 'video_url', '_video_url', 'product_video_url', '_product_video_url']);
+        || getRawMetaValue(rawData, ['_tvpg_video_url', 'video_link', 'video link', '_video_link', 'video_url', '_video_url', 'product_video_url', '_product_video_url']);
 
     if (direct) return String(direct);
 
@@ -234,6 +234,10 @@ function getVideoLink(rawData: any): string | null {
     }
 
     return null;
+}
+
+function variationsInheritMainVideo(rawData: any): boolean {
+    return getRawMetaValue(rawData, ['_tvpg_use_same_video'])?.toLowerCase() === 'yes';
 }
 
 function mergeMappingsWithDefaults(channel: FeedChannel, mappings?: FeedFieldMapping[]): FeedFieldMapping[] {
@@ -331,7 +335,9 @@ function getVariationSourceValue(sourceField: string, variation: any, parent: an
         case 'permalink': return variation.rawData?.permalink || parent.permalink || parent.rawData?.permalink || null;
         case 'canonicalLink': return parent.permalink || parent.rawData?.permalink || null;
         case 'mainImage': return variation.rawData?.image?.src || parent.mainImage || parent.rawData?.images?.[0]?.src || null;
-        case 'videoLink': return getVideoLink(variation.rawData) || getVideoLink(parent.rawData);
+        case 'videoLink': return variationsInheritMainVideo(parent.rawData)
+            ? getVideoLink(parent.rawData)
+            : getVideoLink(variation.rawData) || getVideoLink(parent.rawData);
         case 'price': return formatFeedPrice(variation.price ?? variation.rawData?.price ?? parent.price ?? parent.rawData?.price, account?.currency);
         case 'stockStatus': {
             const status = variation.stockStatus || variation.rawData?.stock_status || parent.stockStatus || parent.rawData?.stock_status;

@@ -57,6 +57,11 @@ describe('email click redirects', () => {
             account: {
                 wooUrl: 'https://shop.example.com',
                 domain: 'example.com',
+                appearance: {
+                    socialLinks: [
+                        { label: 'Pinterest', href: 'https://www.pinterest.com.au/CustomKingsAU/' },
+                    ],
+                },
             },
         } as any);
         vi.mocked(prisma.emailUnsubscribe.findFirst).mockResolvedValue(null);
@@ -107,6 +112,44 @@ describe('email click redirects', () => {
                 linkUrl: 'https://www.example.com/products/ring?overseek_review_request=track-1#review_form',
             }),
         });
+    });
+
+    it('allows redirects to an exact social URL configured for the account', async () => {
+        const target = 'https://www.pinterest.com.au/CustomKingsAU/';
+        const res = await app.inject({
+            method: 'GET',
+            url: `/api/email/click/track-1?url=${encodeURIComponent(target)}`,
+        });
+
+        expect(res.statusCode).toBe(302);
+        expect(res.headers.location).toBe(target);
+        expect(prisma.messageTrackingEvent.create).toHaveBeenCalledWith({
+            data: expect.objectContaining({
+                eventType: 'CLICK',
+                linkUrl: target,
+            }),
+        });
+    });
+
+    it('does not allow other paths on a configured social host', async () => {
+        const res = await app.inject({
+            method: 'GET',
+            url: `/api/email/click/track-1?url=${encodeURIComponent('https://www.pinterest.com.au/phishing/')}`,
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(prisma.messageTrackingEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('allows generated Australia Post tracking links', async () => {
+        const target = 'https://auspost.com.au/mypost/track/#/details/33A1234567890';
+        const res = await app.inject({
+            method: 'GET',
+            url: `/api/email/click/track-1?url=${encodeURIComponent(target)}`,
+        });
+
+        expect(res.statusCode).toBe(302);
+        expect(res.headers.location).toBe(target);
     });
 
     it('redirects unsubscribe pages to the WooCommerce preference center when available', async () => {

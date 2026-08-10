@@ -268,7 +268,7 @@ describe('FeedMappingService product type category priority', () => {
             },
             rawData: {
                 description: 'Description',
-                video_link: 'https://example.com/product.mp4',
+                meta_data: [{ key: '_tvpg_video_url', value: 'https://example.com/product.mp4' }],
             },
         }]);
 
@@ -281,6 +281,39 @@ describe('FeedMappingService product type category priority', () => {
             .toBe('https://example.com/product.mp4');
         expect(pinterest.rows[0].columns.find((column: any) => column.targetField === 'video_link').finalValue)
             .toBe('https://example.com/product.mp4');
+    });
+
+    it('uses the main TVPG video for variations when inheritance is enabled', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            id: 'product-1',
+            wooId: 61082,
+            name: 'Variable product',
+            sku: 'VARIABLE',
+            price: '39.95',
+            stockStatus: 'instock',
+            permalink: 'https://example.com/product',
+            mainImage: 'https://example.com/image.jpg',
+            seoData: {},
+            rawData: {
+                description: 'Description',
+                meta_data: [
+                    { key: '_tvpg_video_url', value: 'https://example.com/main.mp4' },
+                    { key: '_tvpg_use_same_video', value: 'yes' },
+                ],
+            },
+            variations: [{
+                wooId: 61083,
+                sku: 'VARIABLE-A',
+                price: '39.95',
+                stockStatus: 'instock',
+                rawData: { meta_data: [{ key: '_tvpg_video_url', value: 'https://example.com/variation.mp4' }] },
+            }],
+        }]);
+
+        const google = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'all_variations');
+
+        expect(google.rows[0].columns.find((column: any) => column.targetField === 'video_link').finalValue)
+            .toBe('https://example.com/main.mp4');
     });
 
     it('reuses existing Google rewrites on other platforms', async () => {

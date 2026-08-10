@@ -37,7 +37,8 @@ import type { ProductVariant as VariantType } from '../components/products/varia
 import { FeedWritesPanel, type FeedWritesPanelRef } from '../components/products/FeedWritesPanel';
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { usePermissions } from '../hooks/usePermissions';
-import { WholesaleProductPanel } from '../components/wholesale/WholesaleProductPanel';
+import { WholesaleProductPanel, type WholesaleProductPanelRef } from '../components/wholesale/WholesaleProductPanel';
+import { ProductVideoGallery } from '../components/products/ProductVideoGallery';
 
 type SupplierOption = { id: string; name: string };
 type GalleryImage = { id: string | number; src: string; alt?: string };
@@ -139,15 +140,30 @@ function ProductEditPageContent({
     const { hasPermission } = usePermissions();
     const canViewWholesale = hasWholesaleCatalog && hasPermission('view_wholesale_catalog');
     const feedWritesPanelRef = useRef<FeedWritesPanelRef>(null);
+    const wholesaleProductPanelRef = useRef<WholesaleProductPanelRef>(null);
     const [hasUnsavedFeedWrites, setHasUnsavedFeedWrites] = useState(false);
+    const [hasUnsavedWholesaleChanges, setHasUnsavedWholesaleChanges] = useState(false);
     const [isSavingFeedWrites, setIsSavingFeedWrites] = useState(false);
-    const hasAnyUnsavedChanges = hasUnsavedChanges || hasUnsavedFeedWrites;
+    const [isSavingWholesale, setIsSavingWholesale] = useState(false);
+    const hasAnyUnsavedChanges = hasUnsavedChanges || hasUnsavedFeedWrites || hasUnsavedWholesaleChanges;
 
     const handleSaveAll = useCallback(async () => {
-        if (isSaving || isSyncing || isSavingFeedWrites) return;
+        if (isSaving || isSyncing || isSavingFeedWrites || isSavingWholesale) return;
 
         const productSaved = await handleSave();
-        if (!productSaved || !feedWritesPanelRef.current) return;
+        if (!productSaved) return;
+
+        if (wholesaleProductPanelRef.current) {
+            setIsSavingWholesale(true);
+            try {
+                const wholesaleSaved = await wholesaleProductPanelRef.current.save();
+                if (!wholesaleSaved) return;
+            } finally {
+                setIsSavingWholesale(false);
+            }
+        }
+
+        if (!feedWritesPanelRef.current) return;
 
         setIsSavingFeedWrites(true);
         try {
@@ -155,7 +171,7 @@ function ProductEditPageContent({
         } finally {
             setIsSavingFeedWrites(false);
         }
-    }, [handleSave, isSaving, isSavingFeedWrites, isSyncing]);
+    }, [handleSave, isSaving, isSavingFeedWrites, isSavingWholesale, isSyncing]);
 
     const previewImage = (formData.images as Array<{ src?: string }> | undefined)?.[0]?.src || product.mainImage;
     const statusTone = saveState === 'error'
@@ -182,8 +198,8 @@ function ProductEditPageContent({
     const lastSyncLabel = lastSyncedAt
         ? `Synced ${formatDistanceToNow(lastSyncedAt, { addSuffix: true })}`
         : null;
-    const saveDisabled = isSaving || isSyncing || isSavingFeedWrites;
-    const isSavingAnything = isSaving || isSavingFeedWrites;
+    const saveDisabled = isSaving || isSyncing || isSavingFeedWrites || isSavingWholesale;
+    const isSavingAnything = isSaving || isSavingFeedWrites || isSavingWholesale;
 
     const tabs = [
         {
@@ -191,43 +207,48 @@ function ProductEditPageContent({
             label: 'General Details',
             icon: <FileText size={16} />,
             content: (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="lg:col-span-2 space-y-6">
-                        <GeneralInfoPanel
-                            formData={formData}
-                            onChange={updateFormData}
-                            product={product}
-                            suppliers={suppliers as unknown as SupplierOption[]}
-                        />
-                    </div>
-                    <div className="space-y-6">
-                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-4">
-                            {mainImageFailed ? (
-                                <div className="w-full h-64 bg-gray-50 rounded-lg flex flex-col items-center justify-center text-gray-400">
-                                    <ImageOff size={48} />
-                                    <span className="text-sm mt-2">Image unavailable</span>
-                                </div>
-                            ) : previewImage ? (
-                                <img
-                                    src={previewImage}
-                                    alt=""
-                                    className="w-full h-auto rounded-lg border border-gray-100 shadow-xs"
-                                    referrerPolicy="no-referrer"
-                                    onError={() => setMainImageFailed(true)}
-                                />
-                            ) : (
-                                <div className="w-full h-64 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
-                                    <Box size={48} />
-                                </div>
-                            )}
-                        </div>
-                        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
-                            <ImageGallery
-                                images={(formData.images as unknown as GalleryImage[]) || []}
-                                onChange={(imgs) => updateFormData({ images: imgs })}
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-2 space-y-6">
+                            <GeneralInfoPanel
+                                formData={formData}
+                                onChange={updateFormData}
+                                product={product}
+                                suppliers={suppliers as unknown as SupplierOption[]}
                             />
                         </div>
-                        <WooCommerceInfoPanel categories={product.categories || []} tags={product.tags || []} />
+                        <div className="space-y-6">
+                            <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-4">
+                                {mainImageFailed ? (
+                                    <div className="w-full h-64 bg-gray-50 rounded-lg flex flex-col items-center justify-center text-gray-400">
+                                        <ImageOff size={48} />
+                                        <span className="text-sm mt-2">Image unavailable</span>
+                                    </div>
+                                ) : previewImage ? (
+                                    <img
+                                        src={previewImage}
+                                        alt=""
+                                        className="w-full h-auto rounded-lg border border-gray-100 shadow-xs"
+                                        referrerPolicy="no-referrer"
+                                        onError={() => setMainImageFailed(true)}
+                                    />
+                                ) : (
+                                    <div className="w-full h-64 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
+                                        <Box size={48} />
+                                    </div>
+                                )}
+                            </div>
+                            <WooCommerceInfoPanel categories={product.categories || []} tags={product.tags || []} />
+                        </div>
+                    </div>
+                    <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6">
+                        <ImageGallery
+                            images={(formData.images as unknown as GalleryImage[]) || []}
+                            onChange={(imgs) => updateFormData({ images: imgs })}
+                        />
+                        <div className="mt-6 border-t border-slate-200 pt-6">
+                            <ProductVideoGallery productId={product.wooId} embedded />
+                        </div>
                     </div>
                 </div>
             )
@@ -366,7 +387,8 @@ function ProductEditPageContent({
             id: 'wholesale',
             label: 'Wholesale',
             icon: <BookOpen size={16} />,
-            content: <WholesaleProductPanel productId={product.id} canEdit={hasPermission('edit_wholesale_catalog')} />
+            content: <WholesaleProductPanel ref={wholesaleProductPanelRef} productId={product.id} canEdit={hasPermission('edit_wholesale_catalog')} onDirtyChange={setHasUnsavedWholesaleChanges} />,
+            keepMounted: true
         }] : []),
         {
             id: 'history',
@@ -510,7 +532,9 @@ function ProductEditPageContent({
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-2 font-medium">
                             {statusIcon}
-                            <span>{hasUnsavedFeedWrites
+                            <span>{hasUnsavedWholesaleChanges
+                                ? 'You have unsaved wholesale pricing changes.'
+                                : hasUnsavedFeedWrites
                                 ? 'You have unsaved feed writes.'
                                 : saveMessage || (hasUnsavedChanges ? 'You have unsaved changes.' : 'All product changes are saved.')}
                             </span>

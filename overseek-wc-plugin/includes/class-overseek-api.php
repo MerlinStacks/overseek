@@ -47,6 +47,7 @@ class OverSeek_API {
 	 * @var int
 	 */
 	private const MAX_REVIEW_ATTACHMENTS = 6;
+	private const MAX_PRODUCT_VIDEO_BYTES = 104857600;
 	private const MAX_STOREFRONT_CONFIG_DEPTH = 6;
 	private const MAX_STOREFRONT_CONFIG_KEYS = 200;
 	private const MAX_STOREFRONT_CONFIG_STRING_LENGTH = 2000;
@@ -139,6 +140,214 @@ class OverSeek_API {
 			'callback'            => [ $this, 'reply_to_review_callback' ],
 			'permission_callback' => [ $this, 'check_admin_permission' ],
 		] );
+
+		register_rest_route( 'overseek/v1', '/products/(?P<product_id>\d+)/video-gallery', [
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_product_video_gallery_callback' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+			],
+			[
+				'methods'             => 'PUT',
+				'callback'            => [ $this, 'update_product_video_gallery_callback' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+			],
+		] );
+
+		register_rest_route( 'overseek/v1', '/media/product-video', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'upload_product_video_callback' ],
+			'permission_callback' => [ $this, 'check_admin_permission' ],
+		] );
+	}
+
+	/**
+	 * Store a raw video upload as a standard WordPress Media Library attachment.
+	 *
+	 * The binary body is forwarded by the authenticated Overseek server. The
+	 * resulting URL can then be assigned to TVPG without storing a second copy.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function upload_product_video_callback( WP_REST_Request $request ): WP_REST_Response {
+		$body = $request->get_body();
+		if ( '' === $body ) {
+			return $this->integration_error( 'empty_video_upload', 'No video file was supplied.', 400 );
+		}
+		if ( strlen( $body ) > self::MAX_PRODUCT_VIDEO_BYTES ) {
+			return $this->integration_error( 'video_too_large', 'Video files must be 100 MB or smaller.', 413 );
+		}
+
+		$encoded_filename = (string) $request->get_header( 'x-overseek-filename' );
+		$filename = sanitize_file_name( rawurldecode( $encoded_filename ) );
+		if ( '' === $filename ) {
+			return $this->integration_error( 'invalid_video_filename', 'A valid video filename is required.', 400 );
+		}
+
+		$filetype = wp_check_filetype( $filename );
+		$mime_type = isset( $filetype['type'] ) ? (string) $filetype['type'] : '';
+		if ( ! str_starts_with( $mime_type, 'video/' ) ) {
+			return $this->integration_error( 'unsupported_video_type', 'This video file type is not supported by WordPress.', 415 );
+		}
+
+		$upload = wp_upload_bits( $filename, null, $body );
+		if ( ! empty( $upload['error'] ) ) {
+			return $this->integration_error( 'video_upload_failed', sanitize_text_field( (string) $upload['error'] ), 500 );
+		}
+
+		$attachment_id = wp_insert_attachment(
+			[
+				'post_mime_type' => $mime_type,
+				'post_title'     => sanitize_text_field( pathinfo( $filename, PATHINFO_FILENAME ) ),
+				'post_content'   => '',
+				'post_status'    => 'inherit',
+			],
+			(string) $upload['file']
+		);
+		if ( is_wp_error( $attachment_id ) ) {
+			wp_delete_file( (string) $upload['file'] );
+			return $this->integration_error( 'attachment_create_failed', $attachment_id->get_error_message(), 500 );
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		$metadata = wp_generate_attachment_metadata( $attachment_id, (string) $upload['file'] );
+		if ( is_array( $metadata ) ) {
+			wp_update_attachment_metadata( $attachment_id, $metadata );
+		}
+
+		return new WP_REST_Response( [
+			'success'       => true,
+			'attachment_id' => (int) $attachment_id,
+			'source_url'    => (string) wp_get_attachment_url( $attachment_id ),
+			'mime_type'     => $mime_type,
+		], 201 );
+	}
+
+	/**
+	 * Read True Video Product Gallery values for a product and its variations.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function get_product_video_gallery_callback( WP_REST_Request $request ): WP_REST_Response {
+		$product_id = absint( (int) $request->get_param( 'product_id' ) );
+		$product = $product_id ? wc_get_product( $product_id ) : null;
+		if ( ! $product || 'product' !== get_post_type( $product_id ) ) {
+			return $this->integration_error( 'invalid_product_id', 'Product not found.', 404 );
+		}
+
+		return new WP_REST_Response( $this->build_product_video_gallery_response( $product ), 200 );
+	}
+
+	/**
+	 * Update True Video Product Gallery values without deleting Media Library items.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function update_product_video_gallery_callback( WP_REST_Request $request ): WP_REST_Response {
+		$product_id = absint( (int) $request->get_param( 'product_id' ) );
+		$product = $product_id ? wc_get_product( $product_id ) : null;
+		if ( ! $product || 'product' !== get_post_type( $product_id ) ) {
+			return $this->integration_error( 'invalid_product_id', 'Product not found.', 404 );
+		}
+
+		$params = $this->get_request_body( $request );
+		$children = array_map( 'absint', $product->get_children() );
+		$variations = isset( $params['variations'] ) && is_array( $params['variations'] ) ? $params['variations'] : [];
+		foreach ( $variations as $variation ) {
+			$variation_id = is_array( $variation ) && isset( $variation['variation_id'] ) ? absint( (int) $variation['variation_id'] ) : 0;
+			if ( ! $variation_id || ! in_array( $variation_id, $children, true ) || 'product_variation' !== get_post_type( $variation_id ) ) {
+				return $this->integration_error( 'invalid_variation_id', 'A variation does not belong to this product.', 400 );
+			}
+		}
+
+		if ( isset( $params['policy'] ) ) {
+			$policy = sanitize_key( (string) $params['policy'] );
+			if ( ! in_array( $policy, [ 'inherit_main', 'per_variation' ], true ) ) {
+				return $this->integration_error( 'invalid_video_policy', 'Video policy must be inherit_main or per_variation.', 400 );
+			}
+			update_post_meta( $product_id, '_tvpg_use_same_video', 'inherit_main' === $policy ? 'yes' : 'no' );
+		}
+
+		if ( isset( $params['product_video'] ) && is_array( $params['product_video'] ) ) {
+			$this->update_video_meta( $product_id, $params['product_video'] );
+		}
+
+		foreach ( $variations as $variation ) {
+			$variation_id = absint( (int) $variation['variation_id'] );
+			$this->update_video_meta( $variation_id, $variation );
+		}
+
+		return new WP_REST_Response( $this->build_product_video_gallery_response( $product ), 200 );
+	}
+
+	/**
+	 * Save video metadata for one product or variation.
+	 *
+	 * @param int                  $post_id Product or variation ID.
+	 * @param array<string, mixed> $values Values to save.
+	 * @return void
+	 */
+	private function update_video_meta( int $post_id, array $values ): void {
+		if ( array_key_exists( 'video_url', $values ) ) {
+			$value = esc_url_raw( trim( (string) ( $values['video_url'] ?? '' ) ) );
+			if ( '' === $value ) {
+				delete_post_meta( $post_id, '_tvpg_video_url' );
+			} else {
+				update_post_meta( $post_id, '_tvpg_video_url', $value );
+			}
+		}
+		if ( array_key_exists( 'thumbnail_url', $values ) ) {
+			$value = esc_url_raw( trim( (string) ( $values['thumbnail_url'] ?? '' ) ) );
+			if ( '' === $value ) {
+				delete_post_meta( $post_id, '_tvpg_video_thumb_url' );
+			} else {
+				update_post_meta( $post_id, '_tvpg_video_thumb_url', $value );
+			}
+		}
+	}
+
+	/**
+	 * Build a complete product and variation video response.
+	 *
+	 * @param WC_Product $product Product instance.
+	 * @return array<string, mixed>
+	 */
+	private function build_product_video_gallery_response( WC_Product $product ): array {
+		$product_id = $product->get_id();
+		$build_video = static function ( int $post_id ): array {
+			return [
+				'video_url'      => (string) get_post_meta( $post_id, '_tvpg_video_url', true ),
+				'thumbnail_url' => (string) get_post_meta( $post_id, '_tvpg_video_thumb_url', true ),
+			];
+		};
+		$variations = [];
+		foreach ( $product->get_children() as $variation_id ) {
+			$variation = wc_get_product( $variation_id );
+			if ( ! $variation ) {
+				continue;
+			}
+			$video = $build_video( (int) $variation_id );
+			$variations[] = [
+				'variation_id'  => (int) $variation_id,
+				'sku'           => (string) $variation->get_sku(),
+				'attributes'    => $variation->get_attributes(),
+				'video_url'     => $video['video_url'],
+				'thumbnail_url' => $video['thumbnail_url'],
+			];
+		}
+
+		return [
+			'success'        => true,
+			'product_id'     => $product_id,
+			'plugin_active'  => defined( 'TVPG_VERSION' ) || class_exists( 'TVPG_Loader' ),
+			'plugin_version' => defined( 'TVPG_VERSION' ) ? TVPG_VERSION : null,
+			'policy'         => 'yes' === get_post_meta( $product_id, '_tvpg_use_same_video', true ) ? 'inherit_main' : 'per_variation',
+			'product_video'  => $build_video( $product_id ),
+			'variations'     => $variations,
+		];
 	}
 
 	/**

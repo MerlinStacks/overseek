@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useApi } from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
@@ -23,7 +23,33 @@ const EMPTY_PROFILE: WholesaleProductProfile = {
     priceTiers: [],
 };
 
-export function WholesaleProductPanel({ productId, canEdit }: { productId: string; canEdit: boolean }) {
+interface WholesaleProductPanelProps {
+    productId: string;
+    canEdit: boolean;
+    onDirtyChange?: (isDirty: boolean) => void;
+}
+
+export interface WholesaleProductPanelRef {
+    save: () => Promise<boolean>;
+}
+
+function editableSnapshot(profile: WholesaleProductProfile, baseTurnaroundDays: number | null) {
+    return JSON.stringify({
+        baseTurnaroundDays,
+        notesDocument: typeof profile.notesDocument === 'string' ? profile.notesDocument : '',
+        personalisationTypes: profile.personalisationTypes,
+        imageUrl: profile.imageUrl || null,
+        priceTaxBasis: profile.priceTaxBasis,
+        priceTiers: profile.priceTiers.map(({ minimumQuantity, unitPrice, isPoa, leadTimeDays }) => ({
+            minimumQuantity,
+            unitPrice: isPoa ? null : unitPrice,
+            isPoa,
+            leadTimeDays: leadTimeDays ?? null,
+        })),
+    });
+}
+
+export const WholesaleProductPanel = forwardRef<WholesaleProductPanelRef, WholesaleProductPanelProps>(function WholesaleProductPanel({ productId, canEdit, onDirtyChange }, ref) {
     const api = useApi();
     const toast = useToast();
     const [profile, setProfile] = useState<WholesaleProductProfile>(EMPTY_PROFILE);
@@ -37,6 +63,7 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
     const [imageWarning, setImageWarning] = useState('');
     const [history, setHistory] = useState<WholesaleProductHistoryPage>({ events: [], total: 0, page: 1, limit: 10, totalPages: 0 });
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [savedSnapshot, setSavedSnapshot] = useState(() => editableSnapshot(EMPTY_PROFILE, null));
 
     const loadHistory = useCallback(async (page: number) => {
         if (!api.isReady) return;
@@ -57,11 +84,14 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
             .then(([result, defaults, productHistory]) => {
                 if (!active) return;
                 setMainImage(result.product.mainImage || result.product.imageUrl || null);
-                setBaseTurnaroundDays(result.product.baseTurnaroundDays ?? null);
-                setProfile(result.profile ? {
+                const nextTurnaroundDays = result.product.baseTurnaroundDays ?? null;
+                const nextProfile = result.profile ? {
                     ...result.profile,
                     notesDocument: typeof result.profile.notesDocument === 'string' ? result.profile.notesDocument : '',
-                } : { ...EMPTY_PROFILE, priceTaxBasis: defaults.defaults.priceTaxBasis });
+                } : { ...EMPTY_PROFILE, priceTaxBasis: defaults.defaults.priceTaxBasis };
+                setBaseTurnaroundDays(nextTurnaroundDays);
+                setProfile(nextProfile);
+                setSavedSnapshot(editableSnapshot(nextProfile, nextTurnaroundDays));
                 setHistory(productHistory);
                 setLoadSucceeded(true);
             })
@@ -80,29 +110,39 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
     }
     const notes = typeof profile.notesDocument === 'string' ? profile.notesDocument : '';
     const ranges = inferWholesaleTierRanges(profile.priceTiers);
+    const isDirty = loadSucceeded && editableSnapshot(profile, baseTurnaroundDays) !== savedSnapshot;
+
+    useEffect(() => {
+        onDirtyChange?.(isDirty);
+        return () => onDirtyChange?.(false);
+    }, [isDirty, onDirtyChange]);
 
     const save = async () => {
-        if (!loadSucceeded) return;
-        if (validationErrors.length) return;
+        if (!isDirty) return true;
+        if (!loadSucceeded || validationErrors.length) return false;
         if (profile.imageUrl) {
-            try { new URL(profile.imageUrl); } catch { setError('Image URL must be a valid absolute URL.'); return; }
+            try { new URL(profile.imageUrl); } catch { setError('Image URL must be a valid absolute URL.'); return false; }
         }
         setSaving(true);
         setError('');
         try {
             const result = await createWholesaleCatalogService(api).saveProduct(productId, profile, baseTurnaroundDays);
             setProfile(result.profile);
+            setSavedSnapshot(editableSnapshot(result.profile, baseTurnaroundDays));
             await loadHistory(1);
             setRemovalWarning(false);
             toast.success('Wholesale product settings saved.');
+            return true;
         } catch (reason) {
             const message = reason instanceof Error ? reason.message : 'Unable to save wholesale pricing.';
             setError(message);
             toast.error(message);
+            return false;
         } finally {
             setSaving(false);
         }
     };
+    useImperativeHandle(ref, () => ({ save }));
     const previewImage = profile.imageUrl || mainImage;
 
     if (loading) return <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-6 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><Loader2 className="animate-spin" size={18} /> Loading wholesale settings...</div>;
@@ -183,10 +223,10 @@ export function WholesaleProductPanel({ productId, canEdit }: { productId: strin
                 <div className="space-y-3">{history.events.map(event => { const oldValue = formatHistorySnapshot(event.details?.old); const newValue = formatHistorySnapshot(event.details?.new); return <article key={event.id} className="rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-700"><div className="mb-3 flex flex-wrap justify-between gap-2"><span className="font-semibold text-slate-800 dark:text-slate-100">{event.user?.fullName || event.user?.email || 'Wholesale staff'}</span><time className="text-xs text-slate-500">{new Date(event.createdAt).toLocaleString()}</time></div><div className="grid gap-3 md:grid-cols-2"><HistorySnapshot label="Before" value={oldValue} /><HistorySnapshot label="After" value={newValue} /></div></article>; })}{!history.events.length && !historyLoading && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">No pricing changes recorded yet.</div>}</div>
                 {history.totalPages > 1 && <div className="mt-4 flex items-center justify-end gap-3 text-sm"><button aria-label="Previous history page" disabled={historyLoading || history.page <= 1} onClick={() => void loadHistory(history.page - 1)} className="rounded-lg border border-slate-300 p-2 disabled:opacity-40 dark:border-slate-600"><ChevronLeft size={16} /></button><span>Page {history.page} of {history.totalPages}</span><button aria-label="Next history page" disabled={historyLoading || history.page >= history.totalPages} onClick={() => void loadHistory(history.page + 1)} className="rounded-lg border border-slate-300 p-2 disabled:opacity-40 dark:border-slate-600"><ChevronRight size={16} /></button></div>}
             </section>
-            {canEdit && <div className="flex justify-end"><button type="button" onClick={save} disabled={!loadSucceeded || saving || validationErrors.length > 0} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 font-medium text-white shadow-sm disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} {saving ? 'Saving wholesale...' : 'Save wholesale settings'}</button></div>}
+            {canEdit && <div className="flex justify-end"><button type="button" onClick={() => void save()} disabled={!loadSucceeded || saving || validationErrors.length > 0} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 font-medium text-white shadow-sm disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} {saving ? 'Saving wholesale...' : 'Save wholesale settings'}</button></div>}
         </div>
     );
-}
+});
 
 function HistorySnapshot({ label, value }: { label: string; value: ReturnType<typeof formatHistorySnapshot> }) {
     return <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900/70"><div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div><div>{value.tiers}</div><div className="mt-1 text-xs text-slate-500">{value.tax} · {value.badges} · {value.turnaround}</div></div>;

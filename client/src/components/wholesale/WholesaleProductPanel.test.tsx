@@ -1,6 +1,7 @@
+import { createRef } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { WholesaleProductPanel } from './WholesaleProductPanel';
+import { WholesaleProductPanel, type WholesaleProductPanelRef } from './WholesaleProductPanel';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), success: vi.fn(), error: vi.fn() }));
 vi.mock('../../hooks/useApi', () => ({ useApi: () => ({ isReady: true, token: 'token', accountId: 'account', get: mocks.get, put: mocks.put, post: vi.fn(), patch: vi.fn(), delete: vi.fn() }) }));
@@ -37,5 +38,23 @@ describe('WholesaleProductPanel safety', () => {
         expect(confirm).toHaveBeenCalledOnce();
         expect(screen.getByRole('button', { name: 'Remove tier 1' })).toBeInTheDocument();
         await waitFor(() => expect(screen.queryByText(/saving with no tiers/i)).not.toBeInTheDocument());
+    });
+
+    it('reports wholesale edits as dirty and saves them through the page ref', async () => {
+        mocks.get.mockImplementation((url: string) => Promise.resolve(getResult(url)));
+        mocks.put.mockResolvedValue({ profile: { ...productResult.profile, priceTiers: [{ minimumQuantity: 10, unitPrice: '4.0000', isPoa: false, leadTimeDays: null }] } });
+        const onDirtyChange = vi.fn();
+        const ref = createRef<WholesaleProductPanelRef>();
+        render(<WholesaleProductPanel ref={ref} productId="product" canEdit onDirtyChange={onDirtyChange} />);
+
+        const unitPrice = await screen.findByLabelText('Unit price');
+        fireEvent.change(unitPrice, { target: { value: '4' } });
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+        await expect(ref.current?.save()).resolves.toBe(true);
+        expect(mocks.put).toHaveBeenCalledWith('/api/wholesale-catalog/products/product', expect.objectContaining({
+            priceTiers: [expect.objectContaining({ minimumQuantity: 10, unitPrice: '4' })],
+        }));
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
     });
 });

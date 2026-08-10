@@ -256,6 +256,30 @@ describe('MergeTagResolver all merge tags', () => {
         expect(html).toContain('https://auspost.com.au/mypost/track/#/details/ABC%20123');
     });
 
+    it('resolves order tracking blocks from shipment event context when order metadata is stale', () => {
+        const html = resolveMergeTags(
+            '<strong>{{order.trackingNumber}}</strong><a href="{{order.trackingUrl}}">Track</a>',
+            {
+                order: { id: 100, meta_data: [] },
+                trackingNumber: '33A1234567890',
+                trackingUrl: 'imap://mail.example.com/message/1',
+            }
+        );
+
+        expect(html).toContain('<strong>33A1234567890</strong>');
+        expect(html).toContain('href="https://auspost.com.au/mypost/track/#/details/33A1234567890"');
+        expect(html).not.toContain('imap://');
+    });
+
+    it('resolves order tracking tags from nested shipment context without an order', () => {
+        const html = resolveMergeTags(
+            '{{order.trackingNumber}} {{order.auspostTrackingUrl}}',
+            { shipment: { trackingNumber: 'ABC 123' } }
+        );
+
+        expect(html).toBe('ABC 123 https://auspost.com.au/mypost/track/#/details/ABC%20123');
+    });
+
     it('resolves order blocks from raw WooCommerce order payloads', () => {
         const html = resolveMergeTags(
             '{{order.number}} {{order.date}} {{order.paymentMethod}} {{order.billingAddress}} {{order.shippingAddress}} {{order.itemsTable}} Total: {{order.total}}',

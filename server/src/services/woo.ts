@@ -1,4 +1,5 @@
 import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
+import http from 'http';
 import https from 'https';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
@@ -431,6 +432,62 @@ export class WooService {
         if (this.isDemo) return { success: true, replyId: Math.floor(Math.random() * 100000), review: { id: reviewId } };
         const response = await this.requestWpWithRetry('post', `reviews/${reviewId}/reply`, { reply, ...(author !== undefined ? { author } : {}) }, 'overseek/v1');
         return response.data;
+    }
+
+    async getProductVideoGallery(productId: number) {
+        const response = await this.requestWpWithRetry('get', `products/${productId}/video-gallery`, {}, 'overseek/v1');
+        return response.data;
+    }
+
+    async updateProductVideoGallery(productId: number, data: unknown) {
+        const response = await this.requestWpWithRetry('put', `products/${productId}/video-gallery`, data, 'overseek/v1');
+        return response.data;
+    }
+
+    async uploadProductVideo(file: { filename: string; mimetype: string; buffer: Buffer }) {
+        const endpoint = new URL(`${this.url.replace(/\/$/, '')}/wp-json/overseek/v1/media/product-video`);
+        endpoint.searchParams.set('consumer_key', this.consumerKey);
+        endpoint.searchParams.set('consumer_secret', this.consumerSecret);
+
+        // Uploads are intentionally not retried: a lost response after WordPress
+        // creates the attachment could otherwise create duplicate media items.
+        return new Promise<any>((resolve, reject) => {
+            const transport = endpoint.protocol === 'https:' ? https : http;
+            const request = transport.request(endpoint, {
+                method: 'POST',
+                ...(endpoint.protocol === 'https:' ? { agent: WooService.getAgent(endpoint.hostname) } : {}),
+                headers: {
+                    'Content-Type': file.mimetype,
+                    'Content-Length': file.buffer.length,
+                    'X-Overseek-Filename': encodeURIComponent(file.filename),
+                    'User-Agent': 'Overseek-Server/Product-Video-Upload',
+                },
+            }, (response) => {
+                const chunks: Buffer[] = [];
+                let responseBytes = 0;
+                response.on('data', (chunk: Buffer) => {
+                    responseBytes += chunk.length;
+                    if (responseBytes <= 1024 * 1024) chunks.push(chunk);
+                });
+                response.on('end', () => {
+                    const text = Buffer.concat(chunks).toString('utf8');
+                    let data: any = {};
+                    try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
+                    const status = response.statusCode || 500;
+                    if (status >= 200 && status < 300) {
+                        resolve(data);
+                        return;
+                    }
+                    const error: any = new Error(data?.error?.message || data?.message || `WordPress upload failed (${status})`);
+                    error.status = status;
+                    error.response = { status, data };
+                    reject(error);
+                });
+            });
+            request.setTimeout(getWooRequestTimeoutMs(), () => request.destroy(new Error('WordPress video upload timed out.')));
+            request.on('error', reject);
+            request.end(file.buffer);
+        });
     }
 
     private getWpApi(version: 'wp/v2' | 'overseek/v1'): WooCommerceRestApi {
