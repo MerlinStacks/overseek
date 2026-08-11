@@ -561,6 +561,21 @@ export class MarketingService {
         }
 
         const automationIds = automations.map((automation) => automation.id);
+        const exitNodeIdsByAutomation = new Map<string, Set<string>>();
+        for (const automation of automations) {
+            const flow = automation.flowDefinition as { nodes?: Array<{
+                id?: unknown;
+                data?: { config?: { actionType?: unknown }; actionType?: unknown };
+            }> } | null;
+            const exitNodeIds = new Set<string>();
+            for (const node of flow?.nodes || []) {
+                const actionType = node.data?.config?.actionType ?? node.data?.actionType;
+                if (String(actionType || '').toUpperCase() === 'EXIT' && typeof node.id === 'string') {
+                    exitNodeIds.add(node.id);
+                }
+            }
+            exitNodeIdsByAutomation.set(automation.id, exitNodeIds);
+        }
 
         const now = new Date();
         const [enrollmentGroups, holdingGroups, completedActionEvents, failedActionEvents, goalGroups] = await Promise.all([
@@ -597,6 +612,7 @@ export class MarketingService {
                 select: {
                     automationId: true,
                     enrollmentId: true,
+                    nodeId: true,
                     outcome: true,
                     metadata: true
                 }
@@ -641,6 +657,9 @@ export class MarketingService {
         for (const event of completedActionEvents) {
             const metadata = (event.metadata && typeof event.metadata === 'object') ? event.metadata as Record<string, unknown> : {};
             if (String(metadata.nodeType || '').toUpperCase() !== 'ACTION') continue;
+            const isExit = String(metadata.actionType || '').toUpperCase() === 'EXIT'
+                || exitNodeIdsByAutomation.get(event.automationId)?.has(event.nodeId);
+            if (isExit) continue;
             const outcome = String(event.outcome || '').toUpperCase();
             if (outcome.includes('SKIPPED') || outcome.includes('FAILED') || outcome === 'EMAIL_NOT_CONFIGURED') continue;
 

@@ -1,7 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { compileEmailDesignV2, createDefaultEmailDesignV2 } from './emailDesignerV2';
+import { compileEmailDesignV2, createDefaultEmailDesignV2, createEmailDesignV2FromUnknown } from './emailDesignerV2';
 
 describe('emailDesignerV2', () => {
+    it('uses the current flow subject instead of a stale embedded design title', () => {
+        const design = createDefaultEmailDesignV2({
+            title: 'Old subject',
+            previewText: 'Old preview text',
+        });
+
+        const normalized = createEmailDesignV2FromUnknown(design, {
+            title: 'New subject',
+            previewText: 'New preview text',
+        });
+
+        expect(normalized.document.meta.title).toBe('New subject');
+        expect(normalized.document.meta.previewText).toBe('New preview text');
+    });
+
+    it('does not revive an embedded subject after the current subject is cleared', () => {
+        const design = createDefaultEmailDesignV2({ title: 'Old subject' });
+
+        const normalized = createEmailDesignV2FromUnknown(design, { title: '' });
+
+        expect(normalized.document.meta.title).toBe('');
+    });
+
     it('renders email-client-safe social logo images', () => {
         const design = createDefaultEmailDesignV2({ title: 'Social test' });
         design.document.sections = [{

@@ -289,6 +289,9 @@ export class AutomationEngine {
                 outcome: result.outcome || result.action,
                 metadata: {
                     nodeType: node.type,
+                    ...(String(node.type).toUpperCase() === 'ACTION' ? {
+                        actionType: node.data?.config?.actionType || node.data?.actionType || 'SEND_EMAIL'
+                    } : {}),
                     executionMs,
                     ...(result.metadata || {})
                 }

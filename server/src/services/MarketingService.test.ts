@@ -189,7 +189,18 @@ describe('MarketingService Optimization', () => {
 
     it('counts completed flows only when a contact action completed', async () => {
         mocks.prisma.marketingAutomation.findMany.mockResolvedValue([
-            { id: 'automation-1', accountId: 'acc-1', name: 'Care Guide' }
+            {
+                id: 'automation-1',
+                accountId: 'acc-1',
+                name: 'Care Guide',
+                flowDefinition: {
+                    nodes: [
+                        { id: 'send-email', data: { config: { actionType: 'SEND_EMAIL' } } },
+                        { id: 'exit-flow', data: { config: { actionType: 'EXIT' } } }
+                    ],
+                    edges: []
+                }
+            }
         ]);
         mocks.prisma.automationEnrollment.groupBy
             .mockResolvedValueOnce([{ automationId: 'automation-1', status: 'COMPLETED', _count: 3 }])
@@ -205,18 +216,28 @@ describe('MarketingService Optimization', () => {
                 {
                     automationId: 'automation-1',
                     enrollmentId: 'action-completed',
+                    nodeId: 'send-email',
                     outcome: 'EMAIL_SENT',
                     metadata: { nodeType: 'ACTION' }
                 },
                 {
                     automationId: 'automation-1',
                     enrollmentId: 'action-completed',
+                    nodeId: 'exit-flow',
+                    outcome: 'NEXT',
+                    metadata: { nodeType: 'ACTION' }
+                },
+                {
+                    automationId: 'automation-1',
+                    enrollmentId: 'exit-only',
+                    nodeId: 'exit-flow',
                     outcome: 'NEXT',
                     metadata: { nodeType: 'ACTION' }
                 },
                 {
                     automationId: 'automation-1',
                     enrollmentId: 'action-skipped',
+                    nodeId: 'send-email',
                     outcome: 'EMAIL_SKIPPED',
                     metadata: { nodeType: 'ACTION' }
                 }

@@ -466,8 +466,8 @@ export function createEmailDesignV2FromUnknown(value: unknown, options?: {
                 ...value.document,
                 meta: {
                     ...value.document.meta,
-                    title: value.document.meta.title || options?.title || '',
-                    previewText: value.document.meta.previewText || options?.previewText || '',
+                    title: options?.title ?? value.document.meta.title ?? '',
+                    previewText: options?.previewText ?? value.document.meta.previewText ?? '',
                 },
             },
         };
