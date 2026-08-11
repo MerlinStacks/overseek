@@ -75,7 +75,7 @@ describe('event bus automation subscriptions', () => {
         expect(automationEngine.processTrigger).not.toHaveBeenCalledWith('account-1', 'ORDER_CREATED', order);
     });
 
-    it('forwards artwork approval requests to the matching automation trigger', async () => {
+    it('forwards artwork approval requests to specific and uploaded automation triggers', async () => {
         const automationEngine = {
             processTrigger: vi.fn().mockResolvedValue(undefined)
         };
@@ -98,6 +98,42 @@ describe('event bus automation subscriptions', () => {
                 'ARTWORK_APPROVAL_REQUESTED',
                 artwork
             );
+            expect(automationEngine.processTrigger).toHaveBeenCalledWith(
+                'account-1',
+                'ARTWORK_UPLOADED',
+                artwork
+            );
         });
+    });
+
+    it('does not route a plain upload to approval-requested automations', async () => {
+        const automationEngine = {
+            processTrigger: vi.fn().mockResolvedValue(undefined)
+        };
+        const chatService = {
+            handleIncomingEmail: vi.fn().mockResolvedValue(undefined)
+        };
+        const artwork = {
+            email: 'buyer@example.com',
+            orderId: 1001,
+            eventStatus: 'uploaded',
+            proofVersion: 2
+        };
+
+        subscribeEventBus(chatService as any, automationEngine as any);
+        EventBus.emit(EVENTS.ARTWORK.UPLOADED, { accountId: 'account-1', artwork });
+
+        await vi.waitFor(() => {
+            expect(automationEngine.processTrigger).toHaveBeenCalledWith(
+                'account-1',
+                'ARTWORK_UPLOADED',
+                artwork
+            );
+        });
+        expect(automationEngine.processTrigger).not.toHaveBeenCalledWith(
+            'account-1',
+            'ARTWORK_APPROVAL_REQUESTED',
+            artwork
+        );
     });
 });

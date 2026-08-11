@@ -52,6 +52,10 @@ export function subscribeEventBus(chatService: ChatService, automationEngine: Au
     subscribeAutomationTrigger(EVENTS.SHIPMENT.DELIVERED, 'SHIPMENT_DELIVERED', data => data.shipment, automationEngine);
     subscribeAutomationTrigger(EVENTS.SHIPMENT.EXCEPTION, 'SHIPMENT_EXCEPTION', data => data.shipment, automationEngine);
     subscribeAutomationTrigger(EVENTS.ARTWORK.UPLOADED, 'ARTWORK_UPLOADED', data => data.artwork, automationEngine);
+    // CK Workflow emits approval_requested when a proof is uploaded and sent to
+    // the customer. Keep the more specific trigger while also treating it as an
+    // upload so existing "Artwork Uploaded" proof flows receive the event.
+    subscribeAutomationTrigger(EVENTS.ARTWORK.APPROVAL_REQUESTED, 'ARTWORK_UPLOADED', data => data.artwork, automationEngine);
     subscribeAutomationTrigger(EVENTS.ARTWORK.APPROVAL_REQUESTED, 'ARTWORK_APPROVAL_REQUESTED', data => data.artwork, automationEngine);
     subscribeAutomationTrigger(EVENTS.ARTWORK.APPROVED, 'ARTWORK_APPROVED', data => data.artwork, automationEngine);
     subscribeAutomationTrigger(EVENTS.ARTWORK.CHANGES_REQUESTED, 'ARTWORK_CHANGES_REQUESTED', data => data.artwork, automationEngine);

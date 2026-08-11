@@ -63,6 +63,11 @@ describe('artwork events', () => {
         });
 
         expect(response.statusCode, response.body).toBe(202);
+        expect(response.json()).toEqual(expect.objectContaining({
+            triggerType: 'ARTWORK_APPROVAL_REQUESTED',
+            compatibleTriggerTypes: ['ARTWORK_APPROVAL_REQUESTED', 'ARTWORK_UPLOADED'],
+            proofVersion: 2
+        }));
         expect(listener).toHaveBeenCalledWith({
             accountId: 'account-1',
             artwork: expect.objectContaining({

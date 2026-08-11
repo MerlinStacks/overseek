@@ -166,6 +166,13 @@ async function handleArtworkEvent(
     }
 
     if (!await authenticateArtworkEvent(accountId, extractBearerToken(request.headers))) {
+        Logger.warn('[ArtworkEvents] Artwork event rejected: authentication failed', {
+            accountId,
+            eventId: event.event_id || null,
+            eventStatus: event.event_status || null,
+            eventName: event.event_name || null,
+            orderId: event.order_id ?? null,
+        });
         return reply.code(401).send({ error: 'Unauthorized' });
     }
 
@@ -208,12 +215,25 @@ async function handleArtworkEvent(
     Logger.info('[ArtworkEvents] Artwork event accepted', {
         accountId,
         triggerType: mapped.triggerType,
+        compatibleTriggerTypes: normalizedStatus === 'approval_requested'
+            ? ['ARTWORK_APPROVAL_REQUESTED', 'ARTWORK_UPLOADED']
+            : [mapped.triggerType],
         orderId: event.order_id ?? null,
+        eventId: event.event_id || null,
+        customerEmailPresent: Boolean(event.customer_email),
         eventStatus: normalizedStatus,
         proofVersion,
     });
 
-    return reply.code(202).send({ success: true, accepted: true, triggerType: mapped.triggerType });
+    return reply.code(202).send({
+        success: true,
+        accepted: true,
+        triggerType: mapped.triggerType,
+        compatibleTriggerTypes: normalizedStatus === 'approval_requested'
+            ? ['ARTWORK_APPROVAL_REQUESTED', 'ARTWORK_UPLOADED']
+            : [mapped.triggerType],
+        proofVersion,
+    });
 }
 
 const artworkEventsRoutes: FastifyPluginAsync = async (fastify) => {
