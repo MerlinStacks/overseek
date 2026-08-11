@@ -190,65 +190,36 @@ function CatalogDetailContent({ catalogId, service, canEdit, onClose, onChanged 
   useEffect(() => {
     detailContext?.setPreview(catalog ? { catalog, products: automaticProducts, defaults, branding } : null);
   }, [automaticProducts, branding, catalog, defaults, detailContext?.setPreview]);
-  return (
-    <Modal title={catalog?.name || 'Catalog details'} onClose={onClose} wide>
-      {loading ? (
-        <Loading label="Loading catalog details..." />
-      ) : (
-        catalog && (
-          <div className="space-y-8">
-            <div className="flex flex-wrap items-center gap-3">
-              <Status value={catalog.status} />
-              <span className="text-sm text-slate-500">{automaticProducts.length} automatically included wholesale-priced {automaticProducts.length === 1 ? 'product' : 'products'}</span>
+  const revisionHistory = catalog ? (
+    <section className="mt-8 border-t border-slate-200 pt-7 dark:border-slate-700">
+      <h3 className="mb-3 font-semibold text-slate-900 dark:text-white">Revision history</h3>
+      <div className="space-y-2">
+        {revisions.map((revision) => (
+          <div key={revision.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            <div>
+              <span className="font-medium text-slate-800 dark:text-slate-100">Revision {revision.revisionNumber}</span>
+              <span className="ml-3 text-xs text-slate-500">{new Date(revision.createdAt).toLocaleString()}</span>
             </div>
-            <section>
-              <div className="mb-3">
-                <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Automatically included wholesale-priced products</h3>
-                  <p className="text-sm text-slate-500">Active products with wholesale pricing are included automatically.</p>
-                </div>
-              </div>
-              <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                {automaticProducts.map((product) => (
-                  <div key={product.id} className="flex items-center gap-3 border-b border-slate-100 p-3 last:border-0 dark:border-slate-700">
-                    <img src={product.imageUrl || ''} alt="" className="h-10 w-10 rounded-lg bg-slate-100 object-cover" />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-slate-800 dark:text-slate-100">{product.name}</span>
-                      <span className="text-xs text-slate-500">{product.sku}</span>
-                    </span>
-                  </div>
-                ))}
-                {!automaticProducts.length && <div className="p-8 text-center text-sm text-slate-500">No active wholesale-priced products are automatically included.</div>}
-              </div>
-            </section>
-            <section>
-              <h3 className="mb-3 font-semibold text-slate-900 dark:text-white">Revision history</h3>
-              <div className="space-y-2">
-                {revisions.map((revision) => (
-                  <div key={revision.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                    <div>
-                      <span className="font-medium text-slate-800 dark:text-slate-100">Revision {revision.revisionNumber}</span>
-                      <span className="ml-3 text-xs text-slate-500">{new Date(revision.createdAt).toLocaleString()}</span>
-                    </div>
-                    {canEdit && catalog.status !== 'ARCHIVED' && (
-                      <button
-                        disabled={busy}
-                        onClick={() => {
-                          if (confirm(`Restore revision ${revision.revisionNumber}?`)) void act(() => service.restoreRevision(catalogId, revision.id), 'Revision restored.');
-                        }}
-                        className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50"
-                      >
-                        <RotateCcw size={15} /> Restore
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-            <div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700">PDF generation and sharing will be available in a later tranche. No generation or sharing action is currently performed.</div>
+            {canEdit && catalog.status !== 'ARCHIVED' && (
+              <button
+                disabled={busy}
+                onClick={() => {
+                  if (confirm(`Restore revision ${revision.revisionNumber}?`)) void act(() => service.restoreRevision(catalogId, revision.id), 'Revision restored.');
+                }}
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50"
+              >
+                <RotateCcw size={15} /> Restore
+              </button>
+            )}
           </div>
-        )
-      )}
+        ))}
+        {!revisions.length && <div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700">No revisions yet.</div>}
+      </div>
+    </section>
+  ) : null;
+  return (
+    <Modal title={catalog?.name || 'Catalog details'} onClose={onClose} footer={revisionHistory} wide>
+      {loading ? <Loading label="Loading catalog details..." /> : null}
     </Modal>
   );
 }
@@ -357,7 +328,7 @@ function SetupChecklistEditor({ value, disabled, onChange }: { value: WholesaleD
     return <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700"><div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold text-slate-900 dark:text-white">Setup checklist</h3><p className="text-xs text-slate-500">Track the account preparation needed before publishing catalogs.</p></div>{!disabled && value.length < 30 && <button type="button" onClick={() => onChange([...value, { key: `setup-${Date.now()}`, label: 'New setup item', completed: false }])} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-indigo-600 hover:bg-indigo-50"><Plus size={15} /> Add item</button>}</div><div className="space-y-2">{value.map((item, index) => <div key={item.key} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><input type="checkbox" disabled={disabled} checked={item.completed} onChange={event => onChange(value.map((entry, entryIndex) => entryIndex === index ? { ...entry, completed: event.target.checked } : entry))} /><input aria-label={`Setup item ${index + 1}`} disabled={disabled} value={item.label} onChange={event => onChange(value.map((entry, entryIndex) => entryIndex === index ? { ...entry, label: event.target.value } : entry))} className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none disabled:opacity-60 dark:text-slate-100" />{!disabled && <button type="button" aria-label={`Remove setup item ${index + 1}`} onClick={() => onChange(value.filter((_, entryIndex) => entryIndex !== index))} className="rounded-lg p-1.5 text-red-600 hover:bg-red-50"><Trash2 size={15} /></button>}</div>)}{!value.length && <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500 dark:border-slate-700">No setup items configured.</div>}</div></div>;
 }
 
-function Modal({ title, children, onClose, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) { const generationDetail = useContext(GenerationDetailContext); return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><div role="dialog" aria-modal="true" className={`max-h-[90vh] w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}><div className="mb-6 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h2><button onClick={onClose} aria-label="Close" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={20} /></button></div>{children}{generationDetail?.preview && <div className="mt-8 border-t border-slate-200 pt-7 dark:border-slate-700"><WholesaleCatalogPreview {...generationDetail.preview} /></div>}{generationDetail && <WholesaleGenerationPanelForCatalog {...generationDetail} />}{generationDetail?.canShare && <WholesaleSharingPanel catalogId={generationDetail.catalogId} service={generationDetail.service} canGenerate={generationDetail.canGenerate} />}</div></div>; }
+function Modal({ title, children, footer, onClose, wide = false }: { title: string; children: React.ReactNode; footer?: React.ReactNode; onClose: () => void; wide?: boolean }) { const generationDetail = useContext(GenerationDetailContext); return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><div role="dialog" aria-modal="true" className={`max-h-[90vh] w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}><div className="mb-6 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h2><button onClick={onClose} aria-label="Close" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={20} /></button></div>{children}{generationDetail?.preview && <div className="mt-8 border-t border-slate-200 pt-7 dark:border-slate-700"><WholesaleCatalogPreview {...generationDetail.preview} /></div>}{generationDetail?.canShare && <WholesaleSharingPanel catalogId={generationDetail.catalogId} service={generationDetail.service} canGenerate={generationDetail.canGenerate} />}{generationDetail && <WholesaleGenerationPanelForCatalog {...generationDetail} />}{footer}</div></div>; }
 function FormCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800/80"><h2 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h2><p className="mb-6 mt-1 text-sm text-slate-500">{description}</p>{children}</section>; }
 function Field({ label, value, onChange, required, disabled, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; disabled?: boolean; type?: string }) { return <label className="text-sm text-slate-600 dark:text-slate-300">{label}{required && ' *'}<input type={type} required={required} disabled={disabled} value={value} onChange={event => onChange(event.target.value)} className={inputClass} /></label>; }
 function Loading({ label }: { label: string }) { return <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white p-12 text-slate-500 dark:border-slate-700 dark:bg-slate-800"><Loader2 className="animate-spin" size={20} />{label}</div>; }
