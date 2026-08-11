@@ -55,6 +55,7 @@ describe('email click redirects', () => {
             to: 'customer@example.com',
             sourceId: null,
             account: {
+                name: 'Example Store',
                 wooUrl: 'https://shop.example.com',
                 domain: 'example.com',
                 appearance: {
@@ -94,7 +95,26 @@ describe('email click redirects', () => {
         });
 
         expect(res.statusCode).toBe(400);
+        expect(res.headers['content-type']).toContain('text/html');
+        expect(res.body).toContain('We couldn’t open that link');
+        expect(res.body).toContain('Example Store');
+        expect(res.body).toContain('Return to store');
+        expect(res.body).not.toContain('Invalid redirect URL');
         expect(prisma.messageTrackingEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('renders a shopper-friendly page for missing tracking links', async () => {
+        vi.mocked(prisma.emailLog.findUnique).mockResolvedValueOnce(null);
+
+        const res = await app.inject({
+            method: 'GET',
+            url: `/api/email/click/missing?url=${encodeURIComponent('https://example.com/products/ring')}`,
+        });
+
+        expect(res.statusCode).toBe(404);
+        expect(res.headers['content-type']).toContain('text/html');
+        expect(res.body).toContain('This link is no longer available');
+        expect(res.body).toContain('Contact support');
     });
 
     it('allows redirects to the account store domain', async () => {
@@ -150,6 +170,38 @@ describe('email click redirects', () => {
 
         expect(res.statusCode).toBe(302);
         expect(res.headers.location).toBe(target);
+    });
+
+    it('allows Google review links', async () => {
+        const target = 'https://g.page/r/CX0J-81ofBoNEAE/review';
+        const res = await app.inject({
+            method: 'GET',
+            url: `/api/email/click/track-1?url=${encodeURIComponent(target)}`,
+        });
+
+        expect(res.statusCode).toBe(302);
+        expect(res.headers.location).toBe(target);
+        expect(prisma.messageTrackingEvent.create).toHaveBeenCalledWith({
+            data: expect.objectContaining({
+                eventType: 'CLICK',
+                linkUrl: target,
+            }),
+        });
+    });
+
+    it.each([
+        'https://g.page/another-path',
+        'http://g.page/r/CX0J-81ofBoNEAE/review',
+        'https://g.page.evil.example/r/CX0J-81ofBoNEAE/review',
+        'https://g.page/r/CX0J-81ofBoNEAE/review?redirect=https://evil.example',
+    ])('rejects unsafe Google review redirect variants: %s', async (target) => {
+        const res = await app.inject({
+            method: 'GET',
+            url: `/api/email/click/track-1?url=${encodeURIComponent(target)}`,
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(prisma.messageTrackingEvent.create).not.toHaveBeenCalled();
     });
 
     it('redirects unsubscribe pages to the WooCommerce preference center when available', async () => {

@@ -5,6 +5,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { campaignTrackingService } from '../services/CampaignTrackingService';
+import { renderStorefrontStatusPage, storefrontBrandFromAccount } from './publicEmailPages';
 
 // 1x1 transparent GIF (smallest valid GIF)
 const TRANSPARENT_GIF = Buffer.from(
@@ -111,6 +112,17 @@ function parseConfiguredSocialUrls(appearance: unknown): string[] {
     });
 }
 
+function isGoogleReviewUrl(url: URL): boolean {
+    return url.protocol === 'https:'
+        && url.hostname.toLowerCase() === 'g.page'
+        && url.port === ''
+        && url.username === ''
+        && url.password === ''
+        && /^\/r\/[A-Za-z0-9_-]+\/review\/?$/.test(url.pathname)
+        && url.search === ''
+        && url.hash === '';
+}
+
 function getSafeRedirectUrl(rawUrl: string, allowedHosts: string[], allowedUrls: string[] = [], reviewRequestMarker = '1'): string | null {
     try {
         const parsed = new URL(rawUrl);
@@ -119,7 +131,7 @@ function getSafeRedirectUrl(rawUrl: string, allowedHosts: string[], allowedUrls:
         }
         const isAccountHost = allowedHosts.some(host => hostMatches(parsed.hostname, host));
         const isConfiguredUrl = allowedUrls.some(url => url === parsed.toString());
-        if (!isAccountHost && !isConfiguredUrl) {
+        if (!isAccountHost && !isConfiguredUrl && !isGoogleReviewUrl(parsed)) {
             return null;
         }
         return withReviewRequestMarker(parsed, reviewRequestMarker).toString();
@@ -143,7 +155,9 @@ async function getPreferenceContext(token: string) {
             account: {
                 select: {
                     name: true,
-                    wooUrl: true
+                    wooUrl: true,
+                    domain: true,
+                    appearance: true
                 }
             }
         }
@@ -448,11 +462,14 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const emailLog = await prisma.emailLog.findUnique({
                     where: { trackingId },
-                    include: { account: { select: { wooUrl: true, domain: true, appearance: true } } }
+                    include: { account: { select: { name: true, wooUrl: true, domain: true, appearance: true } } }
                 });
 
                 if (!emailLog) {
-                    return reply.code(404).send({ error: 'Tracking link not found' });
+                    return reply.code(404).type('text/html').send(renderStorefrontStatusPage({
+                        title: 'This link is no longer available',
+                        message: 'The link may have expired or the email may be out of date. Please return to the store and try again.',
+                    }));
                 }
 
                 const allowedHosts = [
@@ -465,7 +482,12 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                 redirectUrl = getSafeRedirectUrl(url, allowedHosts, configuredSocialUrls, trackingId);
 
                 if (!redirectUrl) {
-                    return reply.code(400).send({ error: 'Invalid redirect URL' });
+                    return reply.code(400).type('text/html').send(renderStorefrontStatusPage({
+                        title: 'We couldn’t open that link',
+                        message: 'The destination could not be verified, so we stopped here to keep your browsing safe.',
+                        detail: 'You can still visit the store directly or contact its support team for help.',
+                        brand: storefrontBrandFromAccount(emailLog.account),
+                    }));
                 }
 
                 // Log click event
@@ -492,11 +514,18 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                 Logger.debug('Email link clicked', { trackingId, url: redirectUrl });
             } catch (error) {
                 Logger.error('Click tracking error', { trackingId, error });
-                return reply.code(500).send({ error: 'Failed to track click' });
+                if (redirectUrl) return reply.code(302).redirect(redirectUrl);
+                return reply.code(500).type('text/html').send(renderStorefrontStatusPage({
+                    title: 'That link needs another try',
+                    message: 'We couldn’t open the page just now. Please try again in a moment.',
+                }));
             }
 
             if (!redirectUrl) {
-                return reply.code(400).send({ error: 'Invalid redirect URL' });
+                return reply.code(400).type('text/html').send(renderStorefrontStatusPage({
+                    title: 'We couldn’t open that link',
+                    message: 'The destination could not be verified, so we stopped here to keep your browsing safe.',
+                }));
             }
 
             // Redirect to original URL
@@ -517,14 +546,11 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                 const context = await getPreferenceContext(token);
 
                 if (!context) {
-                    return reply.code(404).type('text/html').send(`
-                        <!DOCTYPE html>
-                        <html><head><title>Invalid Link</title></head>
-                        <body style="font-family: system-ui; padding: 40px; text-align: center;">
-                            <h1>Invalid Unsubscribe Link</h1>
-                            <p>This unsubscribe link is invalid or has expired.</p>
-                        </body></html>
-                    `);
+                    return reply.code(404).type('text/html').send(renderStorefrontStatusPage({
+                        title: 'This link has expired',
+                        message: 'This email preferences link is invalid or no longer available.',
+                        detail: 'Please use the unsubscribe link in a more recent email or contact the store for help.',
+                    }));
                 }
 
                 if (context.wooPreferenceCenterUrl && context.emailLog.account?.wooUrl
@@ -535,7 +561,10 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.type('text/html').send(renderHostedPreferenceHtml(context));
             } catch (error) {
                 Logger.error('Unsubscribe page error', { token, error });
-                return reply.code(500).send('An error occurred');
+                return reply.code(500).type('text/html').send(renderStorefrontStatusPage({
+                    title: 'We couldn’t load your preferences',
+                    message: 'Your request has not been changed. Please try again in a moment.',
+                }));
             }
         }
     );
@@ -581,21 +610,25 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
                 const updated = await upsertPreference(token, scope, reason);
 
                 if (!updated) {
-                    return reply.code(404).send({ error: 'Invalid token' });
+                    return reply.code(404).type('text/html').send(renderStorefrontStatusPage({
+                        title: 'This link has expired',
+                        message: 'We couldn’t update your preferences because this link is no longer valid.',
+                    }));
                 }
 
-                return reply.type('text/html').send(`
-                    <!DOCTYPE html>
-                    <html><head><title>Unsubscribed</title></head>
-                    <body style="font-family: system-ui; padding: 40px; text-align: center;">
-                        <h1>✓ Preferences Updated</h1>
-                        <p>You have been unsubscribed from future ${updated.currentScope === 'ALL' ? 'emails' : 'marketing emails'}.</p>
-                        <p style="color: #666; font-size: 14px;">You may close this window.</p>
-                    </body></html>
-                `);
+                return reply.type('text/html').send(renderStorefrontStatusPage({
+                    kind: 'success',
+                    title: 'Preferences updated',
+                    message: `You have been unsubscribed from future ${updated.currentScope === 'ALL' ? 'emails' : 'marketing emails'}.`,
+                    detail: 'Your changes have been saved. You can safely close this window.',
+                    brand: storefrontBrandFromAccount(updated.emailLog.account),
+                }));
             } catch (error) {
                 Logger.error('Unsubscribe error', { token, error });
-                return reply.code(500).send({ error: 'Failed to unsubscribe' });
+                return reply.code(500).type('text/html').send(renderStorefrontStatusPage({
+                    title: 'We couldn’t save that change',
+                    message: 'Your request was not completed. Please try the link again in a moment.',
+                }));
             }
         }
     );
@@ -612,26 +645,25 @@ const emailTrackingRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const updated = await unsubscribeFromList(token, listId);
                 if (!updated) {
-                    return reply.code(404).type('text/html').send(`
-                        <!DOCTYPE html><html><head><title>Invalid Link</title></head>
-                        <body style="font-family: system-ui; padding: 40px; text-align: center;">
-                            <h1>Invalid Unsubscribe Link</h1>
-                            <p>This list unsubscribe link is invalid.</p>
-                        </body></html>
-                    `);
+                    return reply.code(404).type('text/html').send(renderStorefrontStatusPage({
+                        title: 'This link has expired',
+                        message: 'This mailing-list link is invalid or no longer available.',
+                    }));
                 }
 
-                return reply.type('text/html').send(`
-                    <!DOCTYPE html><html><head><title>Unsubscribed</title></head>
-                    <body style="font-family: system-ui; padding: 40px; text-align: center;">
-                        <h1>Unsubscribed</h1>
-                        <p>${escapeHtml(updated.context.email)} has been removed from ${escapeHtml(updated.list.name)}.</p>
-                        <p style="color: #666; font-size: 14px;">Other email subscriptions are unchanged. You may close this window.</p>
-                    </body></html>
-                `);
+                return reply.type('text/html').send(renderStorefrontStatusPage({
+                    kind: 'success',
+                    title: 'You’re unsubscribed',
+                    message: `${updated.context.email} has been removed from ${updated.list.name}.`,
+                    detail: 'Your other email subscriptions are unchanged. You can safely close this window.',
+                    brand: storefrontBrandFromAccount(updated.context.emailLog.account),
+                }));
             } catch (error) {
                 Logger.error('List unsubscribe error', { token, listId, error });
-                return reply.code(500).send({ error: 'Failed to unsubscribe from list' });
+                return reply.code(500).type('text/html').send(renderStorefrontStatusPage({
+                    title: 'We couldn’t save that change',
+                    message: 'Your request was not completed. Please try the link again in a moment.',
+                }));
             }
         }
     );
