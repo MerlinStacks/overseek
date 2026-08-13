@@ -91,6 +91,57 @@ describe('FeedMappingService.getFeedExportCsv', () => {
     });
 });
 
+describe('FeedMappingService Google online feed mappings', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('does not include local inventory fields by default', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue(null);
+
+        const mappings = await FeedMappingService.getMappings('account-1', 'google');
+
+        expect(mappings.some((mapping) => mapping.targetField === 'store_code')).toBe(false);
+        expect(mappings.some((mapping) => mapping.sourceField === 'storeCode')).toBe(false);
+    });
+
+    it('removes legacy store code mappings from existing account settings', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({
+            config: {
+                mappings: {
+                    google: [
+                        { targetField: 'id', sourceField: 'wooId', required: true },
+                        { targetField: 'store_code', sourceField: 'storeCode' },
+                    ],
+                },
+            },
+        });
+
+        const mappings = await FeedMappingService.getMappings('account-1', 'google');
+
+        expect(mappings.some((mapping) => mapping.targetField === 'store_code')).toBe(false);
+        expect(mappings.some((mapping) => mapping.sourceField === 'storeCode')).toBe(false);
+    });
+
+    it('does not persist store code mappings in the online product feed', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue(null);
+
+        const mappings = await FeedMappingService.saveMappings('account-1', 'google', [
+            { targetField: 'id', sourceField: 'wooId', required: true },
+            { targetField: 'store_code', sourceField: 'storeCode' },
+        ]);
+
+        expect(mappings).toEqual([{ targetField: 'id', sourceField: 'wooId', required: true }]);
+        expect(mockPrisma.accountFeature.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            update: expect.objectContaining({
+                config: expect.objectContaining({
+                    mappings: { google: [{ targetField: 'id', sourceField: 'wooId', required: true }] },
+                }),
+            }),
+        }));
+    });
+});
+
 describe('FeedMappingService product exclusions', () => {
     beforeEach(() => {
         vi.clearAllMocks();

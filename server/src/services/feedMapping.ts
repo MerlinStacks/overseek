@@ -58,6 +58,8 @@ const DEFAULT_PRODUCT_FILTERS: FeedProductFilters = {
 };
 const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
 const SHARED_REWRITE_FIELDS = new Set(['title', 'description']);
+const GOOGLE_LOCAL_INVENTORY_FIELDS = new Set(['store_code']);
+const GOOGLE_LOCAL_INVENTORY_SOURCES = new Set(['storeCode']);
 const FEED_CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
 const GOOGLE_PRODUCT_TAXONOMY_URL = 'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt';
 const GOOGLE_PRODUCT_TAXONOMY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -87,7 +89,6 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'brand', sourceField: 'brand' },
         { targetField: 'canonical_link', sourceField: 'canonicalLink' },
         { targetField: 'custom_label_0', sourceField: 'name' },
-        { targetField: 'store_code', sourceField: 'storeCode' },
         { targetField: 'identifier_exists', sourceField: 'identifierExists' },
     ],
     meta: [
@@ -243,11 +244,15 @@ function variationsInheritMainVideo(rawData: any): boolean {
 function mergeMappingsWithDefaults(channel: FeedChannel, mappings?: FeedFieldMapping[]): FeedFieldMapping[] {
     if (!mappings || mappings.length === 0) return DEFAULT_MAPPINGS[channel];
 
-    const normalizedMappings = mappings.map((mapping) => (
-        channel === 'meta' && mapping.targetField === 'video_link'
-            ? { ...mapping, targetField: 'video[0].url' }
-            : mapping
-    ));
+    const normalizedMappings = mappings
+        .filter((mapping) => channel !== 'google'
+            || (!GOOGLE_LOCAL_INVENTORY_FIELDS.has(mapping.targetField)
+                && !GOOGLE_LOCAL_INVENTORY_SOURCES.has(mapping.sourceField)))
+        .map((mapping) => (
+            channel === 'meta' && mapping.targetField === 'video_link'
+                ? { ...mapping, targetField: 'video[0].url' }
+                : mapping
+        ));
     const savedByTarget = new Map(normalizedMappings.map((mapping) => [mapping.targetField, mapping]));
     const merged = DEFAULT_MAPPINGS[channel].map((defaultMapping) => savedByTarget.get(defaultMapping.targetField) || defaultMapping);
     const defaultTargets = new Set(DEFAULT_MAPPINGS[channel].map((mapping) => mapping.targetField));
@@ -311,7 +316,6 @@ function getSourceValue(sourceField: string, product: any, account?: FeedAccount
         case 'mpn': return product.rawData?.mpn || product.rawData?._mpn || product.sku || null;
         case 'salePrice': return formatFeedPrice(product.rawData?.sale_price, account?.currency);
         case 'salePriceEffectiveDate': return product.rawData?.sale_price_effective_date || null;
-        case 'storeCode': return '1';
         case 'identifierExists': return 'yes';
         default: return null;
     }
@@ -358,7 +362,6 @@ function getVariationSourceValue(sourceField: string, variation: any, parent: an
         case 'mpn': return variation.rawData?.mpn || variation.rawData?._mpn || variation.sku || parent.rawData?.mpn || parent.rawData?._mpn || parent.sku || null;
         case 'salePrice': return formatFeedPrice(variation.rawData?.sale_price || parent.rawData?.sale_price, account?.currency);
         case 'salePriceEffectiveDate': return variation.rawData?.sale_price_effective_date || parent.rawData?.sale_price_effective_date || null;
-        case 'storeCode': return '1';
         case 'identifierExists': return 'yes';
         default: return null;
     }
@@ -709,7 +712,11 @@ export class FeedMappingService {
                 .filter((mapping) => LOCKED_FEED_FIELDS.has(mapping.targetField))
                 .map((mapping) => [mapping.targetField, mapping]),
         );
-        const sanitizedMappings = mappings.map((mapping) => currentLockedMappings.get(mapping.targetField) || mapping);
+        const sanitizedMappings = mappings
+            .filter((mapping) => channel !== 'google'
+                || (!GOOGLE_LOCAL_INVENTORY_FIELDS.has(mapping.targetField)
+                    && !GOOGLE_LOCAL_INVENTORY_SOURCES.has(mapping.sourceField)))
+            .map((mapping) => currentLockedMappings.get(mapping.targetField) || mapping);
 
         const nextConfig: FeedFeatureConfig = {
             ...existingConfig,

@@ -84,7 +84,6 @@ const SOURCE_FIELD_OPTIONS = [
     { value: 'gtin', label: 'GTIN' },
     { value: 'mpn', label: 'MPN / SKU' },
     { value: 'itemGroupId', label: 'Parent group ID' },
-    { value: 'storeCode', label: 'Store code' },
     { value: 'identifierExists', label: 'Identifier exists' },
     { value: 'salePriceEffectiveDate', label: 'Sale price dates' },
 ];
