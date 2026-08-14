@@ -64,6 +64,7 @@ export function InventoryForecastPage() {
     const [alerts, setAlerts] = useState<StockoutAlerts | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [revenueRefreshKey, setRevenueRefreshKey] = useState(0);
 
     // Sorting
     const [sortField, setSortField] = useState<SortField>('daysUntilStockout');
@@ -138,6 +139,7 @@ export function InventoryForecastPage() {
             setError(err instanceof Error ? err.message : 'Failed to load forecast data');
         } finally {
             setIsLoading(false);
+            setRevenueRefreshKey(key => key + 1);
         }
     }, [currentAccount, token]);
 
@@ -347,7 +349,7 @@ export function InventoryForecastPage() {
             {/* Revenue Forecast Section */}
             <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-gray-800">Revenue Forecast</h2>
-                <ForecastChart dateRange={dateRange} />
+                <ForecastChart dateRange={dateRange} refreshKey={revenueRefreshKey} />
             </div>
 
             {/* Inventory Forecast Section Header */}

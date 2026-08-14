@@ -1,5 +1,5 @@
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
@@ -7,6 +7,7 @@ import ReactEChartsCore from 'echarts-for-react/esm/core';
 import { echarts, graphic, type EChartsOption } from '../utils/echarts';
 import { AlertTriangle, Loader2, TrendingUp } from 'lucide-react';
 import { formatCurrency } from '../utils/format';
+import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 
 
 interface ForecastData {
@@ -44,9 +45,10 @@ interface ForecastApiResponse {
 
 interface ForecastProps {
     dateRange: { startDate: string, endDate: string };
+    refreshKey?: number;
 }
 
-export function ForecastChart({ dateRange }: ForecastProps) {
+export function ForecastChart({ dateRange, refreshKey = 0 }: ForecastProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [data, setData] = useState<ForecastData[]>([]);
@@ -61,13 +63,13 @@ export function ForecastChart({ dateRange }: ForecastProps) {
             // First get actual history
             const historyRes = await fetch(
                 `/api/analytics/sales-chart?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&interval=day`,
-                { headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' } }
+                { headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }, cache: 'no-store' }
             );
 
             // Then get forecast
             const forecastRes = await fetch(
                 `/api/analytics/forecast?days=30`,
-                { headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' } }
+                { headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount?.id || '' }, cache: 'no-store' }
             );
 
             if (historyRes.ok && forecastRes.ok) {
@@ -88,13 +90,9 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                     forecastSales: null
                 }));
 
-                // Stitch the lines: last history point = first forecast point
-                if (processed.length > 0 && forecast.length > 0) {
-                    const lastHistory = processed[processed.length - 1];
-                    lastHistory.forecastSales = lastHistory.historySales;
-                }
-
-                // Add the rest of the forecast
+                // Only display values actually returned by the forecast model. Previously the
+                // latest partial actual was copied into the forecast series as a synthetic
+                // anchor, making today's tooltip incorrectly label stale actuals as a forecast.
                 forecast.forEach((d) => {
                     if (!processed.find(p => p.date === d.date)) {
                         processed.push({
@@ -126,7 +124,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
         } finally {
             setIsLoading(false);
         }
-    }, [dateRange.startDate, dateRange.endDate, token, currentAccount?.id]);
+    }, [dateRange.startDate, dateRange.endDate, token, currentAccount?.id, refreshKey]);
 
     const confidenceBadgeClass = confidence === 'high'
         ? 'bg-emerald-100 text-emerald-700'
@@ -145,11 +143,12 @@ export function ForecastChart({ dateRange }: ForecastProps) {
             ? 'Forecast unavailable'
             : 'Weekday + recent trend ensemble';
 
-    useEffect(() => {
-        if (currentAccount && token) {
-            fetchForecast();
-        }
-    }, [currentAccount, token, dateRange, fetchForecast]);
+    useVisibilityPolling(
+        () => currentAccount && token ? fetchForecast() : undefined,
+        60000,
+        [currentAccount?.id, token, dateRange.startDate, dateRange.endDate, refreshKey],
+        'sales-forecast-chart'
+    );
 
     const getChartOptions = (): EChartsOption => {
         const dates = data.map(d => {
@@ -253,7 +252,7 @@ export function ForecastChart({ dateRange }: ForecastProps) {
                         <p className="mt-1 text-xs text-gray-400">
                             {methodLabel}
                             {metadata.backtestAccuracy != null && ` | ${metadata.backtestAccuracy}% backtest accuracy`}
-                            {metadata.dataThrough && ` | Data through ${metadata.dataThrough}`}
+                            {metadata.dataThrough && ` | Model trained through ${metadata.dataThrough}`}
                         </p>
                     )}
                 </div>
