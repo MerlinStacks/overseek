@@ -13,10 +13,20 @@ vi.mock('../../utils/logger', () => ({
     }
 }));
 
+vi.mock('../../utils/prisma', () => ({
+    prisma: {
+        account: {
+            findUnique: vi.fn()
+        }
+    }
+}));
+
 import { SalesForecastService } from '../analytics/SalesForecast';
 import { SalesAnalytics } from '../analytics/sales';
+import { prisma } from '../../utils/prisma';
 
 const getSalesOverTime = vi.mocked(SalesAnalytics.getSalesOverTime);
+const findAccount = vi.mocked(prisma.account.findUnique);
 
 function dateString(date: Date): string {
     return date.toISOString().slice(0, 10);
@@ -53,6 +63,7 @@ describe('SalesForecastService', () => {
         vi.clearAllMocks();
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-07-17T12:00:00.000Z'));
+        findAccount.mockResolvedValue({ timezone: 'UTC' } as any);
     });
 
     it('returns a deterministic ensemble forecast with prediction ranges', async () => {
@@ -103,5 +114,43 @@ describe('SalesForecastService', () => {
         const result = await SalesForecastService.getSalesForecast('account-1', 1000);
 
         expect(result.forecast).toHaveLength(365);
+    });
+
+    it('uses the store calendar day and timezone when the store is ahead of UTC', async () => {
+        vi.setSystemTime(new Date('2026-07-17T14:30:00.000Z')); // 18 July in Sydney
+        findAccount.mockResolvedValue({ timezone: 'Australia/Sydney' } as any);
+        getSalesOverTime.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+        const result = await SalesForecastService.getSalesForecast('account-1', 2);
+
+        expect(result.metadata.dataThrough).toBe('2026-07-17');
+        expect(result.forecast.map(point => point.date)).toEqual(['2026-07-19', '2026-07-20']);
+        expect(getSalesOverTime).toHaveBeenNthCalledWith(
+            1,
+            'account-1',
+            '2026-04-18T14:00:00.000Z',
+            '2026-07-17T13:59:59.999Z',
+            'day',
+            'Australia/Sydney'
+        );
+    });
+
+    it('uses the store calendar day when the store is behind UTC', async () => {
+        vi.setSystemTime(new Date('2026-07-18T03:00:00.000Z')); // 17 July in Los Angeles
+        findAccount.mockResolvedValue({ timezone: 'America/Los_Angeles' } as any);
+        getSalesOverTime.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+        const result = await SalesForecastService.getSalesForecast('account-1', 1);
+
+        expect(result.metadata.dataThrough).toBe('2026-07-16');
+        expect(result.forecast[0].date).toBe('2026-07-18');
+        expect(getSalesOverTime).toHaveBeenNthCalledWith(
+            1,
+            'account-1',
+            '2026-04-18T07:00:00.000Z',
+            '2026-07-17T06:59:59.999Z',
+            'day',
+            'America/Los_Angeles'
+        );
     });
 });

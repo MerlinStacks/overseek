@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { Link } from 'react-router-dom';
@@ -73,15 +73,29 @@ export function InventoryForecastPage() {
     const [riskFilter, setRiskFilter] = useState<StockoutRisk | 'ALL'>('ALL');
 
     // Revenue forecast date range (last 30 days)
-    const [dateRange] = useState(() => {
-        const end = new Date();
-        const start = new Date();
-        start.setDate(start.getDate() - 30);
+    const dateRange = useMemo(() => {
+        let dateParts: Intl.DateTimeFormatPart[];
+        try {
+            dateParts = new Intl.DateTimeFormat('en-CA', {
+                timeZone: currentAccount?.timezone || 'UTC',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).formatToParts(new Date());
+        } catch {
+            dateParts = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit'
+            }).formatToParts(new Date());
+        }
+        const value = (type: Intl.DateTimeFormatPartTypes) => dateParts.find(part => part.type === type)?.value || '';
+        const endDate = `${value('year')}-${value('month')}-${value('day')}`;
+        const start = new Date(`${endDate}T00:00:00.000Z`);
+        start.setUTCDate(start.getUTCDate() - 30);
         return {
             startDate: start.toISOString().split('T')[0],
-            endDate: end.toISOString().split('T')[0]
+            endDate
         };
-    });
+    }, [currentAccount?.timezone]);
 
     const fetchData = useCallback(async () => {
         if (!currentAccount || !token) return;

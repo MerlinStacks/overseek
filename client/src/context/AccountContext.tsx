@@ -33,6 +33,7 @@ interface Account {
     weightUnit?: string;
     dimensionUnit?: string;
     revenueTaxInclusive?: boolean;
+    timezone?: string;
     autoSendInvoiceOnNewOrder?: boolean;
     invoiceRecipientEmail?: string | null;
     subscribeNewCustomersByDefault?: boolean;

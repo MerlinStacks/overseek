@@ -1,4 +1,6 @@
 import { Logger } from '../../utils/logger';
+import { prisma } from '../../utils/prisma';
+import { dateKeyInTimezone, normalizeTimezone, startOfDateInTimezone } from '../../utils/timezone';
 import { SalesAnalytics } from './sales';
 
 interface SalesPoint {
@@ -142,25 +144,37 @@ export class SalesForecastService {
         const horizon = Math.min(Math.max(Math.trunc(daysToForecast), 1), 365);
 
         try {
-            const today = new Date();
-            today.setUTCHours(0, 0, 0, 0);
+            const account = await prisma.account.findUnique({
+                where: { id: accountId },
+                select: { timezone: true }
+            });
+            const timezone = normalizeTimezone(account?.timezone);
+            // Calendar arithmetic below intentionally uses UTC Date methods. The Date is a
+            // timezone-neutral representation of the store's local calendar date.
+            const today = new Date(`${dateKeyInTimezone(new Date(), timezone)}T00:00:00.000Z`);
             const historyStart = addDays(today, -HISTORY_DAYS);
             const historyEnd = addDays(today, -1);
             const yearlyStart = previousYear(historyStart);
             const yearlyEnd = previousYear(addDays(today, horizon));
+            const historyStartInstant = startOfDateInTimezone(toDateString(historyStart), timezone);
+            const historyEndExclusive = startOfDateInTimezone(toDateString(today), timezone);
+            const yearlyStartInstant = startOfDateInTimezone(toDateString(yearlyStart), timezone);
+            const yearlyEndExclusive = startOfDateInTimezone(toDateString(addDays(yearlyEnd, 1)), timezone);
 
             const [recentData, yearlyRawData] = await Promise.all([
                 SalesAnalytics.getSalesOverTime(
                     accountId,
-                    historyStart.toISOString(),
-                    `${toDateString(historyEnd)}T23:59:59.999Z`,
-                    'day'
+                    historyStartInstant.toISOString(),
+                    new Date(historyEndExclusive.getTime() - 1).toISOString(),
+                    'day',
+                    timezone
                 ),
                 SalesAnalytics.getSalesOverTime(
                     accountId,
-                    yearlyStart.toISOString(),
-                    `${toDateString(yearlyEnd)}T23:59:59.999Z`,
-                    'day'
+                    yearlyStartInstant.toISOString(),
+                    new Date(yearlyEndExclusive.getTime() - 1).toISOString(),
+                    'day',
+                    timezone
                 )
             ]);
 

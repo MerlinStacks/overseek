@@ -5,6 +5,13 @@ import { SalesForecastService } from './SalesForecast';
 import { CustomReportService, CustomReportConfig } from './CustomReport';
 import { NON_REVENUE_ORDER_STATUSES } from '../../constants/orderStatus';
 import type { Prisma } from '@prisma/client';
+import { normalizeTimezone, startOfDateInTimezone } from '../../utils/timezone';
+
+function addCalendarDays(dateKey: string, days: number): string {
+    const date = new Date(`${dateKey}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+}
 
 /**
  * Sales Analytics Service
@@ -92,8 +99,9 @@ export class SalesAnalytics {
     /**
      * Get Sales Over Time (Date Histogram)
      */
-    static async getSalesOverTime(accountId: string, startDate?: string, endDate?: string, interval: 'day' | 'week' | 'month' = 'day', timezone: string = 'UTC') {
+    static async getSalesOverTime(accountId: string, startDate?: string, endDate?: string, interval: 'day' | 'week' | 'month' = 'day', timezone?: string) {
         const account = await prisma.account.findUnique({ where: { id: accountId } });
+        const effectiveTimezone = normalizeTimezone(timezone || account?.timezone);
         const useInclusive = account?.revenueTaxInclusive ?? true;
         const revenueField = useInclusive ? 'total' : 'net_sales';
         const nonRevenueStatuses = [...new Set(NON_REVENUE_ORDER_STATUSES.map(status => status.toLowerCase()))];
@@ -103,15 +111,17 @@ export class SalesAnalytics {
         ];
 
         if (startDate || endDate) {
-            let finalEndDate = endDate;
-            if (finalEndDate && !finalEndDate.includes('T')) {
-                finalEndDate = `${finalEndDate}T23:59:59.999`;
-            }
+            const finalStartDate = startDate && !startDate.includes('T')
+                ? startOfDateInTimezone(startDate, effectiveTimezone).toISOString()
+                : startDate;
+            const finalEndDate = endDate && !endDate.includes('T')
+                ? new Date(startOfDateInTimezone(addCalendarDays(endDate, 1), effectiveTimezone).getTime() - 1).toISOString()
+                : endDate;
 
             must.push({
                 range: {
                     date_created: {
-                        gte: startDate,
+                        gte: finalStartDate,
                         lte: finalEndDate
                     }
                 }
@@ -129,7 +139,7 @@ export class SalesAnalytics {
                             field: 'date_created',
                             calendar_interval: interval,
                             format: 'yyyy-MM-dd',
-                            time_zone: timezone
+                            time_zone: effectiveTimezone
                         },
                         aggs: {
                             total_sales: { sum: { field: revenueField } },
