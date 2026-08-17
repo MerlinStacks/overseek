@@ -382,6 +382,10 @@ function getSharedFeedOverrides(seoData: any): Record<string, string> {
     return overrides && typeof overrides === 'object' ? overrides as Record<string, string> : {};
 }
 
+function isProductExcludedFromFeeds(seoData: unknown): boolean {
+    return (seoData as any)?.excludeFromProductFeeds === true;
+}
+
 function getFeedAiSuggestions(seoData: any, channel: FeedChannel): Record<string, string> {
     if (!seoData || typeof seoData !== 'object') return {};
     const suggestions = seoData.feedAiSuggestions;
@@ -660,6 +664,35 @@ export class FeedMappingService {
         };
     }
 
+    static async getProductFeedExclusion(accountId: string, wooId: number): Promise<boolean> {
+        const product = await prisma.wooProduct.findUnique({
+            where: { accountId_wooId: { accountId, wooId } },
+            select: { seoData: true },
+        });
+        if (!product) throw new Error('Product not found');
+        return isProductExcludedFromFeeds(product.seoData);
+    }
+
+    static async setProductFeedExclusion(accountId: string, wooId: number, excluded: boolean): Promise<boolean> {
+        const product = await prisma.wooProduct.findUnique({
+            where: { accountId_wooId: { accountId, wooId } },
+            select: { seoData: true },
+        });
+        if (!product) throw new Error('Product not found');
+
+        const seoData = (product.seoData || {}) as Record<string, unknown>;
+        await prisma.wooProduct.update({
+            where: { accountId_wooId: { accountId, wooId } },
+            data: {
+                seoData: {
+                    ...seoData,
+                    excludeFromProductFeeds: excluded,
+                },
+            },
+        });
+        return excluded;
+    }
+
     static async setProductFilters(accountId: string, filters: FeedProductFilters): Promise<FeedProductFilters> {
         const normalized: FeedProductFilters = {
             excludeOutOfStockProducts: filters.excludeOutOfStockProducts === true,
@@ -846,6 +879,7 @@ export class FeedMappingService {
             });
 
         const rows = products.flatMap((product) => {
+            if (productWooId === undefined && isProductExcludedFromFeeds(product.seoData)) return [];
             if (productFilters.excludeUnpublishedProducts && !isPublished(product)) return [];
 
             const productRawData = product.rawData as any;
@@ -992,6 +1026,7 @@ export class FeedMappingService {
                 wooId: true,
                 status: true,
                 stockStatus: true,
+                seoData: true,
                 rawData: true,
                 variations: includeVariations ? {
                     select: { wooId: true, stockStatus: true, rawData: true },
@@ -1004,6 +1039,7 @@ export class FeedMappingService {
         const rows = products.flatMap((product) => {
             const out: Array<{ rowId: string; wooId: number; variationWooId?: number }> = [];
             const productRawData = product.rawData as any;
+            if (isProductExcludedFromFeeds(product.seoData)) return out;
             if (productFilters.excludeUnpublishedProducts && !isPublished(product)) return out;
             const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
             const isVariableProduct = String(productRawData?.type || '').includes('variable')

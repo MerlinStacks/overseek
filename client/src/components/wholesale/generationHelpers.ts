@@ -1,4 +1,4 @@
-import type { WholesaleCatalogGeneration, WholesaleGenerationStatus } from '../../types/wholesaleCatalog';
+import type { WholesaleCatalogGeneration, WholesaleGenerationStatus, WholesaleReadiness } from '../../types/wholesaleCatalog';
 
 export function addBusinessDays(date: Date, businessDays: number): Date {
     const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -35,4 +35,17 @@ export function canRetryGeneration(generation: Pick<WholesaleCatalogGeneration, 
 
 export function staleReasonLabel(code: string): string {
     return code.split('_').map(word => word.charAt(0) + word.slice(1).toLowerCase()).join(' ');
+}
+
+export function productReadinessIssues(readiness: WholesaleReadiness): string[] {
+    const issues = [
+        !readiness.published && 'Not published',
+        !readiness.inStock && 'Out of stock',
+        !readiness.hasSku && 'Missing SKU',
+        !readiness.hasImage && 'Missing image',
+        !readiness.hasPriceTiers && 'Missing price tiers',
+    ].filter((issue): issue is string => Boolean(issue));
+
+    if (!readiness.eligible && issues.length === 0) issues.push('Eligibility requirements not met');
+    return issues;
 }

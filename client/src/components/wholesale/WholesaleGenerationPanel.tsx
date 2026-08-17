@@ -3,7 +3,7 @@ import { CheckCircle2, Download, Eye, FileClock, Loader2, RefreshCw, StopCircle,
 import { useToast } from '../../context/ToastContext';
 import type { createWholesaleCatalogService } from '../../services/wholesaleCatalogService';
 import type { WholesaleBranding, WholesaleCatalog, WholesaleCatalogGeneration, WholesaleDefaults } from '../../types/wholesaleCatalog';
-import { canRetryGeneration, defaultValidUntil, generationStatusLabel, isActiveGeneration, staleReasonLabel, toLocalIsoDate } from './generationHelpers';
+import { canRetryGeneration, defaultValidUntil, generationStatusLabel, isActiveGeneration, productReadinessIssues, staleReasonLabel, toLocalIsoDate } from './generationHelpers';
 import { canExtendGenerationValidity, generationValidityMaximum, isValidValidityExtension, needsDownloadedArtifactWarning, recordDownloadedArtifactWarning } from './wholesaleEditorHelpers';
 
 type Service = ReturnType<typeof createWholesaleCatalogService>;
@@ -102,6 +102,7 @@ export function WholesaleGenerationPanel({ catalog, service, canGenerate }: Prop
     const currentHistory = catalogGenerations.filter(generation => !(generation.status === 'APPROVED' && generation.staleAt));
     const activeProducts = (catalog.products || []).filter(item => !item.isSuspended);
     const readyProducts = activeProducts.filter(item => item.product.readiness.eligible);
+    const unreadyProducts = activeProducts.filter(item => !item.product.readiness.eligible);
     const termsCount = catalog.termsSections.length || defaults?.termsDocument.sections.length || 0;
     const readiness = [
         { label: 'Approved defaults', ready: Boolean(defaults?.approvedAt && defaults.approvedById) },
@@ -191,6 +192,16 @@ export function WholesaleGenerationPanel({ catalog, service, canGenerate }: Prop
                 <div>
                     <div className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">Readiness summary</div>
                     <div className="flex flex-wrap gap-2">{readiness.map(item => <span key={item.label} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${item.ready ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'}`}>{item.ready ? <CheckCircle2 size={13} /> : <TriangleAlert size={13} />}{item.label}{item.detail ? ` ${item.detail}` : ''}</span>)}</div>
+                    {unreadyProducts.length > 0 && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                        <div className="text-xs font-semibold text-amber-900 dark:text-amber-200">Products not ready ({unreadyProducts.length})</div>
+                        <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto" aria-label="Products not ready">
+                            {unreadyProducts.map(item => <li key={item.id} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+                                <span className="font-semibold text-slate-800 dark:text-slate-100">{item.product.name}</span>
+                                {item.product.sku && <span className="text-slate-500">SKU: {item.product.sku}</span>}
+                                <span className="text-amber-700 dark:text-amber-300">{productReadinessIssues(item.product.readiness).join(', ')}</span>
+                            </li>)}
+                        </ul>
+                    </div>}
                     {!isReady && <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">Complete every readiness item before generating.</p>}
                     {hasActiveJob && <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">Another catalog generation is currently active for this account.</p>}
                 </div>

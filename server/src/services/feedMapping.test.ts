@@ -176,6 +176,41 @@ describe('FeedMappingService product exclusions', () => {
         }));
     });
 
+    it('persists a product-level feed exclusion without replacing other SEO data', async () => {
+        mockPrisma.wooProduct.findUnique.mockResolvedValue({
+            seoData: { focusKeyword: 'glass', feedOverrides: { shared: { title: 'Custom title' } } },
+        });
+
+        await expect(FeedMappingService.getProductFeedExclusion('account-1', 61082)).resolves.toBe(false);
+        await expect(FeedMappingService.setProductFeedExclusion('account-1', 61082, true)).resolves.toBe(true);
+
+        expect(mockPrisma.wooProduct.update).toHaveBeenCalledWith({
+            where: { accountId_wooId: { accountId: 'account-1', wooId: 61082 } },
+            data: {
+                seoData: {
+                    focusKeyword: 'glass',
+                    feedOverrides: { shared: { title: 'Custom title' } },
+                    excludeFromProductFeeds: true,
+                },
+            },
+        });
+    });
+
+    it('removes explicitly excluded products from rows and bulk row references', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue(null);
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            id: 'product-1', wooId: 1, name: 'Excluded', sku: 'ONE', price: '10', status: 'publish',
+            stockStatus: 'instock', permalink: null, mainImage: null, rawData: { type: 'simple' },
+            seoData: { excludeFromProductFeeds: true }, variations: [],
+        }]);
+
+        const feed = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_parent');
+        const refs = await FeedMappingService.getFeedRowRefs('account-1', 'google', '', 'variable_parent');
+
+        expect(feed).toMatchObject({ total: 0, rows: [] });
+        expect(refs).toEqual({ total: 0, rows: [] });
+    });
+
     it('excludes unpublished and out-of-stock parent and variation rows consistently', async () => {
         mockPrisma.accountFeature.findUnique.mockResolvedValue({
             config: {
@@ -224,7 +259,8 @@ describe('FeedMappingService product exclusions', () => {
         });
         mockPrisma.wooProduct.findMany.mockResolvedValue([{
             id: 'product-2', wooId: 2, name: 'Draft', sku: 'TWO', price: '10', status: 'draft',
-            stockStatus: 'outofstock', permalink: null, mainImage: null, rawData: { type: 'simple' }, seoData: {}, variations: [],
+            stockStatus: 'outofstock', permalink: null, mainImage: null, rawData: { type: 'simple' },
+            seoData: { excludeFromProductFeeds: true }, variations: [],
         }]);
 
         const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_parent', 2);

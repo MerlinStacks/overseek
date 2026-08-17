@@ -180,6 +180,22 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
         },
     });
 
+    const { mutateAsync: saveExclusion, isPending: isSavingExclusion } = useApiMutation<
+        { success: boolean; excludedFromFeeds: boolean },
+        { excluded: boolean }
+    >({
+        mutationFn: async ({ excluded }) => {
+            const response = await fetch(`/api/feeds/products/${productWooId}/exclusion`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ excluded }),
+            });
+            const body = await response.json();
+            if (!response.ok) throw new Error(body?.error || 'Failed to update product feed exclusion');
+            return body;
+        },
+    });
+
     const { mutateAsync: optimizeField } = useApiMutation<
         { success: boolean; suggestions?: Record<string, string> },
         { row: FeedWriteRow; field: string }
@@ -297,6 +313,16 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
 
     const rows = data?.rows || [];
 
+    const handleExclusionChange = async (excluded: boolean) => {
+        try {
+            await saveExclusion({ excluded });
+            await refetch();
+            toast.success(excluded ? 'Product excluded from all product feeds.' : 'Product included in product feeds.');
+        } catch (saveError: any) {
+            toast.error(saveError?.message || 'Failed to update product feed exclusion');
+        }
+    };
+
     const handleChannelChange = (channel: FeedChannel) => {
         if (channel === activeChannel) return;
         if (dirtyKeys.size > 0 && !window.confirm('Discard unsaved feed writes and change channel?')) return;
@@ -309,14 +335,36 @@ export const FeedWritesPanel = forwardRef<FeedWritesPanelRef, FeedWritesPanelPro
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="rounded-xl border border-slate-200 bg-white/80 p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800/80">
-                <div>
+                <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Feed Writes</h2>
                         <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
                             Override matched feed fields for this product. Title and description writes are shared across every platform.
                         </p>
                     </div>
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={data?.excludedFromFeeds === true}
+                        disabled={!data || isSavingExclusion}
+                        onClick={() => handleExclusionChange(!data?.excludedFromFeeds)}
+                        className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900/60 dark:hover:bg-slate-900"
+                    >
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Exclude from product feeds</span>
+                        <span
+                            aria-hidden="true"
+                            className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${data?.excludedFromFeeds ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                        >
+                            <span className={`inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform ${data?.excludedFromFeeds ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                        </span>
+                    </button>
                 </div>
+
+                {data?.excludedFromFeeds && (
+                    <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                        This product and all its variations are excluded from Google, Meta, Pinterest, and Similar product feeds. You can still edit its feed writes below.
+                    </p>
+                )}
 
                 <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
                     {CHANNELS.map((channel) => (

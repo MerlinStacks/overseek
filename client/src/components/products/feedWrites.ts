@@ -30,6 +30,7 @@ export interface FeedWriteRow {
 
 export interface ProductFeedRowsResponse {
     channel: FeedChannel;
+    excludedFromFeeds: boolean;
     mappings: Array<{ targetField: string; required?: boolean }>;
     rows: FeedWriteRow[];
 }

@@ -107,6 +107,10 @@ const productFiltersBodySchema = z.object({
     excludeUnpublishedProducts: z.boolean(),
 });
 
+const productFeedExclusionBodySchema = z.object({
+    excluded: z.boolean(),
+});
+
 const feedsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
     fastify.addHook('preHandler', async (request, reply) => {
@@ -227,15 +231,18 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
             const { channel, wooId } = rowParamsSchema.parse(request.params);
             const { variationMode } = productQuerySchema.parse(request.query);
             const parsedChannel = FeedMappingService.parseChannel(channel);
-            const result = await FeedMappingService.getFeedRows(
-                accountId,
-                parsedChannel,
-                1,
-                1_000_000,
-                '',
-                variationMode,
-                wooId,
-            );
+            const [result, excludedFromFeeds] = await Promise.all([
+                FeedMappingService.getFeedRows(
+                    accountId,
+                    parsedChannel,
+                    1,
+                    1_000_000,
+                    '',
+                    variationMode,
+                    wooId,
+                ),
+                FeedMappingService.getProductFeedExclusion(accountId, wooId),
+            ]);
 
             if (result.total === 0) {
                 return reply.code(404).send({ error: 'Product not found' });
@@ -245,11 +252,29 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
                 channel: parsedChannel,
                 mappings: result.mappings,
                 rows: result.rows,
+                excludedFromFeeds,
             };
         } catch (error: any) {
             Logger.error('Failed to fetch product feed rows', { error: error?.message || error });
+            if (error?.message === 'Product not found') {
+                return reply.code(404).send({ error: 'Product not found' });
+            }
             const status = error?.message === 'Unsupported feed channel' ? 400 : 500;
             return reply.code(status).send({ error: status === 400 ? error.message : 'Failed to fetch product feed rows' });
+        }
+    });
+
+    fastify.put<{ Params: { wooId: string }; Body: { excluded: boolean } }>('/products/:wooId/exclusion', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const { wooId } = z.object({ wooId: z.coerce.number().int().positive() }).parse(request.params);
+            const { excluded } = productFeedExclusionBodySchema.parse(request.body);
+            const excludedFromFeeds = await FeedMappingService.setProductFeedExclusion(accountId, wooId, excluded);
+            return { success: true, excludedFromFeeds };
+        } catch (error: any) {
+            Logger.error('Failed to save product feed exclusion', { error: error?.message || error });
+            if (error?.message === 'Product not found') return reply.code(404).send({ error: 'Product not found' });
+            return reply.code(400).send({ error: 'Failed to save product feed exclusion' });
         }
     });
 
