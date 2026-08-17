@@ -3,7 +3,7 @@ import { Logger } from '../utils/logger';
 import { WooService } from './woo';
 import * as CrawlerService from './tracking/CrawlerService';
 
-type StorefrontConfigScope = 'chat' | 'pixels' | 'botShield';
+type StorefrontConfigScope = 'chat' | 'pixels' | 'botShield' | 'reviews';
 
 const PLATFORM_FEATURE_KEY: Record<string, string> = {
     meta: 'META_CAPI',
@@ -29,8 +29,8 @@ const SAFE_PIXEL_FIELDS: Record<string, string[]> = {
     CONSENT_MODE: ['autoAccept'],
 };
 
-export async function syncStorefrontConfigToWoo(accountId: string, scopes: StorefrontConfigScope[] = ['chat', 'pixels', 'botShield']): Promise<void> {
-    if (!accountId) return;
+export async function syncStorefrontConfigToWoo(accountId: string, scopes: StorefrontConfigScope[] = ['chat', 'pixels', 'botShield', 'reviews']): Promise<boolean> {
+    if (!accountId) return false;
 
     try {
         const payload: Record<string, any> = { account_id: accountId };
@@ -47,14 +47,26 @@ export async function syncStorefrontConfigToWoo(accountId: string, scopes: Store
             payload.botShield = await buildBotShieldConfig(accountId);
         }
 
+        if (scopes.includes('reviews')) {
+            payload.reviews = await buildReviewConfig(accountId);
+        }
+
         const woo = await WooService.forAccount(accountId);
-        await woo.updateStorefrontConfig(payload);
+        const result = await woo.updateStorefrontConfig(payload);
+        if (scopes.includes('reviews')) {
+            const updated = Array.isArray(result?.updated) ? result.updated : [];
+            if (!updated.includes('reviews')) {
+                throw new Error('The connected WooCommerce plugin did not acknowledge review settings');
+            }
+        }
+        return true;
     } catch (error) {
         Logger.warn('[StorefrontConfigSync] Failed to push storefront config to WooCommerce', {
             accountId,
             scopes,
             error: error instanceof Error ? error.message : error,
         });
+        return false;
     }
 }
 
@@ -122,6 +134,29 @@ async function buildBotShieldConfig(accountId: string): Promise<Record<string, a
     ]);
 
     return { patterns, blockPageHtml };
+}
+
+async function buildReviewConfig(accountId: string): Promise<Record<string, any>> {
+    const account = await prisma.account.findUniqueOrThrow({
+        where: { id: accountId },
+        select: {
+            reviewShowCountryFlags: true,
+            reviewerNameDisplay: true,
+            reviewShowTransparencyBadge: true,
+            reviewShowVerifiedCountBadge: true,
+            reviewModerationMode: true,
+            reviewModerationThreshold: true,
+        },
+    });
+
+    return {
+        showCountryFlags: account.reviewShowCountryFlags,
+        reviewerNameDisplay: account.reviewerNameDisplay,
+        showTransparencyBadge: account.reviewShowTransparencyBadge,
+        showVerifiedCountBadge: account.reviewShowVerifiedCountBadge,
+        moderationMode: account.reviewModerationMode,
+        moderationThreshold: account.reviewModerationThreshold,
+    };
 }
 
 async function isBotShieldEnabled(accountId: string): Promise<boolean> {

@@ -43,6 +43,15 @@ RUN npm run build -w packages/overseek-core
 # Copy server source
 COPY server/ server/
 
+# Copy the plugin runtime files required by the server build safety check.
+RUN mkdir -p overseek-wc-plugin/includes
+COPY overseek-wc-plugin/overseek-integration.php overseek-wc-plugin/
+COPY overseek-wc-plugin/includes/class-overseek-main.php overseek-wc-plugin/includes/
+COPY overseek-wc-plugin/includes/class-overseek-review-moderation.php overseek-wc-plugin/includes/
+COPY overseek-wc-plugin/includes/class-overseek-review-renderer.php overseek-wc-plugin/includes/
+COPY overseek-wc-plugin/includes/class-overseek-reviews.php overseek-wc-plugin/includes/
+COPY overseek-wc-plugin/includes/class-overseek-review-form.php overseek-wc-plugin/includes/
+
 WORKDIR /app/server
 
 # Generate Prisma Client (requires DATABASE_URL at build time)

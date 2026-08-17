@@ -1,9 +1,10 @@
 import path from 'path';
 import PDFDocument from 'pdfkit';
+import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { normalizeWholesaleSnapshot } from './snapshot';
 import { WholesaleGenerationService } from './generations';
-import { imageCacheEntryFresh, imageDimensions, oldestCacheEvictionCount } from './secureImage';
+import { imageCacheEntryFresh, imageDimensions, normalizeImageForPdf, oldestCacheEvictionCount } from './secureImage';
 import { assertPrivateGenerationPath, generationPdfPath } from './storage';
 import { validateSnapshotForRender, validateTermsFit, WholesaleRenderValidationError } from './renderer';
 
@@ -108,6 +109,15 @@ describe('wholesale image dimensions', () => {
     it('parses WebP canvas dimensions before handing image data to PDFKit', () => {
         const webp = Buffer.alloc(30); webp.write('RIFF', 0, 'ascii'); webp.write('WEBP', 8, 'ascii'); webp.write('VP8X', 12, 'ascii'); webp.writeUIntLE(639, 24, 3); webp.writeUIntLE(479, 27, 3);
         expect(imageDimensions(webp)).toEqual({ width: 640, height: 480, type: 'webp' });
+    });
+
+    it('converts WebP image data to a PDFKit-compatible PNG', async () => {
+        const webp = await sharp({ create: { width: 2, height: 2, channels: 4, background: '#336699' } }).webp().toBuffer();
+        const normalized = await normalizeImageForPdf(webp);
+        expect(imageDimensions(normalized)).toEqual({ width: 2, height: 2, type: 'png' });
+        const doc = new PDFDocument();
+        expect(() => doc.image(normalized)).not.toThrow();
+        doc.end();
     });
 });
 

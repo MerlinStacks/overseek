@@ -120,26 +120,24 @@ export class WholesaleGenerationService {
         const generation = await (prisma as any).$transaction(async (tx: any) => {
             await ensureNoActive(tx, accountId);
             await syncAutomaticCatalogProducts(tx, accountId, catalogId);
-            const [account, catalog, defaults, branding] = await Promise.all([
-                tx.account.findUnique({ where: { id: accountId }, select: { id: true, name: true, currency: true, timezone: true } }),
-                tx.wholesaleCatalog.findFirst({
-                    where: { id: catalogId, accountId },
-                    include: {
-                        products: {
-                            include: {
-                                product: {
-                                    include: {
-                                        variations: { select: { sku: true, stockStatus: true, images: true, rawData: true } },
-                                        wholesaleProfile: { include: { priceTiers: { orderBy: { sortOrder: 'asc' } } } },
-                                    },
+            const account = await tx.account.findUnique({ where: { id: accountId }, select: { id: true, name: true, currency: true, timezone: true } });
+            const catalog = await tx.wholesaleCatalog.findFirst({
+                where: { id: catalogId, accountId },
+                include: {
+                    products: {
+                        include: {
+                            product: {
+                                include: {
+                                    variations: { select: { sku: true, stockStatus: true, images: true, rawData: true } },
+                                    wholesaleProfile: { include: { priceTiers: { orderBy: { sortOrder: 'asc' } } } },
                                 },
                             },
                         },
                     },
-                }),
-                tx.wholesaleCatalogDefaults.findUnique({ where: { accountId } }),
-                tx.wholesaleBrandProfile.findUnique({ where: { accountId } }),
-            ]);
+                },
+            });
+            const defaults = await tx.wholesaleCatalogDefaults.findUnique({ where: { accountId } });
+            const branding = await tx.wholesaleBrandProfile.findUnique({ where: { accountId } });
             const validUntil = this.validateValidUntil(validUntilValue, effectiveDate, account?.timezone || 'UTC');
             if (!catalog) throw new WholesaleNotFoundError('Catalog not found');
             if (catalog.status === 'ARCHIVED') throw new WholesaleConflictError('Archived catalogs cannot be generated');

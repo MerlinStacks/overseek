@@ -46,6 +46,12 @@ class OverSeek_Reviews {
 
 	private const MAX_FILTERED_PRODUCT_IDS = 5000;
 	private const MAX_PAGINATION_LINKS     = 100;
+	private const TRUST_BADGE_CACHE_KEY    = 'overseek_review_trust_badge_counts_v2';
+	private const TRUST_BADGE_CACHE_TTL    = 600;
+	private const VERIFICATION_BACKFILL_HOOK          = 'overseek_review_verification_backfill';
+	private const VERIFICATION_BACKFILL_OPTION        = 'overseek_review_verification_backfill_v2';
+	private const VERIFICATION_BACKFILL_CURSOR_OPTION = 'overseek_review_verification_backfill_cursor_v2';
+	private const VERIFICATION_BACKFILL_BATCH         = 50;
 
 	/**
 	 * Initialize hooks.
@@ -54,6 +60,216 @@ class OverSeek_Reviews {
 		add_action( 'init', [ $this, 'register_shortcodes' ] );
 		add_action( 'init', [ $this, 'register_blocks' ] );
 		add_action( 'wp_enqueue_scripts', [ $this, 'maybe_enqueue_assets' ] );
+		add_action( 'comment_post', [ $this, 'clear_trust_badge_cache_for_comment' ], 10, 1 );
+		add_action( 'transition_comment_status', [ $this, 'clear_trust_badge_cache_for_transition' ], 10, 3 );
+		add_action( 'deleted_comment', [ $this, 'clear_trust_badge_cache_for_comment' ], 10, 2 );
+		add_action( 'added_comment_meta', [ $this, 'clear_trust_badge_cache_for_meta' ], 10, 3 );
+		add_action( 'updated_comment_meta', [ $this, 'clear_trust_badge_cache_for_meta' ], 10, 3 );
+		add_action( 'deleted_comment_meta', [ $this, 'clear_trust_badge_cache_for_meta' ], 10, 3 );
+		add_action( 'transition_post_status', [ $this, 'clear_trust_badge_cache_for_post_transition' ], 10, 3 );
+		add_action( 'init', [ $this, 'schedule_verification_backfill' ] );
+		add_action( self::VERIFICATION_BACKFILL_HOOK, [ $this, 'run_verification_backfill' ] );
+		add_action( 'woocommerce_order_status_changed', [ $this, 'verify_reviews_for_paid_order' ], 10, 4 );
+	}
+
+	/**
+	 * Clear aggregate trust counts after review inventory changes.
+	 *
+	 * @return void
+	 */
+	public function clear_trust_badge_cache(): void {
+		wp_cache_delete( self::TRUST_BADGE_CACHE_KEY, 'overseek_reviews' );
+		delete_transient( self::TRUST_BADGE_CACHE_KEY );
+	}
+
+	/**
+	 * Clear trust counts when a comment belongs to eligible review inventory.
+	 *
+	 * @param int              $comment_id Comment ID.
+	 * @param WP_Comment|mixed $comment    Comment object when supplied by WordPress.
+	 * @return void
+	 */
+	public function clear_trust_badge_cache_for_comment( int $comment_id, $comment = null ): void {
+		$comment = $comment instanceof WP_Comment ? $comment : get_comment( $comment_id );
+		if ( $comment instanceof WP_Comment && $this->is_trust_badge_post( (int) $comment->comment_post_ID ) ) {
+			$this->clear_trust_badge_cache();
+		}
+	}
+
+	/**
+	 * Clear trust counts when an eligible review changes moderation status.
+	 *
+	 * @param string     $new_status New comment status.
+	 * @param string     $old_status Previous comment status.
+	 * @param WP_Comment $comment    Comment object.
+	 * @return void
+	 */
+	public function clear_trust_badge_cache_for_transition( string $new_status, string $old_status, WP_Comment $comment ): void {
+		if ( $new_status !== $old_status && $this->is_trust_badge_post( (int) $comment->comment_post_ID ) ) {
+			$this->clear_trust_badge_cache();
+		}
+	}
+
+	/**
+	 * Clear trust counts when metadata used by the aggregate changes.
+	 *
+	 * @param mixed  $meta_id    Metadata row ID or IDs.
+	 * @param int    $comment_id Comment ID.
+	 * @param string $meta_key   Metadata key.
+	 * @return void
+	 */
+	public function clear_trust_badge_cache_for_meta( $meta_id, int $comment_id, string $meta_key ): void {
+		if ( ! in_array( $meta_key, [ 'rating', 'verified', 'overseek_verified_owner' ], true ) ) {
+			return;
+		}
+
+		$this->clear_trust_badge_cache_for_comment( $comment_id );
+	}
+
+	/**
+	 * Clear trust counts when an eligible post enters or leaves published inventory.
+	 *
+	 * @param string  $new_status New post status.
+	 * @param string  $old_status Previous post status.
+	 * @param WP_Post $post       Post object.
+	 * @return void
+	 */
+	public function clear_trust_badge_cache_for_post_transition( string $new_status, string $old_status, WP_Post $post ): void {
+		if ( $new_status !== $old_status && ( 'publish' === $new_status || 'publish' === $old_status ) && $this->is_trust_badge_post( (int) $post->ID ) ) {
+			$this->clear_trust_badge_cache();
+		}
+	}
+
+	/**
+	 * Check whether a post can contribute to storefront trust counts.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return bool
+	 */
+	private function is_trust_badge_post( int $post_id ): bool {
+		return $post_id > 0 && ( 'product' === get_post_type( $post_id ) || $post_id === $this->get_shop_review_post_id() );
+	}
+
+	/**
+	 * Schedule a bounded background backfill for legacy verification metadata.
+	 *
+	 * @return void
+	 */
+	public function schedule_verification_backfill(): void {
+		if ( '1' === (string) get_option( self::VERIFICATION_BACKFILL_OPTION, '' ) || wp_next_scheduled( self::VERIFICATION_BACKFILL_HOOK ) ) {
+			return;
+		}
+
+		wp_schedule_single_event( time() + MINUTE_IN_SECONDS, self::VERIFICATION_BACKFILL_HOOK );
+	}
+
+	/**
+	 * Resolve historical verification away from storefront requests.
+	 *
+	 * @return void
+	 */
+	public function run_verification_backfill(): void {
+		if ( ! function_exists( 'wc_customer_bought_product' ) ) {
+			return;
+		}
+
+		global $wpdb;
+		$cursor = (int) get_option( self::VERIFICATION_BACKFILL_CURSOR_OPTION, 0 );
+		$sql    = $wpdb->prepare(
+			"SELECT DISTINCT comments.comment_ID
+			FROM {$wpdb->comments} comments
+			INNER JOIN {$wpdb->posts} posts ON posts.ID = comments.comment_post_ID
+			INNER JOIN {$wpdb->commentmeta} rating_meta ON rating_meta.comment_id = comments.comment_ID AND rating_meta.meta_key = 'rating'
+			WHERE comments.comment_ID > %d
+			AND comments.comment_approved IN ('0', '1')
+			AND comments.comment_type IN ('', 'review')
+			AND posts.post_type = 'product'
+			AND posts.post_status = 'publish'
+			ORDER BY comments.comment_ID ASC
+			LIMIT %d",
+			$cursor,
+			self::VERIFICATION_BACKFILL_BATCH
+		);
+		$comment_ids = array_map( 'absint', (array) $wpdb->get_col( $sql ) );
+
+		foreach ( $comment_ids as $comment_id ) {
+			$comment  = get_comment( $comment_id );
+			$verified = '1' === (string) get_comment_meta( $comment_id, 'overseek_verified_owner', true )
+				|| (bool) get_comment_meta( $comment_id, 'verified', true );
+			if ( ! $verified && $comment instanceof WP_Comment && is_email( (string) $comment->comment_author_email ) ) {
+				$verified = wc_customer_bought_product(
+					(string) $comment->comment_author_email,
+					(int) $comment->user_id,
+					(int) $comment->comment_post_ID
+				);
+			}
+
+			if ( $verified ) {
+				update_comment_meta( $comment_id, 'overseek_verified_owner', '1' );
+				update_comment_meta( $comment_id, 'verified', 1 );
+			}
+		}
+		if ( ! empty( $comment_ids ) ) {
+			update_option( self::VERIFICATION_BACKFILL_CURSOR_OPTION, (string) end( $comment_ids ), false );
+		}
+
+		if ( count( $comment_ids ) >= self::VERIFICATION_BACKFILL_BATCH ) {
+			wp_schedule_single_event( time() + MINUTE_IN_SECONDS, self::VERIFICATION_BACKFILL_HOOK );
+			return;
+		}
+
+		update_option( self::VERIFICATION_BACKFILL_OPTION, '1', false );
+	}
+
+	/**
+	 * Mark matching reviews verified when an order reaches a paid status.
+	 *
+	 * @param int      $order_id  Order ID.
+	 * @param string   $old_status Previous order status.
+	 * @param string   $new_status New order status.
+	 * @param WC_Order $order      Order object.
+	 * @return void
+	 */
+	public function verify_reviews_for_paid_order( int $order_id, string $old_status, string $new_status, $order ): void {
+		$paid_statuses = function_exists( 'wc_get_is_paid_statuses' ) ? wc_get_is_paid_statuses() : [ 'processing', 'completed' ];
+		if ( $old_status === $new_status || ! in_array( $new_status, $paid_statuses, true ) ) {
+			return;
+		}
+
+		$order = $order instanceof WC_Order ? $order : ( function_exists( 'wc_get_order' ) ? wc_get_order( $order_id ) : null );
+		if ( ! ( $order instanceof WC_Order ) ) {
+			return;
+		}
+
+		$email       = sanitize_email( (string) $order->get_billing_email() );
+		$product_ids = [];
+		foreach ( $order->get_items( 'line_item' ) as $item ) {
+			if ( is_object( $item ) && method_exists( $item, 'get_product_id' ) ) {
+				$product_ids[] = absint( $item->get_product_id() );
+			}
+		}
+		$product_ids = array_values( array_unique( array_filter( $product_ids ) ) );
+		if ( ! is_email( $email ) || empty( $product_ids ) ) {
+			return;
+		}
+
+		global $wpdb;
+		$placeholders = implode( ',', array_fill( 0, count( $product_ids ), '%d' ) );
+		$params       = array_merge( [ $email ], $product_ids );
+		$sql          = $wpdb->prepare(
+			"SELECT DISTINCT comments.comment_ID
+			FROM {$wpdb->comments} comments
+			INNER JOIN {$wpdb->commentmeta} rating_meta ON rating_meta.comment_id = comments.comment_ID AND rating_meta.meta_key = 'rating'
+			WHERE comments.comment_author_email = %s
+			AND comments.comment_post_ID IN ({$placeholders})
+			AND comments.comment_approved IN ('0', '1')
+			AND comments.comment_type IN ('', 'review')",
+			...$params
+		);
+		foreach ( array_map( 'absint', (array) $wpdb->get_col( $sql ) ) as $comment_id ) {
+			update_comment_meta( $comment_id, 'overseek_verified_owner', '1' );
+			update_comment_meta( $comment_id, 'verified', 1 );
+		}
 	}
 
 	/**
@@ -210,10 +426,11 @@ class OverSeek_Reviews {
 		wp_add_inline_style(
 			'overseek-reviews',
 			sprintf(
-				'.os-reviews-shell{--os-review-accent-1:%1$s;--os-review-accent-2:%2$s;--os-review-accent-3:%3$s;--os-review-star-color:%1$s;}',
+				'.os-reviews-shell,.os-review-form{--os-review-accent-1:%1$s;--os-review-accent-2:%2$s;--os-review-accent-3:%3$s;--os-review-star-color:%1$s;--os-review-on-accent:%4$s;}',
 				esc_html( $colors['primary'] ),
 				esc_html( $colors['secondary'] ),
-				esc_html( $colors['tertiary'] )
+				esc_html( $colors['tertiary'] ),
+				esc_html( $this->get_contrast_color( $colors['primary'] ) )
 			)
 		);
 
@@ -392,7 +609,7 @@ class OverSeek_Reviews {
 			. '</span>';
 
 		if ( $this->truthy( $atts['link'] ) ) {
-			$html = '<a class="os-review-stars-summary__link" href="' . esc_url( get_permalink( $product_id ) . '#reviews' ) . '">'
+			$html = '<a class="os-review-stars-summary__link woocommerce-review-link" href="' . esc_url( get_permalink( $product_id ) . '#reviews' ) . '">'
 				. $html
 				. '</a>';
 		}
@@ -436,7 +653,9 @@ class OverSeek_Reviews {
 		$args = $this->normalize_shortcode_args( $atts, 'overseek_product_reviews' );
 		$args['product_reviews'] = 'true';
 		$args['shop_reviews']    = 'false';
-		$args['add_review']      = '1';
+		if ( ! array_key_exists( 'add_review', $atts ) ) {
+			$args['add_review'] = '1';
+		}
 		$is_preview = $this->is_block_editor_preview_request();
 		if ( empty( $args['product_id'] ) ) {
 			$args['product_id'] = $this->get_current_product_id();
@@ -466,6 +685,7 @@ class OverSeek_Reviews {
 					'product_only'    => true,
 					'product_summary' => $summary,
 					'store_name'      => get_bloginfo( 'name' ),
+					'trust_badges'    => $this->get_trust_badges(),
 				]
 			)
 			. $this->render_schema_markup( $summary, $args )
@@ -744,7 +964,132 @@ class OverSeek_Reviews {
 			'store_name'      => get_bloginfo( 'name' ),
 			'product_summary' => $product_summary,
 			'store_summary'   => $summary,
+			'trust_badges'    => $this->get_trust_badges(),
 		];
+	}
+
+	/**
+	 * Build store-wide trust badges from active and verified review counts.
+	 *
+	 * Transparency is approved reviews divided by approved plus pending reviews.
+	 * Spam and trash are excluded because they are not active review inventory.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function get_trust_badges(): array {
+		$config = get_option( 'overseek_storefront_review_config', [] );
+		$config = is_array( $config ) ? $config : [];
+		$show_transparency = ! array_key_exists( 'showTransparencyBadge', $config ) || ! empty( $config['showTransparencyBadge'] );
+		$show_verified     = ! array_key_exists( 'showVerifiedCountBadge', $config ) || ! empty( $config['showVerifiedCountBadge'] );
+		if ( ! $show_transparency && ! $show_verified ) {
+			return [];
+		}
+
+		$counts = $this->get_trust_badge_counts();
+		$badges = [];
+		$active = $counts['approved'] + $counts['hold'];
+		$published_percentage = $active > 0 ? ( $counts['approved'] / $active ) * 100 : 0.0;
+
+		if ( $show_transparency && $published_percentage >= 30 ) {
+			$tier = $published_percentage >= 90 ? 'Gold' : ( $published_percentage >= 60 ? 'Silver' : 'Bronze' );
+			$badges[] = [
+				'type'       => 'transparency',
+				'tier'       => strtolower( $tier ),
+				'label'      => sprintf( __( 'Transparency %s', 'overseek-wc' ), $tier ),
+				'description'=> sprintf( __( '%d%% of active reviews published', 'overseek-wc' ), (int) round( $published_percentage ) ),
+				'asset_url'  => $this->get_review_badge_asset_url( 'Transparency - ' . $tier . '.svg' ),
+			];
+		}
+
+		if ( $show_verified ) {
+			$verified_tier = 0;
+			foreach ( [ 10000, 1000, 250, 100, 50 ] as $threshold ) {
+				if ( $counts['verified'] >= $threshold ) {
+					$verified_tier = $threshold;
+					break;
+				}
+			}
+			if ( $verified_tier > 0 ) {
+				$badges[] = [
+					'type'       => 'verified',
+					'tier'       => (string) $verified_tier,
+					'label'      => sprintf( __( '%s+ verified reviews', 'overseek-wc' ), number_format_i18n( $verified_tier ) ),
+					'description'=> sprintf( _n( '%s verified review published', '%s verified reviews published', $counts['verified'], 'overseek-wc' ), number_format_i18n( $counts['verified'] ) ),
+					'asset_url'  => $this->get_review_badge_asset_url( 'Verified Reviews ' . $verified_tier . '.svg' ),
+				];
+			}
+		}
+
+		return $badges;
+	}
+
+	/**
+	 * Get store-wide approved, pending, and approved verified review counts.
+	 *
+	 * @return array{approved: int, hold: int, verified: int}
+	 */
+	private function get_trust_badge_counts(): array {
+		$cached = wp_cache_get( self::TRUST_BADGE_CACHE_KEY, 'overseek_reviews' );
+		if ( ! is_array( $cached ) ) {
+			$cached = get_transient( self::TRUST_BADGE_CACHE_KEY );
+			if ( is_array( $cached ) ) {
+				wp_cache_set( self::TRUST_BADGE_CACHE_KEY, $cached, 'overseek_reviews', self::TRUST_BADGE_CACHE_TTL );
+			}
+		}
+		if ( is_array( $cached ) ) {
+			return [
+				'approved' => isset( $cached['approved'] ) ? (int) $cached['approved'] : 0,
+				'hold'     => isset( $cached['hold'] ) ? (int) $cached['hold'] : 0,
+				'verified' => isset( $cached['verified'] ) ? (int) $cached['verified'] : 0,
+			];
+		}
+
+		global $wpdb;
+		$shop_review_post_id = $this->get_shop_review_post_id();
+		$sql                 = $wpdb->prepare(
+			"SELECT
+				COUNT(DISTINCT CASE WHEN comments.comment_approved = '1' THEN comments.comment_ID END) AS approved,
+				COUNT(DISTINCT CASE WHEN comments.comment_approved = '0' THEN comments.comment_ID END) AS hold,
+				COUNT(DISTINCT CASE
+					WHEN comments.comment_approved = '1'
+					AND (owner_meta.meta_value = '1' OR (owner_meta.meta_id IS NULL AND verified_meta.meta_value = '1'))
+					THEN comments.comment_ID
+				END) AS verified
+			FROM {$wpdb->comments} comments
+			INNER JOIN {$wpdb->posts} posts ON posts.ID = comments.comment_post_ID
+			INNER JOIN {$wpdb->commentmeta} rating_meta ON rating_meta.comment_id = comments.comment_ID AND rating_meta.meta_key = 'rating'
+			LEFT JOIN {$wpdb->commentmeta} owner_meta ON owner_meta.comment_id = comments.comment_ID AND owner_meta.meta_key = 'overseek_verified_owner'
+			LEFT JOIN {$wpdb->commentmeta} verified_meta ON verified_meta.comment_id = comments.comment_ID AND verified_meta.meta_key = 'verified'
+			WHERE comments.comment_type IN ('', 'review')
+			AND comments.comment_approved IN ('0', '1')
+			AND posts.post_status = 'publish'
+			AND (
+				posts.post_type = 'product'
+				OR (comments.comment_post_ID = %d AND comments.comment_type = 'review')
+			)",
+			$shop_review_post_id
+		);
+		$row = $wpdb->get_row( $sql, ARRAY_A );
+		$counts = [
+			'approved' => is_array( $row ) && isset( $row['approved'] ) ? (int) $row['approved'] : 0,
+			'hold'     => is_array( $row ) && isset( $row['hold'] ) ? (int) $row['hold'] : 0,
+			'verified' => is_array( $row ) && isset( $row['verified'] ) ? (int) $row['verified'] : 0,
+		];
+
+		wp_cache_set( self::TRUST_BADGE_CACHE_KEY, $counts, 'overseek_reviews', self::TRUST_BADGE_CACHE_TTL );
+		set_transient( self::TRUST_BADGE_CACHE_KEY, $counts, self::TRUST_BADGE_CACHE_TTL );
+		return $counts;
+	}
+
+	/**
+	 * Return a bundled badge URL when its supplied SVG asset is available.
+	 *
+	 * @param string $filename Asset filename.
+	 * @return string
+	 */
+	private function get_review_badge_asset_url( string $filename ): string {
+		$relative_path = 'assets/review-badges/' . $filename;
+		return file_exists( OVERSEEK_WC_PLUGIN_DIR . $relative_path ) ? OVERSEEK_WC_PLUGIN_URL . $relative_path : '';
 	}
 
 	/**
@@ -1018,8 +1363,8 @@ class OverSeek_Reviews {
 				'color_pr_bcrd'=> '',
 				'color_stars'  => '',
 				'card_style'   => 'comfortable',
-				'radius'       => 28,
-				'shadow'       => 2,
+				'radius'       => 18,
+				'shadow'       => 1,
 				'slider_desktop' => 3,
 				'slider_mobile' => 1,
 				'slider_autoplay' => '0',
@@ -1063,6 +1408,10 @@ class OverSeek_Reviews {
 		$attributes['product_reviews'] = $this->truthy( $attributes['product_reviews'] ) ? 'true' : 'false';
 		$attributes['shop_reviews']    = $this->truthy( $attributes['shop_reviews'] ) ? 'true' : 'false';
 		$attributes['inactive_products'] = $this->truthy( $attributes['inactive_products'] ) ? 'true' : 'false';
+		$review_config = get_option( 'overseek_storefront_review_config', [] );
+		if ( ! is_array( $review_config ) || empty( $review_config['showCountryFlags'] ) ) {
+			$attributes['show_country'] = '0';
+		}
 
 		if ( isset( $_GET['os_reviews_page'] ) ) {
 			$attributes['page'] = max( 1, absint( wp_unslash( $_GET['os_reviews_page'] ) ) );
@@ -1177,7 +1526,12 @@ class OverSeek_Reviews {
 		}
 
 		$explicit_product_id = is_numeric( $value ) && absint( $value ) > 1 ? absint( $value ) : 0;
-		$product_id          = $explicit_product_id ?: ( ! empty( $args['product_id'] ) ? (int) $args['product_id'] : $this->get_current_product_id() );
+		$product_id          = $explicit_product_id ?: ( ! empty( $args['product_id'] ) ? (int) $args['product_id'] : 0 );
+		if ( ! $product_id ) {
+			$current_id = $this->get_current_product_id();
+			$product_id = $current_id > 0 && 'product' === get_post_type( $current_id ) ? $current_id : 0;
+		}
+
 		if ( ! $product_id && $this->truthy( $args['shop_reviews'] ?? false ) ) {
 			return do_shortcode( '[overseek_review_form shop_review="true"]' );
 		}
@@ -1321,6 +1675,26 @@ class OverSeek_Reviews {
 	}
 
 	/**
+	 * Choose readable text for a configured brand colour.
+	 *
+	 * @param string $hex Six-digit hex colour.
+	 * @return string
+	 */
+	private function get_contrast_color( string $hex ): string {
+		$hex = ltrim( $hex, '#' );
+		if ( 6 !== strlen( $hex ) ) {
+			return '#ffffff';
+		}
+
+		$red        = hexdec( substr( $hex, 0, 2 ) );
+		$green      = hexdec( substr( $hex, 2, 2 ) );
+		$blue       = hexdec( substr( $hex, 4, 2 ) );
+		$brightness = ( ( $red * 299 ) + ( $green * 587 ) + ( $blue * 114 ) ) / 1000;
+
+		return $brightness >= 150 ? '#0f172a' : '#ffffff';
+	}
+
+	/**
 	 * Normalize boolean-like values.
 	 *
 	 * @param mixed $value Value.
@@ -1436,7 +1810,7 @@ class OverSeek_Reviews {
 			'product_name' => $is_shop_review ? __( 'Shop review', 'overseek-wc' ) : $product->get_name(),
 			'product_url'  => $is_shop_review ? home_url( '/' ) : $product->get_permalink(),
 			'product_image' => $image ? (string) $image : '',
-			'reviewer'     => $comment->comment_author ?: __( 'Customer', 'overseek-wc' ),
+			'reviewer'     => $this->format_reviewer_name( $comment->comment_author ?: __( 'Customer', 'overseek-wc' ) ),
 			'rating'       => $rating,
 			'content'      => $comment->comment_content,
 			'date'         => mysql2date( get_option( 'date_format' ), $comment->comment_date ),
@@ -1446,6 +1820,43 @@ class OverSeek_Reviews {
 			'replies'      => $this->get_review_replies( (int) $comment->comment_ID ),
 			'media'        => $this->get_review_media( (int) $comment->comment_ID ),
 		];
+	}
+
+	/**
+	 * Apply the configured public reviewer-name privacy format.
+	 *
+	 * @param string $name Submitted reviewer name.
+	 * @return string
+	 */
+	private function format_reviewer_name( string $name ): string {
+		$config = get_option( 'overseek_storefront_review_config', [] );
+		$mode   = is_array( $config ) && isset( $config['reviewerNameDisplay'] ) ? (string) $config['reviewerNameDisplay'] : 'full';
+		$name   = trim( preg_replace( '/\s+/', ' ', $name ) ?? $name );
+		$parts  = array_values( array_filter( explode( ' ', $name ) ) );
+		$initial = static function ( string $part ): string {
+			$letter = function_exists( 'mb_substr' ) ? mb_substr( $part, 0, 1 ) : substr( $part, 0, 1 );
+			return function_exists( 'mb_strtoupper' ) ? mb_strtoupper( $letter ) : strtoupper( $letter );
+		};
+		if ( 'full' === $mode || empty( $parts ) ) {
+			return $name;
+		}
+		if ( 1 === count( $parts ) ) {
+			return $initial( $parts[0] );
+		}
+		$first = $parts[0];
+		$last  = $parts[ count( $parts ) - 1 ];
+
+		if ( 'first_initial_last' === $mode ) {
+			return $initial( $first ) . ' ' . $last;
+		}
+		if ( 'initials' === $mode ) {
+			return $initial( $first ) . ' ' . $initial( $last );
+		}
+		if ( 'first_last_initial' === $mode ) {
+			return $first . ' ' . $initial( $last );
+		}
+
+		return $name;
 	}
 
 	/**
@@ -1541,13 +1952,13 @@ class OverSeek_Reviews {
 	 */
 	private function get_review_country( WP_Comment $comment ): string {
 		$comment_id = (int) $comment->comment_ID;
+		$countries  = function_exists( 'WC' ) && WC()->countries ? WC()->countries->get_countries() : [];
 		foreach ( [ 'overseek_country', 'review_country', 'country', 'billing_country' ] as $key ) {
 			$value = strtoupper( substr( sanitize_text_field( (string) get_comment_meta( $comment_id, $key, true ) ), 0, 2 ) );
-			if ( 2 === strlen( $value ) ) {
+			if ( preg_match( '/^[A-Z]{2}$/', $value ) && ( empty( $countries ) || array_key_exists( $value, $countries ) ) ) {
 				return $value;
 			}
 		}
-
 		return '';
 	}
 
@@ -1573,10 +1984,14 @@ class OverSeek_Reviews {
 				continue;
 			}
 
-			$out[] = [
-				'id'   => (string) $attachment_id,
-				'url'  => $url,
-				'type' => (string) get_post_mime_type( $attachment_id ),
+			$type          = (string) get_post_mime_type( $attachment_id );
+			$thumbnail_url = 0 === strpos( $type, 'image/' ) ? wp_get_attachment_image_url( $attachment_id, 'medium' ) : '';
+			$out[]         = [
+				'id'            => (string) $attachment_id,
+				'url'           => $url,
+				'type'          => $type,
+				'filename'      => (string) get_the_title( $attachment_id ),
+				'thumbnail_url' => $thumbnail_url ?: $url,
 			];
 		}
 
@@ -1590,8 +2005,8 @@ class OverSeek_Reviews {
 	 * @return bool
 	 */
 	private function is_verified_review( int $comment_id ): bool {
-		if ( function_exists( 'wc_review_is_from_verified_owner' ) ) {
-			return (bool) wc_review_is_from_verified_owner( $comment_id );
+		if ( metadata_exists( 'comment', $comment_id, 'overseek_verified_owner' ) ) {
+			return '1' === (string) get_comment_meta( $comment_id, 'overseek_verified_owner', true );
 		}
 
 		return (bool) get_comment_meta( $comment_id, 'verified', true );

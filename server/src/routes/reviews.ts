@@ -5,8 +5,10 @@
 import { FastifyPluginAsync } from 'fastify';
 import { requireAuthFastify } from '../middleware/auth';
 import { ReviewService } from '../services/ReviewService';
+import { REVIEWER_NAME_DISPLAYS, REVIEW_MODERATION_MODES, ReviewerNameDisplay, ReviewModerationMode } from '../services/ReviewService';
 import { ReviewAIService } from '../services/ReviewAIService';
 import { Logger } from '../utils/logger';
+import { prisma } from '../utils/prisma';
 
 const reviewService = new ReviewService();
 
@@ -62,6 +64,64 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error) {
             Logger.error('Error fetching reviews', { error });
             return reply.code(500).send({ error: 'Failed to fetch reviews' });
+        }
+    });
+
+    fastify.get('/settings', async (request, reply) => {
+        try {
+            return await reviewService.getSettings(request.accountId!);
+        } catch (error) {
+            Logger.error('Error fetching review settings', { error });
+            return reply.code(500).send({ error: 'Failed to fetch review settings' });
+        }
+    });
+
+    fastify.put<{ Body: {
+        showCountryFlags?: unknown;
+        reviewerNameDisplay?: unknown;
+        showTransparencyBadge?: unknown;
+        showVerifiedCountBadge?: unknown;
+        moderationMode?: unknown;
+        moderationThreshold?: unknown;
+    } }>('/settings', async (request, reply) => {
+        try {
+            const accountId = request.accountId!;
+            const membership = await prisma.accountUser.findUnique({
+                where: { userId_accountId: { userId: request.user!.id, accountId } },
+                select: { role: true },
+            });
+            const user = await prisma.user.findUnique({ where: { id: request.user!.id }, select: { isSuperAdmin: true } });
+            if (!user?.isSuperAdmin && (!membership || !['OWNER', 'ADMIN'].includes(membership.role))) {
+                return reply.code(403).send({ error: 'Only account owners and admins can change review settings' });
+            }
+
+            const { showCountryFlags, reviewerNameDisplay, showTransparencyBadge, showVerifiedCountBadge, moderationMode, moderationThreshold } = request.body || {};
+            if (
+                typeof showCountryFlags !== 'boolean'
+                || typeof reviewerNameDisplay !== 'string'
+                || !REVIEWER_NAME_DISPLAYS.includes(reviewerNameDisplay as ReviewerNameDisplay)
+                || typeof showTransparencyBadge !== 'boolean'
+                || typeof showVerifiedCountBadge !== 'boolean'
+                || typeof moderationMode !== 'string'
+                || !REVIEW_MODERATION_MODES.includes(moderationMode as ReviewModerationMode)
+                || !Number.isInteger(moderationThreshold)
+                || (moderationThreshold as number) < 1
+                || (moderationThreshold as number) > 5
+            ) {
+                return reply.code(400).send({ error: 'Invalid review settings' });
+            }
+
+            return await reviewService.updateSettings(accountId, {
+                showCountryFlags,
+                reviewerNameDisplay: reviewerNameDisplay as ReviewerNameDisplay,
+                showTransparencyBadge,
+                showVerifiedCountBadge,
+                moderationMode: moderationMode as ReviewModerationMode,
+                moderationThreshold: moderationThreshold as number,
+            });
+        } catch (error) {
+            Logger.error('Error updating review settings', { error });
+            return reply.code(500).send({ error: 'Failed to update review settings' });
         }
     });
 

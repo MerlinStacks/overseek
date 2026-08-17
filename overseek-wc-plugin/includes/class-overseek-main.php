@@ -221,6 +221,7 @@ class OverSeek_Main
 
 	private function register_reviews(): void
 	{
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-review-moderation.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-review-renderer.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-reviews.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-review-form.php';
@@ -248,6 +249,7 @@ class OverSeek_Main
 	private function load_api_dependencies(): void
 	{
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-order-invoices.php';
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-review-moderation.php';
 		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-api.php';
 	}
 

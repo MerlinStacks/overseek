@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Logger } from '../utils/logger';
 import { useAccount } from '../context/AccountContext';
 import { useAuth } from '../context/AuthContext';
-import { Star, RefreshCw, Search, CheckCircle, ExternalLink, Link2, MessageSquare, Reply, Paperclip, Video, Sparkles, Loader2 } from 'lucide-react';
+import { Star, RefreshCw, Search, CheckCircle, ExternalLink, Link2, MessageSquare, Reply, Paperclip, Video, Sparkles, Loader2, Cog } from 'lucide-react';
 import { Pagination } from '../components/ui/Pagination';
 import { formatDate } from '../utils/format';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -13,6 +13,8 @@ import { RelativeTime } from '../components/ui/RelativeTime';
 import { useToast } from '../context/ToastContext';
 import { getSafeHref } from '../utils/url';
 import { formatReviewStatusLabel, formatReviewText } from '../utils/reviews';
+import { ReviewSettingsModal, type ReviewSettings } from '../components/reviews/ReviewSettingsModal';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface ReviewRow {
     id: string;
@@ -60,6 +62,14 @@ const REVIEW_STATUSES = [
 
 const isImageMedia = (media: ReviewMedia) => media.type?.startsWith('image/');
 const isVideoMedia = (media: ReviewMedia) => media.type?.startsWith('video/');
+const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
+    showCountryFlags: false,
+    reviewerNameDisplay: 'full',
+    showTransparencyBadge: true,
+    showVerifiedCountBadge: true,
+    moderationMode: 'auto_publish',
+    moderationThreshold: 4,
+};
 
 async function getApiErrorMessage(res: Response, fallback: string): Promise<string> {
     try {
@@ -76,6 +86,8 @@ export const ReviewsPage = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const toast = useToast();
+    const { hasPermission } = usePermissions();
+    const canManageReviewSettings = hasPermission('*');
     const [reviews, setReviews] = useState<ReviewRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -93,6 +105,15 @@ export const ReviewsPage = () => {
     const [expandedReviewIds, setExpandedReviewIds] = useState<string[]>([]);
     const [bulkStatus, setBulkStatus] = useState('approved');
     const [statusCounts, setStatusCounts] = useState<StatusCounts>({ total: 0, counts: {} });
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [reviewSettings, setReviewSettings] = useState<ReviewSettings>(DEFAULT_REVIEW_SETTINGS);
+    const [settingsDraft, setSettingsDraft] = useState<ReviewSettings>(DEFAULT_REVIEW_SETTINGS);
+    const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [settingsLoadError, setSettingsLoadError] = useState('');
+    const settingsRequestId = useRef(0);
+    const activeSettingsAccountId = useRef(currentAccount?.id);
+    activeSettingsAccountId.current = currentAccount?.id;
 
     // Filters & Pagination
     const [searchQuery, setSearchQuery] = useState('');
@@ -138,6 +159,68 @@ export const ReviewsPage = () => {
             setIsLoading(false);
         }
     }, [currentAccount, token, page, limit, debouncedSearch, statusFilter]);
+
+    const fetchReviewSettings = useCallback(async () => {
+        if (!currentAccount || !token) return;
+        const requestId = ++settingsRequestId.current;
+        setIsLoadingSettings(true);
+        setSettingsLoadError('');
+        try {
+            const res = await fetch('/api/reviews/settings', {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+            });
+            if (!res.ok) throw new Error(await getApiErrorMessage(res, 'Failed to load review settings'));
+            const settings = await res.json() as ReviewSettings;
+            if (requestId !== settingsRequestId.current) return;
+            setReviewSettings(settings);
+            setSettingsDraft(settings);
+        } catch (error) {
+            if (requestId !== settingsRequestId.current) return;
+            Logger.error('Failed to fetch review settings', { error });
+            const message = error instanceof Error ? error.message : 'Failed to load review settings';
+            setSettingsLoadError(message);
+            toast.error(message);
+        } finally {
+            if (requestId === settingsRequestId.current) setIsLoadingSettings(false);
+        }
+    }, [currentAccount, token, toast]);
+
+    const openReviewSettings = () => {
+        setSettingsDraft(reviewSettings);
+        setSettingsOpen(true);
+        void fetchReviewSettings();
+    };
+
+    const saveReviewSettings = async () => {
+        if (!currentAccount || !token) return;
+        const accountId = currentAccount.id;
+        setIsSavingSettings(true);
+        try {
+            const res = await fetch('/api/reviews/settings', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': accountId,
+                },
+                body: JSON.stringify(settingsDraft),
+            });
+            if (!res.ok) throw new Error(await getApiErrorMessage(res, 'Failed to save review settings'));
+            const settings = await res.json() as ReviewSettings & { synced?: boolean };
+            if (activeSettingsAccountId.current !== accountId) return;
+            setReviewSettings(settings);
+            setSettingsDraft(settings);
+            setSettingsOpen(false);
+            if (settings.synced === false) toast.info('Settings saved in OverSeek, but the WooCommerce plugin is unreachable or needs updating. Update or reconnect the plugin, then save again.');
+            else toast.success('Review settings saved and synced to WooCommerce');
+        } catch (error) {
+            if (activeSettingsAccountId.current !== accountId) return;
+            Logger.error('Failed to save review settings', { error });
+            toast.error(error instanceof Error ? error.message : 'Failed to save review settings');
+        } finally {
+            if (activeSettingsAccountId.current === accountId) setIsSavingSettings(false);
+        }
+    };
 
     const statusTabs = useMemo(() => REVIEW_STATUSES.map((status) => ({
         ...status,
@@ -421,6 +504,15 @@ export const ReviewsPage = () => {
     }, [currentAccount, token, page, limit, debouncedSearch, statusFilter, fetchReviews]);
 
     useEffect(() => {
+        settingsRequestId.current += 1;
+        setReviewSettings(DEFAULT_REVIEW_SETTINGS);
+        setSettingsDraft(DEFAULT_REVIEW_SETTINGS);
+        setSettingsLoadError('');
+        setIsSavingSettings(false);
+        setSettingsOpen(false);
+    }, [currentAccount?.id]);
+
+    useEffect(() => {
         const hasOpenModal = replyReview || editReview || mediaViewer;
         if (!hasOpenModal) return;
 
@@ -453,6 +545,18 @@ export const ReviewsPage = () => {
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
+
+                    {canManageReviewSettings && <button
+                        type="button"
+                        onClick={openReviewSettings}
+                        aria-label="Review settings"
+                        title="Review settings"
+                        aria-haspopup="dialog"
+                        aria-expanded={settingsOpen}
+                        className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition-colors ${settingsOpen ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
+                    >
+                        <Cog size={18} />
+                    </button>}
 
                     <button
                         onClick={handleRematch}
@@ -777,6 +881,18 @@ export const ReviewsPage = () => {
                     allowItemsPerPage={true}
                 />
             )}
+
+            <ReviewSettingsModal
+                isOpen={settingsOpen}
+                isLoading={isLoadingSettings}
+                isSaving={isSavingSettings}
+                loadError={settingsLoadError}
+                settings={settingsDraft}
+                onChange={setSettingsDraft}
+                onClose={() => setSettingsOpen(false)}
+                onSave={saveReviewSettings}
+                onRetry={fetchReviewSettings}
+            />
 
             {replyReview && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="presentation">

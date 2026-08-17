@@ -33,12 +33,22 @@ class OverSeek_Review_Form {
 	private array $rendered_forms = [];
 
 	/**
+	 * Form instance counter used to keep field IDs unique.
+	 *
+	 * @var int
+	 */
+	private int $form_counter = 0;
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function __construct() {
+		add_filter( 'pre_comment_approved', [ 'OverSeek_Review_Moderation', 'filter_approval' ], 20, 2 );
 		add_shortcode( 'overseek_review_form', [ $this, 'render_shortcode' ] );
 		add_action( 'admin_post_overseek_submit_review', [ $this, 'handle_submission' ] );
 		add_action( 'admin_post_nopriv_overseek_submit_review', [ $this, 'handle_submission' ] );
+		add_action( 'wp_ajax_overseek_review_nonce', [ $this, 'send_fresh_nonce' ] );
+		add_action( 'wp_ajax_nopriv_overseek_review_nonce', [ $this, 'send_fresh_nonce' ] );
 		add_action( 'template_redirect', [ $this, 'disable_cache_for_review_requests' ], 0 );
 		add_action( 'woocommerce_after_single_product_summary', [ $this, 'render_review_request_fallback' ], 11 );
 		add_filter( 'woocommerce_product_tabs', [ $this, 'maybe_replace_reviews_tab' ], 999 );
@@ -51,10 +61,19 @@ class OverSeek_Review_Form {
 	 * @return void
 	 */
 	public function disable_cache_for_review_requests(): void {
-		if ( empty( $_GET['overseek_review_request'] ) && empty( $_GET['overseek_review_rating'] ) ) {
+		if ( ! $this->is_review_request() ) {
 			return;
 		}
 
+		$this->mark_page_uncacheable();
+	}
+
+	/**
+	 * Mark a page containing a customer-specific nonce as uncacheable.
+	 *
+	 * @return void
+	 */
+	private function mark_page_uncacheable(): void {
 		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
 			define( 'DONOTCACHEPAGE', true );
 		}
@@ -63,7 +82,28 @@ class OverSeek_Review_Form {
 			do_action( 'litespeed_control_set_nocache', 'OverSeek review request' );
 		}
 
+		if ( ! headers_sent() ) {
+			nocache_headers();
+		}
+	}
+
+	/**
+	 * Check whether this page was opened from a review request.
+	 *
+	 * @return bool
+	 */
+	private function is_review_request(): bool {
+		return ! empty( $_GET['overseek_review_request'] ) || ! empty( $_GET['overseek_review_rating'] );
+	}
+
+	/**
+	 * Return an uncached nonce for forms served from full-page caches.
+	 *
+	 * @return void
+	 */
+	public function send_fresh_nonce(): void {
 		nocache_headers();
+		wp_send_json_success( [ 'nonce' => wp_create_nonce( self::NONCE_ACTION ) ] );
 	}
 
 	/**
@@ -139,7 +179,9 @@ class OverSeek_Review_Form {
 			return;
 		}
 
+		echo '<section id="reviews" class="woocommerce-Reviews os-product-reviews" data-os-product-reviews>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo do_shortcode( '[overseek_product_reviews product_id="' . absint( $product_id ) . '" limit="12" pagination="load_more" show_media="1" add_review="1"]' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo '</section>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
 
 	/**
@@ -149,6 +191,9 @@ class OverSeek_Review_Form {
 	 */
 	public function render_review_request_fallback(): void {
 		if ( ! ( function_exists( 'is_product' ) && is_product() ) ) {
+			return;
+		}
+		if ( ! $this->should_replace_product_reviews() && ! $this->is_review_request() ) {
 			return;
 		}
 
@@ -228,17 +273,22 @@ class OverSeek_Review_Form {
 		$content = isset( $_POST['review'] ) ? trim( sanitize_textarea_field( wp_unslash( $_POST['review'] ) ) ) : '';
 		$name    = isset( $_POST['author'] ) ? sanitize_text_field( wp_unslash( $_POST['author'] ) ) : '';
 		$email   = isset( $_POST['email'] ) ? sanitize_email( wp_unslash( $_POST['email'] ) ) : '';
+		if ( is_user_logged_in() ) {
+			$current_user = wp_get_current_user();
+			$name         = (string) $current_user->display_name;
+			$email        = (string) $current_user->user_email;
+		}
 
 		if ( $rating < 1 || $rating > 5 || '' === $content || '' === $name || ! is_email( $email ) ) {
 			$this->redirect_with_status( $redirect, 'missing' );
 		}
 
-		if ( ! $this->passes_rate_limit( $email ) ) {
-			$this->redirect_with_status( $redirect, 'rate-limited' );
-		}
-
 		if ( ! $shop_review && ! $this->product_review_submission_allowed( $product_id, $email ) ) {
 			$this->redirect_with_status( $redirect, 'not-allowed' );
+		}
+
+		if ( ! $this->passes_rate_limit( $email ) ) {
+			$this->redirect_with_status( $redirect, 'rate-limited' );
 		}
 
 		$duplicate_lock_key = $this->get_duplicate_submission_lock_key( $product_id, $shop_review, $email, $rating, $content );
@@ -246,35 +296,55 @@ class OverSeek_Review_Form {
 			$this->redirect_with_status( $redirect, 'duplicate' );
 		}
 
-		$comment_id = wp_insert_comment(
+		$is_verified = ! $shop_review && $this->is_verified_customer( $product_id, $email );
+		$country    = $this->get_customer_country();
+		$comment_meta = [
+			'rating'               => $rating,
+			'overseek_shop_review' => $shop_review ? '1' : '0',
+			'overseek_country'     => $country,
+		];
+		if ( $is_verified ) {
+			$comment_meta['overseek_verified_owner'] = '1';
+		}
+		$comment_id = wp_new_comment(
 			[
 				'comment_post_ID'      => $product_id,
 				'comment_author'       => $name,
 				'comment_author_email' => $email,
 				'comment_content'      => $content,
 				'comment_type'         => 'review',
-				'comment_approved'     => 0,
 				'comment_author_IP'    => isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '',
 				'comment_agent'        => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 254 ) : '',
-				'comment_date'         => current_time( 'mysql' ),
-				'comment_date_gmt'     => current_time( 'mysql', true ),
-			]
+				'user_id'              => get_current_user_id(),
+				'comment_meta'         => $comment_meta,
+			],
+			true
 		);
 
 		if ( ! $comment_id || is_wp_error( $comment_id ) ) {
 			$this->release_duplicate_submission_lock( $duplicate_lock_key );
+			if ( is_wp_error( $comment_id ) && 'comment_duplicate' === $comment_id->get_error_code() ) {
+				$this->redirect_with_status( $redirect, 'duplicate' );
+			}
 			$this->redirect_with_status( $redirect, 'failed' );
 		}
 
-		add_comment_meta( (int) $comment_id, 'rating', $rating, true );
-		add_comment_meta( (int) $comment_id, 'overseek_shop_review', $shop_review ? '1' : '0', true );
+		update_comment_meta( (int) $comment_id, 'rating', $rating );
+		update_comment_meta( (int) $comment_id, 'overseek_shop_review', $shop_review ? '1' : '0' );
+		if ( $is_verified ) {
+			update_comment_meta( (int) $comment_id, 'verified', 1 );
+		}
+		if ( '' !== $country ) {
+			update_comment_meta( (int) $comment_id, 'overseek_country', $country );
+		}
 
 		$media_ids = $this->handle_media_uploads( $product_id );
 		if ( ! empty( $media_ids ) ) {
 			update_comment_meta( (int) $comment_id, 'overseek_media_ids', $media_ids );
 		}
 
-		$this->redirect_with_status( $redirect, 'submitted' );
+		$status = wp_get_comment_status( (int) $comment_id );
+		$this->redirect_with_status( $redirect, 'approved' === $status ? 'published' : 'submitted' );
 	}
 
 	/**
@@ -297,6 +367,9 @@ class OverSeek_Review_Form {
 		}
 
 		$this->rendered_forms[ $this->get_rendered_form_key( $product_id, $shop_review ) ] = true;
+		$form_number = ++$this->form_counter;
+		$form_id     = 1 === $form_number ? 'review_form' : 'overseek-review-form-' . $form_number;
+		$field_id    = 'os-review-' . $form_number;
 
 		$prefilled_rating = isset( $_GET['overseek_review_rating'] ) ? absint( wp_unslash( $_GET['overseek_review_rating'] ) ) : 0;
 		if ( $prefilled_rating < 1 || $prefilled_rating > 5 ) {
@@ -304,12 +377,20 @@ class OverSeek_Review_Form {
 		}
 		$prefilled_name  = isset( $_GET['overseek_review_name'] ) ? sanitize_text_field( wp_unslash( $_GET['overseek_review_name'] ) ) : '';
 		$prefilled_email = isset( $_GET['overseek_review_email'] ) ? sanitize_email( wp_unslash( $_GET['overseek_review_email'] ) ) : '';
+		if ( is_user_logged_in() ) {
+			$current_user = wp_get_current_user();
+			$prefilled_name = '' !== $prefilled_name ? $prefilled_name : (string) $current_user->display_name;
+			$prefilled_email = '' !== $prefilled_email ? $prefilled_email : (string) $current_user->user_email;
+		}
 
 		ob_start();
 		?>
 		<?php echo $this->render_submission_notice(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-		<form id="review_form" class="os-review-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data">
-			<h3><?php echo esc_html( $title ); ?></h3>
+		<form id="<?php echo esc_attr( $form_id ); ?>" class="os-review-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data" data-os-review-nonce-url="<?php echo esc_url( admin_url( 'admin-ajax.php?action=overseek_review_nonce' ) ); ?>">
+			<header class="os-review-form__header">
+				<h3><?php echo esc_html( $title ); ?></h3>
+				<p><?php esc_html_e( 'Share your experience to help other customers.', 'overseek-wc' ); ?></p>
+			</header>
 			<input type="hidden" name="action" value="overseek_submit_review">
 			<input type="hidden" name="product_id" value="<?php echo esc_attr( (string) $product_id ); ?>">
 			<input type="hidden" name="redirect_to" value="<?php echo esc_url( $this->get_current_request_url() ); ?>">
@@ -324,37 +405,38 @@ class OverSeek_Review_Form {
 				<legend><?php esc_html_e( 'Rating', 'overseek-wc' ); ?></legend>
 				<div class="os-review-form__stars" aria-label="<?php esc_attr_e( 'Choose a rating', 'overseek-wc' ); ?>">
 					<?php for ( $star = 5; $star >= 1; $star-- ) : ?>
-						<input id="os-review-rating-<?php echo esc_attr( (string) $star ); ?>" type="radio" name="rating" value="<?php echo esc_attr( (string) $star ); ?>" <?php checked( $prefilled_rating, $star ); ?> required>
-						<label for="os-review-rating-<?php echo esc_attr( (string) $star ); ?>" aria-label="<?php echo esc_attr( sprintf( _n( '%d star', '%d stars', $star, 'overseek-wc' ), $star ) ); ?>">★</label>
+						<input id="<?php echo esc_attr( $field_id . '-rating-' . $star ); ?>" type="radio" name="rating" value="<?php echo esc_attr( (string) $star ); ?>" <?php checked( $prefilled_rating, $star ); ?> required>
+						<label for="<?php echo esc_attr( $field_id . '-rating-' . $star ); ?>" aria-label="<?php echo esc_attr( sprintf( _n( '%d star', '%d stars', $star, 'overseek-wc' ), $star ) ); ?>">★</label>
 					<?php endfor; ?>
 				</div>
 			</fieldset>
 
 			<label class="os-review-form__field">
 				<span><?php esc_html_e( 'Review', 'overseek-wc' ); ?></span>
-				<textarea name="review" rows="5" required></textarea>
+				<textarea name="review" rows="4" placeholder="<?php esc_attr_e( 'What did you like? How was the quality and service?', 'overseek-wc' ); ?>" required></textarea>
 			</label>
 
 			<div class="os-review-form__grid">
 				<label class="os-review-form__field">
 					<span><?php esc_html_e( 'Name', 'overseek-wc' ); ?></span>
-					<input type="text" name="author" value="<?php echo esc_attr( $prefilled_name ); ?>" autocomplete="name" required>
+					<input type="text" name="author" value="<?php echo esc_attr( $prefilled_name ); ?>" autocomplete="name" <?php readonly( is_user_logged_in() ); ?> required>
 				</label>
 
 				<label class="os-review-form__field">
 					<span><?php esc_html_e( 'Email', 'overseek-wc' ); ?></span>
-					<input type="email" name="email" value="<?php echo esc_attr( $prefilled_email ); ?>" autocomplete="email" required>
+					<input type="email" name="email" value="<?php echo esc_attr( $prefilled_email ); ?>" autocomplete="email" <?php readonly( is_user_logged_in() ); ?> required>
 				</label>
 			</div>
 
-			<label class="os-review-form__field os-review-form__dropzone">
-				<span><?php esc_html_e( 'Photos or videos', 'overseek-wc' ); ?></span>
-				<strong><?php esc_html_e( 'Drag files here or click to upload', 'overseek-wc' ); ?></strong>
-				<input type="file" name="os_review_media[]" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm" multiple>
-				<small><?php echo esc_html( sprintf( __( 'Upload up to %1$d files, up to %2$s each. Reviews are held for moderation.', 'overseek-wc' ), self::MAX_FILES, size_format( $this->max_upload_bytes() ) ) ); ?></small>
-			</label>
+			<div class="os-review-form__actions">
+				<label class="os-review-form__dropzone">
+					<span class="os-review-form__upload-icon" aria-hidden="true">＋</span>
+					<span><strong><?php esc_html_e( 'Add photos or video', 'overseek-wc' ); ?></strong><small data-os-review-file-label aria-live="polite"><?php echo esc_html( sprintf( __( 'Up to %1$d files, %2$s each', 'overseek-wc' ), self::MAX_FILES, size_format( $this->max_upload_bytes() ) ) ); ?></small></span>
+					<input type="file" name="os_review_media[]" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm" data-max-files="<?php echo esc_attr( (string) self::MAX_FILES ); ?>" data-max-bytes="<?php echo esc_attr( (string) $this->max_upload_bytes() ); ?>" multiple>
+				</label>
 
-			<button type="submit" class="os-review-form__submit" data-submitting-label="<?php esc_attr_e( 'Submitting...', 'overseek-wc' ); ?>"><?php esc_html_e( 'Submit review', 'overseek-wc' ); ?></button>
+				<button type="submit" class="os-review-form__submit" data-submitting-label="<?php esc_attr_e( 'Submitting...', 'overseek-wc' ); ?>"><?php esc_html_e( 'Submit review', 'overseek-wc' ); ?></button>
+			</div>
 		</form>
 		<?php
 		return (string) ob_get_clean();
@@ -384,6 +466,9 @@ class OverSeek_Review_Form {
 		$status = sanitize_key( wp_unslash( $_GET['overseek_review_status'] ) );
 		if ( 'submitted' === $status ) {
 			return '<div class="os-review-form__notice os-review-form__notice--success">' . esc_html__( 'Thanks. Your review has been submitted and may be held briefly for moderation.', 'overseek-wc' ) . '</div>';
+		}
+		if ( 'published' === $status ) {
+			return '<div class="os-review-form__notice os-review-form__notice--success">' . esc_html__( 'Thanks. Your review is now published.', 'overseek-wc' ) . '</div>';
 		}
 
 		if ( 'duplicate' === $status ) {
@@ -512,7 +597,75 @@ class OverSeek_Review_Form {
 			return true;
 		}
 
-		return function_exists( 'wc_customer_bought_product' ) && wc_customer_bought_product( $email, get_current_user_id(), $product_id );
+		return $this->is_verified_customer( $product_id, $email );
+	}
+
+	/**
+	 * Verify ownership using WooCommerce's native customer/order lookup.
+	 *
+	 * @param int    $product_id Reviewed product ID.
+	 * @param string $email      Canonical account email.
+	 * @return bool
+	 */
+	private function is_verified_customer( int $product_id, string $email ): bool {
+		if ( ! function_exists( 'wc_customer_bought_product' ) ) {
+			return false;
+		}
+
+		$user_id = is_user_logged_in() ? get_current_user_id() : 0;
+		return wc_customer_bought_product( $email, $user_id, $product_id );
+	}
+
+	/**
+	 * Resolve a reviewer's country without adding another form field.
+	 *
+	 * @return string
+	 */
+	private function get_customer_country(): string {
+		$config = get_option( 'overseek_storefront_review_config', [] );
+		if ( ! is_array( $config ) || empty( $config['showCountryFlags'] ) || ! is_user_logged_in() || ! class_exists( 'WC_Customer' ) ) {
+			return '';
+		}
+
+		$user_id  = get_current_user_id();
+		$customer = new WC_Customer( $user_id );
+		$country  = strtoupper( (string) $customer->get_billing_country() );
+		if ( $this->is_valid_country_code( $country ) ) {
+			return $country;
+		}
+
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return '';
+		}
+		$orders = wc_get_orders(
+			[
+				'customer_id' => $user_id,
+				'status'      => function_exists( 'wc_get_is_paid_statuses' ) ? wc_get_is_paid_statuses() : [ 'processing', 'completed' ],
+				'limit'         => 1,
+				'orderby'       => 'date',
+				'order'         => 'DESC',
+				'return'        => 'objects',
+			]
+		);
+		$order = is_array( $orders ) && isset( $orders[0] ) && $orders[0] instanceof WC_Order ? $orders[0] : null;
+		$country = $order ? strtoupper( (string) $order->get_billing_country() ) : '';
+
+		return $this->is_valid_country_code( $country ) ? $country : '';
+	}
+
+	/**
+	 * Validate an ISO country against WooCommerce's country list.
+	 *
+	 * @param string $country Country code.
+	 * @return bool
+	 */
+	private function is_valid_country_code( string $country ): bool {
+		if ( ! preg_match( '/^[A-Z]{2}$/', $country ) ) {
+			return false;
+		}
+
+		$countries = function_exists( 'WC' ) && WC()->countries ? WC()->countries->get_countries() : [];
+		return empty( $countries ) || array_key_exists( $country, $countries );
 	}
 
 	/**
@@ -717,7 +870,14 @@ class OverSeek_Review_Form {
 	 * @return int
 	 */
 	private function max_upload_bytes(): int {
-		return min( self::MAX_BYTES, (int) wp_max_upload_size() );
+		$per_file_limit = min( self::MAX_BYTES, (int) wp_max_upload_size() );
+		$post_max       = function_exists( 'wp_convert_hr_to_bytes' ) ? (int) wp_convert_hr_to_bytes( (string) ini_get( 'post_max_size' ) ) : 0;
+		if ( $post_max > MB_IN_BYTES ) {
+			$aggregate_safe_limit = (int) floor( ( $post_max - MB_IN_BYTES ) / self::MAX_FILES );
+			$per_file_limit       = min( $per_file_limit, $aggregate_safe_limit );
+		}
+
+		return max( 1, $per_file_limit );
 	}
 
 	/**

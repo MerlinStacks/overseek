@@ -2,6 +2,7 @@ import dns from 'dns/promises';
 import http from 'http';
 import https from 'https';
 import net from 'net';
+import sharp from 'sharp';
 import { createPinnedLookup } from './pinnedLookup';
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -85,6 +86,17 @@ export function imageDimensions(image: Buffer): { width: number; height: number;
     return { width, height, type };
 }
 
+export async function normalizeImageForPdf(image: Buffer): Promise<Buffer> {
+    const dimensions = imageDimensions(image);
+    if (dimensions.type !== 'webp') return image;
+    const normalized = await sharp(image, { limitInputPixels: MAX_PIXELS, sequentialRead: true })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+    if (normalized.length > MAX_BYTES) throw new Error('Converted image exceeds size limit');
+    imageDimensions(normalized);
+    return normalized;
+}
+
 function blockedAddress(address: string): boolean {
     if (net.isIPv4(address)) {
         const parts = address.split('.').map(Number);
@@ -155,8 +167,10 @@ export async function fetchImageSecurely(rawUrl: string, redirects = 0, deadline
             });
             response.on('end', () => {
                 const image = Buffer.concat(chunks);
-                try { imageDimensions(image); cachePrivateImage(cacheKey, image); resolve(image); }
-                catch (error) { reject(error); }
+                normalizeImageForPdf(image).then(normalized => {
+                    cachePrivateImage(cacheKey, normalized);
+                    resolve(normalized);
+                }, reject);
             });
             response.on('error', reject);
         });

@@ -16,6 +16,25 @@ if (!fs.existsSync(pluginSource)) {
     process.exit(1);
 }
 
+const requiredRuntimeFiles = [
+    'overseek-integration.php',
+    'includes/class-overseek-main.php',
+    'includes/class-overseek-review-moderation.php',
+    'includes/class-overseek-review-renderer.php',
+    'includes/class-overseek-reviews.php',
+    'includes/class-overseek-review-form.php',
+];
+const missingRuntimeFiles = requiredRuntimeFiles.filter((relativePath) => !fs.existsSync(path.join(pluginSource, relativePath)));
+if (missingRuntimeFiles.length > 0) {
+    console.error(`Required plugin runtime files are missing: ${missingRuntimeFiles.join(', ')}`);
+    process.exit(1);
+}
+
+if (process.argv.includes('--check')) {
+    console.log('Required plugin runtime files are present.');
+    process.exit(0);
+}
+
 fs.rmSync(outputPath, { force: true });
 fs.rmSync(tempBuildLayout, { recursive: true, force: true });
 fs.mkdirSync(tempBuildLayout, { recursive: true });

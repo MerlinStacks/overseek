@@ -1079,7 +1079,11 @@ export class WooService {
     async updateStorefrontConfig(config: Record<string, any>) {
         if (this.isDemo) {
             Logger.debug('[Demo] Mocking storefront config update', { config });
-            return { success: true, message: "Storefront config updated (Demo)" };
+            return {
+                success: true,
+                message: "Storefront config updated (Demo)",
+                updated: Object.keys(config).filter((key) => key !== 'account_id'),
+            };
         }
 
         const response = await this.requestWpWithRetry('post', 'storefront-config', config, 'overseek/v1');

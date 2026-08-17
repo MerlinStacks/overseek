@@ -436,18 +436,23 @@ class OverSeek_API {
 			return $this->integration_error( 'invalid_review_payload', 'Review, reviewer, email, and rating are required.', 400 );
 		}
 
-		$comment_id = wp_new_comment(
+		$is_verified = function_exists( 'wc_customer_bought_product' ) && wc_customer_bought_product( $email, 0, $product_id );
+		$comment_meta = [
+			'rating'          => $rating,
+			'overseek_source' => 'email_reply',
+		];
+		if ( $is_verified ) {
+			$comment_meta['overseek_verified_owner'] = '1';
+			$comment_meta['verified']                = 1;
+		}
+		$comment_id  = wp_new_comment(
 			[
 				'comment_post_ID'      => $product_id,
 				'comment_author'       => $reviewer,
 				'comment_author_email' => $email,
 				'comment_content'      => $review,
 				'comment_type'         => 'review',
-				'comment_approved'     => 0,
-				'comment_meta'         => [
-					'rating'          => $rating,
-					'overseek_source' => 'email_reply',
-				],
+				'comment_meta'         => $comment_meta,
 			]
 		);
 
@@ -1242,9 +1247,38 @@ class OverSeek_API {
 			$updated[] = 'botShield';
 		}
 
+		if ( isset( $params['reviews'] ) && is_array( $params['reviews'] ) ) {
+			$review_config = $this->sanitize_review_config( $params['reviews'] );
+			update_option( 'overseek_storefront_review_config', $review_config, false );
+			$updated[] = 'reviews';
+		}
+
 		update_option( 'overseek_storefront_config_updated_at', gmdate( 'c' ), false );
 
 		return new WP_REST_Response( [ 'success' => true, 'updated' => $updated ], 200 );
+	}
+
+	/**
+	 * Sanitize settings used by the storefront review renderer.
+	 *
+	 * @param array<string, mixed> $config Raw review config.
+	 * @return array{showCountryFlags: bool, reviewerNameDisplay: string, showTransparencyBadge: bool, showVerifiedCountBadge: bool, moderationMode: string, moderationThreshold: int}
+	 */
+	private function sanitize_review_config( array $config ): array {
+		$allowed_name_displays = [ 'full', 'first_initial_last', 'initials', 'first_last_initial' ];
+		$allowed_moderation_modes = [ 'auto_publish', 'hold_all', 'hold_below' ];
+		$name_display          = isset( $config['reviewerNameDisplay'] ) ? sanitize_key( (string) $config['reviewerNameDisplay'] ) : 'full';
+		$moderation_mode       = isset( $config['moderationMode'] ) ? sanitize_key( (string) $config['moderationMode'] ) : 'auto_publish';
+		$moderation_threshold  = isset( $config['moderationThreshold'] ) ? absint( $config['moderationThreshold'] ) : 4;
+
+		return [
+			'showCountryFlags'    => ! empty( $config['showCountryFlags'] ),
+			'reviewerNameDisplay' => in_array( $name_display, $allowed_name_displays, true ) ? $name_display : 'full',
+			'showTransparencyBadge' => ! isset( $config['showTransparencyBadge'] ) || ! empty( $config['showTransparencyBadge'] ),
+			'showVerifiedCountBadge' => ! isset( $config['showVerifiedCountBadge'] ) || ! empty( $config['showVerifiedCountBadge'] ),
+			'moderationMode'      => in_array( $moderation_mode, $allowed_moderation_modes, true ) ? $moderation_mode : 'auto_publish',
+			'moderationThreshold' => max( 1, min( 5, $moderation_threshold ) ),
+		];
 	}
 
 	/**

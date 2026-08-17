@@ -36,6 +36,7 @@ class OverSeek_Review_Renderer {
 		$product_summary = isset( $context['product_summary'] ) && is_array( $context['product_summary'] ) ? $context['product_summary'] : [];
 		$product_total   = isset( $product_summary['total'] ) ? (int) $product_summary['total'] : 0;
 		$product_rating  = $product_total > 0 && isset( $product_summary['average'] ) ? (float) $product_summary['average'] : $rating;
+		$trust_badges    = isset( $context['trust_badges'] ) && is_array( $context['trust_badges'] ) ? $context['trust_badges'] : [];
 		$classes         = [ 'os-reviews-summary' ];
 		if ( $product_only ) {
 			$classes[] = 'os-reviews-summary--product-only';
@@ -66,9 +67,39 @@ class OverSeek_Review_Renderer {
 					<strong><?php echo esc_html( number_format_i18n( $product_rating, 2 ) ); ?> / 5</strong>
 				</div>
 			</div>
+			<?php echo self::render_trust_badges( $trust_badges ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 		</div>
 		<?php
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Render earned aggregate trust badges.
+	 *
+	 * @param array<int, array<string, mixed>> $badges Badge data.
+	 * @return string
+	 */
+	private static function render_trust_badges( array $badges ): string {
+		if ( empty( $badges ) ) {
+			return '';
+		}
+
+		$out = '<div class="os-review-trust-badges" aria-label="' . esc_attr__( 'Review trust badges', 'overseek-wc' ) . '">';
+		foreach ( $badges as $badge ) {
+			$type        = isset( $badge['type'] ) ? sanitize_key( (string) $badge['type'] ) : 'trust';
+			$tier        = isset( $badge['tier'] ) ? sanitize_html_class( (string) $badge['tier'] ) : '';
+			$label       = isset( $badge['label'] ) ? (string) $badge['label'] : '';
+			$description = isset( $badge['description'] ) ? (string) $badge['description'] : '';
+			$asset_url   = isset( $badge['asset_url'] ) ? (string) $badge['asset_url'] : '';
+			$out .= '<div class="os-review-trust-badge os-review-trust-badge--' . esc_attr( $type . ' os-review-trust-badge--' . $type . '-' . $tier ) . '" title="' . esc_attr( $description ) . '">';
+			if ( '' !== $asset_url ) {
+				$out .= '<img src="' . esc_url( $asset_url ) . '" alt="' . esc_attr( $label ) . '" loading="lazy">';
+			} else {
+				$out .= '<span class="os-review-trust-badge__fallback">' . esc_html( $label ) . '</span>';
+			}
+			$out .= '<span class="screen-reader-text">' . esc_html( $description ) . '</span></div>';
+		}
+		return $out . '</div>';
 	}
 
 	/**
@@ -300,9 +331,6 @@ class OverSeek_Review_Renderer {
 			$color = sanitize_hex_color( (string) $args[ $key ] );
 			if ( $color ) {
 				$out .= $var . ':' . $color . ';';
-				if ( 'color_brdr' === $key ) {
-					$out .= '--os-review-accent-1:' . $color . ';--os-review-accent-2:' . $color . ';--os-review-accent-3:' . $color . ';';
-				}
 			}
 		}
 
@@ -382,20 +410,23 @@ class OverSeek_Review_Renderer {
 			return '';
 		}
 
-		$type = isset( $item['type'] ) ? (string) $item['type'] : '';
-		$url  = (string) $item['url'];
-
-		if ( 0 === strpos( $type, 'video/' ) ) {
-			return sprintf( '<video class="os-review-media" src="%s" controls preload="metadata"></video>', esc_url( $url ) );
-		}
-
-		$alt = isset( $item['filename'] ) && '' !== (string) $item['filename'] ? (string) $item['filename'] : __( 'Review media', 'overseek-wc' );
+		$type        = isset( $item['type'] ) ? (string) $item['type'] : '';
+		$url         = (string) $item['url'];
+		$preview_url = ! empty( $item['thumbnail_url'] ) ? (string) $item['thumbnail_url'] : $url;
+		$is_video    = 0 === strpos( $type, 'video/' );
+		$alt         = isset( $item['filename'] ) && '' !== (string) $item['filename'] ? (string) $item['filename'] : __( 'Review media', 'overseek-wc' );
+		$label       = $is_video ? __( 'Play review video', 'overseek-wc' ) : __( 'View review image', 'overseek-wc' );
+		$preview     = $is_video
+			? sprintf( '<video class="os-review-media" src="%s" muted playsinline preload="metadata" tabindex="-1"></video><span class="os-review-media__play" aria-hidden="true"></span>', esc_url( $preview_url ) )
+			: sprintf( '<img class="os-review-media" src="%s" alt="" loading="lazy">', esc_url( $preview_url ) );
 
 		return sprintf(
-			'<a href="%s" target="_blank" rel="noopener"><img class="os-review-media" src="%s" alt="%s" loading="lazy"></a>',
+			'<button type="button" class="os-review-media__button" data-os-review-media data-os-media-url="%1$s" data-os-media-type="%2$s" data-os-media-alt="%3$s" aria-label="%4$s">%5$s<span class="os-review-media__expand" aria-hidden="true"></span></button>',
 			esc_url( $url ),
-			esc_url( $url ),
-			esc_attr( $alt )
+			esc_attr( $is_video ? 'video' : 'image' ),
+			esc_attr( $alt ),
+			esc_attr( $label ),
+			$preview // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		);
 	}
 
@@ -407,19 +438,14 @@ class OverSeek_Review_Renderer {
 	 */
 	private static function country_flag( string $country ): string {
 		$country = strtoupper( substr( preg_replace( '/[^A-Z]/i', '', $country ), 0, 2 ) );
-		$flags = [
-			'AU' => '🇦🇺',
-			'CA' => '🇨🇦',
-			'DE' => '🇩🇪',
-			'ES' => '🇪🇸',
-			'FR' => '🇫🇷',
-			'GB' => '🇬🇧',
-			'IE' => '🇮🇪',
-			'NZ' => '🇳🇿',
-			'US' => '🇺🇸',
-		];
+		if ( 2 !== strlen( $country ) ) {
+			return '🌐';
+		}
 
-		return $flags[ $country ] ?? '🌐';
+		$first  = 127397 + ord( $country[0] );
+		$second = 127397 + ord( $country[1] );
+
+		return html_entity_decode( '&#' . $first . ';&#' . $second . ';', ENT_NOQUOTES, 'UTF-8' );
 	}
 
 	/**

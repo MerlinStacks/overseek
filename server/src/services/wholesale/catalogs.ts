@@ -271,10 +271,8 @@ export class WholesaleCatalogService {
 
     static async applyDefaultTerms(accountId: string, catalogId: string, userId: string) {
         await (prisma as any).$transaction(async (tx: any) => {
-            const [catalog, defaults] = await Promise.all([
-                tx.wholesaleCatalog.findFirst({ where: { id: catalogId, accountId }, select: { id: true, status: true, paymentCallout: true, footerDetails: true } }),
-                tx.wholesaleCatalogDefaults.findUnique({ where: { accountId } }),
-            ]);
+            const catalog = await tx.wholesaleCatalog.findFirst({ where: { id: catalogId, accountId }, select: { id: true, status: true, paymentCallout: true, footerDetails: true } });
+            const defaults = await tx.wholesaleCatalogDefaults.findUnique({ where: { accountId } });
             if (!catalog) throw new WholesaleNotFoundError('Catalog not found');
             if (catalog.status === 'ARCHIVED') throw new WholesaleConflictError('Archived catalogs cannot be edited');
             if (!defaults?.approvedAt || !defaults?.approvedById) throw new WholesaleValidationError('Approved wholesale defaults must be configured');

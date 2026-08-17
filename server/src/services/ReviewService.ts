@@ -1,6 +1,21 @@
 import { prisma } from '../utils/prisma';
 import { WooService } from './woo';
 import { Logger } from '../utils/logger';
+import { syncStorefrontConfigToWoo } from './StorefrontConfigSync';
+
+export const REVIEWER_NAME_DISPLAYS = ['full', 'first_initial_last', 'initials', 'first_last_initial'] as const;
+export type ReviewerNameDisplay = typeof REVIEWER_NAME_DISPLAYS[number];
+export const REVIEW_MODERATION_MODES = ['auto_publish', 'hold_all', 'hold_below'] as const;
+export type ReviewModerationMode = typeof REVIEW_MODERATION_MODES[number];
+
+export interface ReviewSettings {
+    showCountryFlags: boolean;
+    reviewerNameDisplay: ReviewerNameDisplay;
+    showTransparencyBadge: boolean;
+    showVerifiedCountBadge: boolean;
+    moderationMode: ReviewModerationMode;
+    moderationThreshold: number;
+}
 
 export class ReviewServiceError extends Error {
     constructor(public code: string, message: string) {
@@ -39,6 +54,70 @@ export class ReviewService {
         return {
             ...rawData,
             [ReviewService.DELETE_MARKED_AT_KEY]: previousStatus === status && existing ? existing : new Date().toISOString()
+        };
+    }
+
+    async getSettings(accountId: string): Promise<ReviewSettings> {
+        const account = await prisma.account.findUniqueOrThrow({
+            where: { id: accountId },
+            select: {
+                reviewShowCountryFlags: true,
+                reviewerNameDisplay: true,
+                reviewShowTransparencyBadge: true,
+                reviewShowVerifiedCountBadge: true,
+                reviewModerationMode: true,
+                reviewModerationThreshold: true,
+            },
+        });
+
+        const reviewerNameDisplay = REVIEWER_NAME_DISPLAYS.includes(account.reviewerNameDisplay as ReviewerNameDisplay)
+            ? account.reviewerNameDisplay as ReviewerNameDisplay
+            : 'full';
+        const moderationMode = REVIEW_MODERATION_MODES.includes(account.reviewModerationMode as ReviewModerationMode)
+            ? account.reviewModerationMode as ReviewModerationMode
+            : 'auto_publish';
+
+        return {
+            showCountryFlags: account.reviewShowCountryFlags,
+            reviewerNameDisplay,
+            showTransparencyBadge: account.reviewShowTransparencyBadge,
+            showVerifiedCountBadge: account.reviewShowVerifiedCountBadge,
+            moderationMode,
+            moderationThreshold: Math.max(1, Math.min(5, account.reviewModerationThreshold)),
+        };
+    }
+
+    async updateSettings(accountId: string, settings: ReviewSettings): Promise<ReviewSettings & { synced: boolean }> {
+        const account = await prisma.account.update({
+            where: { id: accountId },
+            data: {
+                reviewShowCountryFlags: settings.showCountryFlags,
+                reviewerNameDisplay: settings.reviewerNameDisplay,
+                reviewShowTransparencyBadge: settings.showTransparencyBadge,
+                reviewShowVerifiedCountBadge: settings.showVerifiedCountBadge,
+                reviewModerationMode: settings.moderationMode,
+                reviewModerationThreshold: settings.moderationThreshold,
+            },
+            select: {
+                reviewShowCountryFlags: true,
+                reviewerNameDisplay: true,
+                reviewShowTransparencyBadge: true,
+                reviewShowVerifiedCountBadge: true,
+                reviewModerationMode: true,
+                reviewModerationThreshold: true,
+            },
+        });
+
+        const synced = await syncStorefrontConfigToWoo(accountId, ['reviews']);
+
+        return {
+            showCountryFlags: account.reviewShowCountryFlags,
+            reviewerNameDisplay: account.reviewerNameDisplay as ReviewerNameDisplay,
+            showTransparencyBadge: account.reviewShowTransparencyBadge,
+            showVerifiedCountBadge: account.reviewShowVerifiedCountBadge,
+            moderationMode: account.reviewModerationMode as ReviewModerationMode,
+            moderationThreshold: account.reviewModerationThreshold,
+            synced,
         };
     }
 
