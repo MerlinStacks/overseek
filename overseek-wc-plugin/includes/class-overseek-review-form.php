@@ -52,7 +52,6 @@ class OverSeek_Review_Form {
 		add_action( 'template_redirect', [ $this, 'disable_cache_for_review_requests' ], 0 );
 		add_action( 'woocommerce_after_single_product_summary', [ $this, 'render_review_request_fallback' ], 11 );
 		add_filter( 'woocommerce_product_tabs', [ $this, 'maybe_replace_reviews_tab' ], 999 );
-		add_filter( 'comments_template', [ $this, 'maybe_replace_product_comments_template' ], 20 );
 	}
 
 	/**
@@ -152,21 +151,6 @@ class OverSeek_Review_Form {
 	}
 
 	/**
-	 * Replace product comments template when a theme renders reviews directly.
-	 *
-	 * @param string $template Current comments template path.
-	 * @return string
-	 */
-	public function maybe_replace_product_comments_template( string $template ): string {
-		if ( ! $this->should_replace_product_reviews() || ! $this->is_product_comments_template_request() ) {
-			return $template;
-		}
-
-		$overseek_template = OVERSEEK_WC_PLUGIN_DIR . 'templates/product-reviews.php';
-		return file_exists( $overseek_template ) ? $overseek_template : $template;
-	}
-
-	/**
 	 * Render replacement product reviews tab.
 	 *
 	 * @param string $key Tab key.
@@ -218,20 +202,6 @@ class OverSeek_Review_Form {
 	 */
 	private function should_replace_product_reviews(): bool {
 		return '1' === (string) get_option( 'overseek_reviews_replace_form', '' );
-	}
-
-	/**
-	 * Check if the current comments template belongs to a WooCommerce product page.
-	 *
-	 * @return bool
-	 */
-	private function is_product_comments_template_request(): bool {
-		if ( function_exists( 'is_product' ) && is_product() ) {
-			return true;
-		}
-
-		$post_id = get_the_ID();
-		return $post_id > 0 && 'product' === get_post_type( $post_id );
 	}
 
 	/**

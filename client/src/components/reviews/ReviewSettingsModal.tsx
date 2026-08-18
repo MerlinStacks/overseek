@@ -92,7 +92,7 @@ export function ReviewSettingsModal({
                                     <Icon className="mt-0.5 shrink-0 text-blue-600" size={20} />
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-start justify-between gap-3">
-                                            <div>
+                                            <div className="min-w-0 flex-1">
                                                 <div className="font-semibold text-slate-900 dark:text-white">{title}</div>
                                                 <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">{description}</p>
                                             </div>
@@ -104,7 +104,7 @@ export function ReviewSettingsModal({
                                                 onClick={() => onChange({ ...settings, [key]: !settings[key] })}
                                                 className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${settings[key] ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
                                             >
-                                                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${settings[key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                                                <span className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${settings[key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
                                             </button>
                                         </div>
                                     </div>
@@ -164,7 +164,7 @@ export function ReviewSettingsModal({
                         <Flag className="mt-0.5 shrink-0 text-blue-600" size={20} />
                         <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-4">
-                                <div>
+                                <div className="min-w-0 flex-1">
                                     <div className="font-semibold text-slate-900 dark:text-white">Show customer country flags</div>
                                     <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">
                                         Display a country flag for logged-in customers when their billing country is available at submission.
@@ -178,7 +178,7 @@ export function ReviewSettingsModal({
                                     onClick={() => onChange({ ...settings, showCountryFlags: !settings.showCountryFlags })}
                                     className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${settings.showCountryFlags ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
                                 >
-                                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${settings.showCountryFlags ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                                    <span className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${settings.showCountryFlags ? 'translate-x-5' : 'translate-x-0.5'}`} />
                                 </button>
                             </div>
                         </div>

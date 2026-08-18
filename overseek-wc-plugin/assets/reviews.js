@@ -457,13 +457,4 @@
 	document.addEventListener('DOMContentLoaded', revealReviewFormFromUrl);
 	revealReviewFormFromUrl();
 
-	function revealReviewsFromHash() {
-		if (window.location.hash === '#reviews') {
-			scrollToReviews();
-		}
-	}
-
-	document.addEventListener('DOMContentLoaded', revealReviewsFromHash);
-	window.addEventListener('hashchange', revealReviewsFromHash);
-	revealReviewsFromHash();
 }());
