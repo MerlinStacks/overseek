@@ -389,12 +389,12 @@ class OverSeek_Review_Form {
 			<div class="os-review-form__grid">
 				<label class="os-review-form__field">
 					<span><?php esc_html_e( 'Name', 'overseek-wc' ); ?></span>
-					<input type="text" name="author" value="<?php echo esc_attr( $prefilled_name ); ?>" autocomplete="name" <?php readonly( is_user_logged_in() ); ?> required>
+					<input type="text" name="author" value="<?php echo esc_attr( $prefilled_name ); ?>" autocomplete="name" <?php wp_readonly( is_user_logged_in() ); ?> required>
 				</label>
 
 				<label class="os-review-form__field">
 					<span><?php esc_html_e( 'Email', 'overseek-wc' ); ?></span>
-					<input type="email" name="email" value="<?php echo esc_attr( $prefilled_email ); ?>" autocomplete="email" <?php readonly( is_user_logged_in() ); ?> required>
+					<input type="email" name="email" value="<?php echo esc_attr( $prefilled_email ); ?>" autocomplete="email" <?php wp_readonly( is_user_logged_in() ); ?> required>
 				</label>
 			</div>
 

@@ -30,6 +30,12 @@ if (missingRuntimeFiles.length > 0) {
     process.exit(1);
 }
 
+const reviewFormSource = fs.readFileSync(path.join(pluginSource, 'includes/class-overseek-review-form.php'), 'utf8');
+if (/\breadonly\s*\(/.test(reviewFormSource)) {
+    console.error('Unsupported readonly() helper found in the review form; use wp_readonly() instead.');
+    process.exit(1);
+}
+
 if (process.argv.includes('--check')) {
     console.log('Required plugin runtime files are present.');
     process.exit(0);
