@@ -8,7 +8,7 @@ import { EmbeddingService } from '../EmbeddingService';
 import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 import { parseWooDate } from '../../utils/wooDates';
-import { WooProductSchema, WooProduct, safeParseVariations } from './wooSchemas';
+import { WooProductSchema, WooProduct, parseWooVariations } from './wooSchemas';
 import { reconcileWholesaleProductsBestEffort } from '../wholesale/reconciliation';
 
 
@@ -30,6 +30,7 @@ export class ProductSync extends BaseSync {
         let validationFailures = 0;
         let totalUpsertFailures = 0;
         let variationFailures = 0;
+        let variationValidationFailures = 0;
         let totalVariationsSynced = 0;
         const variationReconciliationParentIds = new Set<string>();
         const wholesaleReconciliationProductIds = new Set<string>();
@@ -263,14 +264,27 @@ export class ProductSync extends BaseSync {
 
                     try {
                         const rawVariations = await woo.getProductVariations(varProduct.id);
-                        const variations = safeParseVariations(rawVariations);
+                        const { variations, failures: validationIssues } = parseWooVariations(rawVariations);
 
-                        if (variations.length !== rawVariations.length) {
-                            throw new Error(`${rawVariations.length - variations.length} variation payload(s) failed validation`);
+                        if (validationIssues.length > 0) {
+                            variationValidationFailures += validationIssues.length;
+                            // Invalid remote data is deterministic: retrying the complete
+                            // catalogue cannot repair it. Keep any existing local rows for
+                            // this parent, ingest valid siblings, and allow the checkpoint
+                            // to advance so one bad payload cannot create a request storm.
+                            Logger.warn('Skipped invalid WooCommerce variation payloads', {
+                                accountId,
+                                syncId,
+                                productId: varProduct.id,
+                                invalidCount: validationIssues.length,
+                                failures: validationIssues
+                            });
                         }
 
                         if (variations.length === 0) {
-                            variationReconciliationParentIds.add(parentDbProduct.id);
+                            if (validationIssues.length === 0) {
+                                variationReconciliationParentIds.add(parentDbProduct.id);
+                            }
                             return;
                         }
 
@@ -331,7 +345,11 @@ export class ProductSync extends BaseSync {
                         }
 
                         totalVariationsSynced += variations.length;
-                        variationReconciliationParentIds.add(parentDbProduct.id);
+                        // Reconciliation is unsafe when Woo returned malformed siblings:
+                        // an existing row may represent one of those rejected payloads.
+                        if (validationIssues.length === 0) {
+                            variationReconciliationParentIds.add(parentDbProduct.id);
+                        }
 
                         Logger.debug(`Synced ${variations.length} variations for product ${varProduct.name}`, {
                             accountId, syncId, productId: varProduct.id
@@ -366,6 +384,13 @@ export class ProductSync extends BaseSync {
         }
         if (variationFailures > 0) {
             throw new Error(`Product sync could not fully persist ${variationFailures} variation payload(s); checkpoint was not advanced.`);
+        }
+        if (variationValidationFailures > 0) {
+            Logger.warn('Product sync completed with quarantined variation payloads', {
+                accountId,
+                syncId,
+                invalidVariationCount: variationValidationFailures
+            });
         }
 
         // Reconciliation: remove products/variations not touched during this full sync.

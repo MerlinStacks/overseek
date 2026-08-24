@@ -226,8 +226,50 @@ export function safeParseVariation(data: unknown): WooProductVariation | null {
     return result.success ? result.data : null;
 }
 
+export interface WooVariationValidationFailure {
+    variationId: number | null;
+    issues: Array<{
+        path: string;
+        code: string;
+        message: string;
+    }>;
+}
+
+/**
+ * Parse a variation collection without losing the reason malformed records were
+ * rejected. Payload values are deliberately omitted from failures because Woo
+ * metadata can contain customer or plugin secrets.
+ */
+export function parseWooVariations(data: unknown[]): {
+    variations: WooProductVariation[];
+    failures: WooVariationValidationFailure[];
+} {
+    const variations: WooProductVariation[] = [];
+    const failures: WooVariationValidationFailure[] = [];
+
+    for (const item of data) {
+        const result = WooProductVariationSchema.safeParse(item);
+        if (result.success) {
+            variations.push(result.data);
+            continue;
+        }
+
+        const rawId = typeof item === 'object' && item !== null ? (item as { id?: unknown }).id : undefined;
+        failures.push({
+            variationId: typeof rawId === 'number' && Number.isFinite(rawId) ? rawId : null,
+            issues: result.error.issues.slice(0, 10).map(issue => ({
+                path: issue.path.map(String).join('.'),
+                code: issue.code,
+                message: issue.message
+            }))
+        });
+    }
+
+    return { variations, failures };
+}
+
 export function safeParseVariations(data: unknown[]): WooProductVariation[] {
-    return data.map(item => safeParseVariation(item)).filter((v): v is WooProductVariation => v !== null);
+    return parseWooVariations(data).variations;
 }
 
 export function safeParsePage(data: unknown): WooPage | null {

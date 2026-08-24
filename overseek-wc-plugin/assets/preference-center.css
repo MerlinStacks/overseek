@@ -1,4 +1,4 @@
-body {
+body.os-pref-standalone {
 	margin: 0;
 	background: #f7f4ed;
 	color: #202020;
@@ -7,6 +7,14 @@ body {
 
 .os-pref-shell {
 	padding: 48px 18px;
+	font-family: inherit;
+}
+
+.os-pref-shell button,
+.os-pref-shell input,
+.os-pref-shell select,
+.os-pref-shell textarea {
+	font-family: inherit;
 }
 
 .os-pref-shell.is-embedded {

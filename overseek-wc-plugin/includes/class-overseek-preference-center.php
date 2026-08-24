@@ -275,7 +275,7 @@ class OverSeek_Preference_Center {
 		echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
 		echo '<title>' . esc_html( isset( $state['title'] ) ? (string) $state['title'] : 'Email Preferences' ) . '</title>';
 		echo '<link rel="stylesheet" href="' . esc_url( OVERSEEK_WC_PLUGIN_URL . 'assets/preference-center.css?ver=' . OVERSEEK_WC_VERSION ) . '">';
-		echo '</head><body>';
+		echo '</head><body class="os-pref-standalone">';
 		echo $this->build_markup( $state, false ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo '</body></html>';
 		exit;

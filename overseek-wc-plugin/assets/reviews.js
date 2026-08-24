@@ -42,7 +42,14 @@
 		closeButton.type = 'button';
 		closeButton.className = 'os-review-lightbox__close';
 		closeButton.setAttribute('aria-label', 'Close media viewer');
-		closeButton.textContent = '×';
+		var closeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		closeIcon.setAttribute('viewBox', '0 0 24 24');
+		closeIcon.setAttribute('aria-hidden', 'true');
+		closeIcon.setAttribute('focusable', 'false');
+		var closeIconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		closeIconPath.setAttribute('d', 'M6 6l12 12M18 6L6 18');
+		closeIcon.appendChild(closeIconPath);
+		closeButton.appendChild(closeIcon);
 		closeButton.addEventListener('click', closeReviewLightbox);
 
 		dialog.appendChild(reviewLightboxContent);

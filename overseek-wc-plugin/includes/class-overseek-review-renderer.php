@@ -90,16 +90,35 @@ class OverSeek_Review_Renderer {
 			$tier        = isset( $badge['tier'] ) ? sanitize_html_class( (string) $badge['tier'] ) : '';
 			$label       = isset( $badge['label'] ) ? (string) $badge['label'] : '';
 			$description = isset( $badge['description'] ) ? (string) $badge['description'] : '';
-			$asset_url   = isset( $badge['asset_url'] ) ? (string) $badge['asset_url'] : '';
-			$out .= '<div class="os-review-trust-badge os-review-trust-badge--' . esc_attr( $type . ' os-review-trust-badge--' . $type . '-' . $tier ) . '" title="' . esc_attr( $description ) . '">';
-			if ( '' !== $asset_url ) {
-				$out .= '<img src="' . esc_url( $asset_url ) . '" alt="' . esc_attr( $label ) . '" loading="lazy">';
-			} else {
-				$out .= '<span class="os-review-trust-badge__fallback">' . esc_html( $label ) . '</span>';
+			$caption     = 'verified' === $type ? __( 'Verified reviews', 'overseek-wc' ) : __( 'Transparency', 'overseek-wc' );
+			$achievement = $label;
+			if ( 'verified' === $type && is_numeric( $tier ) ) {
+				$achievement = number_format_i18n( (int) $tier ) . '+';
+			} elseif ( 'transparency' === $type && '' !== $tier ) {
+				$achievement = ucfirst( $tier );
 			}
-			$out .= '<span class="screen-reader-text">' . esc_html( $description ) . '</span></div>';
+			$accessible_label = trim( $label . ( '' !== $description ? '. ' . $description : '' ) );
+			$out .= '<div class="os-review-trust-badge os-review-trust-badge--' . esc_attr( $type . ' os-review-trust-badge--' . $type . '-' . $tier ) . '" title="' . esc_attr( $description ) . '" aria-label="' . esc_attr( $accessible_label ) . '">';
+			$out .= '<span class="os-review-trust-badge__crest" aria-hidden="true">' . self::render_trust_badge_icon( $type ) . '</span>';
+			$out .= '<span class="os-review-trust-badge__copy" aria-hidden="true"><strong>' . esc_html( $achievement ) . '</strong><span>' . esc_html( $caption ) . '</span></span>';
+			$out .= '<span class="os-review-trust-badge__brand" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="m3.5 8 2.7 2.7 6.3-6.2"/></svg><span>OverSeek</span></span>';
+			$out .= '</div>';
 		}
 		return $out . '</div>';
+	}
+
+	/**
+	 * Render a decorative icon for an aggregate trust badge.
+	 *
+	 * @param string $type Badge type.
+	 * @return string
+	 */
+	private static function render_trust_badge_icon( string $type ): string {
+		if ( 'transparency' === $type ) {
+			return '<svg viewBox="0 0 24 24" focusable="false"><path class="os-review-trust-badge__crest-fill" d="m12 3 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8L12 3Z"/></svg>';
+		}
+
+		return '<svg viewBox="0 0 28 24" focusable="false"><path class="os-review-trust-badge__crest-fill" d="m3 8 5 4 6-8 6 8 5-4-2.2 11H5.2L3 8Z"/><path d="M6 21h16"/></svg>';
 	}
 
 	/**

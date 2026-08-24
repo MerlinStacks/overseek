@@ -16,6 +16,18 @@
 	font-family: inherit;
 }
 
+/* Native form controls do not reliably inherit the storefront theme font. */
+.os-reviews-shell button,
+.os-reviews-shell input,
+.os-reviews-shell select,
+.os-reviews-shell textarea,
+.os-review-form button,
+.os-review-form input,
+.os-review-form select,
+.os-review-form textarea {
+	font-family: inherit;
+}
+
 .os-product-reviews,
 #reviews,
 #tab-reviews {
@@ -96,54 +108,145 @@
 .os-review-trust-badges {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	flex-wrap: wrap;
+	gap: 14px;
 	padding-left: clamp(0px, 2vw, 16px);
 }
 
 .os-review-trust-badge {
-	display: inline-flex;
+	--os-review-badge-color: #0f766e;
+	--os-review-badge-soft: #ecfdf9;
+	position: relative;
+	display: flex;
 	align-items: center;
 	justify-content: center;
-	min-width: 72px;
-	max-width: 138px;
+	box-sizing: border-box;
+	width: 132px;
+	min-width: 132px;
+	height: 132px;
+	border: 2px solid var(--os-review-badge-color);
+	border-radius: 50%;
+	background: radial-gradient(circle at 50% 38%, #ffffff 0 42%, var(--os-review-badge-soft) 100%);
+	color: var(--os-review-badge-color);
+	box-shadow: 0 8px 22px color-mix(in srgb, var(--os-review-badge-color) 12%, transparent), inset 0 0 0 4px #ffffff;
 }
 
-.os-review-trust-badge img {
+.os-review-trust-badge::before {
+	position: absolute;
+	inset: 7px;
+	border: 1px solid color-mix(in srgb, var(--os-review-badge-color) 45%, transparent);
+	border-radius: 50%;
+	content: "";
+}
+
+.os-review-trust-badge__crest {
+	position: absolute;
+	top: 18px;
+	left: 50%;
 	display: block;
-	width: auto;
-	max-width: 100%;
-	height: 58px;
-	object-fit: contain;
+	width: 24px;
+	height: 22px;
+	transform: translateX(-50%);
 }
 
-.os-review-trust-badge__fallback {
-	display: inline-flex;
-	align-items: center;
-	min-height: 34px;
-	padding: 7px 10px;
-	border: 1px solid #cbd5e1;
-	border-radius: 9px;
-	background: #f8fafc;
-	color: #334155;
-	font-size: 11px;
-	font-weight: 800;
-	line-height: 1.15;
+.os-review-trust-badge__crest svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+	fill: none;
+	stroke: currentcolor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.os-review-trust-badge__crest-fill {
+	fill: currentcolor;
+	stroke: none;
+}
+
+.os-review-trust-badge__copy {
+	position: relative;
+	z-index: 1;
+	display: block;
+	box-sizing: border-box;
+	width: 104px;
+	padding: 4px 3px 0;
 	text-align: center;
 }
 
-.os-review-trust-badge--transparency-gold .os-review-trust-badge__fallback {
-	border-color: #d4a72c;
-	background: #fffbeb;
+.os-review-trust-badge__copy strong {
+	display: block;
+	color: inherit;
+	font-size: 23px;
+	font-weight: 900;
+	letter-spacing: -0.04em;
+	line-height: 1;
 }
 
-.os-review-trust-badge--transparency-silver .os-review-trust-badge__fallback {
-	border-color: #94a3b8;
-	background: #f8fafc;
+.os-review-trust-badge__copy span {
+	display: block;
+	max-width: 100%;
+	margin-top: 4px;
+	color: inherit;
+	font-size: 8.5px;
+	font-weight: 900;
+	letter-spacing: 0.055em;
+	line-height: 1.2;
+	text-transform: uppercase;
+	white-space: normal;
 }
 
-.os-review-trust-badge--transparency-bronze .os-review-trust-badge__fallback {
-	border-color: #b77945;
-	background: #fff7ed;
+.os-review-trust-badge__brand {
+	position: absolute;
+	bottom: 13px;
+	left: 50%;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 72px;
+	height: 17px;
+	gap: 3px;
+	padding: 0 7px;
+	border: 1px solid color-mix(in srgb, var(--os-review-badge-color) 18%, transparent);
+	border-radius: 999px;
+	background: var(--os-review-badge-soft);
+	color: var(--os-review-badge-color);
+	box-shadow: 0 0 0 4px #ffffff;
+	font-size: 7px;
+	font-weight: 900;
+	letter-spacing: 0.065em;
+	line-height: 1;
+	text-transform: uppercase;
+	transform: translateX(-50%);
+	white-space: nowrap;
+}
+
+.os-review-trust-badge__brand svg {
+	flex: 0 0 auto;
+	width: 8px;
+	height: 8px;
+	fill: none;
+	stroke: currentcolor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.os-review-trust-badge--transparency {
+	--os-review-badge-color: #a87908;
+	--os-review-badge-soft: #fffbeb;
+}
+
+.os-review-trust-badge--transparency-silver {
+	--os-review-badge-color: #64748b;
+	--os-review-badge-soft: #f8fafc;
+}
+
+.os-review-trust-badge--transparency-bronze {
+	--os-review-badge-color: #a84f0b;
+	--os-review-badge-soft: #fff7ed;
 }
 
 .os-reviews-summary--product-only .os-reviews-summary__ratings {
@@ -575,6 +678,7 @@
 	padding: clamp(16px, 4vw, 48px);
 	background: rgba(2, 6, 23, 0.88);
 	backdrop-filter: blur(8px);
+	font-family: inherit;
 }
 
 .os-review-lightbox[hidden] {
@@ -613,19 +717,37 @@
 .os-review-lightbox__close {
 	position: absolute;
 	z-index: 1;
-	top: -14px;
-	right: -14px;
+	top: 12px;
+	right: 12px;
 	display: grid;
-	width: 42px;
-	height: 42px;
+	box-sizing: border-box;
+	width: 40px;
+	min-width: 40px;
+	max-width: 40px;
+	height: 40px;
+	min-height: 40px;
+	max-height: 40px;
 	padding: 0;
 	place-items: center;
-	border: 1px solid rgba(255, 255, 255, 0.32);
-	border-radius: 999px;
-	background: #ffffff;
+	appearance: none;
+	border: 1px solid rgba(255, 255, 255, 0.5);
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.92);
 	color: #0f172a;
-	font: 400 28px/1 Arial, sans-serif;
+	box-shadow: 0 8px 24px rgba(2, 6, 23, 0.28);
 	cursor: pointer;
+	line-height: 0;
+	transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.os-review-lightbox__close svg {
+	display: block;
+	width: 18px;
+	height: 18px;
+	fill: none;
+	stroke: currentcolor;
+	stroke-width: 2;
+	stroke-linecap: round;
 }
 
 .os-review-lightbox__close:hover,
@@ -633,6 +755,11 @@
 	background: var(--os-review-accent-1, #2563eb);
 	color: #ffffff;
 	outline: none;
+	transform: scale(1.05);
+}
+
+.os-review-lightbox__close:focus-visible {
+	box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.92), 0 8px 24px rgba(2, 6, 23, 0.35);
 }
 
 body.os-review-lightbox-open {
@@ -1069,11 +1196,6 @@ body.os-review-lightbox-open {
 
 	.os-review-card time {
 		font-size: 12px;
-	}
-
-	.os-review-lightbox__close {
-		top: 8px;
-		right: 8px;
 	}
 
 	.os-review-row {

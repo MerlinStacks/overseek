@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProductSync } from '../ProductSync';
 import { IndexingService } from '../../search/IndexingService';
+import { Logger } from '../../../utils/logger';
 
 // Mock dependencies
 const mockPrisma = vi.hoisted(() => ({
@@ -159,5 +160,55 @@ describe('ProductSync Reconciliation Performance', () => {
         ).rejects.toThrow('checkpoint was not advanced');
 
         expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('quarantines malformed variations without failing or reconciling the parent', async () => {
+        const remoteProduct = {
+            id: 93144,
+            name: 'Variable Product',
+            type: 'variable',
+            price: '10.00'
+        };
+        const persistedProduct = {
+            id: 'product-db-93144',
+            accountId,
+            wooId: 93144,
+            name: remoteProduct.name,
+            rawData: remoteProduct,
+            seoData: null
+        };
+        const mockWooService = {
+            getProducts: vi.fn()
+                .mockResolvedValueOnce({ data: [remoteProduct], totalPages: 1 })
+                .mockResolvedValue({ data: [], totalPages: 0 }),
+            getProductVariations: vi.fn().mockResolvedValue([
+                { id: 501, sku: 'VALID', price: '10.00' },
+                { id: 'invalid-id', sku: 'INVALID', price: '10.00' }
+            ])
+        };
+        mockPrisma.account.findUnique.mockResolvedValue(null);
+        mockPrisma.wooProduct.upsert.mockResolvedValue(persistedProduct);
+        mockPrisma.wooProduct.findMany.mockResolvedValue([persistedProduct]);
+
+        await expect(
+            (productSync as any).sync(mockWooService as any, accountId, false, undefined, 'sync-test')
+        ).resolves.toMatchObject({ itemsProcessed: 1 });
+
+        expect(mockPrisma.productVariation.upsert).toHaveBeenCalledTimes(1);
+        expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
+        expect(Logger.warn).toHaveBeenCalledWith(
+            'Skipped invalid WooCommerce variation payloads',
+            expect.objectContaining({
+                accountId,
+                productId: 93144,
+                invalidCount: 1,
+                failures: [expect.objectContaining({
+                    variationId: null,
+                    issues: expect.arrayContaining([
+                        expect.objectContaining({ path: 'id' })
+                    ])
+                })]
+            })
+        );
     });
 });

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="240" viewBox="0 0 620 240" role="img" aria-labelledby="title desc">
+  <title id="title">Premium circular OverSeek trust seals</title>
+  <desc id="desc">Gold transparency and teal verified reviews certification seals.</desc>
+  <defs>
+    <radialGradient id="gold" cx="50%" cy="38%" r="65%"><stop offset="0" stop-color="#fff"/><stop offset=".65" stop-color="#fff"/><stop offset="1" stop-color="#fffbeb"/></radialGradient>
+    <radialGradient id="teal" cx="50%" cy="38%" r="65%"><stop offset="0" stop-color="#fff"/><stop offset=".65" stop-color="#fff"/><stop offset="1" stop-color="#ecfdf9"/></radialGradient>
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="165%"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-opacity=".12"/></filter>
+  </defs>
+  <rect width="620" height="240" rx="22" fill="#fff"/>
+
+  <g transform="translate(122 34)" color="#a87908" filter="url(#shadow)">
+    <circle cx="86" cy="86" r="78" fill="url(#gold)" stroke="currentColor" stroke-width="2.5"/>
+    <circle cx="86" cy="86" r="69" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+    <path d="m86 27 4.6 9.3 10.3 1.5-7.5 7.2 1.8 10.3-9.2-4.9-9.2 4.9L78.6 45l-7.5-7.2 10.3-1.5L86 27Z" fill="currentColor"/>
+    <text x="86" y="91" text-anchor="middle" fill="currentColor" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="900">Gold</text>
+    <text x="86" y="110" text-anchor="middle" fill="currentColor" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="900" letter-spacing=".8">TRANSPARENCY</text>
+    <rect x="54" y="132" width="64" height="14" rx="7" fill="#fffbeb"/>
+    <path d="m61 139 3 3 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <text x="91" y="142" text-anchor="middle" fill="currentColor" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing=".7">OVERSEEK</text>
+  </g>
+
+  <g transform="translate(330 34)" color="#0f766e" filter="url(#shadow)">
+    <circle cx="86" cy="86" r="78" fill="url(#teal)" stroke="currentColor" stroke-width="2.5"/>
+    <circle cx="86" cy="86" r="69" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+    <path d="m72 34 6 5 8-11 8 11 6-5-3 18H75l-3-18Z" fill="currentColor"/><path d="M76 56h20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="86" y="92" text-anchor="middle" fill="currentColor" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="900">250+</text>
+    <text x="86" y="111" text-anchor="middle" fill="currentColor" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="900" letter-spacing=".7">VERIFIED REVIEWS</text>
+    <rect x="54" y="132" width="64" height="14" rx="7" fill="#ecfdf9"/>
+    <path d="m61 139 3 3 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <text x="91" y="142" text-anchor="middle" fill="currentColor" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" letter-spacing=".7">OVERSEEK</text>
+  </g>
+</svg>

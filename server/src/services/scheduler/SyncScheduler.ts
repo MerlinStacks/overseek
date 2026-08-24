@@ -25,6 +25,7 @@ interface CircuitBreakerState {
 export class SyncScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
     private static readonly MAINTENANCE_LOG_WINDOW_MS = 12 * 60 * 60 * 1000;
+    private static readonly FULL_SYNC_ENTITY_TYPES = ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'] as const;
 
     /**
      * Check if an account has ≥3 consecutive failures in the last 30 minutes.
@@ -183,12 +184,25 @@ export class SyncScheduler {
 
         for (const acc of accounts) {
             try {
-                const breaker = await this.getAccountBlockState(acc.id);
-                if (breaker.isOpen) {
-                    Logger.warn(`Orchestrator: Skipping account ${acc.id} due to circuit breaker`, { accountId: acc.id, ...breaker });
+                const dispatchableTypes: string[] = [];
+                for (const entityType of this.FULL_SYNC_ENTITY_TYPES) {
+                    const breaker = await this.getAccountBlockState(acc.id, entityType);
+                    if (breaker.isOpen) {
+                        Logger.warn(`Orchestrator: Skipping ${entityType} sync for account ${acc.id} due to circuit breaker`, {
+                            accountId: acc.id,
+                            ...breaker
+                        });
+                        continue;
+                    }
+                    dispatchableTypes.push(entityType);
+                }
+
+                if (dispatchableTypes.length === 0) {
+                    Logger.warn(`Orchestrator: All sync types blocked for account ${acc.id}`);
                     continue;
                 }
                 await service.runSync(acc.id, {
+                    types: dispatchableTypes,
                     incremental: true
                 });
             } catch (err: any) {
