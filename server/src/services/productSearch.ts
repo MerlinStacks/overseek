@@ -222,6 +222,10 @@ export class ProductSearchService {
         sortDirection: 'asc' | 'desc' = 'asc'
     ): Promise<SearchResult> {
         const from = (page - 1) * limit;
+        const normalizedQuery = query.trim();
+        const wooIdQuery = /^\d+$/.test(normalizedQuery) && Number.isSafeInteger(Number(normalizedQuery))
+            ? Number(normalizedQuery)
+            : null;
 
         const must: any[] = [{ term: { accountId } }];
 
@@ -229,6 +233,7 @@ export class ProductSearchService {
             must.push({
                 bool: {
                     should: [
+                        ...(wooIdQuery !== null ? [{ term: { wooId: { value: wooIdQuery, boost: 20 } } }] : []),
                         { term: { 'sku.keyword': { value: query.toUpperCase(), boost: 10 } } },
                         { prefix: { 'sku.keyword': { value: query.toUpperCase(), boost: 5 } } },
                         {
@@ -325,15 +330,22 @@ export class ProductSearchService {
         sortDirection: 'asc' | 'desc' = 'asc'
     ): Promise<SearchResult> {
         const skip = (page - 1) * limit;
+        const normalizedQuery = query.trim();
+        const wooIdQuery = /^\d+$/.test(normalizedQuery) && Number.isSafeInteger(Number(normalizedQuery))
+            ? Number(normalizedQuery)
+            : null;
 
-        // Search by variant SKU
+        // Search by variant SKU or WooCommerce variation ID.
         let variantMatchedProductIds: string[] = [];
         if (query) {
             try {
                 const matchingVariants = await prisma.productVariation.findMany({
                     where: {
                         product: { accountId },
-                        sku: { contains: query, mode: 'insensitive' }
+                        OR: [
+                            { sku: { contains: query, mode: 'insensitive' } },
+                            ...(wooIdQuery !== null ? [{ wooId: wooIdQuery }] : [])
+                        ]
                     },
                     select: { productId: true },
                     distinct: ['productId']
@@ -348,6 +360,7 @@ export class ProductSearchService {
         const finalWhere: any = { accountId };
         if (query) {
             finalWhere.OR = [
+                ...(wooIdQuery !== null ? [{ wooId: wooIdQuery }] : []),
                 { name: { contains: query, mode: 'insensitive' } },
                 { sku: { contains: query, mode: 'insensitive' } },
                 ...(variantMatchedProductIds.length > 0 ? [{ id: { in: variantMatchedProductIds } }] : [])
