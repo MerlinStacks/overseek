@@ -52,7 +52,7 @@ export class CustomerSync extends BaseSync {
                 if (job) {
                     const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : (hasMore ? 0 : 100);
                     await job.updateProgress(progress);
-                    if (!(await job.isActive())) throw new Error('Cancelled');
+                    await this.assertNotCancelled(job);
                 }
                 page++;
                 if (hasMore) await new Promise(r => setTimeout(r, 500));
@@ -167,7 +167,7 @@ export class CustomerSync extends BaseSync {
             if (job) {
                 const progress = totalPages > 0 ? Math.round((page / totalPages) * 100) : 100;
                 await job.updateProgress(progress);
-                if (!(await job.isActive())) throw new Error('Cancelled');
+                await this.assertNotCancelled(job);
             }
 
             page++;

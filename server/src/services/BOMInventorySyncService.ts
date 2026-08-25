@@ -895,7 +895,7 @@ export class BOMInventorySyncService {
      */
     static async syncAllBOMProducts(
         accountId: string,
-        job: { updateProgress: (progress: any) => Promise<void> } | null = null
+        job: { id?: string | number; queueName?: string; updateProgress: (progress: any) => Promise<void> } | null = null
     ): Promise<{
         total: number;
         synced: number;
@@ -942,6 +942,10 @@ export class BOMInventorySyncService {
         }
 
         for (const bom of bomsWithChildProducts) {
+            if (job) {
+                const { SyncCancellationService } = await import('./sync/SyncCancellationService');
+                await SyncCancellationService.assertNotRequested(job);
+            }
             // Wrap each product sync in try/catch so one failure doesn't crash the entire job
             try {
                 const result = await this.syncProductToWoo(accountId, bom.productId, bom.variationId);

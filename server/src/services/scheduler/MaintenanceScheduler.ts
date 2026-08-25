@@ -41,13 +41,6 @@ export class MaintenanceScheduler {
         });
         Logger.info('Scheduled Gold Price Update (Daily at 6 AM UTC)');
 
-        // BOM Inventory Sync (Hourly)
-        await this.queue.add('bom-inventory-sync', {}, {
-            repeat: { pattern: '0 * * * *' },
-            jobId: 'bom-inventory-sync-hourly'
-        });
-        Logger.info('Scheduled BOM Inventory Sync (Hourly)');
-
         // Account Backups (Hourly at :30)
         await this.queue.add('account-backups', {}, {
             repeat: { pattern: '30 * * * *' },

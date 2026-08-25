@@ -146,6 +146,7 @@ model Account {
   smsLogs       SmsLog[]
   SyncState     SyncState[]
   SyncLog       SyncLog[]
+  syncSchedules SyncSchedule[]
   WooOrder      WooOrder[]
   WooProduct    WooProduct[]
   WooCustomer   WooCustomer[]
@@ -646,6 +647,23 @@ model SyncLog {
 
   @@index([accountId, startedAt])
   @@index([accountId, entityType, status])  // Sync status dashboard queries
+}
+
+model SyncSchedule {
+  id              String   @id @default(uuid())
+  accountId       String
+  entityType      String
+  enabled         Boolean  @default(true)
+  intervalMinutes Int      @default(5)
+  nextRunAt       DateTime @default(now())
+  lastScheduledAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, entityType])
+  @@index([enabled, nextRunAt])
 }
 
 // --------------------------------------

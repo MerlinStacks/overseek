@@ -12,6 +12,9 @@ import { requireAuthFastify } from '../middleware/auth';
 import { mapSyncError } from '../services/sync/syncErrors';
 import { SyncScheduler } from '../services/scheduler/SyncScheduler';
 import { QUEUE_LIMITS } from '../config/limits';
+import { SyncCancellationService } from '../services/sync/SyncCancellationService';
+import { SyncScheduleService } from '../services/sync/SyncScheduleService';
+import { PermissionService } from '../services/PermissionService';
 
 const syncService = new SyncService();
 
@@ -59,6 +62,20 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         const jobs = await queue.getJobs(['active', 'waiting', 'delayed', 'prioritized']);
 
         return jobs.some((job) => job?.data?.accountId === accountId);
+    };
+
+    const canManageSchedules = async (request: any, reply: any): Promise<boolean> => {
+        const accountId = request.accountId;
+        const userId = request.user?.id;
+        if (!accountId || !userId) {
+            reply.code(400).send({ error: 'Missing account context' });
+            return false;
+        }
+        if (!await PermissionService.hasPermission(userId, accountId, 'manage_sync_settings')) {
+            reply.code(403).send({ error: 'You do not have permission to manage sync schedules' });
+            return false;
+        }
+        return true;
     };
 
     // Trigger Manual Sync
@@ -128,35 +145,22 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
             const { QueueFactory } = await import('../services/queue/QueueFactory');
 
             if (action === 'pause') {
-                if (!isSuperAdmin) {
-                    return reply.code(403).send({ error: 'Only super admins can pause queues' });
-                }
-                if (queueName) {
-                    const queue = QueueFactory.getQueue(queueName);
-                    await queue.pause();
-                    return { message: `Queue ${queueName} paused` };
-                } else {
-                    const names = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'sync-pages', 'sync-blog-posts', 'bom-inventory-sync'];
-                    for (const n of names) await QueueFactory.getQueue(n).pause();
-                    return { message: 'All queues paused' };
-                }
+                if (!requestAccountId) return reply.code(400).send({ error: 'accountId is required' });
+                if (!await canManageSchedules(request, reply)) return;
+                await SyncScheduleService.setAllEnabled(requestAccountId, false);
+                return { message: 'Scheduled syncs paused for this account' };
 
             } else if (action === 'resume') {
-                if (!isSuperAdmin) {
-                    return reply.code(403).send({ error: 'Only super admins can resume queues' });
-                }
-                if (queueName) {
-                    const queue = QueueFactory.getQueue(queueName);
-                    await queue.resume();
-                    return { message: `Queue ${queueName} resumed` };
-                } else {
-                    const names = ['sync-orders', 'sync-products', 'sync-customers', 'sync-reviews', 'sync-pages', 'sync-blog-posts', 'bom-inventory-sync'];
-                    for (const n of names) await QueueFactory.getQueue(n).resume();
-                    return { message: 'All queues resumed' };
-                }
+                if (!requestAccountId) return reply.code(400).send({ error: 'accountId is required' });
+                if (!await canManageSchedules(request, reply)) return;
+                await SyncScheduleService.setAllEnabled(requestAccountId, true);
+                return { message: 'Scheduled syncs resumed for this account' };
 
             } else if (action === 'cancel') {
                 if (queueName && jobId) {
+                    if (!syncQueues.includes(queueName)) {
+                        return reply.code(400).send({ error: 'Invalid sync queue' });
+                    }
                     const queue = QueueFactory.getQueue(queueName);
                     const job = await queue.getJob(jobId);
                     if (job) {
@@ -164,12 +168,20 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                         if (!isSuperAdmin && jobAccountId !== requestAccountId) {
                             return reply.code(403).send({ error: 'Cannot cancel jobs for another account' });
                         }
-                        try {
-                            await job.remove();
-                        } catch (e) {
-                            // ignore lock issues
+                        const state = await job.getState();
+                        let cancellationRequested = state === 'active';
+                        if (state === 'active') {
+                            await SyncCancellationService.request(queueName, String(jobId));
+                        } else {
+                            try {
+                                await job.remove();
+                            } catch (error: any) {
+                                if (!String(error?.message || '').includes('locked')) throw error;
+                                await SyncCancellationService.request(queueName, String(jobId));
+                                cancellationRequested = true;
+                            }
                         }
-                        return { message: 'Job cancellation requested' };
+                        return { message: cancellationRequested ? 'Job cancellation requested' : 'Job cancelled' };
                     } else {
                         return reply.code(404).send({ error: 'Job not found' });
                     }
@@ -183,6 +195,38 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (error: any) {
             Logger.error('Control action failed', { error });
             return reply.code(500).send({ error: 'Control action failed: ' + error.message });
+        }
+    });
+
+    fastify.get('/schedules', async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.code(400).send({ error: 'accountId is required' });
+        const userId = request.user?.id;
+        const canManage = !!userId && await PermissionService.hasPermission(userId, accountId, 'manage_sync_settings');
+        return { schedules: await SyncScheduleService.ensureAccountSchedules(accountId), canManage };
+    });
+
+    fastify.patch('/schedules/:entityType', async (request, reply) => {
+        const accountId = request.accountId;
+        const { entityType } = request.params as { entityType: string };
+        const { enabled, intervalMinutes } = (request.body as any) || {};
+        if (!accountId) return reply.code(400).send({ error: 'accountId is required' });
+        if (!await canManageSchedules(request, reply)) return;
+        if (!SyncScheduleService.isEntityType(entityType)) {
+            return reply.code(400).send({ error: 'Invalid entityType' });
+        }
+        if (enabled !== undefined && typeof enabled !== 'boolean') {
+            return reply.code(400).send({ error: 'enabled must be a boolean' });
+        }
+
+        try {
+            return { schedule: await SyncScheduleService.update(accountId, entityType, { enabled, intervalMinutes }) };
+        } catch (error: any) {
+            if (String(error?.message || '').includes('intervalMinutes')) {
+                return reply.code(400).send({ error: error.message });
+            }
+            Logger.error('Failed to update sync schedule', { accountId, entityType, error });
+            return reply.code(500).send({ error: 'Failed to update sync schedule' });
         }
     });
 

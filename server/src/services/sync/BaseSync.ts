@@ -4,6 +4,7 @@ import { Logger } from '../../utils/logger';
 import { SyncJobData } from '../queue/SyncQueue';
 import { randomUUID } from 'crypto';
 import { EventBus, EVENTS } from '../events';
+import { SyncCancellationService } from './SyncCancellationService';
 
 /** Result returned from sync operations for observability */
 export interface SyncResult {
@@ -50,6 +51,7 @@ export abstract class BaseSync {
         const log = await this.createLog(accountId, this.entityType, jobData.triggerSource, retryCount);
 
         try {
+            await SyncCancellationService.assertNotRequested(job);
             const woo = await WooService.forAccount(accountId);
             const result = await this.sync(woo, accountId, incremental, job, syncId);
 
@@ -74,24 +76,38 @@ export abstract class BaseSync {
             });
 
         } catch (error: any) {
-            Logger.error(`Sync Failed: ${this.entityType}`, { accountId, syncId, error: error.message });
-            await this.updateLog(log.id, 'FAILED', error.message, undefined, retryCount);
-            await this.maybeEmitFailureAlert(accountId, this.entityType, error.message);
+            const cancelled = SyncCancellationService.isCancellation(error);
+            const status = cancelled ? 'CANCELLED' : 'FAILED';
+            if (cancelled) {
+                Logger.info(`Sync Cancelled: ${this.entityType}`, { accountId, syncId, error: error.message });
+            } else {
+                Logger.error(`Sync Failed: ${this.entityType}`, { accountId, syncId, error: error.message });
+            }
+            await this.updateLog(log.id, status, error.message, undefined, retryCount);
+            if (!cancelled) await this.maybeEmitFailureAlert(accountId, this.entityType, error.message);
 
             // Emit sync failed event
             await emitSyncEvent('sync:completed', {
                 accountId,
                 type: this.entityType,
                 syncId,
-                status: 'FAILED',
+                status,
                 error: error.message
             });
 
-            throw error; // Bubble up to BullMQ for retry
+            throw error; // Bubble up to BullMQ for retry (cancellation is unrecoverable)
+        } finally {
+            if (job?.id && job?.queueName) {
+                await SyncCancellationService.clear(job.queueName, String(job.id));
+            }
         }
     }
 
     protected abstract sync(woo: WooService, accountId: string, incremental: boolean, job?: any, syncId?: string): Promise<SyncResult>;
+
+    protected async assertNotCancelled(job?: any) {
+        await SyncCancellationService.assertNotRequested(job);
+    }
 
         private async createLog(accountId: string, type: string, triggerSource?: string, retryCount: number = 0) {
         return prisma.syncLog.create({
@@ -107,7 +123,7 @@ export abstract class BaseSync {
 
     private async updateLog(
         logId: string,
-        status: 'SUCCESS' | 'FAILED',
+        status: 'SUCCESS' | 'FAILED' | 'CANCELLED',
         error?: string,
         itemsProcessed?: number,
         retryCount: number = 0

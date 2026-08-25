@@ -35,7 +35,7 @@ function normalizeJobProgress(progress: unknown): number {
 export interface SyncLog {
     id: string;
     entityType: string;
-    status: 'SUCCESS' | 'FAILED' | 'IN_PROGRESS';
+    status: 'SUCCESS' | 'FAILED' | 'IN_PROGRESS' | 'CANCELLED';
     itemsProcessed: number;
     errorMessage?: string;
     startedAt: string;
@@ -57,6 +57,15 @@ interface SyncState {
     lastSyncedAt: string | null;
     cursor: string | null;
     updatedAt: string;
+}
+
+export interface SyncSchedule {
+    id: string;
+    entityType: string;
+    enabled: boolean;
+    intervalMinutes: number;
+    nextRunAt: string;
+    lastScheduledAt?: string | null;
 }
 
 /** Summary returned by the /health endpoint */
@@ -89,12 +98,15 @@ interface SyncStatusContextType {
     syncState: SyncState[];
     logs: SyncLog[];
     healthSummary: SyncHealthSummary | null;
+    schedules: SyncSchedule[];
+    canManageSchedules: boolean;
 
     controlSync: (action: 'pause' | 'resume' | 'cancel', queueName?: string, jobId?: string) => Promise<void>;
     runSync: (types?: string[], incremental?: boolean) => Promise<void>;
     retrySync: (entityType: string, logId?: string) => Promise<void>;
     resetCircuit: (entityType?: string) => Promise<void>;
     reindexOrders: () => Promise<{ totalIndexed: number }>;
+    updateSchedule: (entityType: string, input: { enabled?: boolean; intervalMinutes?: number }) => Promise<void>;
     refreshStatus: () => void;
 }
 
@@ -114,6 +126,8 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     const [logs, setLogs] = useState<SyncLog[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
     const [healthSummary, setHealthSummary] = useState<SyncHealthSummary | null>(null);
+    const [schedules, setSchedules] = useState<SyncSchedule[]>([]);
+    const [canManageSchedules, setCanManageSchedules] = useState(false);
 
 
     /** Helper to build auth headers */
@@ -160,6 +174,13 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
                     setLogs(data.logs || []);
                 }
             }
+
+            const schedulesRes = await fetch('/api/sync/schedules', { headers: h });
+            if (schedulesRes.ok) {
+                const data = await schedulesRes.json();
+                setSchedules(data.schedules || []);
+                setCanManageSchedules(data.canManage === true);
+            }
         } catch (error) {
             Logger.error('Failed to fetch sync status', { error });
         }
@@ -205,10 +226,10 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
 
             if (!res.ok) {
                 const errorData = await res.json().catch(() => ({ message: 'Unknown error' }));
-                throw new Error(`Control action failed: ${errorData.message || res.statusText}`);
+                throw new Error(errorData.error || errorData.message || res.statusText);
             }
 
-            fetchStatus();
+            await fetchStatus();
         } catch (error) {
             Logger.error(`Failed to ${action} sync`, { error });
             throw error;
@@ -220,16 +241,35 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
         if (!h || !currentAccount?.id) return;
 
         try {
-            await fetch('/api/sync/manual', {
+            const res = await fetch('/api/sync/manual', {
                 method: 'POST',
                 headers: h,
                 body: JSON.stringify({ accountId: currentAccount.id, types, incremental })
             });
-            fetchStatus();
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({ error: res.statusText }));
+                throw new Error(data.error || res.statusText);
+            }
+            await fetchStatus();
         } catch (error) {
             Logger.error('Failed to start sync', { error });
             throw error;
         }
+    };
+
+    const updateSchedule = async (entityType: string, input: { enabled?: boolean; intervalMinutes?: number }) => {
+        const h = headers();
+        if (!h || !currentAccount?.id) throw new Error('Please select an account');
+        const res = await fetch(`/api/sync/schedules/${encodeURIComponent(entityType)}`, {
+            method: 'PATCH',
+            headers: h,
+            body: JSON.stringify(input)
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({ error: res.statusText }));
+            throw new Error(data.error || res.statusText);
+        }
+        await fetchStatus();
     };
 
     /** Retry a specific failed entity type */
@@ -307,8 +347,8 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
 
     return (
         <SyncStatusContext.Provider value={{
-            isSyncing, activeJobs, syncState, logs, healthSummary,
-            controlSync, runSync, retrySync, resetCircuit, reindexOrders, refreshStatus: fetchStatus
+            isSyncing, activeJobs, syncState, logs, healthSummary, schedules, canManageSchedules,
+            controlSync, runSync, retrySync, resetCircuit, reindexOrders, updateSchedule, refreshStatus: fetchStatus
         }}>
             {children}
         </SyncStatusContext.Provider>

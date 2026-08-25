@@ -134,13 +134,19 @@ export async function startWorkers() {
         const { BOMInventorySyncService } = await import('../services/BOMInventorySyncService');
         activeWorkers.push(QueueFactory.createWorker(QUEUES.BOM_SYNC, async (job) => {
             const { accountId } = job.data;
-            const result = await BOMInventorySyncService.syncAllBOMProducts(accountId, job);
-            Logger.info(`[BOM Worker] Completed BOM sync`, {
-                accountId,
-                synced: result.synced,
-                skipped: result.skipped,
-                failed: result.failed
-            });
+            const { SyncCancellationService } = await import('../services/sync/SyncCancellationService');
+            try {
+                await SyncCancellationService.assertNotRequested(job);
+                const result = await BOMInventorySyncService.syncAllBOMProducts(accountId, job);
+                Logger.info(`[BOM Worker] Completed BOM sync`, {
+                    accountId,
+                    synced: result.synced,
+                    skipped: result.skipped,
+                    failed: result.failed
+                });
+            } finally {
+                await SyncCancellationService.clear(job.queueName, String(job.id));
+            }
         }));
         Logger.info('[Workers] BOM Inventory Sync worker registered');
     } catch (err: any) {

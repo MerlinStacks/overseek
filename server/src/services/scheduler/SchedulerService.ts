@@ -19,7 +19,8 @@ export class SchedulerService {
         'execute-pending-actions',
         'audience-refresh',
         'budget-rebalancer',
-        'experiment-metrics-refresh'
+        'experiment-metrics-refresh',
+        'bom-inventory-sync'
     ]);
 
     /**
@@ -101,9 +102,6 @@ export class SchedulerService {
                     break;
                 case 'gold-price-update':
                     await MaintenanceScheduler.dispatchGoldPriceUpdates();
-                    break;
-                case 'bom-inventory-sync':
-                    await MaintenanceScheduler.dispatchBOMInventorySync();
                     break;
                 case 'account-backups':
                     await MaintenanceScheduler.dispatchScheduledBackups();

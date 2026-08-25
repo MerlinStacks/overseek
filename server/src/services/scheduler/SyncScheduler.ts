@@ -9,6 +9,7 @@ import { QueueFactory } from '../queue/QueueFactory';
 import { Logger } from '../../utils/logger';
 import { prisma } from '../../utils/prisma';
 import { SCHEDULER_LIMITS } from '../../config/limits';
+import { SyncScheduleService } from '../sync/SyncScheduleService';
 
 type CircuitBreakerReason = 'none' | 'needs_reconnect' | 'maintenance_deferral' | 'consecutive_failures';
 
@@ -25,7 +26,6 @@ interface CircuitBreakerState {
 export class SyncScheduler {
     private static queue = QueueFactory.createQueue('scheduler');
     private static readonly MAINTENANCE_LOG_WINDOW_MS = 12 * 60 * 60 * 1000;
-    private static readonly FULL_SYNC_ENTITY_TYPES = ['orders', 'products', 'customers', 'reviews', 'pages', 'blog-posts'] as const;
 
     /**
      * Check if an account has ≥3 consecutive failures in the last 30 minutes.
@@ -177,15 +177,20 @@ export class SyncScheduler {
      */
     static async dispatchToAllAccounts() {
         const accounts = await prisma.account.findMany({ select: { id: true } });
-        Logger.info(`Orchestrator: Dispatching sync for ${accounts.length} accounts`);
+        Logger.info(`Orchestrator: Checking sync schedules for ${accounts.length} accounts`);
 
         const { SyncService } = await import('../sync');
         const service = new SyncService();
 
         for (const acc of accounts) {
             try {
+                const schedules = await SyncScheduleService.ensureAccountSchedules(acc.id);
+                const now = new Date();
+                const dueSchedules = schedules.filter((schedule: any) => schedule.enabled && schedule.nextRunAt <= now);
                 const dispatchableTypes: string[] = [];
-                for (const entityType of this.FULL_SYNC_ENTITY_TYPES) {
+
+                for (const schedule of dueSchedules) {
+                    const entityType = schedule.entityType;
                     const breaker = await this.getAccountBlockState(acc.id, entityType);
                     if (breaker.isOpen) {
                         Logger.warn(`Orchestrator: Skipping ${entityType} sync for account ${acc.id} due to circuit breaker`, {
@@ -194,17 +199,26 @@ export class SyncScheduler {
                         });
                         continue;
                     }
+
                     dispatchableTypes.push(entityType);
                 }
 
                 if (dispatchableTypes.length === 0) {
-                    Logger.warn(`Orchestrator: All sync types blocked for account ${acc.id}`);
                     continue;
                 }
                 await service.runSync(acc.id, {
                     types: dispatchableTypes,
                     incremental: true
                 });
+                await Promise.all(dueSchedules
+                    .filter((schedule: any) => dispatchableTypes.includes(schedule.entityType))
+                    .map((schedule: any) => (prisma as any).syncSchedule.updateMany({
+                        where: { id: schedule.id, enabled: true, nextRunAt: { lte: now } },
+                        data: {
+                            lastScheduledAt: now,
+                            nextRunAt: new Date(now.getTime() + schedule.intervalMinutes * 60_000)
+                        }
+                    })));
             } catch (err: any) {
                 Logger.error(`Orchestrator: Failed to dispatch sync for account ${acc.id}`, { error: err.message });
             }
@@ -215,26 +229,8 @@ export class SyncScheduler {
      * Fast Order Sync: Dispatches order-only sync for near-realtime order visibility.
      */
     static async dispatchFastOrderSync() {
-        const accounts = await prisma.account.findMany({ select: { id: true } });
-        Logger.info(`Fast Order Sync: Dispatching for ${accounts.length} accounts`);
-
-        const { SyncService } = await import('../sync');
-        const service = new SyncService();
-
-        for (const acc of accounts) {
-            try {
-                const breaker = await this.getAccountBlockState(acc.id, 'orders');
-                if (breaker.isOpen) {
-                    Logger.warn(`Fast Order Sync: Skipping account ${acc.id} due to circuit breaker`, { accountId: acc.id, ...breaker });
-                    continue;
-                }
-                await service.runSync(acc.id, {
-                    types: ['orders'],
-                    incremental: true
-                });
-            } catch (err: any) {
-                Logger.error(`Fast Order Sync: Failed to dispatch for account ${acc.id}`, { error: err.message });
-            }
-        }
+        // The fast tick checks all persisted schedules. Orders default to one
+        // minute, while less volatile entities keep longer defaults.
+        await this.dispatchToAllAccounts();
     }
 }

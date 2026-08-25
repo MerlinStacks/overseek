@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { CircuitBreakerState, useSyncStatus, SyncLog } from '../../context/SyncStatusContext';
 import { formatRelativeTime, getStalenessLevel } from '../../utils/relativeTime';
 import {
@@ -49,8 +49,8 @@ const STALENESS_LABELS = {
  */
 export function SyncStatus() {
     const {
-        isSyncing, syncState, logs, activeJobs, healthSummary,
-        runSync, controlSync, retrySync, resetCircuit, reindexOrders, refreshStatus
+        isSyncing, syncState, logs, activeJobs, healthSummary, schedules, canManageSchedules,
+        runSync, controlSync, retrySync, resetCircuit, reindexOrders, updateSchedule, refreshStatus
     } = useSyncStatus();
 
     // Per-entity full-sync toggles
@@ -61,9 +61,17 @@ export function SyncStatus() {
     const [logFilter, setLogFilter] = useState<string | null>(null);
     const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
     const [syncTriggered, setSyncTriggered] = useState(false);
-    const [isPaused, setIsPaused] = useState(false);
+    const isPaused = schedules.length > 0 && schedules.every(schedule => !schedule.enabled);
+    const [controlPending, setControlPending] = useState(false);
+    const [controlError, setControlError] = useState<string | null>(null);
     const [reindexState, setReindexState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
     const [reindexResult, setReindexResult] = useState<string | null>(null);
+    const [, setClock] = useState(0);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => setClock(value => value + 1), 30_000);
+        return () => window.clearInterval(timer);
+    }, []);
 
     /** Build a fast lookup: entityType → lastSyncedAt */
     const lastSyncMap = useMemo(() => {
@@ -78,6 +86,8 @@ export function SyncStatus() {
         (activeJobs || []).forEach(j => { map[j.queue.replace('sync-', '')] = j; });
         return map;
     }, [activeJobs]);
+
+    const scheduleMap = useMemo(() => Object.fromEntries(schedules.map(schedule => [schedule.entityType, schedule])), [schedules]);
 
     const allSelected = Object.values(fullSyncTypes).every(Boolean);
 
@@ -99,16 +109,19 @@ export function SyncStatus() {
     };
 
     const handlePauseResume = async () => {
+        setControlPending(true);
+        setControlError(null);
         try {
             if (isPaused) {
                 await controlSync('resume');
-                setIsPaused(false);
             } else {
                 await controlSync('pause');
-                setIsPaused(true);
             }
         } catch (err) {
             Logger.error('Pause/resume failed', { error: err });
+            setControlError(err instanceof Error ? err.message : 'Unable to update sync schedule');
+        } finally {
+            setControlPending(false);
         }
     };
 
@@ -117,6 +130,7 @@ export function SyncStatus() {
             await controlSync('cancel', queueName, jobId);
         } catch (err) {
             Logger.error('Cancel failed', { error: err });
+            setControlError(err instanceof Error ? err.message : 'Unable to cancel sync');
         }
     };
 
@@ -162,6 +176,12 @@ export function SyncStatus() {
             {/* ── Health Summary Bar ──────────────────────── */}
             {healthSummary && <HealthSummaryBar summary={healthSummary} />}
 
+            {controlError && (
+                <div role="alert" className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                    {controlError}
+                </div>
+            )}
+
             {/* ── Controls Toolbar ────────────────────────── */}
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2">
@@ -175,9 +195,10 @@ export function SyncStatus() {
 
                 <div className="flex items-center gap-2">
                     {/* Pause / Resume */}
-                    {isSyncing && (
+                    {canManageSchedules && schedules.length > 0 && (
                         <button
                             onClick={handlePauseResume}
+                            disabled={controlPending}
                             className={`
                                 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
                                 ${isPaused
@@ -186,7 +207,8 @@ export function SyncStatus() {
                                 }
                             `}
                         >
-                            {isPaused ? <><Play size={12} /> Resume</> : <><Pause size={12} /> Pause</>}
+                            {controlPending ? <Loader2 size={12} className="animate-spin" /> : isPaused ? <Play size={12} /> : <Pause size={12} />}
+                            {isPaused ? 'Resume schedule' : 'Pause schedule'}
                         </button>
                     )}
 
@@ -232,7 +254,10 @@ export function SyncStatus() {
                             staleness={getStalenessLevel(lastSyncMap[key])}
                             lastSyncedAt={lastSyncMap[key]}
                             activeJob={activeJobMap[key]}
+                            schedule={scheduleMap[key]}
+                            canManageSchedule={canManageSchedules}
                             onCancel={activeJobMap[key] ? () => handleCancelJob(activeJobMap[key].queue, activeJobMap[key].id) : undefined}
+                            onScheduleChange={(input) => updateSchedule(key, input)}
                             onSyncIncremental={() => runSync([key], true)}
                             onSyncFull={() => runSync([key], false)}
                         />
@@ -243,15 +268,18 @@ export function SyncStatus() {
                         Icon={BOM_ENTITY.icon}
                         staleness={getStalenessLevel(lastSyncMap['bom'])}
                         lastSyncedAt={lastSyncMap['bom']}
-                        activeJob={activeJobMap['bom'] || activeJobMap['bom-inventory']}
+                        activeJob={activeJobMap['bom'] || activeJobMap['bom-inventory'] || activeJobMap['bom-inventory-sync']}
+                        schedule={scheduleMap['bom']}
+                        canManageSchedule={canManageSchedules}
                         onCancel={
-                            (activeJobMap['bom'] || activeJobMap['bom-inventory'])
+                            (activeJobMap['bom'] || activeJobMap['bom-inventory'] || activeJobMap['bom-inventory-sync'])
                                 ? () => {
-                                    const job = activeJobMap['bom'] || activeJobMap['bom-inventory'];
+                                    const job = activeJobMap['bom'] || activeJobMap['bom-inventory'] || activeJobMap['bom-inventory-sync'];
                                     handleCancelJob(job.queue, job.id);
                                 }
                                 : undefined
                         }
+                        onScheduleChange={(input) => updateSchedule('bom', input)}
                         onSyncFull={() => runSync(['bom'], false)}
                     />
                 </div>
@@ -473,11 +501,14 @@ interface EntityCardProps {
     staleness: 'fresh' | 'stale' | 'critical' | 'never';
     lastSyncedAt: string | null | undefined;
     activeJob?: { id: string; queue: string; progress: number };
+    schedule?: { enabled: boolean; intervalMinutes: number; nextRunAt: string };
+    canManageSchedule?: boolean;
     onCancel?: () => void;
     /** Trigger an incremental sync for this entity (omit for full-only entities like BOM) */
     onSyncIncremental?: () => void;
     /** Trigger a full sync for this entity */
     onSyncFull?: () => void;
+    onScheduleChange?: (input: { enabled?: boolean; intervalMinutes?: number }) => Promise<void>;
 }
 
 /**
@@ -486,11 +517,25 @@ interface EntityCardProps {
  */
 function EntityCard({
     label, Icon, staleness, lastSyncedAt,
-    activeJob, onCancel, onSyncIncremental, onSyncFull
+    activeJob, schedule, canManageSchedule, onCancel, onSyncIncremental, onSyncFull, onScheduleChange
 }: EntityCardProps) {
     const dotColor = STALENESS_COLORS[staleness];
     const stalenessLabel = STALENESS_LABELS[staleness];
     const isActive = !!activeJob;
+    const [schedulePending, setSchedulePending] = useState(false);
+    const [scheduleError, setScheduleError] = useState<string | null>(null);
+    const changeSchedule = async (input: { enabled?: boolean; intervalMinutes?: number }) => {
+        if (!onScheduleChange) return;
+        setSchedulePending(true);
+        setScheduleError(null);
+        try {
+            await onScheduleChange(input);
+        } catch (error) {
+            setScheduleError(error instanceof Error ? error.message : 'Could not save schedule');
+        } finally {
+            setSchedulePending(false);
+        }
+    };
 
     return (
         <div className={`
@@ -571,6 +616,40 @@ function EntityCard({
                         </div>
                     )}
                 </div>
+                {schedule && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                            <p className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Next run</p>
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
+                                {schedule.enabled ? formatNextRun(schedule.nextRunAt) : 'Paused'}
+                            </p>
+                        </div>
+                        {canManageSchedule ? <div className="flex items-center gap-1.5">
+                            <select
+                                aria-label={`${label} time between syncs`}
+                                value={schedule.intervalMinutes}
+                                disabled={schedulePending}
+                                onChange={(event) => changeSchedule({ intervalMinutes: Number(event.target.value) })}
+                                className="text-[11px] rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-1.5 py-1 text-slate-600 dark:text-slate-300"
+                            >
+                                {[1, 5, 15, 30, 60, 180, 360, 720, 1440].map(minutes => (
+                                    <option key={minutes} value={minutes}>Every {minutes < 60 ? `${minutes}m` : `${minutes / 60}h`}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={() => changeSchedule({ enabled: !schedule.enabled })}
+                                disabled={schedulePending}
+                                className="p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-50"
+                                title={schedule.enabled ? `Pause ${label} schedule` : `Resume ${label} schedule`}
+                            >
+                                {schedulePending ? <Loader2 size={13} className="animate-spin" /> : schedule.enabled ? <Pause size={13} /> : <Play size={13} />}
+                            </button>
+                        </div> : (
+                            <span className="text-[11px] text-slate-400">Every {schedule.intervalMinutes < 60 ? `${schedule.intervalMinutes}m` : `${schedule.intervalMinutes / 60}h`}</span>
+                        )}
+                    </div>
+                )}
+                {scheduleError && <p role="alert" className="mt-1 text-[10px] text-red-600 dark:text-red-400">{scheduleError}</p>}
             </div>
 
             {/* Inline progress bar */}
@@ -637,6 +716,16 @@ function formatDuration(startedAt: string, completedAt?: string | null): string 
     return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
 }
 
+function formatNextRun(nextRunAt: string): string {
+    const milliseconds = new Date(nextRunAt).getTime() - Date.now();
+    if (!Number.isFinite(milliseconds) || milliseconds <= 0) return 'Due now';
+    const minutes = Math.max(1, Math.ceil(milliseconds / 60_000));
+    if (minutes < 60) return `in ${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return remainingMinutes ? `in ${hours}h ${remainingMinutes}m` : `in ${hours}h`;
+}
+
 /** Map trigger source codes to user-friendly labels */
 function formatTriggerSource(source?: string): string {
     switch (source) {
@@ -656,6 +745,7 @@ function LogEntry({ log, isExpanded, onToggle, onRetry }: {
         SUCCESS: { icon: CheckCircle, color: 'text-green-500 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-500/10' },
         FAILED: { icon: XCircle, color: 'text-red-500 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10' },
         IN_PROGRESS: { icon: Loader2, color: 'text-blue-500 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-500/10' },
+        CANCELLED: { icon: XCircle, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-700/50' },
     };
 
     const cfg = statusConfig[log.status] || statusConfig.SUCCESS;
