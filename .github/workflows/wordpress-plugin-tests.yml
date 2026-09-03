@@ -1,0 +1,94 @@
+name: WordPress Plugin Compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'overseek-wc-plugin/**'
+      - '.github/workflows/wordpress-plugin-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'overseek-wc-plugin/**'
+      - '.github/workflows/wordpress-plugin-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    name: WordPress ${{ matrix.wordpress }} / WooCommerce 11.1
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        wordpress: ['7.0', '7.1']
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: wordpress_tests
+          MYSQL_USER: wordpress
+          MYSQL_PASSWORD: wordpress
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=root --password=root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: wp-cli
+          coverage: none
+
+      - name: Lint plugin PHP
+        run: git ls-files 'overseek-wc-plugin/**.php' | xargs -n1 php -l
+
+      - name: Install WordPress
+        run: |
+          mkdir wordpress
+          wp core download --path=wordpress --version=${{ matrix.wordpress }} --force
+          wp config create --path=wordpress --dbname=wordpress_tests --dbuser=wordpress --dbpass=wordpress --dbhost=127.0.0.1 --skip-check
+          wp core install --path=wordpress --url=http://localhost --title=OverSeek --admin_user=admin --admin_password=password --admin_email=admin@example.com --skip-email
+
+      - name: Install WooCommerce 11.1 and OverSeek
+        run: |
+          wp plugin install https://downloads.wordpress.org/plugin/woocommerce.11.1.0.zip --path=wordpress --activate
+          ln -s "$GITHUB_WORKSPACE/overseek-wc-plugin" wordpress/wp-content/plugins/overseek-wc-plugin
+          wp plugin activate overseek-wc-plugin --path=wordpress
+
+      - name: Verify plugin boot and REST routes
+        run: |
+          wp eval --path=wordpress '
+            if (!class_exists("WooCommerce") || !class_exists("OverSeek_Main")) {
+              throw new RuntimeException("WooCommerce or OverSeek did not load.");
+            }
+            $routes = rest_get_server()->get_routes();
+            foreach (["/overseek/v1/settings", "/overseek/v1/health", "/overseek/v1/reviews"] as $route) {
+              if (!isset($routes[$route])) {
+                throw new RuntimeException("Missing REST route: " . $route);
+              }
+            }
+            $_SERVER["REQUEST_URI"] = "/wp-json/overseek/v1/settings";
+            if (!apply_filters("woocommerce_rest_is_request_to_rest_api", false)) {
+              throw new RuntimeException("OverSeek routes did not opt into WooCommerce REST authentication.");
+            }
+            foreach ([
+              "woocommerce_store_api_checkout_update_order_meta",
+              "render_block_woocommerce/checkout",
+              "render_block_woocommerce/cart",
+            ] as $hook) {
+              if (false === has_filter($hook)) {
+                throw new RuntimeException("Missing cart recovery hook: " . $hook);
+              }
+            }
+          '

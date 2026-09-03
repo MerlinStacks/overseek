@@ -37,6 +37,7 @@ class OverSeek_Review_Renderer {
 		$product_total   = isset( $product_summary['total'] ) ? (int) $product_summary['total'] : 0;
 		$product_rating  = $product_total > 0 && isset( $product_summary['average'] ) ? (float) $product_summary['average'] : $rating;
 		$trust_badges    = isset( $context['trust_badges'] ) && is_array( $context['trust_badges'] ) ? $context['trust_badges'] : [];
+		$review_cta      = self::truthy( $context['review_cta'] ?? false );
 		$classes         = [ 'os-reviews-summary' ];
 		if ( $product_only ) {
 			$classes[] = 'os-reviews-summary--product-only';
@@ -45,14 +46,16 @@ class OverSeek_Review_Renderer {
 		ob_start();
 		?>
 		<div class="<?php echo esc_attr( implode( ' ', $classes ) ); ?>" aria-label="<?php echo esc_attr( sprintf( 'Average rating %.1f out of 5 from %d reviews', $rating, $total ) ); ?>">
-			<div class="os-reviews-summary__brand">
-				<span class="os-reviews-summary__badge" aria-hidden="true">★</span>
-				<div>
-					<strong><?php echo esc_html( $store_name ); ?></strong>
-					<span><?php echo esc_html( sprintf( _n( '%d review', '%d reviews', $total, 'overseek-wc' ), $total ) ); ?></span>
-					<small><?php esc_html_e( 'what our customers say', 'overseek-wc' ); ?></small>
+			<?php if ( ! $product_only ) : ?>
+				<div class="os-reviews-summary__brand">
+					<span class="os-reviews-summary__badge" aria-hidden="true">★</span>
+					<div>
+						<strong><?php echo esc_html( $store_name ); ?></strong>
+						<span><?php echo esc_html( sprintf( _n( '%d review', '%d reviews', $total, 'overseek-wc' ), $total ) ); ?></span>
+						<small><?php esc_html_e( 'what our customers say', 'overseek-wc' ); ?></small>
+					</div>
 				</div>
-			</div>
+			<?php endif; ?>
 			<div class="os-reviews-summary__ratings">
 				<?php if ( ! $product_only ) : ?>
 					<div class="os-reviews-summary__rating">
@@ -67,8 +70,44 @@ class OverSeek_Review_Renderer {
 					<strong><?php echo esc_html( number_format_i18n( $product_rating, 2 ) ); ?> / 5</strong>
 				</div>
 			</div>
-			<?php echo self::render_trust_badges( $trust_badges ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+			<?php if ( ! $product_only ) : ?>
+				<?php echo self::render_trust_badges( $trust_badges ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+			<?php endif; ?>
+			<?php if ( $review_cta ) : ?>
+				<a class="os-reviews-summary__action" href="#review_form" data-os-review-cta><?php esc_html_e( 'Write a review', 'overseek-wc' ); ?></a>
+			<?php endif; ?>
 		</div>
+		<?php
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Render a gallery of media uploaded with product reviews.
+	 *
+	 * @param array<int, array<string, string>> $media Customer-uploaded media.
+	 * @return string
+	 */
+	public static function render_customer_media( array $media ): string {
+		if ( empty( $media ) ) {
+			return '';
+		}
+
+		ob_start();
+		?>
+		<section class="os-customer-media" aria-label="<?php esc_attr_e( 'Customer photos and videos', 'overseek-wc' ); ?>">
+			<div class="os-customer-media__header">
+				<div>
+					<h3><?php esc_html_e( 'Customer photos & videos', 'overseek-wc' ); ?></h3>
+					<p><?php esc_html_e( 'See this product shared by our customers.', 'overseek-wc' ); ?></p>
+				</div>
+				<span><?php esc_html_e( 'Latest uploads', 'overseek-wc' ); ?></span>
+			</div>
+			<div class="os-customer-media__gallery">
+				<?php foreach ( $media as $item ) : ?>
+					<?php echo self::render_media_item( $item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+				<?php endforeach; ?>
+			</div>
+		</section>
 		<?php
 		return (string) ob_get_clean();
 	}

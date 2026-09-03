@@ -27,6 +27,11 @@ class OverSeek_Cart_Recovery
 		add_action('template_redirect', [$this, 'maybe_restore_cart'], 1);
 		add_action('woocommerce_before_checkout_form', [$this, 'render_restore_notice'], 5);
 		add_action('woocommerce_checkout_create_order', [$this, 'attach_recovery_context_to_order'], 10, 2);
+		add_action('woocommerce_store_api_checkout_update_order_meta', [$this, 'attach_recovery_context_to_order'], 10, 1);
+		add_action('woocommerce_checkout_order_processed', [$this, 'clear_processed_recovery_context'], 20, 3);
+		add_action('woocommerce_store_api_checkout_order_processed', [$this, 'clear_processed_recovery_context'], 20, 1);
+		add_filter('render_block_woocommerce/checkout', [$this, 'render_restore_notice_for_block'], 10, 2);
+		add_filter('render_block_woocommerce/cart', [$this, 'render_restore_notice_for_block'], 10, 2);
 	}
 
 	public function maybe_restore_cart(): void
@@ -167,36 +172,85 @@ class OverSeek_Cart_Recovery
 
 	public function render_restore_notice(): void
 	{
-		if (!function_exists('WC') || !WC() || !WC()->session || !function_exists('wc_add_notice')) {
+		if (!function_exists('wc_add_notice')) {
 			return;
+		}
+
+		$notice = $this->consume_restore_notice();
+		if ($notice === null) {
+			return;
+		}
+
+		wc_add_notice($notice['message'], $notice['type']);
+	}
+
+	/**
+	 * Prepend a Store Notice compatible banner to Cart and Checkout blocks.
+	 *
+	 * @param string $block_content Rendered block content.
+	 * @param array  $block         Parsed block data.
+	 * @return string
+	 */
+	public function render_restore_notice_for_block(string $block_content, array $block = []): string
+	{
+		$notice = $this->consume_restore_notice();
+		if ($notice === null) {
+			return $block_content;
+		}
+
+		$type = 'notice' === $notice['type'] ? 'info' : $notice['type'];
+		$banner = sprintf(
+			'<div class="wc-block-components-notice-banner is-%1$s" role="alert" tabindex="-1"><div class="wc-block-components-notice-banner__content">%2$s</div></div>',
+			esc_attr($type),
+			esc_html($notice['message'])
+		);
+
+		return $banner . $block_content;
+	}
+
+	/**
+	 * Consume the pending cart restore result and turn it into a notice.
+	 *
+	 * @return array{message:string,type:string}|null
+	 */
+	private function consume_restore_notice(): ?array
+	{
+		if (!function_exists('WC') || !WC() || !WC()->session) {
+			return null;
 		}
 
 		$restore_result = WC()->session->get(self::RECOVERY_RESULT_SESSION_KEY);
 		if (!is_array($restore_result)) {
-			return;
+			return null;
 		}
 
 		WC()->session->__unset(self::RECOVERY_RESULT_SESSION_KEY);
-
 		$requested_count = absint($restore_result['requestedCount'] ?? 0);
 		$restored_count = absint($restore_result['restoredCount'] ?? 0);
 		$failed_count = absint($restore_result['failedCount'] ?? 0);
 
 		if ($requested_count === 0) {
-			return;
+			return null;
 		}
 
 		if ($restored_count > 0 && $failed_count === 0) {
-			wc_add_notice('Your saved cart has been restored. You can complete checkout below.', 'success');
-			return;
+			return [
+				'message' => 'Your saved cart has been restored. You can complete checkout below.',
+				'type' => 'success',
+			];
 		}
 
 		if ($restored_count > 0) {
-			wc_add_notice(sprintf('We restored %1$d item(s), but %2$d item(s) were unavailable and could not be added back to your cart.', $restored_count, $failed_count), 'notice');
-			return;
+			return [
+				'message' => sprintf('We restored %1$d item(s), but %2$d item(s) were unavailable and could not be added back to your cart.', $restored_count, $failed_count),
+				'type' => 'notice',
+			];
 		}
 
-		wc_add_notice('We could not restore any items from this recovery link. The products may no longer be available.', 'error');
+		return [
+			'message' => 'We could not restore any items from this recovery link. The products may no longer be available.',
+			'type' => 'error',
+		];
 	}
 
 	private function store_recovery_context(array $details): void
@@ -215,7 +269,7 @@ class OverSeek_Cart_Recovery
 		WC()->session->set('overseek_recovery_context', $context);
 	}
 
-	public function attach_recovery_context_to_order($order, $data): void
+	public function attach_recovery_context_to_order($order, $data = null): void
 	{
 		if (!function_exists('WC') || !WC() || !WC()->session || !is_object($order)) {
 			return;
@@ -223,6 +277,11 @@ class OverSeek_Cart_Recovery
 
 		$context = WC()->session->get('overseek_recovery_context');
 		if (!is_array($context) || empty($context['enrollmentId'])) {
+			return;
+		}
+		$restored_at = absint($context['restoredAt'] ?? 0);
+		if ($restored_at === 0 || $restored_at < time() - DAY_IN_SECONDS) {
+			WC()->session->__unset('overseek_recovery_context');
 			return;
 		}
 
@@ -235,5 +294,29 @@ class OverSeek_Cart_Recovery
 		}
 		$order->update_meta_data('_overseek_recovered_cart', '1');
 		$order->update_meta_data('_overseek_recovered_at', gmdate('c'));
+	}
+
+	/**
+	 * Clear recovery attribution after WooCommerce has persisted the order.
+	 *
+	 * @param int|WC_Order $order_id_or_order Order ID for classic checkout, or order for Store API checkout.
+	 * @param mixed        $posted_data       Classic checkout data.
+	 * @param WC_Order|null $order            Classic checkout order object.
+	 * @return void
+	 */
+	public function clear_processed_recovery_context($order_id_or_order, $posted_data = null, $order = null): void
+	{
+		if (!function_exists('WC') || !WC() || !WC()->session) {
+			return;
+		}
+
+		$processed_order = $order_id_or_order instanceof WC_Order ? $order_id_or_order : $order;
+		if (!$processed_order instanceof WC_Order && is_numeric($order_id_or_order)) {
+			$processed_order = wc_get_order(absint($order_id_or_order));
+		}
+
+		if ($processed_order instanceof WC_Order && '1' === (string) $processed_order->get_meta('_overseek_recovered_cart', true)) {
+			WC()->session->__unset('overseek_recovery_context');
+		}
 	}
 }

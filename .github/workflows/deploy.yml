@@ -57,6 +57,7 @@ jobs:
           filters: |
             api:
               - 'server/**'
+              - 'overseek-wc-plugin/**'
               - 'packages/overseek-core/**'
               - 'package.json'
               - 'package-lock.json'

@@ -351,6 +351,19 @@
 	}
 
 	document.addEventListener('click', function (event) {
+		var reviewCta = event.target.closest('[data-os-review-cta]');
+		if (reviewCta) {
+			var reviewForm = document.getElementById('review_form') || document.querySelector('.os-review-form');
+			if (reviewForm) {
+				event.preventDefault();
+				history.replaceState(null, '', window.location.pathname + window.location.search + '#review_form');
+				var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+				reviewForm.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+				reviewForm.classList.add('os-review-form--focused');
+			}
+			return;
+		}
+
 		var reviewsLink = event.target.closest('.os-review-stars-summary__link[href*="#reviews"]');
 		if (isSamePageReviewsLink(reviewsLink)) {
 			event.preventDefault();

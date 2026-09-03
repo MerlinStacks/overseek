@@ -115,9 +115,11 @@ class OverSeek_Review_Form {
 		$atts = is_array( $atts ) ? $atts : [];
 		$attributes = shortcode_atts(
 			[
-				'product_id' => 0,
+				'product_id'  => 0,
 				'shop_review' => 'false',
-				'title'      => __( 'Write a review', 'overseek-wc' ),
+				'title'       => __( 'Write a review', 'overseek-wc' ),
+				'description' => __( 'Share your experience to help other customers.', 'overseek-wc' ),
+				'featured'    => 'false',
 			],
 			$atts,
 			'overseek_review_form'
@@ -129,7 +131,13 @@ class OverSeek_Review_Form {
 			$product_id = $this->get_current_product_id();
 		}
 
-		return $this->render_form( $product_id, (string) $attributes['title'], $shop_review );
+		return $this->render_form(
+			$product_id,
+			sanitize_text_field( (string) $attributes['title'] ),
+			$shop_review,
+			sanitize_text_field( (string) $attributes['description'] ),
+			$this->truthy( $attributes['featured'] ?? false )
+		);
 	}
 
 	/**
@@ -320,11 +328,14 @@ class OverSeek_Review_Form {
 	/**
 	 * Render review form markup.
 	 *
-	 * @param int    $product_id Product ID.
-	 * @param string $title Form title.
+	 * @param int    $product_id  Product ID.
+	 * @param string $title       Form title.
+	 * @param bool   $shop_review Whether this is a shop review.
+	 * @param string $description Supporting form copy.
+	 * @param bool   $featured    Whether to highlight the form as a first-review prompt.
 	 * @return string
 	 */
-	private function render_form( int $product_id, string $title, bool $shop_review = false ): string {
+	private function render_form( int $product_id, string $title, bool $shop_review = false, string $description = '', bool $featured = false ): string {
 		if ( ! $product_id ) {
 			return '';
 		}
@@ -352,14 +363,21 @@ class OverSeek_Review_Form {
 			$prefilled_name = '' !== $prefilled_name ? $prefilled_name : (string) $current_user->display_name;
 			$prefilled_email = '' !== $prefilled_email ? $prefilled_email : (string) $current_user->user_email;
 		}
+		$form_classes = [ 'os-review-form' ];
+		if ( $featured ) {
+			$form_classes[] = 'os-review-form--first-review';
+		}
 
 		ob_start();
 		?>
 		<?php echo $this->render_submission_notice(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-		<form id="<?php echo esc_attr( $form_id ); ?>" class="os-review-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data" data-os-review-nonce-url="<?php echo esc_url( admin_url( 'admin-ajax.php?action=overseek_review_nonce' ) ); ?>">
+		<form id="<?php echo esc_attr( $form_id ); ?>" class="<?php echo esc_attr( implode( ' ', $form_classes ) ); ?>" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data" data-os-review-nonce-url="<?php echo esc_url( admin_url( 'admin-ajax.php?action=overseek_review_nonce' ) ); ?>">
 			<header class="os-review-form__header">
+				<?php if ( $featured ) : ?>
+					<span class="os-review-form__first-review-icon" aria-hidden="true">★</span>
+				<?php endif; ?>
 				<h3><?php echo esc_html( $title ); ?></h3>
-				<p><?php esc_html_e( 'Share your experience to help other customers.', 'overseek-wc' ); ?></p>
+				<p><?php echo esc_html( $description ?: __( 'Share your experience to help other customers.', 'overseek-wc' ) ); ?></p>
 			</header>
 			<input type="hidden" name="action" value="overseek_submit_review">
 			<input type="hidden" name="product_id" value="<?php echo esc_attr( (string) $product_id ); ?>">
@@ -405,7 +423,13 @@ class OverSeek_Review_Form {
 					<input type="file" name="os_review_media[]" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm" data-max-files="<?php echo esc_attr( (string) self::MAX_FILES ); ?>" data-max-bytes="<?php echo esc_attr( (string) $this->max_upload_bytes() ); ?>" multiple>
 				</label>
 
-				<button type="submit" class="os-review-form__submit" data-submitting-label="<?php esc_attr_e( 'Submitting...', 'overseek-wc' ); ?>"><?php esc_html_e( 'Submit review', 'overseek-wc' ); ?></button>
+				<button type="submit" class="os-review-form__submit" data-submitting-label="<?php esc_attr_e( 'Submitting...', 'overseek-wc' ); ?>">
+					<?php if ( $featured ) : ?>
+						<?php esc_html_e( 'Post the first review', 'overseek-wc' ); ?>
+					<?php else : ?>
+						<?php esc_html_e( 'Submit review', 'overseek-wc' ); ?>
+					<?php endif; ?>
+				</button>
 			</div>
 		</form>
 		<?php

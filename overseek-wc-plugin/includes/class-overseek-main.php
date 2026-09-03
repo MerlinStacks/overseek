@@ -60,6 +60,7 @@ class OverSeek_Main
 		$this->cleanup_legacy_options();
 		add_filter('woocommerce_order_item_get_formatted_meta_data', [$this, 'filter_formatted_order_item_meta'], 20, 2);
 		add_filter('woocommerce_hidden_order_itemmeta', [$this, 'filter_hidden_order_item_meta_keys']);
+		add_filter('woocommerce_rest_is_request_to_rest_api', [$this, 'include_overseek_routes_in_wc_rest_authentication']);
 
 		$is_frontend_request = ! is_admin() && ! wp_doing_ajax() && ! wp_doing_cron();
 		$is_configured       = $this->is_configured();
@@ -152,6 +153,52 @@ class OverSeek_Main
 			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-web-vitals.php';
 			new OverSeek_Web_Vitals();
 		}
+	}
+
+	/**
+	 * Let WooCommerce authenticate API keys on protected OverSeek REST routes.
+	 *
+	 * @param bool $is_wc_rest_request Whether WooCommerce recognized the request.
+	 * @return bool
+	 */
+	public function include_overseek_routes_in_wc_rest_authentication(bool $is_wc_rest_request): bool
+	{
+		if ($is_wc_rest_request) {
+			return true;
+		}
+
+		global $wp;
+		if ($wp instanceof WP && isset($wp->query_vars['rest_route']) && is_string($wp->query_vars['rest_route'])) {
+			$route = trim($wp->query_vars['rest_route'], '/');
+			if ($route === 'overseek/v1' || str_starts_with($route, 'overseek/v1/')) {
+				return true;
+			}
+		}
+
+		if (empty($_SERVER['REQUEST_URI'])) {
+			return false;
+		}
+
+		$request_uri = wp_unslash($_SERVER['REQUEST_URI']);
+		$query_string = wp_parse_url($request_uri, PHP_URL_QUERY);
+		if (is_string($query_string)) {
+			$query_params = [];
+			parse_str($query_string, $query_params);
+			if (isset($query_params['rest_route']) && is_string($query_params['rest_route'])) {
+				$route = trim($query_params['rest_route'], '/');
+				if ($route === 'overseek/v1' || str_starts_with($route, 'overseek/v1/')) {
+					return true;
+				}
+			}
+		}
+
+		$request_path = wp_parse_url($request_uri, PHP_URL_PATH);
+		if (!is_string($request_path)) {
+			return false;
+		}
+
+		$rest_prefix = preg_quote(trim(rest_get_url_prefix(), '/'), '#');
+		return 1 === preg_match('#/(?:index\\.php/)?' . $rest_prefix . '/overseek/v1(?:/|$)#i', rawurldecode($request_path));
 	}
 
 	private function is_configured(): bool

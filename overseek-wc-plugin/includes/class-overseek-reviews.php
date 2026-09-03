@@ -673,10 +673,15 @@ class OverSeek_Reviews {
 			$summary = $this->get_mock_summary();
 		}
 		$shell_id             = 'os-reviews-' . ++$this->shell_counter;
-		$review_form          = $this->maybe_render_add_review_form( $args );
+		$review_form          = $this->maybe_render_add_review_form( $args, empty( $summary['total'] ) );
 		if ( $is_preview && empty( $args['product_id'] ) && $this->truthy( $args['add_review'] ?? 'false' ) ) {
 			$review_form = $this->render_mock_review_form( __( 'Write a review', 'overseek-wc' ) );
 		}
+		$customer_media = [];
+		if ( ! empty( $args['product_id'] ) && $this->truthy( $args['show_media'] ?? true ) && $this->truthy( $args['show_media_gallery'] ?? true ) ) {
+			$customer_media = $this->get_customer_uploaded_media( $args, (int) $args['media_gallery_limit'] );
+		}
+		$reviews_markup = empty( $summary['total'] ) ? '' : OverSeek_Review_Renderer::render_reviews( $reviews, $args );
 
 		return '<div id="' . esc_attr( $shell_id ) . '" class="os-reviews-shell os-reviews-shell--product" data-os-reviews-shell>'
 			. OverSeek_Review_Renderer::render_summary(
@@ -684,12 +689,12 @@ class OverSeek_Reviews {
 				[
 					'product_only'    => true,
 					'product_summary' => $summary,
-					'store_name'      => get_bloginfo( 'name' ),
-					'trust_badges'    => $this->get_trust_badges(),
+					'review_cta'      => '' !== $review_form,
 				]
 			)
 			. $this->render_schema_markup( $summary, $args )
-			. OverSeek_Review_Renderer::render_reviews( $reviews, $args )
+			. OverSeek_Review_Renderer::render_customer_media( $customer_media )
+			. $reviews_markup
 			. $this->render_pagination( $summary, $args )
 			. $review_form
 			. '</div>';
@@ -1003,7 +1008,7 @@ class OverSeek_Reviews {
 
 		if ( $show_verified ) {
 			$verified_tier = 0;
-			foreach ( [ 10000, 1000, 250, 100, 50 ] as $threshold ) {
+			foreach ( [ 10000, 2500, 1000, 500, 250, 100, 50 ] as $threshold ) {
 				if ( $counts['verified'] >= $threshold ) {
 					$verified_tier = $threshold;
 					break;
@@ -1336,6 +1341,8 @@ class OverSeek_Reviews {
 				'only_media'   => '0',
 				'verified_only'=> '0',
 				'show_media'   => '1',
+				'show_media_gallery' => '1',
+				'media_gallery_limit' => 10,
 				'show_product' => '1',
 				'show_product_image' => '1',
 				'show_reviewer' => '1',
@@ -1385,6 +1392,7 @@ class OverSeek_Reviews {
 		$attributes['min_rating'] = max( 0, min( 5, absint( $attributes['min_rating'] ) ) );
 		$attributes['max_chars']  = max( 0, absint( $attributes['max_chars'] ) );
 		$attributes['min_chars']  = max( 0, absint( $attributes['min_chars'] ) );
+		$attributes['media_gallery_limit'] = max( 1, min( 20, absint( $attributes['media_gallery_limit'] ) ) );
 		$attributes['radius']     = max( 8, min( 40, absint( $attributes['radius'] ) ) );
 		$attributes['shadow']     = max( 0, min( 3, absint( $attributes['shadow'] ) ) );
 		$attributes['slider_desktop'] = max( 1, min( 5, absint( $attributes['slider_desktop'] ) ) );
@@ -1418,6 +1426,64 @@ class OverSeek_Reviews {
 		}
 
 		return $attributes;
+	}
+
+	/**
+	 * Get the newest customer-uploaded media for a product review gallery.
+	 *
+	 * @param array<string, mixed> $args  Normalized review arguments.
+	 * @param int                  $limit Maximum media items to return.
+	 * @return array<int, array<string, string>>
+	 */
+	private function get_customer_uploaded_media( array $args, int $limit ): array {
+		$query_args            = $this->build_comment_query_args( $args );
+		$query_args['number']  = min( 50, max( $limit, $limit * 3 ) );
+		$query_args['offset']  = 0;
+		$query_args['orderby'] = 'comment_date_gmt';
+		$query_args['order']    = 'DESC';
+		$media_meta_query       = [
+			'relation' => 'OR',
+			[
+				'key'     => 'overseek_media_ids',
+				'compare' => 'EXISTS',
+			],
+			[
+				'key'     => 'ivole_review_image',
+				'compare' => 'EXISTS',
+			],
+		];
+		if ( ! empty( $query_args['meta_query'] ) ) {
+			$query_args['meta_query'] = [
+				'relation' => 'AND',
+				$query_args['meta_query'],
+				$media_meta_query,
+			];
+		} else {
+			$query_args['meta_query'] = $media_meta_query;
+		}
+
+		$media = [];
+		$seen  = [];
+		foreach ( get_comments( $query_args ) as $comment ) {
+			if ( ! ( $comment instanceof WP_Comment ) ) {
+				continue;
+			}
+
+			foreach ( $this->get_review_media( (int) $comment->comment_ID ) as $item ) {
+				$key = ! empty( $item['id'] ) ? (string) $item['id'] : (string) ( $item['url'] ?? '' );
+				if ( '' === $key || isset( $seen[ $key ] ) ) {
+					continue;
+				}
+
+				$seen[ $key ] = true;
+				$media[]      = $item;
+				if ( count( $media ) >= $limit ) {
+					break 2;
+				}
+			}
+		}
+
+		return $media;
 	}
 
 	/**
@@ -1516,10 +1582,11 @@ class OverSeek_Reviews {
 	/**
 	 * Render an optional review form after a reviews shortcode.
 	 *
-	 * @param array<string, mixed> $args Args.
+	 * @param array<string, mixed> $args         Args.
+	 * @param bool                 $first_review Whether this will be the product's first review.
 	 * @return string
 	 */
-	private function maybe_render_add_review_form( array $args ): string {
+	private function maybe_render_add_review_form( array $args, bool $first_review = false ): string {
 		$value = $args['add_review'] ?? 'false';
 		if ( ! $this->truthy( $value ) && ! absint( $value ) ) {
 			return '';
@@ -1538,6 +1605,14 @@ class OverSeek_Reviews {
 
 		if ( ! $product_id ) {
 			return '';
+		}
+		if ( $first_review ) {
+			return do_shortcode(
+				'[overseek_review_form product_id="' . absint( $product_id )
+				. '" title="' . esc_attr__( 'Be the first to review this product', 'overseek-wc' )
+				. '" description="' . esc_attr__( 'Have you tried it? Share your experience and help the next customer decide.', 'overseek-wc' )
+				. '" featured="true"]'
+			);
 		}
 
 		return do_shortcode( '[overseek_review_form product_id="' . absint( $product_id ) . '"]' );
