@@ -101,7 +101,6 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     const version = sessionVersion;
     const sessionUnchanged = () => version === sessionVersion && getStoredAuthUserId() === sessionUser;
     let authRetried = false;
-    let requestToken = token;
 
     const config: RequestInit = {
         ...customConfig,
@@ -118,7 +117,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     const requestHeaders = new Headers(config.headers);
     new Headers(headers).forEach((value, key) => requestHeaders.set(key, value));
     config.headers = requestHeaders;
-    requestToken = requestHeaders.get('Authorization')?.match(/^Bearer (.+)$/i)?.[1];
+    let requestToken = requestHeaders.get('Authorization')?.match(/^Bearer (.+)$/i)?.[1];
 
     for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
         const response = await fetch(endpoint, config);
