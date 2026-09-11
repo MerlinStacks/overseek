@@ -198,8 +198,9 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
      * Returns current server version and optional update metadata.
      */
     fastify.get('/version', async (_request, _reply) => {
-        // Build version - auto-generated at build time or from environment
-        const version = process.env.APP_VERSION || new Date().toISOString().split('T')[0].replace(/-/g, '.');
+        // Unknown is safer than inventing a new release every day. Production
+        // frontend checks are served from its build manifest by nginx.
+        const version = process.env.APP_VERSION || null;
 
         return {
             version,

@@ -70,10 +70,10 @@ export class InboxAIService {
 
             // 2. Fetch conversation with messages and customer
             const conversation = await prisma.conversation.findUnique({
-                where: { id: conversationId },
+                where: { id: conversationId, accountId },
                 include: {
                     messages: {
-                        orderBy: { createdAt: 'asc' },
+                        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
                         take: 20  // Last 20 messages for context
                     },
                     wooCustomer: true
@@ -83,6 +83,9 @@ export class InboxAIService {
             if (!conversation) {
                 return { draft: '', error: 'Conversation not found' };
             }
+
+            // Present the latest message window in chronological order to the AI.
+            conversation.messages.reverse();
 
             // 3. Look up customer's recent orders for context
             const recentOrders = await this.fetchCustomerOrders(accountId, conversation);

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
+import { getStoredAuthUserId, invalidateAuthSession, registerAuthRefresh, type SilentRefreshResult } from '../services/api';
 /* eslint-disable react-refresh/only-export-components */
 
 interface User {
@@ -31,8 +32,6 @@ const REFRESH_WAIT_POLL_MS = 250;
 const RESUME_REFRESH_THRESHOLD_MS = 60_000;
 const AUTH_REFRESHING_KEY = 'overseek:auth-refreshing';
 
-type SilentRefreshResult = 'success' | 'retryable_failure' | 'expired';
-
 // EDGE CASE FIX: Parse JWT to get expiry time
 function getTokenExpiry(token: string): number | null {
     try {
@@ -49,6 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
     const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const resumeRefreshInFlightRef = useRef(false);
+    const sessionVersionRef = useRef(0);
+    const refreshInFlightRef = useRef<Promise<SilentRefreshResult> | null>(null);
     const tabIdRef = useRef(
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
             ? crypto.randomUUID()
@@ -64,6 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const clearSession = useCallback(() => {
+        invalidateAuthSession();
+        sessionVersionRef.current++;
+        refreshInFlightRef.current = null;
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
@@ -117,13 +121,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    const waitForRefreshFromAnotherTab = useCallback(async (staleRefreshToken: string): Promise<SilentRefreshResult> => {
+    const waitForRefreshFromAnotherTab = useCallback(async (staleRefreshToken: string, version: number, storedUser: string | null): Promise<SilentRefreshResult> => {
         const startedAt = Date.now();
 
         while (Date.now() - startedAt < REFRESH_WAIT_TIMEOUT_MS) {
             await new Promise(resolve => setTimeout(resolve, REFRESH_WAIT_POLL_MS));
 
             const latestRefreshToken = localStorage.getItem('refreshToken');
+            if (version !== sessionVersionRef.current || !latestRefreshToken || getStoredAuthUserId() !== storedUser) return 'superseded';
             if (latestRefreshToken && latestRefreshToken !== staleRefreshToken) {
                 Logger.info('[Auth] Adopted refreshed session from another tab');
                 return syncSessionFromStorage() ? 'success' : 'retryable_failure';
@@ -135,33 +140,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [syncSessionFromStorage]);
 
     // EDGE CASE FIX: Silent refresh function
-    const silentRefresh = useCallback(async (): Promise<SilentRefreshResult> => {
+    const performRefresh = useCallback(async (): Promise<SilentRefreshResult> => {
         const refreshToken = localStorage.getItem('refreshToken');
+        const version = sessionVersionRef.current;
+        const storedUser = getStoredAuthUserId();
+        const isCurrent = () => version === sessionVersionRef.current &&
+            localStorage.getItem('refreshToken') === refreshToken && getStoredAuthUserId() === storedUser;
         if (!refreshToken) {
             Logger.warn('[Auth] No refresh token available for silent refresh');
+            clearSession();
             return 'expired';
         }
 
         if (!acquireRefreshLock()) {
             Logger.info('[Auth] Another tab is already refreshing the session');
-            return waitForRefreshFromAnotherTab(refreshToken);
+            return waitForRefreshFromAnotherTab(refreshToken, version, storedUser);
         }
 
         try {
             const response = await fetch('/api/auth/refresh', {
                 method: 'POST',
+                signal: AbortSignal.timeout(10_000),
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ refreshToken })
             });
 
+            if (!isCurrent()) return 'superseded';
+
             if (!response.ok) {
                 if (response.status === 401) {
-                    const latestRefreshToken = localStorage.getItem('refreshToken');
-                    if (latestRefreshToken && latestRefreshToken !== refreshToken) {
-                        Logger.info('[Auth] Refresh token rotated by another tab during refresh');
-                        return syncSessionFromStorage() ? 'success' : 'retryable_failure';
-                    }
-
                     Logger.warn('[Auth] Silent refresh rejected, clearing session');
                     // Token is invalid/expired - force logout
                     clearSession();
@@ -175,6 +182,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             const data = await response.json();
+            if (!isCurrent()) return 'superseded';
+            if (typeof data.accessToken !== 'string' || !data.accessToken ||
+                typeof data.refreshToken !== 'string' || !data.refreshToken) return 'retryable_failure';
             localStorage.setItem('token', data.accessToken);
             localStorage.setItem('refreshToken', data.refreshToken);
             setToken(data.accessToken);
@@ -184,9 +194,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             Logger.error('[Auth] Silent refresh error', { error });
             return 'retryable_failure';
         } finally {
-            releaseRefreshLock();
+            // A replacement session may already own a new refresh in this tab.
+            if (version === sessionVersionRef.current || !refreshInFlightRef.current) releaseRefreshLock();
         }
     }, [acquireRefreshLock, clearSession, releaseRefreshLock, syncSessionFromStorage, waitForRefreshFromAnotherTab]);
+
+    const silentRefresh = useCallback((): Promise<SilentRefreshResult> => {
+        if (refreshInFlightRef.current) return refreshInFlightRef.current;
+        const pending = performRefresh().finally(() => {
+            if (refreshInFlightRef.current === pending) refreshInFlightRef.current = null;
+        });
+        refreshInFlightRef.current = pending;
+        return pending;
+    }, [performRefresh]);
+
+    useEffect(() => registerAuthRefresh(silentRefresh), [silentRefresh]);
 
     // EDGE CASE FIX: Schedule next refresh before token expires
     const scheduleRefresh = useCallback((accessToken: string, overrideDelayMs?: number) => {
@@ -227,9 +249,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const storedToken = localStorage.getItem('token');
         const storedUser = localStorage.getItem('user');
         const storedRefreshToken = localStorage.getItem('refreshToken');
+        const version = sessionVersionRef.current;
 
         // Defer state updates to avoid cascading renders
         const timeoutId = setTimeout(async () => {
+            if (version !== sessionVersionRef.current) { setIsLoading(false); return; }
             if (storedToken && storedUser) {
                 // Check if token is expired or about to expire
                 const expiry = getTokenExpiry(storedToken);
@@ -240,6 +264,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     // Try to refresh immediately
                     if (storedRefreshToken) {
                         const refreshed = await silentRefresh();
+                        if (version !== sessionVersionRef.current || refreshed === 'superseded') {
+                            setIsLoading(false);
+                            return;
+                        }
                         if (refreshed === 'success') {
                             const newToken = localStorage.getItem('token');
                             setToken(newToken);
@@ -250,7 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             setUser(JSON.parse(storedUser));
                             scheduleRefresh(storedToken, REFRESH_RETRY_DELAY_MS);
                         }
-                    }
+                    } else clearSession();
                 } else {
                     setToken(storedToken);
                     setUser(JSON.parse(storedUser));
@@ -266,7 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 clearTimeout(refreshTimeoutRef.current);
             }
         };
-    }, [silentRefresh, scheduleRefresh]);
+    }, [silentRefresh, scheduleRefresh, clearSession]);
 
     useEffect(() => {
         if (!token) {
@@ -291,7 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             window.dispatchEvent(new Event('overseek:auth-refresh-started'));
             try {
                 const result = await silentRefresh();
-                if (result === 'retryable_failure') {
+                if (result === 'retryable_failure' && localStorage.getItem('token') === token) {
                     scheduleRefresh(token, REFRESH_RETRY_DELAY_MS);
                 }
             } finally {
@@ -347,11 +375,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [clearSession, releaseRefreshLock]);
 
     const login = (newToken: string, newUser: User, refreshToken?: string) => {
+        invalidateAuthSession();
+        sessionVersionRef.current++;
+        refreshInFlightRef.current = null;
         localStorage.setItem('token', newToken);
         localStorage.setItem('user', JSON.stringify(newUser));
         if (refreshToken) {
             localStorage.setItem('refreshToken', refreshToken);
-        }
+        } else localStorage.removeItem('refreshToken');
         setToken(newToken);
         setUser(newUser);
     };

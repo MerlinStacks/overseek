@@ -8,7 +8,7 @@ import { Logger } from '../../utils/logger';
 import { WooOrderSchema, WooOrder } from './wooSchemas';
 import { esClient } from '../../utils/elastic';
 import { isExcludedOrderStatus, normalizeOrderStatus } from '../../constants/orderStatus';
-import { retryWithBackoff } from '../../utils/retryWithBackoff';
+import { recalculateCustomerTotals, updateCustomerTotals, withOrderTotalsTransaction } from './orderCustomerTotals';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -47,7 +47,6 @@ export class OrderSync extends BaseSync {
         let totalDeleted = 0;
         let totalSkipped = 0;
         let validationFailures = 0;
-        let totalUpsertFailures = 0;
 
         const syncStartedAt = new Date();
         let expectedTotal = 0;
@@ -111,81 +110,42 @@ export class OrderSync extends BaseSync {
                 continue;
             }
 
-            const existingOrders = await prisma.wooOrder.findMany({
-                where: {
-                    accountId,
-                    wooId: { in: orders.map((o) => o.id) }
-                },
-                select: { wooId: true, status: true }
+            const existingOrders = await withOrderTotalsTransaction(accountId, async tx => {
+                const existing = await tx.wooOrder.findMany({
+                    where: { accountId, wooId: { in: orders.map(o => o.id) } },
+                    select: { wooId: true, status: true, wooCustomerId: true, billingEmail: true }
+                });
+                const associations = [...existing];
+                for (const order of orders) {
+                    const rawEmail = order.billing?.email;
+                    const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
+                    const billingCountry = order.billing?.country || null;
+                    const wooCustomerId = order.customer_id > 0 ? order.customer_id : null;
+                    const data = {
+                        status: normalizeOrderStatus(order.status),
+                        total: order.total === '' ? '0' : order.total,
+                        currency: order.currency,
+                        billingEmail,
+                        billingCountry,
+                        wooCustomerId,
+                        dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
+                        rawData: order as any
+                    };
+                    associations.push({ wooId: order.id, status: order.status, wooCustomerId, billingEmail });
+                    await tx.wooOrder.upsert({
+                        where: { accountId_wooId: { accountId, wooId: order.id } },
+                        update: data,
+                        create: {
+                            ...data, accountId, wooId: order.id, number: order.number,
+                            dateCreated: new Date(order.date_created_gmt || order.date_created || new Date())
+                        }
+                    });
+                }
+                await updateCustomerTotals(tx, accountId, associations);
+                return existing;
             });
             const existingMap = new Map(existingOrders.map(o => [o.wooId, o.status]));
-
-            // Batch upserts in transaction chunks of 50 (matches CustomerSync pattern)
-            const UPSERT_CHUNK_SIZE = 50;
-            const failedWooIds: number[] = [];
-            for (let i = 0; i < orders.length; i += UPSERT_CHUNK_SIZE) {
-                const chunk = orders.slice(i, i + UPSERT_CHUNK_SIZE);
-
-                // Execute batch upserts concurrently (no transaction — each upsert is idempotent)
-                const upsertResults = await Promise.all(
-                    chunk.map((order) => {
-                        const rawEmail = (order as any).billing?.email;
-                        const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
-                        const billingCountry = (order as any).billing?.country || null;
-                        const wooCustomerId = (order as any).customer_id > 0 ? (order as any).customer_id : null;
-
-                        return prisma.wooOrder.upsert({
-                            where: { accountId_wooId: { accountId, wooId: order.id } },
-                            update: {
-                                status: normalizeOrderStatus(order.status),
-                                total: order.total === '' ? '0' : order.total,
-                                currency: order.currency,
-                                billingEmail,
-                                billingCountry,
-                                wooCustomerId,
-                                dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
-                                rawData: order as any
-                            },
-                            create: {
-                                accountId,
-                                wooId: order.id,
-                                number: order.number,
-                                status: normalizeOrderStatus(order.status),
-                                total: order.total === '' ? '0' : order.total,
-                                currency: order.currency,
-                                billingEmail,
-                                billingCountry,
-                                wooCustomerId,
-                                dateCreated: new Date(order.date_created_gmt || order.date_created || new Date()),
-                                dateModified: new Date(order.date_modified_gmt || order.date_modified || new Date()),
-                                rawData: order as any
-                            }
-                        }).then(() => true).catch((err) => {
-                            Logger.warn('Failed to upsert order', {
-                                accountId, syncId, wooId: order.id, error: err.message
-                            });
-                            failedWooIds.push(order.id);
-                            return false;
-                        });
-                    })
-                );
-                const chunkFailures = upsertResults.filter(r => r === false).length;
-                if (chunkFailures > 0) {
-                    totalUpsertFailures += chunkFailures;
-                }
-            }
-
-            // Preserve existing records that failed to upsert (transient DB errors)
-            // so updatedAt-based reconciliation doesn't delete them
-            if (failedWooIds.length > 0) {
-                await prisma.$executeRawUnsafe(
-                    `UPDATE "WooOrder" SET "updatedAt" = NOW() WHERE "accountId" = $1 AND "wooId" = ANY($2::int[])`,
-                    accountId, failedWooIds
-                );
-            }
-
-            const failedWooIdSet = new Set(failedWooIds);
-            const persistedOrders = orders.filter(order => !failedWooIdSet.has(order.id));
+            const persistedOrders = orders;
 
             let orderTagsMap: Map<number, string[]> | undefined;
             try {
@@ -260,7 +220,7 @@ export class OrderSync extends BaseSync {
             }
             totalProcessed += persistedOrders.length;
 
-            Logger.info(`Synced batch of ${persistedOrders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped, upsertFailures: totalUpsertFailures });
+            Logger.info(`Synced batch of ${persistedOrders.length} orders`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
 
             // use WooCommerce's x-wp-totalpages header instead of checking batch size
             // (batch size is unreliable due to WC filtering and Zod validation skips)
@@ -276,10 +236,6 @@ export class OrderSync extends BaseSync {
 
             // Throttle API pagination to avoid overwhelming the WooCommerce store
             if (hasMore) await new Promise(r => setTimeout(r, 500));
-        }
-
-        if (totalUpsertFailures > 0) {
-            throw new Error(`Order sync could not persist ${totalUpsertFailures} order(s); checkpoint was not advanced.`);
         }
 
         // Reconciliation: remove orders not touched during this full sync.
@@ -305,29 +261,45 @@ export class OrderSync extends BaseSync {
                         syncedTotal: totalProcessed
                     });
                 } else {
-                    // Stream ES deletions in chunks so we never hold the full ID list.
+                    // Select, delete and repair totals together. Keyset bounds remain valid after deletion.
                     const ES_DELETE_CHUNK = 500;
                     let cursor: string | undefined;
                     while (true) {
-                        const chunk: { id: string; wooId: number }[] = await prisma.wooOrder.findMany({
-                            where: { accountId, updatedAt: { lt: syncStartedAt } },
-                            select: { id: true, wooId: true },
-                            orderBy: { id: 'asc' },
-                            take: ES_DELETE_CHUNK,
-                            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+                        const chunk = await withOrderTotalsTransaction(accountId, async tx => {
+                            const stale = await tx.wooOrder.findMany({
+                                where: { accountId, updatedAt: { lt: syncStartedAt }, ...(cursor ? { id: { gt: cursor } } : {}) },
+                                select: { id: true, wooId: true, wooCustomerId: true, billingEmail: true },
+                                orderBy: { id: 'asc' },
+                                take: ES_DELETE_CHUNK,
+                            });
+                            if (stale.length) {
+                                // Lock selected rows against concurrent webhook updates, then recheck staleness.
+                                const deleted = await tx.$queryRaw<typeof stale>`
+                                    DELETE FROM "WooOrder" WHERE "accountId" = ${accountId}
+                                    AND "id" = ANY(${stale.map(o => o.id)}::text[])
+                                    AND "updatedAt" < ${syncStartedAt}
+                                    RETURNING "id", "wooId", "wooCustomerId", "billingEmail"
+                                `;
+                                await updateCustomerTotals(tx, accountId, deleted);
+                                // Do not commit away the retry set until ES acknowledges the deletes.
+                                if (deleted.length) {
+                                    const result = await esClient.bulk({ refresh: false, operations: deleted.map(o => (
+                                        { delete: { _index: 'orders', _id: `${accountId}_${o.wooId}` } }
+                                    )) }, { requestTimeout: 10000, maxRetries: 0 });
+                                    if (result.items.some(item => item.delete?.error && item.delete.status !== 404)) {
+                                        throw new Error('Failed to delete reconciled orders from Elasticsearch');
+                                    }
+                                }
+                                return { stale, deleted };
+                            }
+                            return { stale, deleted: [] };
                         });
-                        if (chunk.length === 0) break;
-                        await Promise.allSettled(
-                            chunk.map(o => IndexingService.deleteOrder(accountId, o.wooId))
-                        );
-                        cursor = chunk[chunk.length - 1].id;
-                        if (chunk.length < ES_DELETE_CHUNK) break;
+                        if (chunk.stale.length === 0) break;
+                        totalDeleted += chunk.deleted.length;
+                        cursor = chunk.stale[chunk.stale.length - 1].id;
+                        if (job) await this.assertNotCancelled(job);
+                        if (chunk.stale.length < ES_DELETE_CHUNK) break;
                     }
-
-                    const { count } = await prisma.wooOrder.deleteMany({
-                        where: { accountId, updatedAt: { lt: syncStartedAt } }
-                    });
-                    totalDeleted = count;
 
                     Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned orders`, { accountId, syncId });
                 }
@@ -335,16 +307,22 @@ export class OrderSync extends BaseSync {
         }
 
         if (expectedTotal > 0 && totalProcessed < expectedTotal) {
-            Logger.warn(`Order sync incomplete: processed ${totalProcessed}/${expectedTotal} orders (${totalSkipped} skipped, ${totalUpsertFailures} failed)`, {
-                accountId, syncId, expectedTotal, totalProcessed, totalSkipped, totalUpsertFailures, incremental
+            Logger.warn(`Order sync incomplete: processed ${totalProcessed}/${expectedTotal} orders (${totalSkipped} skipped)`, {
+                accountId, syncId, expectedTotal, totalProcessed, totalSkipped, incremental
             });
         } else {
             Logger.info(`Order sync complete: ${totalProcessed}/${expectedTotal} orders processed`, {
-                accountId, syncId, totalDeleted, totalSkipped, totalUpsertFailures, incremental
+                accountId, syncId, totalDeleted, totalSkipped, incremental
             });
         }
 
-        await this.recalculateCustomerCounts(accountId, syncId);
+        if (!incremental || isBaselineSync) {
+            await this.recalculateCustomerCounts(accountId, syncId);
+        } else {
+            // CustomerSync can change identities or replace totals even when no orders changed.
+            // updatedAt also retains old associations for recovery after a failed ES attempt.
+            await recalculateCustomerTotals(accountId, new Date(after!));
+        }
 
         // After a full sync, refresh ES indices to ensure all changes (including deletes) are searchable
         if (!incremental) {
@@ -359,118 +337,13 @@ export class OrderSync extends BaseSync {
         return { itemsProcessed: totalProcessed, itemsDeleted: totalDeleted };
     }
 
-    /**
-     * Recalculate customer order counts using a two-step approach to avoid deadlocks.
-     * Why: The previous single-transaction UPDATE...FROM...JOIN held row locks on all
-     * WooCustomer rows simultaneously, causing deadlocks (40P01) when concurrent syncs
-     * ran. This new approach reads counts first, then applies in small batches.
-     */
+    /** Explicit full rebuild retained for recovery and existing protected callers. */
     protected async recalculateCustomerCounts(accountId: string, syncId?: string): Promise<void> {
-        Logger.info('Recalculating customer order counts from local orders...', { accountId, syncId });
+        Logger.info('Rebuilding customer totals from local orders', { accountId, syncId });
+        await this.recalculateCustomerTotals(accountId);
+    }
 
-        try {
-            // Step 1: Read counts (no locks held)
-            const counts = await prisma.$queryRaw<Array<{ customer_id: string; count: number; total_spent: number }>>`
-                SELECT
-                    c."id" as customer_id,
-                    COUNT(*)::int as count,
-                    COALESCE(SUM("total"), 0)::float8 as total_spent
-                FROM "WooOrder" o
-                INNER JOIN "WooCustomer" c
-                    ON c."accountId" = o."accountId"
-                    AND (
-                        (o."wooCustomerId" IS NOT NULL AND c."wooId" = o."wooCustomerId")
-                        OR (o."wooCustomerId" IS NULL AND o."billingEmail" IS NOT NULL AND c."email" = o."billingEmail")
-                    )
-                WHERE o."accountId" = ${accountId}
-                GROUP BY c."id"
-            `;
-
-            await retryWithBackoff(
-                () => prisma.wooCustomer.updateMany({
-                    where: { accountId },
-                    data: { ordersCount: 0, totalSpent: 0 }
-                }),
-                {
-                    context: 'OrderSync:resetCustomerOrderCounts',
-                    maxRetries: 3,
-                    baseDelayMs: 500
-                }
-            );
-
-            if (counts.length === 0) {
-                Logger.info('No customer order counts to update', { accountId, syncId });
-                return;
-            }
-
-            // Step 2: Apply in small batches to minimize lock duration
-            const BATCH_SIZE = 50;
-            let updated = 0;
-
-            for (let i = 0; i < counts.length; i += BATCH_SIZE) {
-                const batch = counts.slice(i, i + BATCH_SIZE);
-                await Promise.all(batch.map(c =>
-                    retryWithBackoff(
-                        () => prisma.wooCustomer.updateMany({
-                            where: { accountId, id: c.customer_id },
-                            data: { ordersCount: c.count, totalSpent: c.total_spent }
-                        }),
-                        {
-                            context: `OrderSync:updateCustomerOrderCount:${c.customer_id}`,
-                            maxRetries: 3,
-                            baseDelayMs: 500
-                        }
-                    ).catch(err => {
-                        Logger.warn('Failed to update order count for customer', {
-                            accountId,
-                            syncId,
-                            customerId: c.customer_id,
-                            error: err.message,
-                            code: err?.code || err?.cause?.code
-                        });
-                    })
-                ));
-                updated += batch.length;
-            }
-
-            Logger.info(`Updated customer order counts: ${updated} customers`, { accountId, syncId });
-
-            const updatedCustomers = await prisma.wooCustomer.findMany({
-                where: {
-                    accountId,
-                    id: { in: counts.map(c => c.customer_id) }
-                },
-                select: {
-                    wooId: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true,
-                    totalSpent: true,
-                    ordersCount: true,
-                    createdAt: true
-                }
-            });
-
-            if (updatedCustomers.length > 0) {
-                await IndexingService.bulkIndexCustomers(
-                    accountId,
-                    updatedCustomers.map(customer => ({
-                        id: customer.wooId,
-                        email: customer.email,
-                        first_name: customer.firstName,
-                        last_name: customer.lastName,
-                        total_spent: Number(customer.totalSpent || 0).toString(),
-                        orders_count: customer.ordersCount,
-                        date_created: customer.createdAt?.toISOString()
-                    }))
-                );
-            }
-
-        } catch (error: any) {
-            // Non-fatal — don't break the sync for a count mismatch
-            Logger.warn('Failed to recalculate customer order counts', {
-                accountId, syncId, error: error.message
-            });
-        }
+    public async recalculateCustomerTotals(accountId: string): Promise<void> {
+        await recalculateCustomerTotals(accountId);
     }
 }

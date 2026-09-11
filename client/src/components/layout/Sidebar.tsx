@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef, memo } from 'react';
+import { useState, useEffect, useEffectEvent, useMemo, useRef, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePrefetch } from '../../hooks/usePrefetch';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -147,6 +148,66 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     const isWholesaleCatalogEnabled = useAccountFeature('WHOLESALE_CATALOG');
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
+    const previousLocationRef = useRef(location);
+    const drawerRootRef = useRef<HTMLDivElement>(null);
+    const drawerRef = useRef<HTMLElement>(null);
+    const closeDrawer = useEffectEvent(() => onClose?.());
+
+    useEffect(() => {
+        if (!isMobile || !isOpen || !drawerRef.current || !drawerRootRef.current) return;
+        const drawer = drawerRef.current;
+        const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const background = Array.from(document.body.children)
+            .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== drawerRootRef.current)
+            .map(element => ({ element, inert: element.inert, ariaHidden: element.getAttribute('aria-hidden') }));
+        const overflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        drawer.querySelector<HTMLButtonElement>('button')?.focus();
+        background.forEach(({ element }) => {
+            element.inert = true;
+            element.setAttribute('aria-hidden', 'true');
+        });
+
+        const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                closeDrawer();
+            } else if (event.key === 'Tab') {
+                const elements = Array.from(drawer.querySelectorAll<HTMLElement>(focusableSelector))
+                    .filter(element => !element.closest('[hidden], [inert], [aria-hidden="true"]'));
+                const first = elements[0];
+                const last = elements[elements.length - 1];
+                if (!first || !last) {
+                    event.preventDefault();
+                    drawer.focus();
+                } else if (event.shiftKey && (document.activeElement === first || document.activeElement === drawer || !drawer.contains(document.activeElement))) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && (document.activeElement === last || !drawer.contains(document.activeElement))) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            }
+        };
+        const handleFocus = (event: FocusEvent) => {
+            if (!drawer.contains(event.target as Node)) drawer.focus();
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('focusin', handleFocus);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            document.removeEventListener('focusin', handleFocus);
+            background.forEach(({ element, inert, ariaHidden }) => {
+                element.inert = inert;
+                if (ariaHidden === null) element.removeAttribute('aria-hidden');
+                else element.setAttribute('aria-hidden', ariaHidden);
+            });
+            document.body.style.overflow = overflow;
+            if (previouslyFocused?.isConnected) previouslyFocused.focus();
+        };
+    }, [isMobile, isOpen]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -335,14 +396,10 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
 
     // Close drawer on navigation (mobile only)
     useEffect(() => {
-        if (isMobile && onClose) {
-            // Defer the close to avoid cascading renders
-            const timeoutId = setTimeout(() => {
-                onClose();
-            }, 0);
-            return () => clearTimeout(timeoutId);
-        }
-    }, [location.pathname, isMobile, onClose]);
+        const navigated = previousLocationRef.current !== location;
+        previousLocationRef.current = location;
+        if (navigated && isMobile && isOpen) closeDrawer();
+    }, [location, isMobile, isOpen]);
 
 
     const toggleGroup = (label: string) => {
@@ -537,16 +594,23 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
 
     // Mobile: render as fixed overlay drawer
     if (isMobile) {
-        return (
-            <>
+        if (!isOpen) return null;
+        return createPortal(
+            <div ref={drawerRootRef}>
                 {/* Backdrop with blur */}
                 {isOpen && (
                     <div
+                        aria-hidden="true"
                         className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-40 transition-opacity duration-300"
                         onClick={onClose}
                     />
                 )}
                 <aside
+                    ref={drawerRef}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Main navigation"
+                    tabIndex={-1}
                     className={cn(
                         "fixed inset-y-0 left-0 w-72 flex flex-col z-50 transition-transform duration-300 ease-out",
                         "bg-gradient-to-b from-white to-slate-50 dark:from-slate-900 dark:to-slate-950",
@@ -557,6 +621,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                 >
                     {/* Close button for mobile */}
                     <button
+                        type="button"
+                        aria-label="Close navigation"
                         onClick={onClose}
                         className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl z-10 transition-all duration-200 dark:hover:bg-slate-700/50 dark:hover:text-slate-300"
                     >
@@ -564,7 +630,8 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     </button>
                     {sidebarContent}
                 </aside>
-            </>
+            </div>,
+            document.body
         );
     }
 

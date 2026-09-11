@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef, useMemo } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from './AuthContext';
+import { api } from '../services/api';
 /* eslint-disable react-refresh/only-export-components */
 
 interface Account {
@@ -43,6 +44,8 @@ interface AccountContextType {
     accounts: Account[];
     currentAccount: Account | null;
     isLoading: boolean;
+    loadError: string | null;
+    hasLoaded: boolean;
     refreshAccounts: () => Promise<void>;
     setCurrentAccount: (account: Account) => void;
     /** Resolved permissions for the current user+account, sourced from /me */
@@ -64,11 +67,17 @@ interface AccountMeData {
 }
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-    const { token, user, isLoading: authLoading, logout, updateUser } = useAuth();
+    const { token, user, isLoading: authLoading, updateUser } = useAuth();
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [meData, setMeData] = useState<AccountMeData | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [hasLoaded, setHasLoaded] = useState(false);
+    const loadVersionRef = useRef(0);
+    const ownerRef = useRef(user?.id);
+    ownerRef.current = user?.id;
+    const [loadedOwner, setLoadedOwner] = useState(user?.id);
 
     const userRef = useRef(user);
     userRef.current = user;
@@ -79,11 +88,31 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
     const permissionsCacheRef = useRef<Map<string, { data: AccountMeData; updatedAt: number }>>(new Map());
 
+    useEffect(() => {
+        setLoadedOwner(user?.id);
+        setAccounts([]);
+        setCurrentAccount(null);
+        setMeData(null);
+        setHasLoaded(false);
+        setLoadError(null);
+        setIsLoading(true);
+        accountsRef.current = [];
+        currentAccountRef.current = null;
+        permissionsCacheRef.current.clear();
+    }, [user?.id]);
+
     const refreshAccounts = useCallback(async () => {
+        const version = ++loadVersionRef.current;
+        const owner = ownerRef.current;
+        const isCurrent = () => version === loadVersionRef.current && owner === ownerRef.current;
+        setLoadError(null);
         if (!token) {
             setAccounts([]);
             setCurrentAccount(null);
             setIsLoading(false);
+            setHasLoaded(false);
+            setMeData(null);
+            permissionsCacheRef.current.clear();
             return;
         }
 
@@ -96,57 +125,30 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            let response = await fetch('/api/accounts', {
-                headers: { Authorization: `Bearer ${token}` }
+            const data = await api.get<Account[]>('/api/accounts', token);
+            if (!isCurrent()) return;
+            if (!Array.isArray(data)) throw new Error('Invalid accounts response');
+            setHasLoaded(true);
+            // Preserve identities so silent token refresh does not reset in-progress editors.
+            setAccounts(prev => JSON.stringify(prev) === JSON.stringify(data) ? prev : data);
+            setCurrentAccount(prev => {
+                const savedId = localStorage.getItem('selectedAccountId');
+                const targetId = prev?.id || savedId;
+                const accountToSelect = data.find(a => a.id === targetId) || data[0] || null;
+                if (prev && accountToSelect && prev.id === accountToSelect.id &&
+                    JSON.stringify(prev) === JSON.stringify(accountToSelect)) {
+                    return prev;
+                }
+                return accountToSelect;
             });
-
-            // A refresh may have completed in another tab after this request started.
-            // Retry once with the latest token before concluding the session is invalid.
-            if (response.status === 401) {
-                const latestToken = localStorage.getItem('token');
-                if (latestToken && latestToken !== token) {
-                    response = await fetch('/api/accounts', {
-                        headers: { Authorization: `Bearer ${latestToken}` }
-                    });
-                }
-
-                if (response.status === 401) {
-                    logout();
-                    return;
-                }
-            }
-
-            if (response.ok) {
-                const data: Account[] = await response.json();
-                // Why: preserve array identity when contents are unchanged so downstream
-                // useEffect([accounts]) hooks don't re-fire on silent token refresh.
-                setAccounts(prev => JSON.stringify(prev) === JSON.stringify(data) ? prev : data);
-
-                // Try to find the account we should show:
-                // 1. The account saved in localStorage (if we just reloaded the page)
-                // 2. The first account in the list (fallback)
-                // Note: We use functional update to avoid stale closure while preventing infinite loops
-                setCurrentAccount(prev => {
-                    const savedId = localStorage.getItem('selectedAccountId');
-                    const targetId = prev?.id || savedId;
-                    const accountToSelect = data.find((a: Account) => a.id === targetId) || (data.length > 0 ? data[0] : null);
-                    // Why: preserve object identity when the selected account is structurally
-                    // unchanged. Prevents ~40 downstream useEffect([currentAccount]) hooks
-                    // from refetching (and clobbering in-progress form edits) on every
-                    // silent token refresh.
-                    if (prev && accountToSelect && prev.id === accountToSelect.id &&
-                        JSON.stringify(prev) === JSON.stringify(accountToSelect)) {
-                        return prev;
-                    }
-                    return accountToSelect;
-                });
-            }
         } catch (error) {
+            if (!isCurrent()) return;
+            setLoadError('Unable to load your accounts. Please try again.');
             Logger.error('Failed to fetch accounts', { error: error });
         } finally {
-            setIsLoading(false);
+            if (isCurrent()) setIsLoading(false);
         }
-    }, [token, logout]);
+    }, [token]);
 
     // Persist selection to localStorage whenever it changes
     useEffect(() => {
@@ -157,7 +159,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const accountId = currentAccount?.id;
-        if (!accountId || !token) {
+        if (!accountId || !token || loadedOwner !== user?.id) {
             setMeData(null);
             return;
         }
@@ -172,16 +174,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
         const loadMe = async () => {
             try {
-                const res = await fetch('/api/auth/me', {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'x-account-id': accountId,
-                    },
+                const userData = await api.request<AccountMeData>('/api/auth/me', {
+                    token,
+                    accountId,
                     signal: controller.signal,
                 });
-                if (!res.ok) return;
-
-                const userData = await res.json() as AccountMeData;
+                if (controller.signal.aborted) return;
                 permissionsCacheRef.current.set(accountId, { data: userData, updatedAt: Date.now() });
                 setMeData(userData);
 
@@ -203,7 +201,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         loadMe();
 
         return () => controller.abort();
-    }, [currentAccount?.id, token, updateUser]);
+    }, [currentAccount?.id, token, loadedOwner, user?.id, updateUser]);
 
     useEffect(() => {
         // Don't fetch accounts until auth has finished loading
@@ -212,7 +210,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
             return;
         }
         refreshAccounts();
-    }, [token, authLoading, refreshAccounts]);
+        return () => { loadVersionRef.current++; };
+    }, [token, user?.id, authLoading, refreshAccounts]);
 
     useEffect(() => {
         const handleStorage = (event: StorageEvent) => {
@@ -239,7 +238,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }, [accounts]);
 
     // isLoading should be true if either auth is loading or accounts are loading
-    const effectiveLoading = authLoading || isLoading;
+    const effectiveLoading = authLoading || isLoading || loadedOwner !== user?.id;
 
     // Why: stable empty-object fallback so the useMemo below isn't invalidated
     // every render when there are no permissions yet.
@@ -256,10 +255,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         accounts,
         currentAccount,
         isLoading: effectiveLoading,
+        loadError,
+        hasLoaded,
         refreshAccounts,
         setCurrentAccount,
         activePermissions,
-    }), [accounts, currentAccount, effectiveLoading, refreshAccounts, activePermissions]);
+    }), [accounts, currentAccount, effectiveLoading, loadError, hasLoaded, refreshAccounts, activePermissions]);
 
     return (
         <AccountContext.Provider value={value}>

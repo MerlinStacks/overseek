@@ -127,17 +127,32 @@ function PageLoader() {
 
 // Component to handle redirection based on account status
 // Component to ensure account exists/is selected
-function AccountGuard({ children }: { children: React.ReactNode }) {
-    const { accounts, isLoading } = useAccount();
+// eslint-disable-next-line react-refresh/only-export-components
+export function AccountGuard({ children }: { children: React.ReactNode }) {
+    const { accounts, isLoading, loadError, hasLoaded, refreshAccounts } = useAccount();
 
     if (isLoading) return <div>Loading...</div>;
 
-    // If no accounts, force the wizard
-    if (accounts.length === 0) {
+    if (!loadError && !hasLoaded) return <div>Loading...</div>;
+
+    // Only a successful empty response should enter setup.
+    if (!loadError && hasLoaded && accounts.length === 0) {
         return <Navigate to="/wizard" replace />;
     }
 
-    return <>{children}</>;
+    return (
+        <>
+            {loadError && (
+                <div role="alert" className="m-4 rounded-xl border border-slate-200 bg-white p-4 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    <p>{loadError}</p>
+                    <button type="button" onClick={() => void refreshAccounts()} className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700">
+                        Retry
+                    </button>
+                </div>
+            )}
+            {accounts.length > 0 && children}
+        </>
+    );
 }
 
 function FeatureGuard({ featureKey, children }: { featureKey: string; children: React.ReactNode }) {

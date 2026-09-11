@@ -11,13 +11,33 @@ import { visualizer } from 'rollup-plugin-visualizer'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '')
-    const buildId = (env.VITE_BUILD_ID || new Date().toISOString())
+    const builtAt = new Date().toISOString()
+    const buildId = (env.VITE_BUILD_ID || builtAt)
         .replace(/[^a-zA-Z0-9_-]/g, '')
         .slice(0, 40)
+    const release = {
+        version: builtAt.split('T')[0].replace(/-/g, '.'),
+        buildId,
+        builtAt,
+    }
     return {
         plugins: [
             react(),
             tailwindcss(),
+            // Release checks must describe the served frontend, not the API's clock.
+            {
+                name: 'app-release',
+                generateBundle() {
+                    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify(release) });
+                },
+                configureServer(server) {
+                    server.middlewares.use('/health/version', (_req, res) => {
+                        res.setHeader('Content-Type', 'application/json');
+                        res.setHeader('Cache-Control', 'no-store');
+                        res.end(JSON.stringify(release));
+                    });
+                },
+            },
             // Auto-version the service worker on each build to bust caches
             // Uses writeBundle hook since public/ files are copied, not transformed
             {
@@ -46,7 +66,9 @@ export default defineConfig(({ mode }) => {
         ].filter(Boolean),
         // Auto-generate app version at build time for PWA update detection
         define: {
-            __APP_VERSION__: JSON.stringify(new Date().toISOString().split('T')[0].replace(/-/g, '.'))
+            __APP_VERSION__: JSON.stringify(release.version),
+            __APP_BUILD_ID__: JSON.stringify(buildId),
+            __APP_BUILT_AT__: JSON.stringify(builtAt),
         },
         resolve: {
             dedupe: [

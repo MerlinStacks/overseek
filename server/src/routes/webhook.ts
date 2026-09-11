@@ -16,6 +16,8 @@ import { isExcludedOrderStatus, normalizeOrderStatus } from '../constants/orderS
 import { campaignTrackingService } from '../services/CampaignTrackingService';
 import { emailListService } from '../services/EmailListService';
 import { reconcileWholesaleProductsBestEffort } from '../services/wholesale/reconciliation';
+import { updateCustomerTotals, withOrderTotalsTransaction } from '../services/sync/orderCustomerTotals';
+import { esClient } from '../utils/elastic';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 const PAID_ATTRIBUTION_STATUSES = ['processing', 'on-hold', 'completed'];
@@ -101,12 +103,33 @@ export async function processWebhookPayload(
     wcDeliveryId?: string
 ): Promise<void> {
     // Handle Order Events
-    if (topic === 'order.created' || topic === 'order.updated') {
-        const existingOrder = await prisma.wooOrder.findUnique({
-            where: { accountId_wooId: { accountId, wooId: Number(body.id) } },
-            select: { status: true }
+    if (topic === 'order.deleted') {
+        const wooId = Number(body.id);
+        await withOrderTotalsTransaction(accountId, async tx => {
+            const existing = await tx.wooOrder.findUnique({
+                where: { accountId_wooId: { accountId, wooId } },
+                select: { wooCustomerId: true, billingEmail: true }
+            });
+            if (existing) {
+                await tx.wooOrder.deleteMany({ where: { accountId, wooId } });
+                await updateCustomerTotals(tx, accountId, [existing]);
+            }
         });
-        const previousStatus = existingOrder?.status || null;
+        // The delivery payload retains the Woo ID for replay even after the SQL row is gone.
+        // Retry the ES delete on duplicate deliveries too, without holding database locks.
+        try {
+            await esClient.delete({ index: 'orders', id: `${accountId}_${wooId}` }, {
+                requestTimeout: 10000, maxRetries: 0
+            });
+        } catch (error: any) {
+            if (error.meta?.statusCode !== 404) throw error;
+        }
+        Logger.info('Processed order.deleted webhook', { accountId, orderId: wooId });
+        return;
+    }
+
+    if (topic === 'order.created' || topic === 'order.updated') {
+        let previousStatus: string | null = null;
 
         const orderStatus = normalizeOrderStatus((body as any).status);
         if (isExcludedOrderStatus(orderStatus)) {
@@ -126,35 +149,48 @@ export async function processWebhookPayload(
             const billingCountry = order.billing?.country || null;
             const wooCustomerId = order.customer_id > 0 ? order.customer_id : null;
 
-            await prisma.wooOrder.upsert({
-                where: { accountId_wooId: { accountId, wooId: order.id } },
-                update: {
-                    status: normalizedStatus,
-                    total: order.total === '' ? '0' : order.total,
-                    currency: order.currency,
-                    billingEmail,
-                    billingCountry,
-                    wooCustomerId,
-                    dateModified: new Date(order.date_modified || new Date()),
-                    rawData: order
-                },
-                create: {
-                    accountId,
-                    wooId: order.id,
-                    number: order.number,
-                    status: normalizedStatus,
-                    total: order.total === '' ? '0' : order.total,
-                    currency: order.currency,
-                    billingEmail,
-                    billingCountry,
-                    wooCustomerId,
-                    dateCreated: new Date(order.date_created || new Date()),
-                    dateModified: new Date(order.date_modified || new Date()),
-                    rawData: order
-                }
+            previousStatus = await withOrderTotalsTransaction(accountId, async tx => {
+                const existingOrder = await tx.wooOrder.findUnique({
+                    where: { accountId_wooId: { accountId, wooId: Number(order.id) } },
+                    select: { status: true, wooCustomerId: true, billingEmail: true }
+                });
+                await tx.wooOrder.upsert({
+                    where: { accountId_wooId: { accountId, wooId: order.id } },
+                    update: {
+                        status: normalizedStatus,
+                        total: order.total === '' ? '0' : order.total,
+                        currency: order.currency,
+                        billingEmail,
+                        billingCountry,
+                        wooCustomerId,
+                        dateModified: new Date(order.date_modified || new Date()),
+                        rawData: order
+                    },
+                    create: {
+                        accountId,
+                        wooId: order.id,
+                        number: order.number,
+                        status: normalizedStatus,
+                        total: order.total === '' ? '0' : order.total,
+                        currency: order.currency,
+                        billingEmail,
+                        billingCountry,
+                        wooCustomerId,
+                        dateCreated: new Date(order.date_created || new Date()),
+                        dateModified: new Date(order.date_modified || new Date()),
+                        rawData: order
+                    }
+                });
+                await updateCustomerTotals(tx, accountId, [
+                    ...(existingOrder ? [existingOrder] : []),
+                    { wooCustomerId, billingEmail }
+                ]);
+                return existingOrder?.status || null;
             });
         } catch (error) {
             Logger.error('[Webhook] Failed to save order to DB', { accountId, orderId: body.id, error });
+            // Do not acknowledge, index or emit lifecycle events for a rolled-back mutation.
+            throw error;
         }
 
         try {

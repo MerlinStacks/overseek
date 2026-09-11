@@ -1,146 +1,104 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OrderSync } from './OrderSync';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../utils/prisma';
+import { esClient } from '../../utils/elastic';
+import { recalculateCustomerTotals, reindexCustomerTotals, updateCustomerTotals, withOrderTotalsTransaction } from './orderCustomerTotals';
 
-// Mock dependencies
-vi.mock('../../utils/prisma', () => ({
-    prisma: {
-        $queryRaw: vi.fn(),
-        wooOrder: {
-            findMany: vi.fn(),
-            upsert: vi.fn(),
-            delete: vi.fn()
-        },
-        wooCustomer: {
-            updateMany: vi.fn(),
-            findMany: vi.fn()
-        },
-        syncState: {
-            findUnique: vi.fn(),
-            upsert: vi.fn()
-        },
-        syncLog: {
-            create: vi.fn(),
-            update: vi.fn()
-        }
-    },
-    Prisma: {
-        sql: vi.fn(),
-        join: vi.fn()
-    }
-}));
+vi.mock('../../utils/prisma', () => ({ prisma: {
+    $transaction: vi.fn(), $queryRaw: vi.fn(), $executeRaw: vi.fn(),
+    wooCustomer: { findMany: vi.fn(), updateMany: vi.fn() }
+} }));
+vi.mock('../../utils/elastic', () => ({ esClient: { bulk: vi.fn() } }));
+vi.mock('../../utils/logger', () => ({ Logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-// Mock Logger
-vi.mock('../../utils/logger', () => ({
-    Logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn()
-    }
-}));
+const customer = (id: string, count = 0) => ({ id, wooId: Number(id), email: 'guest@example.com',
+    firstName: 'Guest', lastName: null, ordersCount: count, totalSpent: '0.00', createdAt: new Date('2026-01-01') });
 
-// Mock other dependencies that OrderSync imports
-vi.mock('../woo', () => ({
-    WooService: {
-        forAccount: vi.fn()
-    }
-}));
-
-vi.mock('../search/IndexingService', () => ({
-    IndexingService: {
-        indexOrder: vi.fn(),
-        deleteOrder: vi.fn(),
-        bulkIndexCustomers: vi.fn()
-    }
-}));
-
-vi.mock('../OrderTaggingService', () => ({
-    OrderTaggingService: {
-        extractTagsFromOrder: vi.fn(),
-        getTagMappings: vi.fn()
-    }
-}));
-
-vi.mock('../events', () => ({
-    EventBus: {
-        emit: vi.fn()
-    },
-    EVENTS: {
-        ORDER: {
-            CREATED: 'order.created',
-            SYNCED: 'order.synced'
-        }
-    }
-}));
-
-// Create a subclass to access protected method
-class TestOrderSync extends OrderSync {
-    public async testRecalculate(accountId: string) {
-        return this.recalculateCustomerCounts(accountId);
-    }
-}
-
-describe('OrderSync Optimization', () => {
-    let orderSync: TestOrderSync;
-
+describe('OrderSync customer aggregates', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
-        orderSync = new TestOrderSync();
+        vi.resetAllMocks();
+        vi.mocked(prisma.$transaction).mockImplementation(async (work: any) => work(prisma));
+        vi.mocked(prisma.wooCustomer.findMany).mockResolvedValue([]);
+        vi.mocked(esClient.bulk).mockResolvedValue({ errors: false, items: [] } as any);
     });
 
-    it('should use two-step approach for recalculating customer counts', async () => {
-        const accountId = 'test-account';
-
-        // Step 1: $queryRaw returns aggregated counts
-        const mockCounts = [
-            { customer_id: 'customer-101', count: 3, total_spent: 120.5 },
-            { customer_id: 'customer-202', count: 5, total_spent: 250.0 },
-        ];
-        (prisma.$queryRaw as any).mockResolvedValue(mockCounts);
-
-        (prisma.wooCustomer.updateMany as any).mockResolvedValue({ count: 1 });
-        (prisma.wooCustomer.findMany as any).mockResolvedValue([]);
-
-        await orderSync.testRecalculate(accountId);
-
-        // Verify Step 1: Read counts via $queryRaw (no locks held)
-        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-
-        // Verify Step 2: Individual updateMany calls (no $transaction)
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(3);
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
-            where: { accountId },
-            data: { ordersCount: 0, totalSpent: 0 }
-        });
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
-            where: { accountId, id: 'customer-101' },
-            data: { ordersCount: 3, totalSpent: 120.5 }
-        });
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
-            where: { accountId, id: 'customer-202' },
-            data: { ordersCount: 5, totalSpent: 250 }
-        });
+    it('targets both old and new associations and uses email only for guests', async () => {
+        await updateCustomerTotals(prisma as any, 'tenant', [
+            { wooCustomerId: 10, billingEmail: 'not-a-fallback@example.com' },
+            { wooCustomerId: null, billingEmail: 'old@example.com' },
+            { wooCustomerId: 20, billingEmail: 'registered@example.com' },
+            { wooCustomerId: null, billingEmail: 'new@example.com' },
+            { wooCustomerId: 10, billingEmail: null }
+        ]);
+        const [sql, ...values] = vi.mocked(prisma.$executeRaw).mock.calls[0];
+        expect(values).toEqual(['tenant', [10, 20], ['old@example.com', 'new@example.com'], [], 'tenant']);
+        const text = (sql as TemplateStringsArray).join('?');
+        expect(text).toContain('LEFT JOIN "WooOrder"');
+        expect(text).toContain('COUNT(o."id")');
+        expect(text).toContain('COALESCE(SUM(o."total"), 0)');
+        expect(text).not.toContain('status');
+        expect(prisma.wooCustomer.updateMany).not.toHaveBeenCalled();
     });
 
-    it('should skip update when no customer orders exist', async () => {
-        const accountId = 'test-account';
-        (prisma.$queryRaw as any).mockResolvedValue([]);
-
-        await orderSync.testRecalculate(accountId);
-
-        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(1);
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledWith({
-            where: { accountId },
-            data: { ordersCount: 0, totalSpent: 0 }
-        });
+    it('does no SQL for orders without a customer identity', async () => {
+        await updateCustomerTotals(prisma as any, 'tenant', [{ wooCustomerId: null, billingEmail: null }]);
+        expect(prisma.$executeRaw).not.toHaveBeenCalled();
     });
 
-    it('should not break sync if recalculation fails', async () => {
-        const accountId = 'test-account';
-        (prisma.$queryRaw as any).mockRejectedValue(new Error('DB connection lost'));
+    it('locks before reading or mutating and propagates failures for rollback', async () => {
+        const failure = new Error('aggregate failed');
+        await expect(withOrderTotalsTransaction('tenant', async () => {
+            expect(prisma.$queryRaw).toHaveBeenCalledWith(expect.anything(), 'order-totals:tenant');
+            throw failure;
+        })).rejects.toBe(failure);
+    });
 
-        // Should not throw
-        await expect(orderSync.testRecalculate(accountId)).resolves.not.toThrow();
+    it('rebuilds and reindexes bounded pages including zero-order customers', async () => {
+        const first = Array.from({ length: 500 }, (_, i) => customer(String(i + 1).padStart(4, '0')));
+        const last = [customer('0501')];
+        vi.mocked(prisma.wooCustomer.findMany)
+            .mockResolvedValueOnce(first as any).mockResolvedValueOnce(last as any)
+            .mockResolvedValueOnce(first as any).mockResolvedValueOnce(last as any);
+        await recalculateCustomerTotals('tenant');
+        expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+        expect(prisma.wooCustomer.findMany).toHaveBeenCalledTimes(4);
+        for (const [args] of vi.mocked(prisma.wooCustomer.findMany).mock.calls) {
+            expect(args).toMatchObject({ where: { accountId: 'tenant' }, take: 500, orderBy: { id: 'asc' } });
+            expect(args).not.toHaveProperty('cursor');
+        }
+        expect(vi.mocked(prisma.wooCustomer.findMany).mock.calls[1][0]?.where).toEqual({ accountId: 'tenant', id: { gt: '0500' } });
+        expect(esClient.bulk).toHaveBeenCalledTimes(2);
+        const operations = (vi.mocked(esClient.bulk).mock.calls[1][0] as any).operations;
+        expect(operations).toEqual([
+            { update: { _index: 'customers', _id: 'tenant_501' } },
+            { doc: { totalSpent: 0, ordersCount: 0 }, upsert: expect.objectContaining({ accountId: 'tenant', id: 501, ordersCount: 0 }) }
+        ]);
+    });
+
+    it('replays recently changed customers and surfaces partial ES failures', async () => {
+        const since = new Date('2026-01-01');
+        vi.mocked(prisma.wooCustomer.findMany).mockResolvedValueOnce([customer('1')] as any);
+        vi.mocked(esClient.bulk).mockResolvedValueOnce({ errors: true } as any);
+        await expect(reindexCustomerTotals('tenant', since)).rejects.toThrow('checkpoint was not advanced');
+        expect(prisma.wooCustomer.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: { accountId: 'tenant', updatedAt: { gte: since } }
+        }));
+        expect(esClient.bulk).toHaveBeenCalledWith(expect.anything(), { requestTimeout: 10000, maxRetries: 0 });
+    });
+
+    it('stops recovery on database failure without indexing incomplete results', async () => {
+        vi.mocked(prisma.wooCustomer.findMany).mockResolvedValueOnce([customer('1')] as any);
+        vi.mocked(prisma.$executeRaw).mockRejectedValueOnce(new Error('database unavailable'));
+        await expect(recalculateCustomerTotals('tenant')).rejects.toThrow('database unavailable');
+        expect(esClient.bulk).not.toHaveBeenCalled();
+    });
+
+    it('repairs customer-only changes without expanding to the whole account', async () => {
+        const since = new Date('2026-01-01');
+        vi.mocked(prisma.wooCustomer.findMany).mockResolvedValueOnce([customer('1')] as any);
+        await recalculateCustomerTotals('tenant', since);
+        expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), 'tenant', [], [], ['1'], 'tenant');
+        for (const [args] of vi.mocked(prisma.wooCustomer.findMany).mock.calls) {
+            expect(args?.where).toMatchObject({ accountId: 'tenant', updatedAt: { gte: since } });
+        }
     });
 });

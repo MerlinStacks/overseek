@@ -13,11 +13,13 @@ vi.mock('../../../utils/prisma', () => {
         },
         wooCustomer: {
             updateMany: vi.fn(),
+            findMany: vi.fn().mockResolvedValue([]),
         },
         syncState: {
             findUnique: vi.fn(),
         },
         $queryRaw: vi.fn(),
+        $transaction: vi.fn(),
     };
 
     // Mock Prisma helpers
@@ -51,37 +53,27 @@ describe('OrderSync Benchmark', () => {
     beforeEach(() => {
         orderSync = new OrderSync();
         vi.clearAllMocks();
+        (prisma.$transaction as any).mockImplementation(async (work: any) => work(prisma));
     });
 
-    it('should update customer order counts via two-step approach', async () => {
+    it('does not rebuild customer totals during an empty incremental sync', async () => {
         const accountId = 'acc_123';
         const syncId = 'sync_123';
 
-        // 1. Mock WooService to return no orders, so we skip the sync loop
+        // Empty incremental polls must not perform an account-wide aggregate rebuild.
         (mockWooService.getOrders as any).mockResolvedValue({ data: [], totalPages: 0 });
 
-        // Mock getLastSync -> returns null
-        (prisma.syncState.findUnique as any).mockResolvedValue(null);
-
-        // 2. Mock $queryRaw to return aggregated counts (step 1 of two-step approach)
-        const customerCount = 50;
-        const mockCounts = Array.from({ length: customerCount }, (_, i) => ({
-            woo_id: i + 1,
-            count: 2,
-        }));
-
-        (prisma.$queryRaw as any).mockResolvedValue(mockCounts);
-        (prisma.wooCustomer.updateMany as any).mockResolvedValue({ count: 1 });
-
-        // 3. Run sync (incremental=true to skip reconciliation)
+        (prisma.syncState.findUnique as any).mockResolvedValue({ lastSyncedAt: new Date() });
         // @ts-ignore - sync is protected
         await orderSync.sync(mockWooService, accountId, true, undefined, syncId);
 
-        // 4. Verify two-step approach: $queryRaw for counts, updateMany per customer batch
-        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+        // Empty changed-customer and reindex pages acquire locks, but do not aggregate.
+        expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+        expect(prisma.wooCustomer.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: { accountId, updatedAt: { gte: expect.any(Date) } }, take: 500
+        }));
 
-        // updateMany is called once to reset all customers, plus once per counted customer
-        expect(prisma.wooCustomer.updateMany).toHaveBeenCalledTimes(customerCount + 1);
+        expect(prisma.wooCustomer.updateMany).not.toHaveBeenCalled();
 
     });
 });

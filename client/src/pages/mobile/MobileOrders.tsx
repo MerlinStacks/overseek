@@ -92,13 +92,15 @@ export function MobileOrders() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
-    const toast = useToast();
+    const accountId = currentAccount?.id;
+    const { error: showErrorToast } = useToast();
     const { triggerHaptic } = useHaptic();
     const [orders, setOrders] = useState<Order[]>([]);
     const [statusCounts, setStatusCounts] = useState<StatusCountsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [activeStatus, setActiveStatus] = useState('all');
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
@@ -106,6 +108,11 @@ export function MobileOrders() {
     const countsAbortRef = useRef<AbortController | null>(null);
     const ordersRequestIdRef = useRef(0);
     const countsRequestIdRef = useRef(0);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     const activeView = VIEWS.find((view) => view.status === activeStatus) || VIEWS[0];
     const getStatusConfig = useCallback((status: string) => STATUS_CONFIG[status.toLowerCase()] || STATUS_CONFIG.pending, []);
@@ -115,7 +122,7 @@ export function MobileOrders() {
     );
 
     const fetchStatusCounts = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
 
         countsAbortRef.current?.abort();
         const controller = new AbortController();
@@ -124,21 +131,22 @@ export function MobileOrders() {
 
         try {
             const res = await fetch('/api/sync/orders/status-counts', {
-                headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+                headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId },
                 signal: controller.signal,
             });
             if (!res.ok) throw new Error('Failed to fetch status counts');
             const counts = await res.json() as Partial<StatusCountsResponse>;
-            if (requestId !== countsRequestIdRef.current) return;
+            if (controller.signal.aborted || requestId !== countsRequestIdRef.current) return;
             setStatusCounts({ total: counts.total || 0, counts: counts.counts || {} });
         } catch (error) {
+            if (controller.signal.aborted || requestId !== countsRequestIdRef.current) return;
             if (error instanceof DOMException && error.name === 'AbortError') return;
             Logger.warn('[MobileOrders] Failed to fetch status counts', { error });
         }
-    }, [currentAccount, token]);
+    }, [accountId, token]);
 
     const fetchOrders = useCallback(async (targetPage: number, reset = false) => {
-        if (!currentAccount || !token) {
+        if (!accountId || !token) {
             setLoading(false);
             return;
         }
@@ -157,16 +165,16 @@ export function MobileOrders() {
 
             const params = new URLSearchParams({ page: String(targetPage), limit: String(PAGE_SIZE) });
             if (activeStatus !== 'all') params.append('status', activeStatus);
-            if (searchQuery.trim()) params.append('q', searchQuery.trim());
+            if (debouncedSearch) params.append('q', debouncedSearch);
 
             const res = await fetch(`/api/sync/orders/search?${params}`, {
-                headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+                headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId },
                 signal: controller.signal,
             });
             if (!res.ok) throw new Error('Failed to fetch orders');
 
             const data = await res.json() as OrdersSearchResponse | OrderApiResponse[];
-            if (requestId !== ordersRequestIdRef.current) return;
+            if (controller.signal.aborted || requestId !== ordersRequestIdRef.current) return;
             const rawOrders = Array.isArray(data) ? data : data.orders || [];
             const responseTotal = Array.isArray(data) ? rawOrders.length : data.total;
             const nextTotal = responseTotal ?? ((targetPage - 1) * PAGE_SIZE + rawOrders.length);
@@ -196,21 +204,29 @@ export function MobileOrders() {
             setPage(targetPage + 1);
             setError(null);
         } catch (error) {
+            if (controller.signal.aborted || requestId !== ordersRequestIdRef.current) return;
             if (error instanceof DOMException && error.name === 'AbortError') return;
             Logger.error('[MobileOrders] Error fetching orders:', { error });
             setError('Could not load orders. Pull down or tap retry to refresh.');
-            toast.error('Could not load orders.');
+            showErrorToast('Could not load orders.');
         } finally {
-            if (requestId === ordersRequestIdRef.current) {
+            if (!controller.signal.aborted && requestId === ordersRequestIdRef.current) {
                 setLoading(false);
             }
         }
-    }, [activeStatus, currentAccount, searchQuery, toast, token]);
+    }, [activeStatus, accountId, debouncedSearch, showErrorToast, token]);
 
     useEffect(() => {
         void fetchOrders(1, true);
-        void fetchStatusCounts();
+        return () => ordersAbortRef.current?.abort();
+    }, [fetchOrders]);
 
+    useEffect(() => {
+        void fetchStatusCounts();
+        return () => countsAbortRef.current?.abort();
+    }, [fetchStatusCounts]);
+
+    useEffect(() => {
         const handleRefresh = () => {
             void fetchOrders(1, true);
             void fetchStatusCounts();
@@ -229,17 +245,11 @@ export function MobileOrders() {
         return unsubscribe;
     }, [currentAccount?.id, fetchOrders, fetchStatusCounts]);
 
-    useEffect(() => {
-        return () => {
-            ordersAbortRef.current?.abort();
-            countsAbortRef.current?.abort();
-        };
-    }, []);
-
     const handleSearch = (event: FormEvent) => {
         event.preventDefault();
         triggerHaptic();
-        void fetchOrders(1, true);
+        if (searchQuery.trim() !== debouncedSearch) setDebouncedSearch(searchQuery.trim());
+        else void fetchOrders(1, true);
     };
 
     const handleViewChange = (status: string) => {

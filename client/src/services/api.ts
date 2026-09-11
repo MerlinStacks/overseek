@@ -33,16 +33,26 @@ class ApiError extends Error {
     }
 }
 
-/**
- * Global handler for auth failures (401).
- * Clears stored credentials and redirects to login.
- * Uses a debounce to avoid multiple simultaneous redirects.
- */
-let isHandlingAuthError = false;
-function handleAuthError(message: string) {
-    if (isHandlingAuthError) return;
-    isHandlingAuthError = true;
+export type SilentRefreshResult = 'success' | 'retryable_failure' | 'expired' | 'superseded';
+let refreshSession: (() => Promise<SilentRefreshResult>) | undefined;
+let sessionVersion = 0;
+export function invalidateAuthSession() { sessionVersion++; }
 
+export function getStoredAuthUserId(): string | null {
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null')?.id ?? null;
+    } catch {
+        return null;
+    }
+}
+
+export function registerAuthRefresh(handler: () => Promise<SilentRefreshResult>) {
+    refreshSession = handler;
+    return () => { if (refreshSession === handler) refreshSession = undefined; };
+}
+
+/** Callers verify the failed token still belongs to the current session. */
+function handleAuthError(message: string) {
     // Clear stored auth data
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -58,9 +68,6 @@ function handleAuthError(message: string) {
     }
 
     window.dispatchEvent(new Event('overseek:auth-expired'));
-
-    // Reset debounce after state propagation
-    setTimeout(() => { isHandlingAuthError = false; }, 2000);
 }
 
 /** Max retries for 429 rate-limit responses before giving up */
@@ -90,6 +97,11 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { token, accountId, headers, body, ...customConfig } = options;
+    const sessionUser = getStoredAuthUserId();
+    const version = sessionVersion;
+    const sessionUnchanged = () => version === sessionVersion && getStoredAuthUserId() === sessionUser;
+    let authRetried = false;
+    let requestToken = token;
 
     const config: RequestInit = {
         ...customConfig,
@@ -101,14 +113,39 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(accountId ? { 'X-Account-ID': accountId } : {}),
             'x-timezone': USER_TIMEZONE,
-            ...headers,
         },
     };
+    const requestHeaders = new Headers(config.headers);
+    new Headers(headers).forEach((value, key) => requestHeaders.set(key, value));
+    config.headers = requestHeaders;
+    requestToken = requestHeaders.get('Authorization')?.match(/^Bearer (.+)$/i)?.[1];
 
     for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
         const response = await fetch(endpoint, config);
 
         if (!response.ok) {
+            if (response.status === 401 && requestToken && !authRetried && sessionUnchanged()) {
+                const latestToken = localStorage.getItem('token');
+                const result = latestToken && latestToken !== requestToken
+                    ? 'success'
+                    : await refreshSession?.();
+                if (!sessionUnchanged() || result === 'superseded') {
+                    throw new ApiError(401, 'Session changed. Please retry.', 'SESSION_CHANGED', true);
+                }
+                if (result === 'retryable_failure' || result === undefined) {
+                    throw new ApiError(401, 'Unable to refresh your session. Please retry.', 'AUTH_REFRESH_UNAVAILABLE', true);
+                }
+                const refreshedToken = localStorage.getItem('token');
+                if (result === 'success' && refreshedToken) {
+                    authRetried = true;
+                    requestToken = refreshedToken;
+                    const retryHeaders = new Headers(config.headers);
+                    retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
+                    config.headers = retryHeaders;
+                    attempt--;
+                    continue;
+                }
+            }
             // Retry on 429 with exponential backoff before exhausting attempts
             if (response.status === 429 && attempt < RATE_LIMIT_MAX_RETRIES) {
                 const delay = parseRetryAfter(response) ?? RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt);
@@ -131,7 +168,8 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
             }
 
             // Handle auth errors globally - auto logout and redirect
-            if (response.status === 401) {
+            if (response.status === 401 && requestToken && sessionUnchanged() &&
+                localStorage.getItem('token') === requestToken) {
                 handleAuthError(errorMessage);
             }
 

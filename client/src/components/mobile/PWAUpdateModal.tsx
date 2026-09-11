@@ -16,7 +16,11 @@ import { Logger } from '../../utils/logger';
 
 // Vite-injected build version (auto-generated at build time)
 declare const __APP_VERSION__: string;
+declare const __APP_BUILD_ID__: string;
+declare const __APP_BUILT_AT__: string;
 export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '2026.01.22';
+const APP_BUILD_ID = typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : '';
+const APP_BUILT_AT = typeof __APP_BUILT_AT__ !== 'undefined' ? __APP_BUILT_AT__ : '';
 
 interface UpdateInfo {
     type: 'minor' | 'major' | 'critical';
@@ -154,26 +158,33 @@ export function usePWAUpdate() {
     const [showModal, setShowModal] = useState(false);
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ type: 'minor' });
 
-    const checkVersion = async () => {
-        try {
-            // Check version from server
-            const response = await fetch('/health/version', {
-                headers: { 'Cache-Control': 'no-cache' }
-            }).catch(() => null);
-
-            if (response?.ok) {
+    useEffect(() => {
+        let cancelled = false;
+        let latestCheck = 0;
+        const checkVersion = async () => {
+            if (cancelled) return;
+            const check = ++latestCheck;
+            try {
+                const response = await fetch('/health/version', {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                if (!response.ok) return;
                 const data = await response.json();
-                const serverVersion = data.version;
+                if (cancelled || check !== latestCheck) return;
+                const serverDate = Date.parse(data.builtAt);
+                const appDate = Date.parse(APP_BUILT_AT);
+                // A worker activation or a date change alone is not a release.
+                // Ignore legacy/malformed metadata and older deployment replicas.
+                if (typeof data.buildId !== 'string' || !data.buildId ||
+                    !APP_BUILD_ID || !Number.isFinite(serverDate) || !Number.isFinite(appDate)) return;
 
-                if (serverVersion && serverVersion !== APP_VERSION) {
-                    // Determine update type based on version difference
-                    const [serverYear, serverMonth, serverDay] = serverVersion.split('.').map(Number);
-                    const [appYear, appMonth, appDay] = APP_VERSION.split('.').map(Number);
-
-                    // Critical if more than 30 days old
-                    const serverDate = new Date(serverYear, serverMonth - 1, serverDay);
-                    const appDate = new Date(appYear, appMonth - 1, appDay);
-                    const daysDiff = Math.floor((serverDate.getTime() - appDate.getTime()) / (1000 * 60 * 60 * 24));
+                setShowModal(false);
+                setUpdateInfo({ type: 'minor' });
+                const hasUpdate = data.buildId !== APP_BUILD_ID && serverDate > appDate;
+                setUpdateAvailable(hasUpdate);
+                if (hasUpdate) {
+                    const daysDiff = Math.floor((serverDate - appDate) / (1000 * 60 * 60 * 24));
 
                     if (daysDiff > 30) {
                         setUpdateInfo({
@@ -198,36 +209,17 @@ export function usePWAUpdate() {
                             setShowModal(true);
                         }
                     }
-
-                    setUpdateAvailable(true);
                 }
+            } catch (err) {
+                Logger.warn('[PWA] Version check failed', { error: err });
             }
-        } catch (err) {
-            Logger.warn('[PWA] Version check failed', { error: err });
-        }
+        };
 
-        // Store current version
-        localStorage.setItem('pwa-version', APP_VERSION);
-    };
-
-    useEffect(() => {
         // Listen for service worker updates
         const handleSWUpdate = (event: MessageEvent) => {
             if (event.data?.type === 'SW_UPDATED') {
                 Logger.info('[PWA] Service worker updated');
-                setUpdateAvailable(true);
-
-                // Check if this is a major update
-                const storedVersion = localStorage.getItem('pwa-version');
-                if (storedVersion && storedVersion !== APP_VERSION) {
-                    const [storedMajor] = storedVersion.split('.');
-                    const [currentMajor] = APP_VERSION.split('.');
-
-                    if (storedMajor !== currentMajor) {
-                        setUpdateInfo({ type: 'major' });
-                        setShowModal(true);
-                    }
-                }
+                void checkVersion();
             }
         };
 
@@ -239,6 +231,7 @@ export function usePWAUpdate() {
         });
 
         return () => {
+            cancelled = true;
             navigator.serviceWorker?.removeEventListener('message', handleSWUpdate);
         };
     }, []);

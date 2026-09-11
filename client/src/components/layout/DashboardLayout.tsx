@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useCallback } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { AIChatWidget } from '../ai/AIChatWidget';
@@ -16,6 +16,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
     const isMobile = useMobile();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
     return (
         <CommandPaletteProvider>
@@ -33,7 +34,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     <Sidebar
                         isMobile
                         isOpen={sidebarOpen}
-                        onClose={() => setSidebarOpen(false)}
+                        onClose={closeSidebar}
                     />
                 )}
 
