@@ -59,6 +59,7 @@ const EMPTY_PERMISSIONS: Record<string, boolean> = Object.freeze({});
 interface AccountMeData {
     id: string;
     email: string;
+    emailSignature?: string | null;
     fullName: string | null;
     avatarUrl?: string | null;
     isSuperAdmin?: boolean;
@@ -188,7 +189,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
                     currentUser.isSuperAdmin !== userData.isSuperAdmin ||
                     currentUser.fullName !== userData.fullName ||
                     currentUser.avatarUrl !== userData.avatarUrl ||
-                    currentUser.email !== userData.email;
+                    currentUser.email !== userData.email ||
+                    currentUser.emailSignature !== userData.emailSignature;
                 if (changed) {
                     updateUser(userData);
                 }

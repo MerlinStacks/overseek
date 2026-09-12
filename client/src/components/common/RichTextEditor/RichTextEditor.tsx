@@ -45,6 +45,8 @@ export interface RichTextEditorProps {
     disableEnterSubmit?: boolean;
     /** Additional CSS class */
     className?: string;
+    /** Accessible name for the editable area. */
+    ariaLabel?: string;
     /** Optional right-side controls rendered in the toolbar row */
     toolbarRightSlot?: ReactNode;
     /** Optional merge tags for insertion dropdown */
@@ -76,6 +78,7 @@ export function RichTextEditor({
     isInternal = false,
     disableEnterSubmit = false,
     className = '',
+    ariaLabel = 'Rich text editor',
     toolbarRightSlot,
     mergeTags,
 }: RichTextEditorProps) {
@@ -126,7 +129,7 @@ export function RichTextEditor({
 
                 <div className="rte-editor-container">
                     <RichTextPlugin
-                        contentEditable={<ContentEditable className="rich-text-editor-root" />}
+                        contentEditable={<ContentEditable className="rich-text-editor-root" aria-label={ariaLabel} aria-multiline="true" />}
                         placeholder={<Placeholder text={placeholder} variant={variant} />}
                         ErrorBoundary={LexicalErrorBoundary}
                     />

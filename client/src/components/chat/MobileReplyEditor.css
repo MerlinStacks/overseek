@@ -1,0 +1,52 @@
+.mobile-reply-editor textarea,
+.mobile-reply-editor .rich-text-editor.variant-compact .rich-text-editor-root {
+    min-height: 72px;
+    max-height: min(30dvh, 240px);
+    font-size: 16px;
+    line-height: 1.5;
+    color: #f8fafc;
+    overflow-wrap: anywhere;
+    overscroll-behavior: contain;
+}
+
+.mobile-reply-editor .rich-text-editor.variant-compact .rte-toolbar {
+    border-color: #334155;
+}
+
+.mobile-reply-editor .rte-toolbar-btn {
+    width: 44px;
+    height: 44px;
+    color: #cbd5e1;
+}
+
+.mobile-reply-editor .rte-toolbar-btn.active {
+    background: #312e81;
+    color: #e0e7ff;
+}
+
+.mobile-reply-editor .rte-toolbar-btn:hover { background: #334155; color: white; }
+.mobile-reply-editor .rte-toolbar-group + .rte-toolbar-group { border-color: #334155; margin-left: 4px; padding-left: 4px; }
+.mobile-reply-editor .rte-placeholder { color: #94a3b8; font-size: 16px; }
+.mobile-reply-editor .rte-link { color: #a5b4fc; }
+
+.mobile-reply-editor.is-expanded,
+.mobile-reply-editor.is-expanded .rich-text-editor {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+.mobile-reply-editor.is-expanded .rte-editor-container {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.mobile-reply-editor.is-expanded textarea,
+.mobile-reply-editor.is-expanded .rich-text-editor.variant-compact .rich-text-editor-root {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    width: 100%;
+}

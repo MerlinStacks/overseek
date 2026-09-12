@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useSocket } from '../context/SocketContext';
 import { useDrafts } from './useDrafts';
+import { useSignaturePreference } from './useSignaturePreference';
 import { ConversationChannel } from '../components/chat/ChannelSelector';
 import { lintOutboundMessage, type OutboundSafetyIssue } from '../utils/outboundSafety';
 import type { SendMessageHandler } from '../types/inbox';
@@ -94,7 +95,7 @@ export function useMessageSend({
     const [isInternal, setIsInternal] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
-    const [signatureEnabled, setSignatureEnabled] = useState(true);
+    const { signatureEnabled, setSignatureEnabled } = useSignaturePreference(user?.id);
     const [quotedMessage, setQuotedMessage] = useState<{ id: string; content: string; senderType: string } | null>(null);
     const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
     const [isScheduling, setIsScheduling] = useState(false);

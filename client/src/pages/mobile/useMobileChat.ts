@@ -14,6 +14,8 @@ import { useAccount } from '../../context/AccountContext';
 import { useSocket } from '../../context/SocketContext';
 import { useCannedResponses } from '../../hooks/useCannedResponses';
 import type { MessageSendResponse } from '../../types/inbox';
+import { messageToPlainText } from '../../utils/messagePlainText';
+import { emailDraftHtml, mobileDraftKey, useMobileChatDraft } from './mobileChatDraft';
 
 interface MessageApiResponse {
     id: string;
@@ -43,6 +45,15 @@ export interface MobileChatConversation {
     customerEmail?: string;
     channel: string;
     status: string;
+    customer?: {
+        id?: string | null;
+        wooId?: number | string | null;
+        firstName?: string | null;
+        lastName?: string | null;
+        email?: string | null;
+        totalSpent?: number | string | null;
+        ordersCount?: number | null;
+    } | null;
 }
 
 /** Shared auth headers builder — eliminates per-fetch boilerplate */
@@ -80,11 +91,16 @@ export function useMobileChat(conversationId: string | undefined) {
 
     const [conversation, setConversation] = useState<MobileChatConversation | null>(null);
     const [messages, setMessages] = useState<MobileChatMessage[]>([]);
-    const [newMessage, setNewMessage] = useState('');
+    const draftKey = mobileDraftKey(user?.id, currentAccount?.id, conversationId);
+    const { newMessage, setNewMessage, draftRef, prepareSend, completeSend } = useMobileChatDraft(draftKey);
+    const isRichText = conversation?.channel === 'email';
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
+    // Fetch does not report upload progress. null + isUploading means indeterminate.
+    const attachmentUploadProgress: number | null = null;
     const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
 
@@ -99,7 +115,6 @@ export function useMobileChat(conversationId: string | undefined) {
     const uploadControllerRef = useRef<AbortController | null>(null);
     const draftControllerRef = useRef<AbortController | null>(null);
     const actionControllerRef = useRef<AbortController | null>(null);
-    const retrySendRef = useRef<{ conversationId: string; accountId: string; content: string; clientRequestId: string } | null>(null);
     const retryUploadRef = useRef<{ conversationId: string; accountId: string; fingerprint: string; clientRequestId: string } | null>(null);
     const identityRef = useRef({ conversationId, accountId: currentAccount?.id });
     identityRef.current = { conversationId, accountId: currentAccount?.id };
@@ -107,6 +122,9 @@ export function useMobileChat(conversationId: string | undefined) {
     // Canned responses
     const {
         cannedResponses,
+        cannedLoading,
+        cannedError,
+        refetchCanned,
         filteredCanned,
         showCanned,
         handleInputForCanned,
@@ -168,6 +186,7 @@ export function useMobileChat(conversationId: string | undefined) {
                 customerEmail: conv.wooCustomer?.email || conv.guestEmail,
                 channel: (conv.channel || 'CHAT').toLowerCase(),
                 status: conv.status,
+                customer: conv.wooCustomer ?? null,
             });
 
             void fetch(`/api/chat/${conversationId}/read`, {
@@ -193,27 +212,24 @@ export function useMobileChat(conversationId: string | undefined) {
         } finally {
             if (!controller.signal.aborted) setLoading(false);
         }
-    }, [currentAccount, token, conversationId]);
+    }, [currentAccount, token, conversationId, user?.id]);
 
     // -------------------------------------------------------
     // Actions
     // -------------------------------------------------------
 
     const handleSend = useCallback(async () => {
-        if (!newMessage.trim() || sending || !currentAccount || !token || !conversation || conversation.id !== conversationId) return;
+        if (!messageToPlainText(newMessage).replace(/[\u200b-\u200d\ufeff]/g, '').trim() || sending || sendControllerRef.current || !currentAccount || !token || !conversation || conversation.id !== conversationId) return;
 
         setSending(true);
         haptic();
         const requestConversationId = conversationId;
         const requestAccountId = currentAccount.id;
-        const content = newMessage.trim();
-        const retry = retrySendRef.current;
-        const clientRequestId = retry?.conversationId === requestConversationId && retry.accountId === requestAccountId && retry.content === content
-            ? retry.clientRequestId
-            : `mobile-${requestConversationId}-${crypto.randomUUID()}`;
-        retrySendRef.current = { conversationId: requestConversationId, accountId: requestAccountId, content, clientRequestId };
+        const content = isRichText ? newMessage : newMessage.trim();
+        const sentKey = draftRef.current.key;
+        const pending = prepareSend(content, () => `mobile-${requestConversationId}-${crypto.randomUUID()}`);
+        const { clientRequestId } = pending;
         const controller = new AbortController();
-        sendControllerRef.current?.abort();
         sendControllerRef.current = controller;
 
         try {
@@ -240,9 +256,8 @@ export function useMobileChat(conversationId: string | undefined) {
             }
             if (!res.ok) throw new Error(data.error || data.message?.deliveryError || `Send failed with status ${res.status}`);
 
-            retrySendRef.current = null;
             setSendError(null);
-            setNewMessage('');
+            completeSend(sentKey, pending);
             inputRef.current?.focus();
         } catch (error) {
             if (controller.signal.aborted) return;
@@ -256,7 +271,7 @@ export function useMobileChat(conversationId: string | undefined) {
                 setSending(false);
             }
         }
-    }, [newMessage, sending, currentAccount, token, conversationId, conversation]);
+    }, [newMessage, sending, currentAccount, token, conversationId, conversation, isRichText, draftRef, prepareSend, completeSend]);
 
     const handleResolve = useCallback(async () => {
         setShowMenu(false);
@@ -316,9 +331,27 @@ export function useMobileChat(conversationId: string | undefined) {
         }
     }, [currentAccount, token, conversationId]);
 
-    const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || !currentAccount || !token || !conversation || conversation.id !== conversationId) return;
+        e.target.value = '';
+        if (!file || uploadControllerRef.current) return;
+        retryUploadRef.current = null;
+        setPendingAttachment(file);
+        setSendError(null);
+    }, []);
+
+    const handleRemoveAttachment = useCallback(() => {
+        if (uploadControllerRef.current) return;
+        setPendingAttachment(null);
+        retryUploadRef.current = null;
+        setSendError(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    }, []);
+
+    // Attachments are a separate message; never consume or modify the text draft.
+    const handleSendAttachment = useCallback(async () => {
+        const file = pendingAttachment;
+        if (!file || uploadControllerRef.current || !currentAccount || !token || !conversation || conversation.id !== conversationId) return;
 
         setIsUploading(true);
         haptic();
@@ -331,7 +364,6 @@ export function useMobileChat(conversationId: string | undefined) {
             : `mobile-attachment-${requestConversationId}-${crypto.randomUUID()}`;
         retryUploadRef.current = { conversationId: requestConversationId, accountId: requestAccountId, fingerprint, clientRequestId };
         const controller = new AbortController();
-        uploadControllerRef.current?.abort();
         uploadControllerRef.current = controller;
 
         try {
@@ -364,6 +396,7 @@ export function useMobileChat(conversationId: string | undefined) {
             if (!res.ok) throw new Error(data.error || data.message?.deliveryError || `Upload failed with status ${res.status}`);
 
             retryUploadRef.current = null;
+            setPendingAttachment(null);
             setSendError(null);
             inputRef.current?.focus();
         } catch (error) {
@@ -379,7 +412,7 @@ export function useMobileChat(conversationId: string | undefined) {
                 if (fileInputRef.current) fileInputRef.current.value = '';
             }
         }
-    }, [currentAccount, token, conversationId, conversation]);
+    }, [currentAccount, token, conversationId, conversation, pendingAttachment]);
 
     const handleGenerateAIDraft = useCallback(async () => {
         if (!currentAccount || !token || isGeneratingDraft) return;
@@ -388,6 +421,7 @@ export function useMobileChat(conversationId: string | undefined) {
         haptic();
         const requestConversationId = conversationId;
         const requestAccountId = currentAccount.id;
+        const { key: requestDraftKey, revision: requestDraftRevision } = draftRef.current;
         const controller = new AbortController();
         draftControllerRef.current?.abort();
         draftControllerRef.current = controller;
@@ -403,7 +437,8 @@ export function useMobileChat(conversationId: string | undefined) {
             if (res.ok) {
                 const { draft } = await res.json();
                 if (controller.signal.aborted || identityRef.current.conversationId !== requestConversationId || identityRef.current.accountId !== requestAccountId) return;
-                setNewMessage(draft);
+                if (draftRef.current.key !== requestDraftKey || draftRef.current.revision !== requestDraftRevision) return;
+                setNewMessage(isRichText ? emailDraftHtml(draft) : messageToPlainText(draft));
                 inputRef.current?.focus();
             }
         } catch (error) {
@@ -415,28 +450,38 @@ export function useMobileChat(conversationId: string | undefined) {
                 setIsGeneratingDraft(false);
             }
         }
-    }, [currentAccount, token, isGeneratingDraft, conversationId, newMessage]);
+    }, [currentAccount, token, isGeneratingDraft, conversationId, newMessage, isRichText, setNewMessage, draftRef]);
 
     // -------------------------------------------------------
     // Input helpers
     // -------------------------------------------------------
 
     const handleInputChange = useCallback((value: string) => {
-        if (retrySendRef.current?.content !== value.trim()) retrySendRef.current = null;
         setSendError(null);
         setNewMessage(value);
-        handleInputForCanned(value);
-    }, [handleInputForCanned]);
+        // Mobile uses an explicit searchable sheet, not a modal on every slash edit.
+    }, [setNewMessage]);
 
     const handleSelectCanned = useCallback((response: typeof cannedResponses[0]) => {
-        const content = selectCanned(response, customerContext);
-        setNewMessage(content);
+        const selected = selectCanned(response, customerContext);
+        const content = isRichText ? emailDraftHtml(selected) : messageToPlainText(selected);
+        setNewMessage(previous => messageToPlainText(previous).trim() && !messageToPlainText(previous).trimStart().startsWith('/')
+            ? isRichText ? `${emailDraftHtml(previous)}${content}` : `${previous.trimEnd()}\n\n${content}` : content);
+        setSendError(null);
         setShowCanned(false);
         inputRef.current?.focus();
-    }, [selectCanned, customerContext, setShowCanned]);
+    }, [selectCanned, customerContext, setShowCanned, isRichText, setNewMessage]);
+
+    const handleCloseCanned = useCallback(() => setShowCanned(false), [setShowCanned]);
+
+    const handleToggleCanned = useCallback(() => {
+        // Open the picker without replacing the draft with a slash.
+        handleInputForCanned('');
+        setShowCanned(!showCanned);
+    }, [handleInputForCanned, setShowCanned, showCanned]);
 
     const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey && !showCanned) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229 && !showCanned) {
             e.preventDefault();
             handleSend();
         }
@@ -472,11 +517,16 @@ export function useMobileChat(conversationId: string | undefined) {
         uploadControllerRef.current?.abort();
         draftControllerRef.current?.abort();
         actionControllerRef.current?.abort();
-        retrySendRef.current = null;
+        sendControllerRef.current = null;
+        uploadControllerRef.current = null;
+        draftControllerRef.current = null;
+        actionControllerRef.current = null;
         retryUploadRef.current = null;
         setConversation(null);
         setMessages([]);
-        setNewMessage('');
+        setPendingAttachment(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setShowCanned(false);
         setSending(false);
         setIsUploading(false);
         setIsGeneratingDraft(false);
@@ -490,7 +540,7 @@ export function useMobileChat(conversationId: string | undefined) {
             draftControllerRef.current?.abort();
             actionControllerRef.current?.abort();
         };
-    }, [conversationId, currentAccount?.id]);
+    }, [conversationId, currentAccount?.id, user?.id]);
 
     useEffect(() => {
         const container = messagesContainerRef.current;
@@ -562,6 +612,9 @@ export function useMobileChat(conversationId: string | undefined) {
         showMenu,
         setShowMenu,
         isUploading,
+        pendingAttachment,
+        attachmentUploadProgress,
+        isRichText,
         isGeneratingDraft,
         sendError,
 
@@ -573,6 +626,9 @@ export function useMobileChat(conversationId: string | undefined) {
 
         // Canned responses
         cannedResponses,
+        cannedLoading,
+        cannedError,
+        refetchCanned,
         filteredCanned,
         showCanned,
 
@@ -581,9 +637,13 @@ export function useMobileChat(conversationId: string | undefined) {
         handleResolve,
         handleBlock,
         handleFileUpload,
+        handleRemoveAttachment,
+        handleSendAttachment,
         handleGenerateAIDraft,
         handleInputChange,
         handleSelectCanned,
+        handleToggleCanned,
+        handleCloseCanned,
         handleKeyPress,
     };
 }

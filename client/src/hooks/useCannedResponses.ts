@@ -2,7 +2,7 @@
  * Hook for managing canned responses in the inbox.
  * Handles fetching, filtering, and selection of pre-saved reply templates.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 
@@ -37,6 +37,8 @@ export interface CustomerContext {
 interface UseCannedResponsesReturn {
     /** All available canned responses */
     cannedResponses: CannedResponse[];
+    cannedLoading: boolean;
+    cannedError: boolean;
     /** Filtered responses based on current filter text */
     filteredCanned: CannedResponse[];
     /** Whether the canned dropdown is visible */
@@ -90,38 +92,49 @@ function replacePlaceholders(content: string, context?: CustomerContext): string
  * Detects '/' prefix in input to show dropdown, filters by shortcut/content.
  */
 export function useCannedResponses(): UseCannedResponsesReturn {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const { currentAccount } = useAccount();
 
-    const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
+    const accountId = currentAccount?.id;
+    const scope = JSON.stringify([accountId, user?.id, token]);
+    const [result, setResult] = useState<{ scope: string; responses: CannedResponse[]; loading: boolean; error: boolean } | null>(null);
+    const current = result?.scope === scope ? result : null;
+    const cannedResponses = useMemo(() => current?.responses || [], [current]);
+    const cannedLoading = Boolean(accountId && token && (!current || current.loading));
+    const cannedError = current?.error ?? false;
+    const controllerRef = useRef<AbortController | null>(null);
     const [showCanned, setShowCanned] = useState(false);
     const [cannedFilter, setCannedFilter] = useState('');
     const [showCannedManager, setShowCannedManager] = useState(false);
 
     // Fetch canned responses on mount
     const fetchCanned = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        controllerRef.current?.abort();
+        if (!accountId || !token) return;
+        const controller = new AbortController();
+        controllerRef.current = controller;
+        setResult({ scope, responses: [], loading: true, error: false });
 
         try {
             const res = await fetch('/api/chat/canned-responses', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                }
+                    'x-account-id': accountId
+                },
+                signal: controller.signal,
             });
-            if (res.ok) {
-                const data = await res.json();
-                setCannedResponses(data);
-            }
+            if (!res.ok) throw new Error('Saved replies request failed');
+            const data = await res.json();
+            if (!Array.isArray(data)) throw new Error('Invalid saved replies response');
+            if (!controller.signal.aborted) setResult({ scope, responses: data, loading: false, error: false });
         } catch {
-            // Silently fail - non-critical feature
+            if (!controller.signal.aborted) setResult({ scope, responses: [], loading: false, error: true });
         }
-    }, [currentAccount, token]);
+    }, [accountId, token, scope]);
 
     useEffect(() => {
-        queueMicrotask(() => {
-            fetchCanned();
-        });
+        void fetchCanned();
+        return () => controllerRef.current?.abort();
     }, [fetchCanned]);
 
     // Filter by shortcut, content, or label name
@@ -163,6 +176,8 @@ export function useCannedResponses(): UseCannedResponsesReturn {
 
     return {
         cannedResponses,
+        cannedLoading,
+        cannedError,
         filteredCanned,
         showCanned,
         cannedFilter,

@@ -180,6 +180,24 @@ describe('coordinated auth transport', () => {
 });
 
 describe('account hydration', () => {
+    it.each([undefined, '<p>Old signature</p>', null])('hydrates a signature-only profile change from cached value %s', async cachedSignature => {
+        localStorage.setItem('user', JSON.stringify({ ...user, emailSignature: cachedSignature }));
+        const emailSignature = '<p>Current signature</p>';
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/auth/me'
+            ? json({ ...user, emailSignature }) : json([{ id: 'a1', name: 'Store' }])));
+        const { result } = renderHook(useAuth, { wrapper: AccountWrapper });
+        await waitFor(() => expect(result.current.user?.emailSignature).toBe(emailSignature));
+        expect(JSON.parse(localStorage.getItem('user')!).emailSignature).toBe(emailSignature);
+    });
+
+    it('hydrates a removed signature', async () => {
+        localStorage.setItem('user', JSON.stringify({ ...user, emailSignature: '<p>Old signature</p>' }));
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/auth/me'
+            ? json({ ...user, emailSignature: null }) : json([{ id: 'a1', name: 'Store' }])));
+        const { result } = renderHook(useAuth, { wrapper: AccountWrapper });
+        await waitFor(() => expect(result.current.user?.emailSignature).toBeNull());
+    });
+
     it('ignores a late account response after logout', async () => {
         const accounts = deferred<Response>();
         vi.stubGlobal('fetch', vi.fn(() => accounts.promise));

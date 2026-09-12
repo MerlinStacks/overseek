@@ -1,6 +1,7 @@
 import React, { useEffect, useEffectEvent, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { useVisualViewport } from '../../hooks/useVisualViewport';
 
 interface ModalProps {
     isOpen: boolean;
@@ -8,6 +9,7 @@ interface ModalProps {
     title?: React.ReactNode;
     children: React.ReactNode;
     maxWidth?: string;
+    variant?: 'default' | 'sheet';
 }
 
 const focusableSelector = [
@@ -16,6 +18,7 @@ const focusableSelector = [
     'input:not([disabled]):not([type="hidden"])',
     'select:not([disabled])',
     'textarea:not([disabled])',
+    '[contenteditable]:not([contenteditable="false"]):not([tabindex="-1"])',
     '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
@@ -73,7 +76,9 @@ function lockBackground(modalRoot: HTMLElement) {
     };
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, maxWidth, variant = 'default' }: ModalProps) {
+    const isSheet = variant === 'sheet';
+    const viewportStyle = useVisualViewport(isOpen && isSheet);
     const modalRootRef = useRef<HTMLDivElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     const titleId = useId();
@@ -141,7 +146,13 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
     if (!isOpen) return null;
 
     return createPortal(
-        <div ref={modalRootRef} className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div
+            ref={modalRootRef}
+            className={isSheet
+                ? 'fixed inset-x-0 z-[90] flex items-end justify-center box-border pt-[max(1rem,env(safe-area-inset-top))] animate-in fade-in duration-200'
+                : 'fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200'}
+            style={isSheet ? viewportStyle : undefined}
+        >
             <div
                 aria-hidden="true"
                 className="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-md"
@@ -155,11 +166,15 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
                 aria-labelledby={title ? titleId : undefined}
                 aria-label={title ? undefined : 'Dialog'}
                 tabIndex={-1}
-                className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth} overflow-hidden border border-slate-200/80 dark:border-slate-700/50 flex flex-col max-h-[90vh] relative z-10 animate-in zoom-in-95 duration-200`}
+                className={isSheet
+                    ? `bg-slate-900 text-slate-100 rounded-t-3xl shadow-2xl w-full ${maxWidth ?? 'max-w-[40rem]'} overflow-hidden border border-slate-700 flex flex-col min-h-0 max-h-[min(100%,48rem)] relative z-10 animate-in slide-in-from-bottom duration-200`
+                    : `bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth ?? 'max-w-lg'} overflow-hidden border border-slate-200/80 dark:border-slate-700/50 flex flex-col max-h-[90vh] relative z-10 animate-in zoom-in-95 duration-200`}
             >
                 {(title || onClose) && (
-                    <div className="p-5 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-800">
-                        <div id={title ? titleId : undefined} className="font-bold text-slate-900 dark:text-white text-lg">
+                    <div className={isSheet
+                        ? 'p-5 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] shrink-0 border-b border-slate-700 flex justify-between items-center bg-slate-900'
+                        : 'p-5 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-800'}>
+                        <div id={title ? titleId : undefined} className={`font-bold text-lg ${isSheet ? 'text-slate-100' : 'text-slate-900 dark:text-white'}`}>
                             {title}
                         </div>
                         {onClose && (
@@ -167,7 +182,9 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
                                 type="button"
                                 aria-label="Close dialog"
                                 onClick={onClose}
-                                className="p-2 hover:bg-slate-200/80 dark:hover:bg-slate-700 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-200"
+                                className={isSheet
+                                    ? 'p-2 min-w-11 min-h-11 shrink-0 flex items-center justify-center hover:bg-slate-800 rounded-xl text-slate-300 hover:text-white transition-colors'
+                                    : 'p-2 hover:bg-slate-200/80 dark:hover:bg-slate-700 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-200'}
                             >
                                 <X size={20} aria-hidden="true" />
                             </button>
@@ -175,7 +192,9 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
                     </div>
                 )}
 
-                <div className="p-6 overflow-y-auto custom-scrollbar">
+                <div className={isSheet
+                    ? 'p-6 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pb-[max(1.5rem,env(safe-area-inset-bottom))]'
+                    : 'p-6 overflow-y-auto custom-scrollbar'}>
                     {children}
                 </div>
             </div>
