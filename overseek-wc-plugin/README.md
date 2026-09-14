@@ -42,6 +42,8 @@ After activating, go to **WooCommerce -> OverSeek** in your WordPress admin.
 ### Server-Side Tracking
 Tracks pageviews, add-to-cart events, and purchases directly from your server. Unlike JavaScript-based tracking, this works even when customers use ad blockers.
 
+Pageviews and product views exclude identifiable background requests (AJAX/fetch, non-document requests and prefetch/prerender traffic). Repeated view hooks are counted once per request, not suppressed across a time window. GET requests without browser fetch metadata remain supported; POST views require an explicit navigation header. Background requests with no distinguishing headers can still resemble real visits, and prefetched pages activated without another server request are not measured by this server-only tracker.
+
 ### Live Chat Widget
 Embeds a chat bubble on your storefront that connects customers to your unified OverSeek inbox.
 
@@ -95,6 +97,8 @@ The plugin registers the following endpoints under `wp-json/overseek/v1/`:
 ### Events not tracking
 - Check the OverSeek dashboard -> Settings -> Plugin Health
 - Verify your Secret Key matches in both OverSeek and WordPress
+- Failed purchase events retry through the `overseek_retry_tracking_events` WP-Cron hook, in batches of at most five. Checkout never drains this backlog; the current purchase still uses its existing two-second acknowledgement timeout.
+- Ensure WP-Cron is running. If `DISABLE_WP_CRON` is enabled, configure a system scheduler to service WordPress cron regularly (ideally every minute). The existing retry queue is capped at 50 events with a one-hour transient lifetime, so it is not durable storage for prolonged outages.
 
 ### Live chat not appearing
 - Ensure "Enable Live Chat" is turned on in WooCommerce -> OverSeek
@@ -108,6 +112,15 @@ For local development, configure the plugin to point to your local OverSeek serv
 ```
 API URL: http://localhost:3000
 ```
+
+Run the isolated tracking retry regression tests from the repository root:
+
+```sh
+php server/scripts/tests/plugin-tracking-retries.php
+php server/scripts/tests/plugin-pageview-requests.php
+```
+
+These tests stub WordPress/WooCommerce APIs. Before deployment, also verify classic and Blocks checkout on staging with the OverSeek endpoint unavailable, then restore connectivity and confirm cron delivers retries without duplicate purchases.
 
 ## Changelog
 

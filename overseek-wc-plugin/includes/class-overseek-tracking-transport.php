@@ -14,13 +14,15 @@ if (!defined('ABSPATH')) {
 
 class OverSeek_Tracking_Transport
 {
+    public const RETRY_HOOK = 'overseek_retry_tracking_events';
+    private const RETRY_BATCH_SIZE = 5;
     private const FAILED_EVENTS_TRANSIENT = '_overseek_failed_events';
     private const BLOCKING_EVENT_TYPES = array('purchase');
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    public static function get_failed_events_for_retry(): array
+    private static function get_failed_events_for_retry(): array
     {
         $failed_events = get_transient(self::FAILED_EVENTS_TRANSIENT);
 
@@ -33,7 +35,7 @@ class OverSeek_Tracking_Transport
         $deferred = array();
 
         foreach ($failed_events as $event) {
-            if (empty($event['_retry_after']) || $event['_retry_after'] <= $now) {
+            if (count($ready) < self::RETRY_BATCH_SIZE && (empty($event['_retry_after']) || $event['_retry_after'] <= $now)) {
                 $ready[] = $event;
             } else {
                 $deferred[] = $event;
@@ -47,6 +49,83 @@ class OverSeek_Tracking_Transport
         }
 
         return $ready;
+    }
+
+    /**
+     * Schedule the earliest queued retry without performing HTTP in the visitor request.
+     * WP-Cron must be serviced by WordPress or a system cron when DISABLE_WP_CRON is set.
+     */
+    public static function schedule_failed_events_retry(): void
+    {
+        $events = get_transient(self::FAILED_EVENTS_TRANSIENT);
+        if (!is_array($events) || empty($events)) {
+            return;
+        }
+
+        $next_retry = min(array_map(static function (array $event): int {
+            return (int) ($event['_retry_after'] ?? 0);
+        }, $events));
+
+        // Space batches apart even when the remaining backlog is already due.
+        $timestamp = max(time() + 30, $next_retry);
+        $scheduled = wp_next_scheduled(self::RETRY_HOOK);
+        if ($scheduled && $scheduled <= $timestamp) {
+            return;
+        }
+        if ($scheduled && !wp_unschedule_event($scheduled, self::RETRY_HOOK)) {
+            return;
+        }
+        wp_schedule_single_event($timestamp, self::RETRY_HOOK);
+    }
+
+    /**
+     * Retry at most five events (ten seconds of configured HTTP timeout budget).
+     * Reuse the captured payload so attribution and deduplication IDs stay intact.
+     */
+    public static function retry_failed_events(): void
+    {
+        $api_url = untrailingslashit((string) get_option('overseek_api_url', ''));
+        $account_id = (string) get_option('overseek_account_id', '');
+        if (!get_option('overseek_enable_tracking') || $api_url === '' || $account_id === '') {
+            return;
+        }
+
+        $events = self::get_failed_events_for_retry();
+        try {
+            foreach ($events as $event) {
+                // Never replay an old account's payload after a store is relinked.
+                if ((string) ($event['accountId'] ?? '') !== $account_id) {
+                    continue;
+                }
+
+                try {
+                    $event_id = (string) ($event['payload']['eventId'] ?? '');
+                    $order = null;
+                    if (($event['type'] ?? '') === 'purchase' && !empty($event['payload']['orderId'])) {
+                        $order = wc_get_order((int) $event['payload']['orderId']);
+                        if ($order && $order->get_meta('_overseek_tracked')) {
+                            continue;
+                        }
+                    }
+
+                    $results = self::flush_events($api_url, array($event));
+                    if ($order && $event_id !== '' && !empty($results[$event_id])
+                        && (string) $order->get_meta('_overseek_event_id') === $event_id) {
+                        $order->update_meta_data('_overseek_tracked', true);
+                        $order->save_meta_data();
+                    }
+                } catch (Throwable $error) {
+                    // A transport/order extension must not discard the rest of the claimed batch.
+                    // Replays retain the same event ID, including if only saving the marker failed.
+                    self::store_failed_event($event);
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                        error_log('OverSeek tracking retry failed: ' . $error->getMessage());
+                    }
+                }
+            }
+        } finally {
+            self::schedule_failed_events_retry();
+        }
     }
 
     /**
@@ -194,6 +273,7 @@ class OverSeek_Tracking_Transport
             }
 
             set_transient(self::FAILED_EVENTS_TRANSIENT, $failed_events, HOUR_IN_SECONDS);
+            self::schedule_failed_events_retry();
         }
     }
 }

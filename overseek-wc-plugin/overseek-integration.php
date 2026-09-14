@@ -68,7 +68,8 @@ add_action('before_woocommerce_init', static function (): void {
  */
 function overseek_wc_deactivate(): void
 {
-	delete_transient('_overseek_failed_events');
+    wp_unschedule_hook('overseek_retry_tracking_events');
+    delete_transient('_overseek_failed_events');
 
 	// Clean up crawler guard cron schedule and transients.
 	require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crawler-guard.php';

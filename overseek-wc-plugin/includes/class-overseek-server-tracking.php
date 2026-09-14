@@ -63,6 +63,8 @@ class OverSeek_Server_Tracking
      */
     private $cart_view_tracked = false;
     private $checkout_view_tracked = false;
+    private $pageview_tracked = false;
+    private $product_views_tracked = array();
     private $last_rest_checkout_email = '';
 
     /**
@@ -93,6 +95,10 @@ class OverSeek_Server_Tracking
         if (empty($this->account_id) || empty($this->api_url)) {
             return;
         }
+
+        add_action(OverSeek_Tracking_Transport::RETRY_HOOK, array('OverSeek_Tracking_Transport', 'retry_failed_events'));
+        // Recover queues created before the background worker existed, or after a missed schedule.
+        OverSeek_Tracking_Transport::schedule_failed_events_retry();
 
         // CRITICAL: Initialize visitor cookie BEFORE any output is sent.
         // 'init' hook fires early enough that headers haven't been sent yet.
@@ -379,17 +385,12 @@ class OverSeek_Server_Tracking
     }
 
     /**
-     * Flush all queued events at shutdown.
-     * Uses blocking requests during AJAX (where shutdown may not complete),
-     * and non-blocking for regular page loads.
+     * Flush only this request's events. Purchases require acknowledgement;
+     * other events remain non-blocking. Backlog retries run exclusively in cron.
      */
     public function flush_event_queue(): array
     {
-        // Get any failed events from previous requests to retry
-        $retry_events = OverSeek_Tracking_Transport::get_failed_events_for_retry();
-
-        // Merge retry events with current queue
-        $all_events = array_merge($retry_events, $this->event_queue);
+        $all_events = $this->event_queue;
         $seen_purchase_ids = array();
         $all_events = array_values(array_filter($all_events, static function (array $event) use (&$seen_purchase_ids): bool {
             if ('purchase' !== ($event['type'] ?? '')) {
@@ -494,6 +495,10 @@ class OverSeek_Server_Tracking
      */
     public function track_pageview()
     {
+        if ($this->pageview_tracked || !OverSeek_Tracking_Guard_Utils::is_document_view_request()) {
+            return;
+        }
+
         if (!get_option('overseek_track_pageviews', '1')) {
             return;
         }
@@ -570,6 +575,7 @@ class OverSeek_Server_Tracking
             $payload['searchQuery'] = get_search_query();
         }
 
+        $this->pageview_tracked = true;
         $this->queue_event('pageview', $payload, $is_404);
         if (is_search()) {
             $search_payload = array(
@@ -902,6 +908,10 @@ class OverSeek_Server_Tracking
     {
         global $product;
 
+        if (!OverSeek_Tracking_Guard_Utils::is_document_view_request()) {
+            return;
+        }
+
         // Validate product object - may be null or an ID on some themes
         if (!$product) {
             return;
@@ -913,6 +923,11 @@ class OverSeek_Server_Tracking
             if (!$product) {
                 return;
             }
+        }
+
+        $product_id = (int) $product->get_id();
+        if (isset($this->product_views_tracked[$product_id])) {
+            return;
         }
 
         $categories = array();
@@ -929,6 +944,7 @@ class OverSeek_Server_Tracking
 
         $payload = OverSeek_Tracking_Event_Builder::build_product_view_payload($product, $categories, $meta_config);
 
+        $this->product_views_tracked[$product_id] = true;
         $this->queue_event('product_view', $payload);
     }
 

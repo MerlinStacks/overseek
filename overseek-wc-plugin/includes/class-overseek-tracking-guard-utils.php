@@ -15,6 +15,50 @@ if (!defined('ABSPATH')) {
 class OverSeek_Tracking_Guard_Utils
 {
     /**
+     * Identify document requests, not background fetches masquerading as home views.
+     * Missing browser metadata is allowed for GET requests (older browsers/proxies).
+     * This is analytics classification, not an authentication or security boundary.
+     */
+    public static function is_document_view_request(): bool
+    {
+        if (is_admin() || wp_doing_ajax() || wp_doing_cron() || (defined('REST_REQUEST') && REST_REQUEST)) {
+            return false;
+        }
+        // Some frontend endpoints do not set DOING_AJAX until after template_redirect.
+        if (isset($_GET['wc-ajax']) || isset($_POST['wc-ajax'])) {
+            return false;
+        }
+
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $mode = strtolower(trim((string) ($_SERVER['HTTP_SEC_FETCH_MODE'] ?? '')));
+        $destination = strtolower(trim((string) ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '')));
+        if ($method !== 'GET' && !($method === 'POST' && $mode === 'navigate')) {
+            return false;
+        }
+        if (($mode !== '' && $mode !== 'navigate')
+            || ($destination !== '' && !in_array($destination, array('document', 'iframe', 'frame'), true))) {
+            return false;
+        }
+        if (strtolower(trim((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''))) === 'xmlhttprequest') {
+            return false;
+        }
+
+        foreach (array('HTTP_SEC_PURPOSE', 'HTTP_PURPOSE', 'HTTP_X_PURPOSE', 'HTTP_X_MOZ') as $header) {
+            if (preg_match('/\b(prefetch|prerender)\b/i', (string) ($_SERVER[$header] ?? ''))) {
+                return false;
+            }
+        }
+
+        $accept = strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? ''));
+        if ($accept !== '' && strpos($accept, 'text/html') === false
+            && strpos($accept, 'application/xhtml+xml') === false && strpos($accept, '*/*') === false) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Check if the current request is from a known bot/crawler.
      */
     public static function is_bot_request(): bool
