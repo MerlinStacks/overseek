@@ -206,9 +206,16 @@ const humanizePersonaliseItLabel = (value: unknown, fallback: string): string =>
   return label.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
 };
 
+// These production methods do not expose a colour choice on customer invoices.
+// Keep historical payloads without a saved method backwards-compatible.
+const shouldShowPersonaliseItColour = (printMethod: unknown): boolean => (
+  !['engraving', 'sublimation', 'uv'].includes(String(printMethod ?? '').trim().toLowerCase())
+);
+
 const getPersonaliseItLayerMeta = (
   layer: Record<string, unknown>,
   label: string,
+  printMethod: unknown = layer.printMethod ?? layer.print_method,
 ): InvoiceItemMeta[] => {
   const type = String(layer.type || '').toLowerCase();
   const input = isRecord(layer.input) ? layer.input : layer;
@@ -229,7 +236,9 @@ const getPersonaliseItLayerMeta = (
       ).trim();
       const colourName = stringifyInvoiceValue(input.colorName ?? input.colourName ?? input.color_name ?? input.colour_name).trim();
       const colourValue = colourName && colour ? `${colourName} (${colour})` : (colourName || colour);
-      if (colourValue) meta.push({ label: `${label} Colour`, value: colourValue });
+      if (colourValue && shouldShowPersonaliseItColour(printMethod)) {
+        meta.push({ label: `${label} Colour`, value: colourValue });
+      }
     }
 
     return meta;
@@ -289,7 +298,7 @@ export const getPersonaliseItItemMeta = (item: InvoiceLineItemLike): InvoiceItem
       area.layers.forEach((rawLayer) => {
         if (!isRecord(rawLayer)) return;
         const label = humanizePersonaliseItLabel(rawLayer.label, `Layer ${String(rawLayer.id || '').trim() || rawLayer.type || ''}`);
-        getPersonaliseItLayerMeta(rawLayer, label).forEach((entry) => {
+        getPersonaliseItLayerMeta(rawLayer, label, area.printMethod ?? area.print_method).forEach((entry) => {
           addPersonaliseItMeta(meta, seenEntries, entry.label, entry.value);
         });
       });
@@ -327,7 +336,9 @@ export const getPersonaliseItItemMeta = (item: InvoiceLineItemLike): InvoiceItem
     const colour = stringifyInvoiceValue(rawArea.colorHex ?? rawArea.colourHex ?? rawArea.color ?? rawArea.colour).trim();
     const colourName = stringifyInvoiceValue(rawArea.colorName ?? rawArea.colourName ?? rawArea.color_name ?? rawArea.colour_name).trim();
     const colourValue = colourName && colour ? `${colourName} (${colour})` : (colourName || colour);
-    if (colourValue) addPersonaliseItMeta(meta, seenEntries, `${label} Colour`, colourValue);
+    if (colourValue && shouldShowPersonaliseItColour(rawArea.printMethod ?? rawArea.print_method)) {
+      addPersonaliseItMeta(meta, seenEntries, `${label} Colour`, colourValue);
+    }
   });
 
   return meta;
