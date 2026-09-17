@@ -820,10 +820,12 @@ export class NodeExecutor {
                     accountId,
                     email,
                     scope: 'ALL',
+                    contactStatus: 'UNSUBSCRIBED',
                     reason: 'Automation unsubscribe action'
                 },
                 update: {
                     scope: 'ALL',
+                    contactStatus: 'UNSUBSCRIBED',
                     reason: 'Automation unsubscribe action'
                 }
             }),

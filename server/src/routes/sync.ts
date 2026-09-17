@@ -245,7 +245,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             const state = await prisma.syncState.findMany({
-                where: { accountId: String(accountId) }
+                where: { accountId: String(accountId), NOT: { entityType: { startsWith: 'contact-projection:' } } }
             });
 
             const lastSuccess = recent.find((log) => log.status === 'SUCCESS');
@@ -550,7 +550,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             const state = await prisma.syncState.findMany({
-                where: { accountId: String(accountId) }
+                where: { accountId: String(accountId), NOT: { entityType: { startsWith: 'contact-projection:' } } }
             });
 
             return { logs, state };

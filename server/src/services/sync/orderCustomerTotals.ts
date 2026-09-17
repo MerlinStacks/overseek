@@ -1,9 +1,9 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
-import { esClient } from '../../utils/elastic';
 import { retryWithBackoff } from '../../utils/retryWithBackoff';
+import { queueContactKeys } from '../ContactProjection';
 
-export type OrderCustomerAssociation = { wooCustomerId: number | null; billingEmail: string | null };
+export type OrderCustomerAssociation = { wooCustomerId: number | null; billingEmail: string | null; wooId?: number };
 const BATCH_SIZE = 500;
 
 /** Serialize order mutations and rebuild batches before taking their read snapshots. */
@@ -25,7 +25,15 @@ export async function updateCustomerTotals(
     associations: OrderCustomerAssociation[], customerIds: string[] = []
 ): Promise<void> {
     const wooIds = [...new Set(associations.flatMap(o => o.wooCustomerId != null ? [o.wooCustomerId] : []))];
-    const emails = [...new Set(associations.flatMap(o => o.wooCustomerId == null && o.billingEmail ? [o.billingEmail] : []))];
+    const emails = [...new Set(associations.flatMap(o => o.wooCustomerId == null && o.billingEmail?.trim() ? [o.billingEmail.trim().toLowerCase()] : []))];
+    const anonymousKeys = associations.filter(o => o.wooCustomerId == null && !o.billingEmail?.trim() && o.wooId != null)
+        .map(o => `order:${o.wooId}`);
+    if (anonymousKeys.length) {
+        const anonymous = await tx.wooCustomer.findMany({ where: { accountId,
+            OR: anonymousKeys.map(key => ({ rawData: { path: ['materializationKey'], equals: key } }))
+        }, select: { id: true } });
+        customerIds = [...new Set([...customerIds, ...anonymous.map(c => c.id)])];
+    }
     if (!wooIds.length && !emails.length && !customerIds.length) return;
 
     // Keep NUMERIC arithmetic in PostgreSQL. Registered orders never fall back to email.
@@ -36,17 +44,26 @@ export async function updateCustomerTotals(
             FROM "WooCustomer" c
             LEFT JOIN "WooOrder" o ON o."accountId" = c."accountId" AND (
                 o."wooCustomerId" = c."wooId"
-                OR (o."wooCustomerId" IS NULL AND o."billingEmail" = c."email")
+                OR (o."wooCustomerId" IS NULL AND NULLIF(TRIM(o."billingEmail"), '') IS NOT NULL
+                    AND LOWER(TRIM(o."billingEmail")) = LOWER(TRIM(c."email")))
+                OR (o."wooCustomerId" IS NULL AND NULLIF(TRIM(o."billingEmail"), '') IS NULL
+                    AND c."rawData"->>'materializationKey' = 'order:' || o."wooId"::text)
             )
             WHERE c."accountId" = ${accountId} AND (
-                c."wooId" = ANY(${wooIds}::int[]) OR c."email" = ANY(${emails}::text[])
+                c."wooId" = ANY(${wooIds}::int[]) OR LOWER(TRIM(c."email")) = ANY(${emails}::text[])
                 OR c."id" = ANY(${customerIds}::text[])
             )
             GROUP BY c."id"
+        ), changed AS (
+            UPDATE "WooCustomer" c SET "ordersCount" = t.count, "totalSpent" = t.spent, "updatedAt" = NOW()
+            FROM totals t WHERE c."id" = t."id" AND c."accountId" = ${accountId}
+            AND (c."ordersCount" IS DISTINCT FROM t.count OR c."totalSpent" IS DISTINCT FROM t.spent)
+            RETURNING c."accountId", c."wooId"
         )
-        UPDATE "WooCustomer" c SET "ordersCount" = t.count, "totalSpent" = t.spent, "updatedAt" = NOW()
-        FROM totals t WHERE c."id" = t."id" AND c."accountId" = ${accountId}
-        AND (c."ordersCount" IS DISTINCT FROM t.count OR c."totalSpent" IS DISTINCT FROM t.spent)
+        INSERT INTO "SyncState" ("id", "accountId", "entityType", "cursor", "updatedAt")
+        SELECT gen_random_uuid()::text, "accountId", 'contact-projection:' || "wooId"::text, gen_random_uuid()::text, NOW()
+        FROM changed
+        ON CONFLICT ("accountId", "entityType") DO UPDATE SET "cursor" = EXCLUDED."cursor", "updatedAt" = EXCLUDED."updatedAt"
     `;
 }
 
@@ -70,34 +87,18 @@ export async function recalculateCustomerTotals(accountId: string, since?: Date)
     await reindexCustomerTotals(accountId, since);
 }
 
-/** updatedAt is the durable retry set, including old associations lost by a prior attempt. */
+/** updatedAt recovery records durable projection intent; ES is handled independently. */
 export async function reindexCustomerTotals(accountId: string, since?: Date): Promise<void> {
     let cursor: string | undefined;
     while (true) {
-        // Keep reads and ES writes ordered with other OrderSync batches for this account.
+        // Snapshot and projection intent are committed together with the account lock.
         const page = await withOrderTotalsTransaction(accountId, async tx => {
             const customers = await tx.wooCustomer.findMany({
                 where: { accountId, ...(since ? { updatedAt: { gte: since } } : {}), ...(cursor ? { id: { gt: cursor } } : {}) },
-                select: { id: true, wooId: true, email: true, firstName: true, lastName: true,
-                    totalSpent: true, ordersCount: true, createdAt: true },
                 orderBy: { id: 'asc' }, take: BATCH_SIZE
             });
             if (!customers.length) return null;
-            // Bound network time below the transaction timeout; the next sync retries failures.
-            const result = await esClient.bulk({
-                refresh: false,
-                operations: customers.flatMap(c => [
-                    { update: { _index: 'customers', _id: `${accountId}_${c.wooId}` } },
-                    {
-                        doc: { totalSpent: Number(c.totalSpent), ordersCount: c.ordersCount },
-                        // Match bulkIndexCustomers' public schema without replacing richer existing documents.
-                        upsert: { accountId, id: c.wooId, email: c.email, firstName: c.firstName,
-                            lastName: c.lastName, totalSpent: Number(c.totalSpent), ordersCount: c.ordersCount,
-                            dateCreated: c.createdAt.toISOString() }
-                    }
-                ])
-            }, { requestTimeout: 10000, maxRetries: 0 });
-            if (result.errors) throw new Error('Failed to index customer totals; checkpoint was not advanced.');
+            await queueContactKeys(tx, accountId, customers.map(c => c.wooId));
             return { cursor: customers[customers.length - 1].id, count: customers.length };
         });
         if (!page) break;

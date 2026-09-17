@@ -5,6 +5,7 @@ import { recalculateCustomerTotals, reindexCustomerTotals, updateCustomerTotals,
 
 vi.mock('../../utils/prisma', () => ({ prisma: {
     $transaction: vi.fn(), $queryRaw: vi.fn(), $executeRaw: vi.fn(),
+    syncState: { upsert: vi.fn() },
     wooCustomer: { findMany: vi.fn(), updateMany: vi.fn() }
 } }));
 vi.mock('../../utils/elastic', () => ({ esClient: { bulk: vi.fn() } }));
@@ -66,23 +67,23 @@ describe('OrderSync customer aggregates', () => {
             expect(args).not.toHaveProperty('cursor');
         }
         expect(vi.mocked(prisma.wooCustomer.findMany).mock.calls[1][0]?.where).toEqual({ accountId: 'tenant', id: { gt: '0500' } });
-        expect(esClient.bulk).toHaveBeenCalledTimes(2);
-        const operations = (vi.mocked(esClient.bulk).mock.calls[1][0] as any).operations;
-        expect(operations).toEqual([
-            { update: { _index: 'customers', _id: 'tenant_501' } },
-            { doc: { totalSpent: 0, ordersCount: 0 }, upsert: expect.objectContaining({ accountId: 'tenant', id: 501, ordersCount: 0 }) }
-        ]);
+        expect(esClient.bulk).not.toHaveBeenCalled();
+        expect(prisma.syncState.upsert).toHaveBeenCalledTimes(501);
+        expect(prisma.syncState.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
+            create: expect.objectContaining({ accountId: 'tenant', entityType: 'contact-projection:501' })
+        }));
     });
 
-    it('replays recently changed customers and surfaces partial ES failures', async () => {
+    it('records recently changed customers for independent ES recovery, even while ES is down', async () => {
         const since = new Date('2026-01-01');
         vi.mocked(prisma.wooCustomer.findMany).mockResolvedValueOnce([customer('1')] as any);
         vi.mocked(esClient.bulk).mockResolvedValueOnce({ errors: true } as any);
-        await expect(reindexCustomerTotals('tenant', since)).rejects.toThrow('checkpoint was not advanced');
+        await reindexCustomerTotals('tenant', since);
         expect(prisma.wooCustomer.findMany).toHaveBeenCalledWith(expect.objectContaining({
             where: { accountId: 'tenant', updatedAt: { gte: since } }
         }));
-        expect(esClient.bulk).toHaveBeenCalledWith(expect.anything(), { requestTimeout: 10000, maxRetries: 0 });
+        expect(esClient.bulk).not.toHaveBeenCalled();
+        expect(prisma.syncState.upsert).toHaveBeenCalled();
     });
 
     it('stops recovery on database failure without indexing incomplete results', async () => {

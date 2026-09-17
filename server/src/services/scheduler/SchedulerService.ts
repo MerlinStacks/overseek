@@ -97,6 +97,9 @@ export class SchedulerService {
                     break;
 
                 // Maintenance jobs
+                case 'contact-projection-recovery':
+                    await (await import('../ContactProjection')).drainContactProjections(250);
+                    break;
                 case 'inventory-alerts':
                     await MaintenanceScheduler.dispatchInventoryAlerts();
                     break;
@@ -190,5 +193,6 @@ export class SchedulerService {
             this.schedulerWorker = null;
             Logger.info('Scheduler worker closed');
         }
+        await (await import('../ContactProjection')).closeContactProjectionPool();
     }
 }

@@ -146,10 +146,12 @@ const emailPreferencesRoutes: FastifyPluginAsync = async (fastify) => {
                         accountId: parsed.data.accountId,
                         email: normalizedEmail,
                         scope: unsubscribeAll ? 'ALL' : 'MARKETING',
+                        contactStatus: 'UNSUBSCRIBED',
                         reason: parsed.data.reason?.trim() || 'Preference center update'
                     },
                     update: {
                         scope: unsubscribeAll ? 'ALL' : 'MARKETING',
+                        contactStatus: 'UNSUBSCRIBED',
                         reason: parsed.data.reason?.trim() || 'Preference center update'
                     }
                 });

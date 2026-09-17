@@ -16,7 +16,6 @@ import {
     Loader2,
     CheckCircle,
     AlertTriangle,
-    Clock,
     RotateCcw,
     Pause,
     Play,
@@ -33,13 +32,13 @@ export function BOMSyncPage() {
         deactivatedItems,
         stats,
         isLoadingPending,
+        loadError,
         isSyncing,
         isPaused,
         syncingProductId,
         syncResult,
         syncErrors,
         syncProgress,
-        nextSyncIn,
         handleSyncAll,
         handleSyncSingle,
         handleRetryFailed,
@@ -78,23 +77,17 @@ export function BOMSyncPage() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex justify-between items-end border-b pb-4">
+            <div className="flex flex-wrap gap-4 justify-between items-end border-b border-slate-200 dark:border-slate-700 pb-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">BOM Inventory Sync</h1>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">BOM Inventory Sync</h3>
                     <div className="flex items-center gap-4 mt-1">
-                        <p className="text-sm text-gray-500">
-                            Sync calculated stock from BOM to WooCommerce
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                            Review locally calculated stock and push changes to WooCommerce. Manage automatic sync in Overview &amp; schedules.
                         </p>
-                        {nextSyncIn && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                                <Clock size={12} />
-                                Auto-sync in {nextSyncIn}
-                            </span>
-                        )}
                     </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <button
                         onClick={handleRefresh}
                         disabled={isLoadingPending}
@@ -105,9 +98,17 @@ export function BOMSyncPage() {
                     </button>
                     {isSyncing && (
                         <button
+                            onClick={handleCancelSync}
+                            className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+                        >
+                            Cancel sync
+                        </button>
+                    )}
+                    {isSyncing && (
+                        <button
                             onClick={handleTogglePause}
                             className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-amber-600 hover:bg-amber-50 transition-all border border-amber-200"
-                            title={isPaused ? 'Resume' : 'Pause'}
+                            title={isPaused ? 'Resume live updates' : 'Pause live updates (sync continues)'}
                         >
                             {isPaused ? <Play size={18} /> : <Pause size={18} />}
                         </button>
@@ -124,7 +125,7 @@ export function BOMSyncPage() {
                     )}
                     <button
                         onClick={handleSyncAll}
-                        disabled={isSyncing || stats.needsSync === 0}
+                        disabled={isSyncing || isLoadingPending || Boolean(loadError) || stats.needsSync === 0}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${stats.needsSync === 0
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                             : 'bg-blue-600 text-white hover:bg-blue-700'
@@ -139,6 +140,13 @@ export function BOMSyncPage() {
                     </button>
                 </div>
             </div>
+
+            {loadError && (
+                <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+                    <span>{loadError}</span>
+                    <button onClick={handleRefresh} disabled={isLoadingPending} className="font-semibold underline">Retry</button>
+                </div>
+            )}
 
             {/* Sync Progress Bar */}
             {syncProgress && (
@@ -183,7 +191,7 @@ export function BOMSyncPage() {
             />
 
             {/* Main Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden" aria-busy={isLoadingPending}>
                 <div className={`px-6 py-4 border-b flex items-center justify-between ${activeTab === 'errors'
                     ? 'bg-red-50/50 border-red-100'
                     : activeTab === 'pending'
@@ -205,11 +213,11 @@ export function BOMSyncPage() {
                     </div>
                 </div>
 
-                {isLoadingPending ? (
+                {isLoadingPending && pendingChanges.length === 0 ? (
                     <div className="p-12 text-center text-gray-400">
                         <Loader2 className="animate-spin inline mr-2" /> Loading...
                     </div>
-                ) : filteredItems.length === 0 ? (
+                ) : loadError && pendingChanges.length === 0 ? null : filteredItems.length === 0 ? (
                     <div className="p-12 text-center text-gray-500 flex flex-col items-center gap-2">
                         <CheckCircle size={48} className="text-green-300" />
                         <p className="text-green-700 font-medium">

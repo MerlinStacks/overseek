@@ -9,7 +9,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
-import { BOMInventorySyncService } from '../../services/BOMInventorySyncService';
+import { BOMInventorySyncService, localBOMItems } from '../../services/BOMInventorySyncService';
 import { z } from 'zod';
 
 const variationQuerySchema = z.object({
@@ -20,31 +20,19 @@ const limitQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(100).default(50)
 });
 
+const runningJobStates = ['active', 'waiting', 'delayed', 'prioritized', 'waiting-children'];
+
+function bomJobIds(accountId: string) {
+    const suffix = accountId.replace(/:/g, '_');
+    // Keep the scheduler's ID until all producers can migrate together.
+    return [`bom_sync_${suffix}`, `sync_bom_${suffix}`];
+}
+
 function sendBomError(reply: any, statusCode: number, error: string, code: string, details?: unknown) {
     if (details !== undefined) {
         return reply.code(statusCode).send({ error, code, details });
     }
     return reply.code(statusCode).send({ error, code });
-}
-
-async function mapWithConcurrency<T, R>(
-    items: T[],
-    concurrency: number,
-    mapper: (item: T, index: number) => Promise<R>
-): Promise<R[]> {
-    const results = new Array<R>(items.length);
-    let cursor = 0;
-
-    const worker = async () => {
-        while (true) {
-            const index = cursor++;
-            if (index >= items.length) break;
-            results[index] = await mapper(items[index], index);
-        }
-    };
-
-    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
-    return results;
 }
 
 export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
@@ -224,42 +212,29 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
-        const jobId = `bom_sync_${accountId.replace(/:/g, '_')}`;
+        const [jobId, sharedJobId] = bomJobIds(accountId);
 
-        const existingJob = await queue.getJob(jobId);
-        if (existingJob) {
-            const state = await existingJob.getState();
-            if (['active', 'waiting', 'delayed'].includes(state)) {
-                // Check if job is stale (active but not progressing for too long)
-                // This handles the "BullMQ Silence" scenario where a worker crashed
-                const processedOn = existingJob.processedOn;
-                const now = Date.now();
-                const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
-
-                if (state === 'active' && processedOn && (now - processedOn > STALE_THRESHOLD_MS)) {
-                    // Job is stale - force remove it
-                    Logger.warn(`[BOMSync] Detected stale active job, force removing`, {
-                        accountId,
-                        jobId,
-                        processedOn: new Date(processedOn).toISOString(),
-                        staleDurationMs: now - processedOn
-                    });
-                    try {
-                        await existingJob.moveToFailed(new Error('Job stale - forcefully removed'), '0');
-                        await existingJob.remove();
-                    } catch (e) {
-                        Logger.warn(`[BOMSync] Failed to remove stale job, proceeding anyway`, { error: e });
-                    }
-                } else {
+        // Recognize jobs dispatched through the shared sync endpoint as well.
+        for (const candidateId of [jobId, sharedJobId]) {
+            const candidate = await queue.getJob(candidateId);
+            if (candidate) {
+                const state = await candidate.getState();
+                if (runningJobStates.includes(state)) {
+                    // A long-running active job is not necessarily stale. Let BullMQ
+                    // recover stalled workers rather than starting duplicate work.
                     return {
                         status: 'already_running',
                         message: `BOM sync is already ${state} for this account.`,
                         estimatedProducts: bomCount
                     };
                 }
-            } else {
-                try { await existingJob.remove(); } catch (e) { /* ignore */ }
             }
+        }
+
+        const existingJob = await queue.getJob(jobId);
+        if (existingJob) {
+            // Fail closed if removal races with a worker acquiring the job.
+            await existingJob.remove();
         }
 
         await queue.add(QUEUES.BOM_SYNC, { accountId }, {
@@ -288,24 +263,25 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
         const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
 
         const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
-        const jobId = `bom_sync_${accountId.replace(/:/g, '_')}`;
 
         try {
-            const existingJob = await queue.getJob(jobId);
-            if (existingJob) {
-                const state = await existingJob.getState();
-                const rawProgress = existingJob.progress as any;
-                const progress = rawProgress && typeof rawProgress === 'object'
-                    ? {
-                        current: Number(rawProgress.current || 0),
-                        total: Number(rawProgress.total || 0),
-                        synced: Number(rawProgress.synced || 0),
-                        skipped: Number(rawProgress.skipped || 0),
-                        failed: Number(rawProgress.failed || 0)
+            for (const jobId of bomJobIds(accountId)) {
+                const existingJob = await queue.getJob(jobId);
+                if (existingJob) {
+                    const state = await existingJob.getState();
+                    const rawProgress = existingJob.progress as any;
+                    const progress = rawProgress && typeof rawProgress === 'object'
+                        ? {
+                            current: Number(rawProgress.current || 0),
+                            total: Number(rawProgress.total || 0),
+                            synced: Number(rawProgress.synced || 0),
+                            skipped: Number(rawProgress.skipped || 0),
+                            failed: Number(rawProgress.failed || 0)
+                        }
+                        : null;
+                    if (runningJobStates.includes(state)) {
+                        return { isSyncing: true, state, progress };
                     }
-                    : null;
-                if (['active', 'waiting', 'delayed'].includes(state)) {
-                    return { isSyncing: true, state, progress };
                 }
             }
             return { isSyncing: false, state: null };
@@ -317,82 +293,53 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
     /**
      * DELETE /bom/sync-cancel
-     * Cancel a stuck or running BOM sync job for this account.
-     * Uses aggressive cleanup for orphaned jobs.
+     * Cancel queued work or request cooperative cancellation of running BOM jobs.
      */
     fastify.delete('/bom/sync-cancel', async (request, reply) => {
         const accountId = request.accountId!;
         const { QueueFactory, QUEUES } = await import('../../services/queue/QueueFactory');
-        const { redisClient } = await import('../../utils/redis');
+        const { SyncCancellationService } = await import('../../services/sync/SyncCancellationService');
 
         const queue = QueueFactory.getQueue(QUEUES.BOM_SYNC);
-        const jobId = `bom_sync_${accountId.replace(/:/g, '_')}`;
 
         try {
-            const existingJob = await queue.getJob(jobId);
-            if (existingJob) {
+            let previousState: string | undefined;
+            let cancellationRequested = false;
+            for (const jobId of bomJobIds(accountId)) {
+                const existingJob = await queue.getJob(jobId);
+                if (!existingJob) continue;
+                // IDs are normalized, so verify ownership from the job payload too.
+                if (existingJob.data?.accountId !== accountId) {
+                    return sendBomError(reply, 403, 'Cannot cancel jobs for another account', 'BOM_SYNC_CANCEL_FORBIDDEN');
+                }
                 const state = await existingJob.getState();
+                if (!runningJobStates.includes(state)) continue;
+                previousState ??= state;
 
-                // Try standard removal methods first
-                try {
-                    await existingJob.remove();
-                    Logger.info(`[BOMSync] Cancelled sync job`, { accountId, jobId, previousState: state });
-                    return {
-                        success: true,
-                        message: 'Sync job cancelled successfully',
-                        previousState: state
-                    };
-                } catch (removeErr: any) {
-                    // Job is locked - try moveToFailed
-                    Logger.warn(`[BOMSync] Standard remove failed, trying moveToFailed`, {
-                        error: removeErr.message, jobId
-                    });
-
+                if (state === 'active') {
+                    await SyncCancellationService.request(QUEUES.BOM_SYNC, jobId);
+                    cancellationRequested = true;
+                } else {
                     try {
-                        await existingJob.moveToFailed(new Error('Cancelled by user'), '0');
-                        // Try to remove again after moving to failed
-                        try { await existingJob.remove(); } catch (e) { /* ignore */ }
-
-                        Logger.info(`[BOMSync] Force-failed locked sync job`, { accountId, jobId });
-                        return {
-                            success: true,
-                            message: 'Sync job force-cancelled (was locked)',
-                            previousState: state
-                        };
-                    } catch (failErr: any) {
-                        // Last resort: directly remove from Redis
-                        Logger.warn(`[BOMSync] moveToFailed also failed, using Redis force-clean`, {
-                            error: failErr.message, jobId
-                        });
-
-                        // Force remove all traces of the job from Redis
-                        const queueName = QUEUES.BOM_SYNC;
-                        const keysToDelete = [
-                            `bull:${queueName}:${jobId}`,
-                            `bull:${queueName}:${jobId}:lock`,
-                            `bull:${queueName}:${jobId}:logs`,
-                        ];
-
-                        // Remove from all state sets
-                        await redisClient.zrem(`bull:${queueName}:active`, jobId);
-                        await redisClient.zrem(`bull:${queueName}:waiting`, jobId);
-                        await redisClient.zrem(`bull:${queueName}:delayed`, jobId);
-                        await redisClient.zrem(`bull:${queueName}:failed`, jobId);
-                        await redisClient.zrem(`bull:${queueName}:completed`, jobId);
-
-                        // Delete job keys
-                        for (const key of keysToDelete) {
-                            await redisClient.del(key);
-                        }
-
-                        Logger.info(`[BOMSync] Force-cleaned job from Redis`, { accountId, jobId });
-                        return {
-                            success: true,
-                            message: 'Sync job force-cleaned from Redis (orphaned job)',
-                            previousState: state
-                        };
+                        await existingJob.remove();
+                    } catch (error: any) {
+                        // Match shared sync cancellation: a worker may have acquired
+                        // the job between getState and remove.
+                        if (!String(error?.message || '').includes('locked')) throw error;
+                        await SyncCancellationService.request(QUEUES.BOM_SYNC, jobId);
+                        cancellationRequested = true;
                     }
                 }
+                Logger.info('[BOMSync] Cancelled or requested cancellation', { accountId, jobId, previousState: state });
+            }
+
+            if (previousState !== undefined) {
+                return {
+                    success: true,
+                    message: cancellationRequested ? 'Sync job cancellation requested' : 'Sync job cancelled successfully',
+                    previousState,
+                    cancellationRequested
+                };
             }
 
             return {
@@ -429,6 +376,7 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                     }
                 },
                 include: {
+                    items: localBOMItems,
                     product: {
                         select: {
                             id: true,
@@ -436,12 +384,15 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
                             name: true,
                             sku: true,
                             mainImage: true,
+                            stockQuantity: true,
+                            rawData: true,
                             // Include variations so we can lookup variant-specific data
                             variations: {
                                 select: {
                                     wooId: true,
                                     sku: true,
                                     images: true,
+                                    stockQuantity: true,
                                     rawData: true
                                 }
                             }
@@ -454,12 +405,12 @@ export const bomSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
             let calculationFailures = 0;
 
-            const mapped = await mapWithConcurrency(bomsWithChildProducts, 8, async (bom) => {
+            const mapped = bomsWithChildProducts.map((bom) => {
                 try {
-                    const calculation = await BOMInventorySyncService.calculateEffectiveStockLocal(
-                        accountId,
-                        bom.productId,
-                        bom.variationId
+                    const calculation = BOMInventorySyncService.calculateEffectiveStockFromLocalData(
+                        bom.product,
+                        bom,
+                        bom.product.variations.find(v => v.wooId === bom.variationId) ?? null
                     );
 
                     if (!calculation) {

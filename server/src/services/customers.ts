@@ -4,8 +4,9 @@ import { Logger } from '../utils/logger';
 import { Prisma } from '@prisma/client';
 import { WooService } from './woo';
 import { IndexingService } from './search/IndexingService';
+import { getContactAutomationHistory } from './automation/ContactAutomationHistory';
+import { ContactStatus, normalizeContactStatus, resolveContactStatus, strongestContactSuppression } from './customers/contactStatus';
 
-type ContactStatus = 'UNVERIFIED' | 'SUBSCRIBED' | 'BOUNCED' | 'UNSUBSCRIBED' | 'SOFT_BOUNCED' | 'COMPLAINT';
 type ContactListStatus = ContactStatus | 'BLOCKED';
 
 type FilterOperator = 'is' | 'is not' | 'contains' | 'greater than' | 'less than';
@@ -75,33 +76,7 @@ const CONTACT_STATUS_METHODS: Record<ContactStatus, { marketing: boolean; transa
     COMPLAINT: { marketing: false, transactional: false }
 };
 
-function normalizeContactStatus(rawStatus: unknown): ContactStatus {
-    const value = String(rawStatus || '').trim().toUpperCase();
-    if (value === 'UNVERIFIED' || value === 'SUBSCRIBED' || value === 'BOUNCED' || value === 'UNSUBSCRIBED' || value === 'SOFT_BOUNCED' || value === 'COMPLAINT') {
-        return value;
-    }
-    return 'UNVERIFIED';
-}
-
 export class CustomersService {
-    private static getSuppressedRawCounts(rows: Array<{ rawData: Prisma.JsonValue }>): Record<ContactStatus, number> {
-        return rows.reduce((acc, row) => {
-            const rawData = row.rawData && typeof row.rawData === 'object' && !Array.isArray(row.rawData)
-                ? row.rawData as Record<string, unknown>
-                : {};
-            const status = normalizeContactStatus(rawData.contactStatus);
-            acc[status] += 1;
-            return acc;
-        }, {
-            UNVERIFIED: 0,
-            SUBSCRIBED: 0,
-            BOUNCED: 0,
-            UNSUBSCRIBED: 0,
-            SOFT_BOUNCED: 0,
-            COMPLAINT: 0
-        } as Record<ContactStatus, number>);
-    }
-
     private static buildConditionClause(condition: AdvancedFilterCondition): any | null {
         const field = String(condition.field || '').trim();
         const operator = String(condition.operator || '').trim().toLowerCase() as FilterOperator;
@@ -153,32 +128,11 @@ export class CustomersService {
 
         if (field === 'Contact Status') {
             const status = value.toUpperCase();
+            const clause = { term: { effective_contact_status: status } };
             if (operator === 'is not') {
-                return {
-                    bool: {
-                        must_not: [
-                            {
-                                bool: {
-                                    should: [
-                                        { term: { 'rawData.contactStatus.keyword': status } },
-                                        { term: { 'rawData.contactStatus': status } }
-                                    ],
-                                    minimum_should_match: 1
-                                }
-                            }
-                        ]
-                    }
-                };
+                return { bool: { must_not: [clause] } };
             }
-            return {
-                bool: {
-                    should: [
-                        { term: { 'rawData.contactStatus.keyword': status } },
-                        { term: { 'rawData.contactStatus': status } }
-                    ],
-                    minimum_should_match: 1
-                }
-            };
+            return clause;
         }
 
         if (field === 'Total Spent' || field === 'Orders') {
@@ -240,12 +194,14 @@ export class CustomersService {
         status: ContactListStatus | 'ALL' = 'ALL'
     ) {
         const offset = (page - 1) * limit;
-        const searchClause = query
+        const normalizedQuery = query.trim().replace(/\s+/g, ' ');
+        const searchClause = normalizedQuery
             ? Prisma.sql`AND (
-                COALESCE("firstName", '') ILIKE ${`%${query}%`}
-                OR COALESCE("lastName", '') ILIKE ${`%${query}%`}
-                OR "email" ILIKE ${`%${query}%`}
-                OR COALESCE("blockedReason", '') ILIKE ${`%${query}%`}
+                COALESCE("firstName", '') ILIKE ${`%${normalizedQuery}%`}
+                OR COALESCE("lastName", '') ILIKE ${`%${normalizedQuery}%`}
+                OR TRIM(REGEXP_REPLACE(CONCAT_WS(' ', "firstName", "lastName"), '[[:space:]]+', ' ', 'g')) ILIKE ${`%${normalizedQuery}%`}
+                OR "email" ILIKE ${`%${normalizedQuery}%`}
+                OR COALESCE("blockedReason", '') ILIKE ${`%${normalizedQuery}%`}
             )`
             : Prisma.empty;
         const statusClause = status === 'ALL'
@@ -267,7 +223,8 @@ export class CustomersService {
             suppression_latest AS (
                 SELECT DISTINCT ON (LOWER(TRIM(unsubscribed."email")))
                     LOWER(TRIM(unsubscribed."email")) AS "normalizedEmail",
-                    unsubscribed."scope"
+                    unsubscribed."scope",
+                    unsubscribed."contactStatus"
                 FROM "EmailUnsubscribe" unsubscribed
                 WHERE unsubscribed."accountId" = ${accountId}
                 ORDER BY LOWER(TRIM(unsubscribed."email")), unsubscribed."createdAt" DESC
@@ -295,8 +252,15 @@ export class CustomersService {
                     blocker."fullName" AS "blockedByName",
                     CASE
                         WHEN bc."id" IS NOT NULL THEN 'BLOCKED'
-                        WHEN suppression."scope" = 'ALL' THEN 'COMPLAINT'
-                        WHEN suppression."scope" = 'MARKETING' THEN 'UNSUBSCRIBED'
+                         WHEN suppression."scope" IN ('ALL', 'MARKETING') THEN
+                             CASE
+                                 WHEN UPPER(TRIM(suppression."contactStatus")) IN
+                                     ('UNVERIFIED', 'BOUNCED', 'UNSUBSCRIBED', 'SOFT_BOUNCED', 'COMPLAINT')
+                                     THEN UPPER(TRIM(suppression."contactStatus"))
+                                 WHEN UPPER(TRIM(wc."rawData"->>'contactStatus')) IN ('COMPLAINT', 'BOUNCED', 'SOFT_BOUNCED')
+                                     THEN UPPER(TRIM(wc."rawData"->>'contactStatus'))
+                                 ELSE 'UNSUBSCRIBED'
+                             END
                         WHEN UPPER(COALESCE(wc."rawData"->>'contactStatus', '')) IN
                             ('UNVERIFIED', 'SUBSCRIBED', 'BOUNCED', 'UNSUBSCRIBED', 'SOFT_BOUNCED', 'COMPLAINT')
                             THEN UPPER(wc."rawData"->>'contactStatus')
@@ -457,55 +421,54 @@ export class CustomersService {
         advancedFilters: AdvancedFilterGroup[] = []
     ) {
         const from = (page - 1) * limit;
-        const suppressionSearchClause = query
-            ? Prisma.sql`AND (
-                "firstName" ILIKE ${`%${query}%`}
-                OR "lastName" ILIKE ${`%${query}%`}
-                OR "email" ILIKE ${`%${query}%`}
-            )`
-            : Prisma.empty;
         const unsubscribedEmails = await prisma.emailUnsubscribe.findMany({
-                where: {
-                    accountId,
-                    scope: { in: ['MARKETING', 'ALL'] }
-                },
-                select: { email: true, scope: true },
-                distinct: ['email']
-            });
+            where: {
+                accountId,
+                scope: { in: ['MARKETING', 'ALL'] }
+            },
+            select: { email: true, scope: true, contactStatus: true },
+            distinct: ['email']
+        });
 
-        const marketingSuppressedEmailList = unsubscribedEmails
-            .filter((row) => row.scope === 'MARKETING')
-            .map((row) => row.email.toLowerCase());
-        const allSuppressedEmailList = unsubscribedEmails
-            .filter((row) => row.scope === 'ALL')
-            .map((row) => row.email.toLowerCase());
-        const suppressedEmailList = [...marketingSuppressedEmailList, ...allSuppressedEmailList];
         const suppressionByEmail = new Map(
-            unsubscribedEmails.map((row) => [row.email.toLowerCase(), row.scope])
+            unsubscribedEmails
+                .filter((row) => row.scope === 'ALL' || row.scope === 'MARKETING')
+                .map((row) => [row.email.trim().toLowerCase(), row])
         );
-        const suppressedCustomerRows = suppressedEmailList.length > 0
-            ? await prisma.$queryRaw<Array<{ wooId: number | null; email: string; rawData: Prisma.JsonValue }>>`
-                SELECT DISTINCT "wooId", "email", "rawData"
-                FROM "WooCustomer"
-                WHERE "accountId" = ${accountId}
-                  AND "ordersCount" > 0
-                  AND "wooId" IS NOT NULL
-                  AND lower("email") = ANY(${suppressedEmailList}::text[])
-                  ${suppressionSearchClause}
-            `
-            : [];
-        const marketingSuppressedCustomerRows = suppressedCustomerRows.filter((row) => marketingSuppressedEmailList.includes(String(row.email || '').toLowerCase()));
-        const allSuppressedCustomerRows = suppressedCustomerRows.filter((row) => allSuppressedEmailList.includes(String(row.email || '').toLowerCase()));
-        const suppressedEmailClause = suppressedEmailList.length > 0
-            ? {
-                bool: {
-                    must_not: [
-                        { terms: { 'email.keyword': suppressedEmailList } },
-                        { terms: { email: suppressedEmailList } }
-                    ]
+        const statuses: ContactStatus[] = ['UNVERIFIED', 'SUBSCRIBED', 'BOUNCED', 'UNSUBSCRIBED', 'SOFT_BOUNCED', 'COMPLAINT'];
+        // Resolve each suppression group once in JS, so Elasticsearch uses the same
+        // policy as row labels, including legacy null suppressions and invalid raw values.
+        const statusGroups: Record<string, Record<string, ContactStatus>> = {};
+        const emailGroups: Record<string, string> = {};
+        const groupIds = new Map<string, string>();
+        for (const [email, suppression] of suppressionByEmail) {
+            const resolved = Object.fromEntries(statuses.map((rawStatus) => [
+                rawStatus, resolveContactStatus(rawStatus, suppression)
+            ]));
+            const signature = JSON.stringify(resolved);
+            const group = groupIds.get(signature) ?? String(groupIds.size);
+            groupIds.set(signature, group);
+            statusGroups[group] = resolved;
+            emailGroups[email] = group;
+        }
+        const runtimeMappings = {
+            effective_contact_status: {
+                type: 'keyword' as const,
+                script: {
+                    source: `
+                        def raw = params._source.rawData;
+                        def value = raw instanceof Map ? raw.contactStatus : null;
+                        String normalized = value == null ? '' : value.toString().trim().toUpperCase();
+                        String status = params.statuses.contains(normalized) ? normalized : params.fallback;
+                        def email = params._source.email;
+                        String key = email == null ? '' : email.toString().trim().toLowerCase();
+                        def group = params.emailGroups[key];
+                        emit(group == null ? status : params.statusGroups[group][status]);
+                    `,
+                    params: { statuses, fallback: resolveContactStatus(undefined), emailGroups, statusGroups }
                 }
             }
-            : null;
+        };
 
         const baseMust: any[] = [
             { term: { accountId } },
@@ -524,167 +487,8 @@ export class CustomersService {
 
         const statusMust = [...baseMust];
 
-        if (status === 'UNSUBSCRIBED') {
-            const [unsubscribedCustomers, unsubscribedTotalRows, allStatusAggs] = await Promise.all([
-                marketingSuppressedEmailList.length > 0
-                    ? prisma.$queryRaw<Array<{
-                        id: string;
-                        wooId: number;
-                        email: string;
-                        firstName: string | null;
-                        lastName: string | null;
-                        totalSpent: Prisma.Decimal;
-                        ordersCount: number;
-                        rawData: Prisma.JsonValue;
-                        createdAt: Date;
-                    }>>`
-                        SELECT "id", "wooId", "email", "firstName", "lastName", "totalSpent", "ordersCount", "rawData", "createdAt"
-                        FROM "WooCustomer"
-                        WHERE "accountId" = ${accountId}
-                          AND "ordersCount" > 0
-                          AND lower("email") = ANY(${marketingSuppressedEmailList}::text[])
-                          ${suppressionSearchClause}
-                        ORDER BY "firstName" ASC NULLS LAST, "lastName" ASC NULLS LAST
-                        LIMIT ${limit}
-                        OFFSET ${from}
-                    `
-                    : Promise.resolve([]),
-                marketingSuppressedEmailList.length > 0
-                    ? prisma.$queryRaw<Array<{ count: bigint }>>`
-                        SELECT COUNT(DISTINCT "id") AS count
-                        FROM "WooCustomer"
-                        WHERE "accountId" = ${accountId}
-                          AND "ordersCount" > 0
-                          AND lower("email") = ANY(${marketingSuppressedEmailList}::text[])
-                          ${suppressionSearchClause}
-                    `
-                    : Promise.resolve([{ count: BigInt(0) }]),
-                esClient.search({
-                    index: 'customers',
-                    query: {
-                        bool: { must: baseMust }
-                    },
-                    from: 0,
-                    size: 0,
-                    track_total_hits: true,
-                    aggs: {
-                        contact_statuses: {
-                            terms: {
-                                field: 'rawData.contactStatus.keyword',
-                                size: 10
-                            }
-                        }
-                    }
-                }).catch(() => null)
-            ]);
-
-            const unsubscribedTotal = Number(unsubscribedTotalRows[0]?.count || 0);
-            const allTotal = (allStatusAggs?.hits.total as any)?.value || 0;
-            const buckets = (allStatusAggs?.aggregations as any)?.contact_statuses?.buckets || [];
-            const rawCounts = buckets.reduce((acc: Record<string, number>, bucket: { key: string; doc_count: number }) => {
-                acc[bucket.key] = bucket.doc_count;
-                return acc;
-            }, {});
-            const knownStatusesTotal = (rawCounts.UNVERIFIED || 0)
-                + (rawCounts.SUBSCRIBED || 0)
-                + (rawCounts.BOUNCED || 0)
-                + (rawCounts.UNSUBSCRIBED || 0)
-                + (rawCounts.SOFT_BOUNCED || 0)
-                + (rawCounts.COMPLAINT || 0);
-            const missingStatusCount = Math.max(allTotal - knownStatusesTotal, 0);
-            const suppressedRawCounts = this.getSuppressedRawCounts(suppressedCustomerRows);
-
-            return {
-                customers: unsubscribedCustomers.map((customer) => ({
-                    id: String(customer.wooId),
-                    wooId: customer.wooId,
-                    email: customer.email,
-                    firstName: customer.firstName || '',
-                    lastName: customer.lastName || '',
-                    totalSpent: Number(customer.totalSpent),
-                    ordersCount: customer.ordersCount,
-                    dateCreated: customer.createdAt,
-                    rawData: customer.rawData,
-                    contactStatus: 'UNSUBSCRIBED' as ContactStatus
-                })),
-                total: unsubscribedTotal,
-                page,
-                totalPages: Math.ceil(unsubscribedTotal / limit),
-                statusCounts: {
-                    ALL: allTotal,
-                    UNVERIFIED: Math.max((rawCounts.UNVERIFIED || 0) - (suppressedRawCounts.UNVERIFIED || 0), 0),
-                    SUBSCRIBED: Math.max(((rawCounts.SUBSCRIBED || 0) + missingStatusCount) - (suppressedRawCounts.SUBSCRIBED || 0), 0),
-                    BOUNCED: Math.max((rawCounts.BOUNCED || 0) - (suppressedRawCounts.BOUNCED || 0), 0),
-                    UNSUBSCRIBED: Math.max((rawCounts.UNSUBSCRIBED || 0) - (suppressedRawCounts.UNSUBSCRIBED || 0), 0) + unsubscribedTotal,
-                    SOFT_BOUNCED: Math.max((rawCounts.SOFT_BOUNCED || 0) - (suppressedRawCounts.SOFT_BOUNCED || 0), 0),
-                    COMPLAINT: Math.max((rawCounts.COMPLAINT || 0) - (suppressedRawCounts.COMPLAINT || 0), 0) + allSuppressedCustomerRows.length
-                }
-            };
-
-        }
-
         if (status !== 'ALL') {
-            if (status === 'SUBSCRIBED') {
-                statusMust.push({
-                    bool: {
-                        should: [
-                            { term: { 'rawData.contactStatus.keyword': 'SUBSCRIBED' } },
-                            { term: { 'rawData.contactStatus': 'SUBSCRIBED' } },
-                            {
-                                bool: {
-                                    must_not: [
-                                        { exists: { field: 'rawData.contactStatus' } }
-                                    ]
-                                }
-                            }
-                        ],
-                        minimum_should_match: 1
-                    }
-                });
-                if (suppressedEmailClause) {
-                    statusMust.push(suppressedEmailClause);
-                }
-            } else if (status === 'COMPLAINT') {
-                const should: any[] = [
-                    { term: { 'rawData.contactStatus.keyword': 'COMPLAINT' } },
-                    { term: { 'rawData.contactStatus': 'COMPLAINT' } }
-                ];
-                if (allSuppressedEmailList.length > 0) {
-                    should.push(
-                        { terms: { 'email.keyword': allSuppressedEmailList } },
-                        { terms: { email: allSuppressedEmailList } }
-                    );
-                }
-                statusMust.push({
-                    bool: {
-                        should,
-                        minimum_should_match: 1
-                    }
-                });
-                if (marketingSuppressedEmailList.length > 0) {
-                    statusMust.push({
-                        bool: {
-                            must_not: [
-                                { terms: { 'email.keyword': marketingSuppressedEmailList } },
-                                { terms: { email: marketingSuppressedEmailList } }
-                            ]
-                        }
-                    });
-                }
-            } else {
-                statusMust.push({
-                    bool: {
-                        should: [
-                            { term: { 'rawData.contactStatus.keyword': status } },
-                            { term: { 'rawData.contactStatus': status } }
-                        ],
-                        minimum_should_match: 1
-                    }
-                });
-                if (suppressedEmailClause) {
-                    statusMust.push(suppressedEmailClause);
-                }
-            }
+            statusMust.push({ term: { effective_contact_status: status } });
         }
 
         const advancedFilterClause = this.buildAdvancedFilterClause(advancedFilters);
@@ -695,20 +499,22 @@ export class CustomersService {
         try {
             const [response, allStatusAggs] = await Promise.all([
                 esClient.search({
-                index: 'customers',
-                query: {
-                    bool: { must: statusMust }
-                },
-                from,
-                size: limit,
-                sort: [
-                    { 'firstName.keyword': { order: 'asc', unmapped_type: 'keyword' } },
-                    { 'lastName.keyword': { order: 'asc', unmapped_type: 'keyword' } }
-                ],
-                track_total_hits: true
-            }),
+                    index: 'customers',
+                    runtime_mappings: runtimeMappings,
+                    query: {
+                        bool: { must: statusMust }
+                    },
+                    from,
+                    size: limit,
+                    sort: [
+                        { 'firstName.keyword': { order: 'asc', unmapped_type: 'keyword' } },
+                        { 'lastName.keyword': { order: 'asc', unmapped_type: 'keyword' } }
+                    ],
+                    track_total_hits: true
+                }),
                 esClient.search({
                     index: 'customers',
+                    runtime_mappings: runtimeMappings,
                     query: {
                         bool: { must: baseMust }
                     },
@@ -718,8 +524,8 @@ export class CustomersService {
                     aggs: {
                         contact_statuses: {
                             terms: {
-                                field: 'rawData.contactStatus.keyword',
-                                size: 10
+                                field: 'effective_contact_status',
+                                size: statuses.length
                             }
                         }
                     }
@@ -729,51 +535,32 @@ export class CustomersService {
             const hits = response.hits.hits.map(hit => ({
                 id: hit._id,
                 ...(hit._source as any),
-                contactStatus: normalizeContactStatus((hit._source as any)?.rawData?.contactStatus)
+                contactStatus: resolveContactStatus(
+                    (hit._source as any)?.rawData?.contactStatus,
+                    suppressionByEmail.get(String((hit._source as any)?.email || '').trim().toLowerCase())
+                )
             }));
-
-            const normalizedHits = hits.map((hit: any) => {
-                const normalizedEmail = String(hit.email || '').trim().toLowerCase();
-                const suppressionScope = suppressionByEmail.get(normalizedEmail);
-                if (suppressionScope === 'ALL') {
-                    return { ...hit, contactStatus: 'COMPLAINT' as ContactStatus };
-                }
-                if (suppressionScope === 'MARKETING') {
-                    return { ...hit, contactStatus: 'UNSUBSCRIBED' as ContactStatus };
-                }
-                return hit;
-            });
 
             const total = (response.hits.total as any).value || 0;
             const allTotal = (allStatusAggs.hits.total as any).value || 0;
             const buckets = (allStatusAggs.aggregations as any)?.contact_statuses?.buckets || [];
-            const rawCounts = buckets.reduce((acc: Record<string, number>, bucket: { key: string; doc_count: number }) => {
+            const effectiveCounts = buckets.reduce((acc: Record<string, number>, bucket: { key: string; doc_count: number }) => {
                 acc[bucket.key] = bucket.doc_count;
                 return acc;
             }, {});
-            const knownStatusesTotal = (rawCounts.UNVERIFIED || 0)
-                + (rawCounts.SUBSCRIBED || 0)
-                + (rawCounts.BOUNCED || 0)
-                + (rawCounts.UNSUBSCRIBED || 0)
-                + (rawCounts.SOFT_BOUNCED || 0)
-                + (rawCounts.COMPLAINT || 0);
-            const missingStatusCount = Math.max(allTotal - knownStatusesTotal, 0);
-            const suppressedRawCounts = this.getSuppressedRawCounts(suppressedCustomerRows);
-            const unsubscribedCount = marketingSuppressedCustomerRows.length;
-
             const statusCounts = {
                 ALL: allTotal,
-                UNVERIFIED: Math.max((rawCounts.UNVERIFIED || 0) - (suppressedRawCounts.UNVERIFIED || 0), 0),
-                SUBSCRIBED: Math.max(((rawCounts.SUBSCRIBED || 0) + missingStatusCount) - (suppressedRawCounts.SUBSCRIBED || 0), 0),
-                BOUNCED: Math.max((rawCounts.BOUNCED || 0) - (suppressedRawCounts.BOUNCED || 0), 0),
-                UNSUBSCRIBED: Math.max((rawCounts.UNSUBSCRIBED || 0) - (suppressedRawCounts.UNSUBSCRIBED || 0), 0) + unsubscribedCount,
-                SOFT_BOUNCED: Math.max((rawCounts.SOFT_BOUNCED || 0) - (suppressedRawCounts.SOFT_BOUNCED || 0), 0),
-                COMPLAINT: Math.max((rawCounts.COMPLAINT || 0) - (suppressedRawCounts.COMPLAINT || 0), 0) + allSuppressedCustomerRows.length
+                UNVERIFIED: effectiveCounts.UNVERIFIED || 0,
+                SUBSCRIBED: effectiveCounts.SUBSCRIBED || 0,
+                BOUNCED: effectiveCounts.BOUNCED || 0,
+                UNSUBSCRIBED: effectiveCounts.UNSUBSCRIBED || 0,
+                SOFT_BOUNCED: effectiveCounts.SOFT_BOUNCED || 0,
+                COMPLAINT: effectiveCounts.COMPLAINT || 0
             };
             Logger.debug(`CustomerSearch`, { query, page, total, status });
 
             return {
-                customers: normalizedHits,
+                customers: hits,
                 total,
                 page,
                 totalPages: Math.ceil(total / limit),
@@ -905,28 +692,7 @@ export class CustomersService {
                     total: true
                 }
             }),
-            prisma.automationEnrollment.findMany({
-                where: {
-                    automation: { accountId },
-                    email: { in: contactEmails, mode: 'insensitive' },
-                    runEvents: {
-                        some: {
-                            eventType: 'NODE_EXECUTED',
-                            metadata: { path: ['nodeType'], equals: 'action' },
-                            NOT: [
-                                { outcome: { contains: 'SKIPPED', mode: 'insensitive' } },
-                                { outcome: { contains: 'FAILED', mode: 'insensitive' } },
-                                { outcome: 'EMAIL_NOT_CONFIGURED' }
-                            ]
-                        }
-                    }
-                },
-                include: {
-                    automation: { select: { name: true } }
-                },
-                orderBy: { createdAt: 'desc' },
-                take: 20
-            }),
+            getContactAutomationHistory(accountId, contactEmails),
             prisma.analyticsSession.findMany({
                 where: {
                     accountId,
@@ -963,7 +729,7 @@ export class CustomersService {
                     accountId,
                     email: { in: contactEmails, mode: 'insensitive' }
                 },
-                select: { scope: true }
+                 select: { scope: true, contactStatus: true }
             }),
             prisma.conversation.findMany({
                 where: {
@@ -1053,14 +819,8 @@ export class CustomersService {
         const effectiveOrdersCount = customer.ordersCount > 0 ? customer.ordersCount : (orderStats._count.id || 0);
 
         const persistedStatus = normalizeContactStatus((customer.rawData as Record<string, unknown> | null)?.contactStatus);
-        const strongestSuppression = suppression.some(item => item.scope === 'ALL')
-            ? 'ALL'
-            : suppression.some(item => item.scope === 'MARKETING') ? 'MARKETING' : null;
-        const contactStatus: ContactStatus = strongestSuppression === 'ALL'
-            ? 'COMPLAINT'
-            : strongestSuppression === 'MARKETING'
-                ? (persistedStatus === 'SUBSCRIBED' ? 'UNSUBSCRIBED' : persistedStatus)
-                : persistedStatus;
+        const strongestSuppression = strongestContactSuppression(suppression);
+        const contactStatus = resolveContactStatus(persistedStatus, strongestSuppression);
 
         const latestOrderRawData = jsonObject(orders[0]?.rawData);
         const billing = jsonObject(customerRawData.billing);
@@ -1093,7 +853,9 @@ export class CustomersService {
                 emailLogs: automationEmailLogsByEnrollment.get(enrollment.id) || []
             })),
             activity: activitySessions,
-            sendingMethods: CONTACT_STATUS_METHODS[contactStatus],
+            sendingMethods: strongestSuppression?.scope === 'ALL'
+                ? { marketing: false, transactional: false }
+                : CONTACT_STATUS_METHODS[contactStatus],
             metadata: {
                 recordSource,
                 billingSource: usedOrderBilling
@@ -1173,7 +935,7 @@ export class CustomersService {
         const previousEmail = customer.email.trim().toLowerCase();
         const previousSuppressions = previousEmail === nextEmail ? [] : await prisma.emailUnsubscribe.findMany({
             where: { accountId, email: { equals: previousEmail, mode: 'insensitive' } },
-            select: { scope: true, reason: true }
+            select: { scope: true, reason: true, contactStatus: true }
         });
 
         const updatedCustomer = await prisma.$transaction(async (tx) => {
@@ -1197,12 +959,15 @@ export class CustomersService {
             };
 
             if (previousSuppressions.length > 0) {
-                const strongest = previousSuppressions.some(item => item.scope === 'ALL') ? 'ALL' : 'MARKETING';
-                const reason = previousSuppressions.find(item => item.scope === strongest)?.reason || 'Copied when contact email changed';
+                const strongest = strongestContactSuppression(previousSuppressions)!;
+                const reason = strongest.reason || 'Copied when contact email changed';
                 await tx.emailUnsubscribe.deleteMany({
                     where: { accountId, email: { equals: nextEmail, mode: 'insensitive' } }
                 });
-                await tx.emailUnsubscribe.create({ data: { accountId, email: nextEmail, scope: strongest, reason } });
+                await tx.emailUnsubscribe.create({ data: {
+                    accountId, email: nextEmail, scope: strongest.scope, reason,
+                    contactStatus: resolveContactStatus(latestRaw.contactStatus, strongest)
+                } });
             }
 
             return tx.wooCustomer.update({
@@ -1247,6 +1012,7 @@ export class CustomersService {
                         accountId,
                         email: normalizedEmail,
                         scope: blocksAll ? 'ALL' : 'MARKETING',
+                        contactStatus: nextStatus,
                         reason: nextStatus === 'COMPLAINT'
                             ? 'Marked as complaint in customer profile'
                             : nextStatus === 'BOUNCED'

@@ -17,6 +17,8 @@ import { campaignTrackingService } from '../services/CampaignTrackingService';
 import { emailListService } from '../services/EmailListService';
 import { reconcileWholesaleProductsBestEffort } from '../services/wholesale/reconciliation';
 import { updateCustomerTotals, withOrderTotalsTransaction } from '../services/sync/orderCustomerTotals';
+import { materializeContact } from '../services/ContactMaterialization';
+import { queueContactProjection } from '../services/ContactProjection';
 import { esClient } from '../utils/elastic';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
@@ -108,7 +110,7 @@ export async function processWebhookPayload(
         await withOrderTotalsTransaction(accountId, async tx => {
             const existing = await tx.wooOrder.findUnique({
                 where: { accountId_wooId: { accountId, wooId } },
-                select: { wooCustomerId: true, billingEmail: true }
+                select: { wooId: true, wooCustomerId: true, billingEmail: true }
             });
             if (existing) {
                 await tx.wooOrder.deleteMany({ where: { accountId, wooId } });
@@ -152,7 +154,7 @@ export async function processWebhookPayload(
             previousStatus = await withOrderTotalsTransaction(accountId, async tx => {
                 const existingOrder = await tx.wooOrder.findUnique({
                     where: { accountId_wooId: { accountId, wooId: Number(order.id) } },
-                    select: { status: true, wooCustomerId: true, billingEmail: true }
+                    select: { wooId: true, status: true, wooCustomerId: true, billingEmail: true }
                 });
                 await tx.wooOrder.upsert({
                     where: { accountId_wooId: { accountId, wooId: order.id } },
@@ -181,10 +183,15 @@ export async function processWebhookPayload(
                         rawData: order
                     }
                 });
+                const contact = await materializeContact(tx, accountId, {
+                    source: 'ORDER', sourceKey: `order:${order.id}`, wooCustomerId, email: billingEmail,
+                    firstName: order.billing?.first_name, lastName: order.billing?.last_name
+                });
                 await updateCustomerTotals(tx, accountId, [
                     ...(existingOrder ? [existingOrder] : []),
-                    { wooCustomerId, billingEmail }
-                ]);
+                    { wooId: Number(order.id), wooCustomerId, billingEmail }
+                ], [contact.id]);
+                await queueContactProjection(tx, accountId, [contact.id]);
                 return existingOrder?.status || null;
             });
         } catch (error) {
@@ -372,24 +379,14 @@ export async function processWebhookPayload(
                 isNewCustomer = !existingCustomer;
             }
 
-            persistedCustomer = await prisma.wooCustomer.upsert({
-                where: { accountId_wooId: { accountId, wooId: body.id as number } },
-                update: {
-                    email: ((body as any).email as string)?.toLowerCase() || '',
-                    firstName: (body as any).first_name || '',
-                    lastName: (body as any).last_name || '',
-                    rawData: body as any
-                },
-                create: {
-                    account: { connect: { id: accountId } },
-                    wooId: body.id as number,
-                    email: ((body as any).email as string)?.toLowerCase() || '',
-                    firstName: (body as any).first_name || '',
-                    lastName: (body as any).last_name || '',
-                    totalSpent: 0,
-                    ordersCount: 0,
-                    rawData: body as any
-                }
+            persistedCustomer = await withOrderTotalsTransaction(accountId, async tx => {
+                const contact = await materializeContact(tx, accountId, {
+                    source: 'WOO_CUSTOMER', wooCustomerId: Number(body.id), email: (body as any).email,
+                    firstName: (body as any).first_name, lastName: (body as any).last_name, remoteData: body as any
+                });
+                await updateCustomerTotals(tx, accountId, [], [contact.id]);
+                await queueContactProjection(tx, accountId, [contact.id]);
+                return contact;
             });
 
             if (isNewCustomer && persistedCustomer.email) {
@@ -397,12 +394,7 @@ export async function processWebhookPayload(
             }
         } catch (err: any) {
             Logger.warn('[Webhook] Failed to upsert customer to DB', { accountId, customerId: body.id, error: err.message });
-        }
-
-        try {
-            await IndexingService.indexCustomer(accountId, body);
-        } catch (err: any) {
-            Logger.warn('[Webhook] Failed to index customer in ES', { accountId, customerId: body.id, error: err.message });
+            throw err;
         }
 
         if (topic === 'customer.created') {

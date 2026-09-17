@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
-import { SyncStatus } from '../components/sync/SyncStatus';
+import { SyncSettings } from '../components/sync/SyncSettings';
 import { ChatSettings } from '../components/chat/ChatSettings';
 import { AISettings } from '../components/settings/AISettings';
 import { TrackingScriptHelper } from '../components/settings/TrackingScriptHelper';
@@ -172,7 +172,7 @@ export function SettingsPage() {
             ),
             sync: (
                 <SettingsCard title="Data Sync" description="Manage WooCommerce <-> OverSeek data synchronization.">
-                    <SyncStatus />
+                    <SyncSettings />
                 </SettingsCard>
             ),
             email: <EmailSettings />,
@@ -243,9 +243,9 @@ export function SettingsPage() {
             </div>
 
             {/* Desktop: Sidebar + Content */}
-            <div className="hidden lg:flex gap-8">
+            <div className="lg:flex gap-8">
                 {/* Sidebar Navigation */}
-                <aside className="w-64 shrink-0 px-1">
+                <aside className="hidden lg:block w-64 shrink-0 px-1">
                     <nav className="sticky top-24 space-y-6">
                         {categories.map((category) => {
                             const visibleTabs = category.tabs.filter(t => !t.hidden);
@@ -292,10 +292,6 @@ export function SettingsPage() {
                 </main>
             </div>
 
-            {/* Mobile: Content */}
-            <div className="lg:hidden">
-                {renderContent()}
-            </div>
         </div>
     );
 }

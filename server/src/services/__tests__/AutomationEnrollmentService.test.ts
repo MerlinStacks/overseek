@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomationEnrollmentService } from '../AutomationEnrollmentService';
 import { prisma } from '../../utils/prisma';
+import { materializeContact } from '../ContactMaterialization';
+import { queueContactProjection } from '../ContactProjection';
+
+vi.mock('../ContactMaterialization', () => ({
+    lockContactAccount: vi.fn(), materializeContact: vi.fn().mockResolvedValue({ id: 'contact' })
+}));
+vi.mock('../ContactProjection', () => ({ queueContactProjection: vi.fn() }));
 
 const { prismaMock } = vi.hoisted(() => {
     const mock: any = {
@@ -78,5 +85,16 @@ describe('AutomationEnrollmentService dedupe', () => {
                 status: 'ACTIVE'
             }
         });
+    });
+
+    it('materializes a contact even when an existing enrollment is deduplicated', async () => {
+        vi.mocked(prisma.automationEnrollment.findFirst).mockResolvedValue({ id: 'prior' } as any);
+        const result = await service.createEnrollment({ automation: automation as any,
+            email: ' Guest@Example.com ', dedupeKey: 'key' });
+        expect(result.created).toBe(false);
+        expect(materializeContact).toHaveBeenCalledWith(prisma, 'account-1', {
+            source: 'AUTOMATION', email: 'guest@example.com', wooCustomerId: undefined
+        });
+        expect(queueContactProjection).toHaveBeenCalledWith(prisma, 'account-1', ['contact']);
     });
 });

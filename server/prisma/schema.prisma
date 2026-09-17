@@ -2384,6 +2384,7 @@ model EmailUnsubscribe {
   email     String
   scope     String   @default("MARKETING") // MARKETING, ALL
   reason    String?
+  contactStatus String? // COMPLAINT, BOUNCED, SOFT_BOUNCED, UNSUBSCRIBED; null for unclassified legacy rows
   
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   

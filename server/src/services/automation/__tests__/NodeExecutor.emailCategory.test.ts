@@ -22,7 +22,10 @@ vi.mock('../../../utils/prisma', () => ({
         },
         wooCustomer: {
             findFirst: vi.fn()
-        }
+        },
+        emailUnsubscribe: { upsert: vi.fn() },
+        emailListMember: { updateMany: vi.fn() },
+        $transaction: vi.fn()
     }
 }));
 
@@ -144,5 +147,19 @@ describe('NodeExecutor email category', () => {
             undefined,
             expect.objectContaining({ category: 'TRANSACTIONAL' })
         );
+    });
+
+    it('classifies automation ALL suppression as unsubscribed on both write paths', async () => {
+        const result = await new NodeExecutor().execute({
+            id: 'unsubscribe-node',
+            type: 'ACTION',
+            data: { config: { actionType: 'UNSUBSCRIBE' } }
+        }, buildEnrollment());
+
+        expect(result.outcome).toBe('UNSUBSCRIBED');
+        expect(prisma.emailUnsubscribe.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            create: expect.objectContaining({ scope: 'ALL', contactStatus: 'UNSUBSCRIBED' }),
+            update: expect.objectContaining({ scope: 'ALL', contactStatus: 'UNSUBSCRIBED' })
+        }));
     });
 });

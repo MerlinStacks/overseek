@@ -38,10 +38,13 @@ export class SearchQueryService {
      * Perform a multi-index search
      */
     static async globalSearch(accountId: string, query: string) {
+        query = (query || '').trim();
         if (!query || query.length < 2) return { products: [], customers: [], orders: [] };
 
         try {
             const commonMust = [{ term: { accountId } }];
+            // Escape user wildcards while matching existing mixed-case keyword values.
+            const emailPattern = `*${query.replace(/[\\*?]/g, '\\$&')}*`;
 
             const [products, customers, orders] = await Promise.all([
                 // 1. Products Search - Prioritize exact phrase matches
@@ -86,7 +89,7 @@ export class SearchQueryService {
                             should: [
                                 { match: { firstName: query } },
                                 { match: { lastName: query } },
-                                { term: { email: query } }
+                                { wildcard: { email: { value: emailPattern, case_insensitive: true } } }
                             ],
                             minimum_should_match: 1
                         }

@@ -141,13 +141,25 @@ const reviewsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // Generate an AI-assisted reply draft for a review.
-    fastify.post<{ Params: { id: string }; Body: { currentDraft?: string } }>('/:id/ai-reply', async (request, reply) => {
+    // Generate three AI-assisted reply suggestions for a review.
+    fastify.post<{ Params: { id: string }; Body: unknown }>('/:id/ai-reply', async (request, reply) => {
         try {
+            const body = request.body === undefined ? {} : request.body;
+            if (!body || typeof body !== 'object' || Array.isArray(body)) {
+                return reply.code(400).send({ error: 'Request body must be an object' });
+            }
+            const { currentDraft, previousReplies } = body as { currentDraft?: unknown; previousReplies?: unknown };
+            if (currentDraft !== undefined && (typeof currentDraft !== 'string' || currentDraft.length > 12000)) {
+                return reply.code(400).send({ error: 'currentDraft must be a string of at most 12000 characters' });
+            }
+            if (previousReplies !== undefined && (!Array.isArray(previousReplies) || previousReplies.length > 3
+                || previousReplies.some((value) => typeof value !== 'string' || value.length > 4000))) {
+                return reply.code(400).send({ error: 'previousReplies must be an array of at most 3 strings, each at most 4000 characters' });
+            }
             const accountId = request.accountId!;
-            const result = await ReviewAIService.generateReply(accountId, request.params.id, request.body?.currentDraft);
+            const result = await ReviewAIService.generateReply(accountId, request.params.id, currentDraft as string | undefined, previousReplies as string[] | undefined);
             if (result.error) return reply.code(400).send({ error: result.error });
-            return { reply: result.reply };
+            return { replies: result.replies };
         } catch (error) {
             Logger.error('Error generating review AI reply', { error });
             return reply.code(500).send({ error: 'Failed to generate review reply' });

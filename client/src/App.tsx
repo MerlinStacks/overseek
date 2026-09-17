@@ -42,7 +42,6 @@ const FlowsPage = lazy(() => import('./pages/FlowsPage').then(m => ({ default: m
 const TeamPage = lazy(() => import('./pages/TeamPage').then(m => ({ default: m.TeamPage })));
 const InventoryPage = lazy(() => import('./pages/InventoryPage').then(m => ({ default: m.InventoryPage })));
 const SupplyChainPage = lazy(() => import('./pages/SupplyChainPage').then(m => ({ default: m.SupplyChainPage })));
-const BOMSyncPage = lazy(() => import('./pages/BOMSyncPage').then(m => ({ default: m.BOMSyncPage })));
 const InventoryForecastPage = lazy(() => import('./pages/InventoryForecastPage').then(m => ({ default: m.InventoryForecastPage })));
 const CustomersPage = lazy(() => import('./pages/CustomersPage').then(m => ({ default: m.CustomersPage })));
 const AudiencesPage = lazy(() => import('./pages/AudiencesPage').then(m => ({ default: m.AudiencesPage })));
@@ -301,7 +300,7 @@ function App() {
                                                 <Route path={ROUTE_PATHS.abandonedCarts} element={<AccountGuard><AbandonedCartsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventory} element={<AccountGuard><InventoryPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.supplyChain} element={<AccountGuard><SupplyChainPage /></AccountGuard>} />
-                                                <Route path={ROUTE_PATHS.inventoryBomSync} element={<AccountGuard><BOMSyncPage /></AccountGuard>} />
+                                                <Route path={ROUTE_PATHS.inventoryBomSync} element={<AccountGuard><Navigate to="/settings?tab=sync&view=bom" replace /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.inventoryForecasts} element={<AccountGuard><InventoryForecastPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.wholesaleCatalog} element={<AccountGuard><FeatureGuard featureKey="WHOLESALE_CATALOG"><WholesaleCatalogsPage /></FeatureGuard></AccountGuard>} />
                                                 <Route path={ROUTE_PATTERNS.productDetails} element={<AccountGuard><ProductEditPage /></AccountGuard>} />

@@ -259,8 +259,10 @@ export class EmailListService {
                     accountId,
                     email: normalizedEmail,
                     scope: 'MARKETING',
+                    contactStatus: 'UNSUBSCRIBED',
                     reason: 'New customer default'
                 },
+                // Defaults must preserve an existing delivery or manually applied suppression.
                 update: {}
             });
             return;

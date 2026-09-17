@@ -56,6 +56,7 @@ interface UseBOMSyncReturn {
 
     // Loading states
     isLoadingPending: boolean;
+    loadError: string | null;
     isSyncing: boolean;
     isPaused: boolean;
     syncingProductId: string | null;
@@ -88,6 +89,7 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     // UI state
     const [isLoadingPending, setIsLoadingPending] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [syncingProductId, setSyncingProductId] = useState<string | null>(null);
@@ -101,9 +103,18 @@ export function useBOMSync(): UseBOMSyncReturn {
     const isPausedRef = useRef(isPaused);
     isPausedRef.current = isPaused;
 
-    /** Track polling interval/timeout so we can clean up on unmount or re-invocation */
-    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Every request belongs to one account/auth lifecycle, including follow-up work.
+    const lifecycleRef = useRef<{ accountId: string; token: string; controller: AbortController } | null>(null);
+    const getSignal = useCallback(() => {
+        const lifecycle = lifecycleRef.current;
+        return lifecycle?.accountId === accountId && lifecycle?.token === token
+            && !lifecycle.controller.signal.aborted ? lifecycle.controller.signal : null;
+    }, [accountId, token]);
+    const previewRequestRef = useRef<Promise<void> | null>(null);
+    const statusRequestRef = useRef<Promise<void> | null>(null);
+    const runningRef = useRef(false);
+    const startingRef = useRef(false);
+    const statusVersionRef = useRef(0);
 
     // Stats and progress
     const [stats, setStats] = useState<SyncStats>({ total: 0, needsSync: 0, inSync: 0, errors: 0 });
@@ -113,7 +124,6 @@ export function useBOMSync(): UseBOMSyncReturn {
     const statsRef = useRef(stats);
     statsRef.current = stats;
     const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
-    const [nextSyncIn, setNextSyncIn] = useState<string | null>(null);
 
     const extractBomApiError = (data: unknown, fallback: string): { message: string; code: string | null } => {
         if (!data || typeof data !== 'object') return { message: fallback, code: null };
@@ -128,19 +138,25 @@ export function useBOMSync(): UseBOMSyncReturn {
     };
 
     const fetchPendingChanges = useCallback(async () => {
-        if (!accountId || !token) return;
+        const signal = getSignal();
+        if (!signal || !accountId) return;
+        if (previewRequestRef.current) return previewRequestRef.current;
         setIsLoadingPending(true);
-        try {
-            const res = await fetch('/api/inventory/bom/pending-changes', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': accountId
-                }
-            });
-            if (res.ok) {
+        const request = (async () => {
+            try {
+                const res = await fetch('/api/inventory/bom/pending-changes', {
+                    signal,
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': accountId
+                    }
+                });
+                if (!res.ok) throw new Error(`Failed to load BOM preview (HTTP ${res.status})`);
                 const data = await res.json();
+                if (signal.aborted) return;
                 const products = data.products || [];
                 setPendingChanges(products);
+                setLoadError(null);
 
                 // Read from ref to avoid adding syncErrors to deps (prevents infinite loop)
                 const errorCount = Object.values(syncErrorsRef.current).filter(e => e).length;
@@ -150,50 +166,76 @@ export function useBOMSync(): UseBOMSyncReturn {
                     inSync: data.inSync,
                     errors: errorCount
                 });
+            } catch (err) {
+                if (signal.aborted) return;
+                setLoadError(err instanceof Error ? err.message : 'Failed to load BOM preview');
+                Logger.error('Failed to fetch pending changes', { error: err });
+            } finally {
+                if (!signal.aborted) setIsLoadingPending(false);
             }
-        } catch (err) {
-            Logger.error('Failed to fetch pending changes', { error: err });
-        } finally {
-            setIsLoadingPending(false);
+        })();
+        previewRequestRef.current = request;
+        try { await request; } finally {
+            if (previewRequestRef.current === request) previewRequestRef.current = null;
         }
-    }, [accountId, token]);
+    }, [accountId, token, getSignal]);
 
     const checkSyncStatus = useCallback(async () => {
-        if (!accountId || !token) return null;
-        try {
-            const res = await fetch('/api/inventory/bom/sync-status', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': accountId
-                }
-            });
-            if (res.ok) {
+        const signal = getSignal();
+        if (!signal || !accountId) return;
+        if (statusRequestRef.current) return statusRequestRef.current;
+        const version = statusVersionRef.current;
+        const request = (async () => {
+            try {
+                const res = await fetch('/api/inventory/bom/sync-status', {
+                    signal,
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'x-account-id': accountId
+                    }
+                });
+                if (!res.ok) throw new Error(`Failed to check sync status (HTTP ${res.status})`);
                 const data = await res.json();
+                if (signal.aborted || version !== statusVersionRef.current) return;
                 if (data.isSyncing) {
+                    runningRef.current = true;
                     setIsSyncing(true);
                     setSyncResult({ synced: -3, failed: 0 });
                     if (data.progress) {
                         setSyncProgress({ current: data.progress.current, total: data.progress.total });
                     }
                 } else {
+                    const completed = runningRef.current;
+                    runningRef.current = false;
                     setIsSyncing(false);
+                    setSyncProgress(null);
+                    if (completed) {
+                        setSyncResult(null);
+                        // A preview already in flight may predate completion.
+                        await previewRequestRef.current;
+                        if (!signal.aborted) await fetchPendingChanges();
+                    }
                 }
-                return data;
+            } catch (err) {
+                if (!signal.aborted) Logger.error('Failed to check sync status', { error: err });
             }
-        } catch (err) {
-            Logger.error('Failed to check sync status', { error: err });
+        })();
+        statusRequestRef.current = request;
+        try { await request; } finally {
+            if (statusRequestRef.current === request) statusRequestRef.current = null;
         }
-        return null;
-    }, [accountId, token]);
+    }, [accountId, token, getSignal, fetchPendingChanges]);
 
-    const handleSyncSingle = useCallback(async (productId: string, variationId: number) => {
-        if (!accountId || !token) return;
+    const handleSyncSingle = useCallback(async (productId: string, variationId: number, refresh = true) => {
+        const signal = getSignal();
+        if (!signal || !accountId) return;
         const key = `${productId}-${variationId}`;
         setSyncingProductId(key);
         setSyncErrors(prev => ({ ...prev, [key]: '' }));
 
         try {
             const res = await fetch(`/api/inventory/products/${productId}/bom/sync?variationId=${variationId}`, {
+                signal,
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -201,6 +243,7 @@ export function useBOMSync(): UseBOMSyncReturn {
                 }
             });
             const data = await res.json();
+            if (signal.aborted) return;
 
             if (!res.ok) {
                 const parsedError = extractBomApiError(data, `Sync failed (HTTP ${res.status})`);
@@ -209,26 +252,27 @@ export function useBOMSync(): UseBOMSyncReturn {
                 Logger.error('Sync failed', { productId, variationId, code: parsedError.code, error: errorMsg });
             } else if (data.localDbUpdated || data.previousStock !== data.newStock) {
                 setSyncErrors(prev => ({ ...prev, [key]: '' }));
-                await fetchPendingChanges();
+                if (refresh) await fetchPendingChanges();
             } else if (!data.success) {
                 const parsedError = extractBomApiError(data, 'Sync returned success=false');
                 setSyncErrors(prev => ({ ...prev, [key]: parsedError.message }));
             }
         } catch (err: unknown) {
+            if (signal.aborted) return;
             const errorMsg = err instanceof Error ? err.message : 'Network error';
             setSyncErrors(prev => ({ ...prev, [key]: errorMsg }));
             Logger.error('Failed to sync single product', { error: err });
         } finally {
-            setSyncingProductId(null);
+            if (!signal.aborted) setSyncingProductId(null);
         }
-    }, [accountId, token, fetchPendingChanges]);
+    }, [accountId, token, getSignal, fetchPendingChanges]);
 
     const handleSyncAll = useCallback(async () => {
-        if (!accountId || !token) return;
-
-        // Clean up any existing poll from a previous invocation
-        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+        const signal = getSignal();
+        if (!signal || !accountId || runningRef.current) return;
+        runningRef.current = true;
+        startingRef.current = true;
+        statusVersionRef.current++;
 
         setIsSyncing(true);
         setSyncResult(null);
@@ -236,6 +280,7 @@ export function useBOMSync(): UseBOMSyncReturn {
 
         try {
             const res = await fetch('/api/inventory/bom/sync-all', {
+                signal,
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -245,84 +290,76 @@ export function useBOMSync(): UseBOMSyncReturn {
                 body: JSON.stringify({})
             });
 
+            if (signal.aborted) return;
             if (res.ok) {
                 const data = await res.json();
+                if (signal.aborted) return;
 
-                if (data.status === 'queued' || data.status === 'started') {
-                    setSyncResult({ synced: -2, failed: 0 });
-
-                    pollIntervalRef.current = setInterval(async () => {
-                        // Why ref: the closure captures stale isPaused, ref always has latest
-                        if (isPausedRef.current) return;
-                        await fetchPendingChanges();
-                        const status = await checkSyncStatus();
-                        if (status && !status.isSyncing) {
-                            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-                            pollIntervalRef.current = null;
-                            if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
-                            pollTimeoutRef.current = null;
-                            setIsSyncing(false);
-                            setSyncProgress(null);
-                            await fetchPendingChanges();
-                        }
-                    }, 5000);
-
-                    pollTimeoutRef.current = setTimeout(() => {
-                        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-                        pollIntervalRef.current = null;
-                        pollTimeoutRef.current = null;
-                        setIsSyncing(false);
-                        setSyncProgress(null);
-                    }, 10 * 60 * 1000);
-                } else if (data.status === 'already_running') {
-                    setSyncResult({ synced: -3, failed: 0 });
-                    setIsSyncing(false);
+                if (['queued', 'started', 'already_running'].includes(data.status)) {
+                    setIsSyncing(true);
+                    setSyncResult({ synced: data.status === 'already_running' ? -3 : -2, failed: 0 });
                 } else {
+                    runningRef.current = false;
                     setSyncResult({ synced: data.synced || 0, failed: data.failed || 0 });
                     await fetchPendingChanges();
+                    if (signal.aborted) return;
                     setIsSyncing(false);
                     setSyncProgress(null);
                 }
             } else {
+                runningRef.current = false;
                 setSyncResult({ synced: 0, failed: -1 });
                 setIsSyncing(false);
                 setSyncProgress(null);
             }
         } catch (err) {
+            if (signal.aborted) return;
+            runningRef.current = false;
             Logger.error('Failed to sync all', { error: err });
             setSyncResult({ synced: 0, failed: -1 });
             setIsSyncing(false);
             setSyncProgress(null);
+        } finally {
+            if (!signal.aborted) startingRef.current = false;
         }
-    }, [accountId, token, fetchPendingChanges, checkSyncStatus]);
+    }, [accountId, token, getSignal, fetchPendingChanges]);
 
     const handleRetryFailed = useCallback(async () => {
+        const signal = getSignal();
+        if (!signal) return;
         const failedItems = pendingChanges.filter(item => syncErrors[`${item.productId}-${item.variationId}`]);
         for (const item of failedItems) {
-            await handleSyncSingle(item.productId, item.variationId);
+            if (signal.aborted) return;
+            await handleSyncSingle(item.productId, item.variationId, false);
         }
-    }, [pendingChanges, syncErrors, handleSyncSingle]);
+        if (failedItems.length && !signal.aborted) await fetchPendingChanges();
+    }, [pendingChanges, syncErrors, handleSyncSingle, getSignal, fetchPendingChanges]);
 
     const handleCancelSync = useCallback(async () => {
-        if (!accountId || !token) return;
+        const signal = getSignal();
+        if (!signal || !accountId) return;
         try {
             const res = await fetch('/api/inventory/bom/sync-cancel', {
+                signal,
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': accountId
                 }
             });
+            if (signal.aborted) return;
             if (res.ok) {
+                statusVersionRef.current++;
+                runningRef.current = false;
                 setSyncResult(null);
                 setIsSyncing(false);
                 setSyncProgress(null);
                 await fetchPendingChanges();
             }
         } catch (err) {
-            Logger.error('Failed to cancel sync', { error: err });
+            if (!signal.aborted) Logger.error('Failed to cancel sync', { error: err });
         }
-    }, [accountId, token, fetchPendingChanges]);
+    }, [accountId, token, getSignal, fetchPendingChanges]);
 
     const handleTogglePause = useCallback(() => {
         setIsPaused(prev => !prev);
@@ -330,9 +367,11 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     /** Fetch deactivated BOM items for the banner */
     const fetchDeactivatedItems = useCallback(async () => {
-        if (!accountId || !token) return;
+        const signal = getSignal();
+        if (!signal || !accountId) return;
         try {
             const res = await fetch('/api/inventory/bom/deactivated-items', {
+                signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': accountId
@@ -340,12 +379,13 @@ export function useBOMSync(): UseBOMSyncReturn {
             });
             if (res.ok) {
                 const data = await res.json();
+                if (signal.aborted) return;
                 setDeactivatedItems(data.items || []);
             }
         } catch (err) {
-            Logger.error('Failed to fetch deactivated items', { error: err });
+            if (!signal.aborted) Logger.error('Failed to fetch deactivated items', { error: err });
         }
-    }, [accountId, token]);
+    }, [accountId, token, getSignal]);
 
     const handleRefresh = useCallback(() => {
         fetchPendingChanges();
@@ -354,68 +394,82 @@ export function useBOMSync(): UseBOMSyncReturn {
 
     /** Reactivate a single deactivated item, then refresh the list */
     const handleReactivateItem = useCallback(async (itemId: string) => {
-        if (!accountId || !token) return;
+        const signal = getSignal();
+        if (!signal || !accountId) return;
         try {
             const res = await fetch(`/api/inventory/bom/items/${itemId}/reactivate`, {
+                signal,
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': accountId
                 }
             });
+            if (signal.aborted) return;
             if (res.ok) {
                 await fetchDeactivatedItems();
-                await fetchPendingChanges();
+                if (!signal.aborted) await fetchPendingChanges();
             }
         } catch (err) {
-            Logger.error('Failed to reactivate BOM item', { error: err });
+            if (!signal.aborted) Logger.error('Failed to reactivate BOM item', { error: err });
         }
-    }, [accountId, token, fetchDeactivatedItems, fetchPendingChanges]);
+    }, [accountId, token, getSignal, fetchDeactivatedItems, fetchPendingChanges]);
 
-    // Why: fires multiple concurrent fetches. Combined with other page polling,
-    // this can exhaust the rate limit budget. Consider a single API endpoint
-    // that returns all BOM status data if rate limits become an issue.
     useEffect(() => {
+        const controller = new AbortController();
+        lifecycleRef.current = accountId && token ? { accountId, token, controller } : null;
+        previewRequestRef.current = null;
+        statusRequestRef.current = null;
+        runningRef.current = false;
+        startingRef.current = false;
+        statusVersionRef.current++;
+        setPendingChanges([]);
+        setDeactivatedItems([]);
+        setStats({ total: 0, needsSync: 0, inSync: 0, errors: 0 });
+        setLoadError(null);
+        setIsLoadingPending(Boolean(accountId && token));
+        setIsSyncing(false);
+        setIsPaused(false);
+        setSyncingProductId(null);
+        setSyncResult(null);
+        setSyncErrors({});
+        syncErrorsRef.current = {};
+        setSyncProgress(null);
         if (accountId && token) {
             fetchPendingChanges();
             fetchDeactivatedItems();
             checkSyncStatus();
 
-            // Calculate next sync time (assuming hourly) and keep it fresh
-            const updateNextSync = () => {
-                const now = new Date();
-                const nextHour = new Date(now);
-                nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
-                const minutesUntil = Math.round((nextHour.getTime() - now.getTime()) / 60000);
-                setNextSyncIn(`${minutesUntil} min`);
-            };
-            updateNextSync();
-            const syncTimerId = setInterval(updateNextSync, 60000);
-
-            return () => clearInterval(syncTimerId);
         }
+        return () => controller.abort();
     }, [accountId, token, fetchPendingChanges, fetchDeactivatedItems, checkSyncStatus]);
 
-    // Cleanup polling on unmount to prevent setState on unmounted component
+    // Schedule after each response, so slow status requests never overlap.
     useEffect(() => {
-        return () => {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+        if (!isSyncing) return;
+        let stopped = false;
+        let timer: ReturnType<typeof setTimeout>;
+        const poll = async () => {
+            if (!isPausedRef.current && !startingRef.current) await checkSyncStatus();
+            if (!stopped) timer = setTimeout(poll, 5000);
         };
-    }, []);
+        timer = setTimeout(poll, 5000);
+        return () => { stopped = true; clearTimeout(timer); };
+    }, [isSyncing, checkSyncStatus]);
 
     return {
         pendingChanges,
         deactivatedItems,
         stats,
         isLoadingPending,
+        loadError,
         isSyncing,
         isPaused,
         syncingProductId,
         syncResult,
         syncErrors,
         syncProgress,
-        nextSyncIn,
+        nextSyncIn: null,
         handleSyncAll,
         handleSyncSingle,
         handleRetryFailed,

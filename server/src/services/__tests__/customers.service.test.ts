@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CustomersService } from '../customers';
+import { Prisma } from '@prisma/client';
 
 // Mock the dependencies
 const mockFindFirst = vi.fn();
@@ -203,7 +204,8 @@ describe('CustomersService', () => {
                 createdAt: enteredAt,
                 completedAt: new Date('2026-01-01T11:00:00.000Z'),
                 cancelledAt: null,
-                automation: { name: 'Welcome Flow' }
+                automation: { name: 'Welcome Flow' },
+                runEvents: [{ nodeId: 'email', outcome: 'EMAIL_SENT', metadata: { nodeType: 'action', actionType: 'SEND_EMAIL' } }]
             }]);
             mockEmailLogFindMany.mockResolvedValueOnce([
                 {
@@ -250,7 +252,7 @@ describe('CustomersService', () => {
                     runEvents: {
                         some: {
                             eventType: 'NODE_EXECUTED',
-                            metadata: { path: ['nodeType'], equals: 'action' },
+                            OR: ['action', 'ACTION'].map(nodeType => ({ metadata: { path: ['nodeType'], equals: nodeType } })),
                             NOT: [
                                 { outcome: { contains: 'SKIPPED', mode: 'insensitive' } },
                                 { outcome: { contains: 'FAILED', mode: 'insensitive' } },
@@ -352,7 +354,7 @@ describe('CustomersService', () => {
                 })
             }));
             expect(mockEmailUnsubscribeCreate).toHaveBeenCalledWith({
-                data: { accountId, email: 'new@example.com', scope: 'ALL', reason: 'Complaint' }
+                data: { accountId, email: 'new@example.com', scope: 'ALL', reason: 'Complaint', contactStatus: 'COMPLAINT' }
             });
         });
     });
@@ -402,70 +404,60 @@ describe('CustomersService', () => {
                     hits: { total: { value: 2 } },
                     aggregations: {
                         contact_statuses: {
-                            buckets: [{ key: 'SUBSCRIBED', doc_count: 2 }]
+                            buckets: [
+                                { key: 'SUBSCRIBED', doc_count: 1 },
+                                { key: 'UNSUBSCRIBED', doc_count: 1 }
+                            ]
                         }
                     }
                 });
 
-            mockEmailUnsubscribeFindMany.mockImplementation(async (args: any) => {
-                if (args?.where?.scope) {
-                    return [{ email: 'alice@example.com', scope: 'MARKETING' }];
-                }
-
-                if (args?.where?.email?.in) {
-                    return [{ email: 'alice@example.com', scope: 'MARKETING' }];
-                }
-
-                return [];
-            });
-            mockQueryRaw.mockResolvedValueOnce([{
-                wooId: 123,
-                email: 'alice@example.com',
-                rawData: { contactStatus: 'SUBSCRIBED' }
-            }]);
+            mockEmailUnsubscribeFindMany.mockResolvedValueOnce([
+                { email: 'alice@example.com', scope: 'MARKETING', contactStatus: null }
+            ]);
 
             const result = await CustomersService.searchCustomers(accountId, '', 1, 20, 'ALL', []);
 
             expect(result.customers).toHaveLength(2);
             expect(result.customers[0].contactStatus).toBe('UNSUBSCRIBED');
+            expect(result.customers[1].contactStatus).toBe('SUBSCRIBED');
             expect(result.statusCounts.UNSUBSCRIBED).toBe(1);
             expect(result.statusCounts.SUBSCRIBED).toBe(1);
+            const [search, counts] = mockSearch.mock.calls.map(([request]) => request);
+            expect(counts.runtime_mappings).toEqual(search.runtime_mappings);
+            expect(counts.aggs.contact_statuses.terms.field).toBe('effective_contact_status');
+            expect(mockQueryRaw).not.toHaveBeenCalled();
         });
 
-        it('filters UNSUBSCRIBED status by suppression list emails', async () => {
-            mockEmailUnsubscribeFindMany.mockImplementation(async (args: any) => {
-                if (args?.where?.scope) {
-                    return [{ email: 'alice@example.com', scope: 'MARKETING' }];
-                }
-
-                if (args?.where?.email?.in) {
-                    return [{ email: 'alice@example.com', scope: 'MARKETING' }];
-                }
-
-                return [];
-            });
-            mockQueryRaw
-                .mockResolvedValueOnce([{ wooId: 123, email: 'alice@example.com', rawData: {} }])
-                .mockResolvedValueOnce([{
-                    id: 'customer-db-1',
-                    wooId: 123,
-                    email: 'alice@example.com',
-                    firstName: 'Alice',
-                    lastName: 'A',
-                    totalSpent: 10,
-                    ordersCount: 1,
-                    rawData: {},
-                    createdAt: new Date('2025-01-01T00:00:00.000Z')
-                }])
-                .mockResolvedValueOnce([{ count: BigInt(1) }]);
-            mockWooCustomerCount.mockResolvedValueOnce(200);
+        it('filters UNSUBSCRIBED status using effective suppression status', async () => {
+            mockEmailUnsubscribeFindMany.mockResolvedValueOnce([
+                { email: 'alice@example.com', scope: 'MARKETING', contactStatus: null }
+            ]);
 
             mockSearch
+                .mockResolvedValueOnce({
+                    hits: {
+                        hits: [{
+                            _id: 'account-123_123',
+                            _source: {
+                                wooId: 123,
+                                email: 'alice@example.com',
+                                firstName: 'Alice',
+                                lastName: 'A',
+                                totalSpent: 10,
+                                ordersCount: 1,
+                                rawData: {},
+                                dateCreated: '2025-01-01T00:00:00.000Z'
+                            }
+                        }],
+                        total: { value: 1 }
+                    }
+                })
                 .mockResolvedValueOnce({
                     hits: { total: { value: 1 } },
                     aggregations: {
                         contact_statuses: {
-                            buckets: []
+                            buckets: [{ key: 'UNSUBSCRIBED', doc_count: 1 }]
                         }
                     }
                 });
@@ -476,11 +468,55 @@ describe('CustomersService', () => {
             expect(result.customers[0].contactStatus).toBe('UNSUBSCRIBED');
             expect(result.statusCounts.ALL).toBe(1);
             expect(result.statusCounts.UNSUBSCRIBED).toBe(1);
+            expect(result.total).toBe(1);
+            const request = mockSearch.mock.calls[0][0];
+            expect(request.query.bool.must).toContainEqual({ term: { effective_contact_status: 'UNSUBSCRIBED' } });
+            const params = request.runtime_mappings.effective_contact_status.script.params;
+            const group = params.emailGroups['alice@example.com'];
+            expect(params.statusGroups[group].UNVERIFIED).toBe('UNSUBSCRIBED');
+            expect(mockQueryRaw).not.toHaveBeenCalled();
             expect(mockWooCustomerCount).not.toHaveBeenCalled();
         });
     });
 
     describe('searchContacts', () => {
+        it.each(['Ada Lovelace', '  Ada  \t Lovelace\n'])('matches full names with normalized whitespace: %j', async (query) => {
+            await CustomersService.searchContacts(accountId, query, 3, 10, 'BLOCKED');
+
+            const [strings, ...values] = mockQueryRaw.mock.calls[0];
+            const sql = Prisma.sql(strings, ...values);
+            expect(sql.sql).toContain(`TRIM(REGEXP_REPLACE(CONCAT_WS(' ', "firstName", "lastName"), '[[:space:]]+', ' ', 'g')) ILIKE ?`);
+            expect(sql.values.filter(value => value === '%Ada Lovelace%')).toHaveLength(5);
+            expect(sql.sql).not.toContain('Ada Lovelace');
+            for (const alias of ['blocked', 'unsubscribed', 'customer', 'wc']) {
+                expect(sql.sql).toContain(`WHERE ${alias}."accountId" = ?`);
+            }
+            expect(sql.values.filter(value => value === accountId)).toHaveLength(4);
+            expect(sql.sql).toContain('WHERE TRUE AND "contactStatus" = ?');
+            expect(sql.values.slice(-3)).toEqual(['BLOCKED', 10, 20]);
+        });
+
+        it('treats whitespace-only searches as unfiltered while preserving pagination', async () => {
+            await CustomersService.searchContacts(accountId, ' \t\n ', 2, 10);
+
+            const [strings, ...values] = mockQueryRaw.mock.calls[0];
+            const sql = Prisma.sql(strings, ...values);
+            expect(sql.sql).not.toContain('ILIKE');
+            expect(sql.sql).not.toContain('AND "contactStatus" =');
+            expect(sql.values.slice(-2)).toEqual([10, 10]);
+        });
+
+        it('uses the selected status count for pagination on a searched empty page', async () => {
+            mockQueryRaw.mockResolvedValueOnce([{
+                id: null, allCount: 30, blockedCount: 12
+            }]);
+
+            const result = await CustomersService.searchContacts(accountId, 'Ada Lovelace', 3, 10, 'BLOCKED');
+
+            expect(result).toMatchObject({ contacts: [], total: 12, page: 3, totalPages: 2 });
+            expect(result.statusCounts).toMatchObject({ ALL: 30, BLOCKED: 12 });
+        });
+
         it('returns customers and standalone blocked contacts with stable status counts', async () => {
             mockQueryRaw.mockResolvedValueOnce([
                     {

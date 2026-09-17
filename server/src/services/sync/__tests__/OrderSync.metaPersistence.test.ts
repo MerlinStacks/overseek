@@ -4,6 +4,12 @@ import { prisma } from '../../../utils/prisma';
 import { WooService } from '../../woo';
 import { EventBus } from '../../events';
 import { esClient } from '../../../utils/elastic';
+import { materializeContact } from '../../ContactMaterialization';
+
+vi.mock('../../ContactMaterialization', async importOriginal => ({
+    ...await importOriginal<typeof import('../../ContactMaterialization')>(),
+    materializeContact: vi.fn().mockResolvedValue({ id: 'contact' })
+}));
 
 vi.mock('../../../utils/prisma', () => ({
     prisma: {
@@ -189,7 +195,8 @@ describe('OrderSync meta persistence', () => {
         ]);
         mockWoo.getOrders = vi.fn().mockResolvedValue({ data: [incoming], totalPages: 1, total: 1 });
         await (new OrderSync() as any).sync(mockWoo, accountId, true);
-        expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), accountId, [42], ['new@example.com'], [], accountId);
+        expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), accountId, [42], ['new@example.com'], ['contact'], accountId);
+        expect(materializeContact).toHaveBeenCalledWith(prisma, accountId, expect.objectContaining({ source: 'ORDER', email: 'new@example.com' }));
         expect(prisma.$transaction).toHaveBeenCalledTimes(3);
         expect(prisma.wooCustomer.updateMany).not.toHaveBeenCalled();
     });

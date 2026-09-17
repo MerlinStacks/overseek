@@ -47,6 +47,7 @@ describe('EmailListService new customer defaults', () => {
                 accountId: 'account-1',
                 email: 'customer@example.com',
                 scope: 'MARKETING',
+                contactStatus: 'UNSUBSCRIBED',
                 reason: 'New customer default'
             },
             update: {}

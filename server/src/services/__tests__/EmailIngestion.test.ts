@@ -17,6 +17,9 @@ const mockSendEmail = vi.fn();
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
+        $transaction: vi.fn(async function (work: any) { return work(this); }),
+        $queryRaw: vi.fn(),
+        $executeRaw: vi.fn(),
         emailAccount: {
             findUnique: (...args: any[]) => mockEmailAccountFindUnique(...args),
             findMany: (...args: any[]) => mockEmailAccountFindMany(...args)
@@ -26,6 +29,8 @@ vi.mock('../../utils/prisma', () => ({
             create: (...args: any[]) => mockMessageCreate(...args)
         },
         wooCustomer: {
+            findMany: vi.fn().mockResolvedValue([]),
+            update: vi.fn(async ({ data }: any) => ({ ...(await mockWooCustomerFindFirst()), ...data })),
             findFirst: (...args: any[]) => mockWooCustomerFindFirst(...args),
             aggregate: (...args: any[]) => mockWooCustomerAggregate(...args),
             create: (...args: any[]) => mockWooCustomerCreate(...args)
@@ -46,6 +51,8 @@ vi.mock('../../utils/prisma', () => ({
         }
     }
 }));
+
+vi.mock('../../utils/elastic', () => ({ esClient: { bulk: vi.fn().mockResolvedValue({ errors: false }), delete: vi.fn() } }));
 
 vi.mock('../BlockedContactService', () => ({
     BlockedContactService: {
@@ -145,9 +152,10 @@ describe('EmailIngestion', () => {
                 create: expect.objectContaining({
                     accountId: 'account-1',
                     email: 'new@example.com',
-                    scope: 'MARKETING'
+                    scope: 'MARKETING',
+                    contactStatus: 'UNSUBSCRIBED'
                 }),
-                update: { scope: 'MARKETING' }
+                update: {}
             })
         );
 

@@ -28,6 +28,10 @@ export class MaintenanceScheduler {
      * Register all maintenance-related repeatable jobs
      */
     static async register() {
+        // DB-backed contact projection intent is independent of Woo sync and Redis delivery.
+        await this.queue.add('contact-projection-recovery', {}, {
+            repeat: { every: 10000 }, jobId: 'contact-projection-recovery-10sec'
+        });
         // Inventory Alerts (Daily at 08:00 UTC)
         await this.queue.add('inventory-alerts', {}, {
             repeat: { pattern: '0 8 * * *' },

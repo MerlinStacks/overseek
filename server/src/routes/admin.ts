@@ -143,6 +143,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
             // 4. Sync States (last sync per entity type, aggregated)
             const syncStates = await prisma.syncState.findMany({
+                where: { NOT: { entityType: { startsWith: 'contact-projection:' } } },
                 include: { account: { select: { id: true, name: true } } },
                 orderBy: { updatedAt: 'desc' },
                 take: 50
@@ -215,7 +216,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
             const [syncStates, syncLogs] = await Promise.all([
                 prisma.syncState.findMany({
-                    where: whereClause,
+                    where: { ...whereClause, NOT: { entityType: { startsWith: 'contact-projection:' } } },
                     include: { account: { select: { id: true, name: true } } },
                     orderBy: { updatedAt: 'desc' },
                     take: limit * 6 // 6 entity types per account

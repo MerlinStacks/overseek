@@ -12,6 +12,33 @@ import { WooService } from './woo';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { StockValidationService } from './StockValidationService';
+import type { Prisma } from '@prisma/client';
+
+/** Shared local stock inputs for single-product reads and bulk previews. */
+export const localBOMItems = {
+    where: {
+        isActive: true,
+        OR: [
+            { childProductId: { not: null } },
+            { internalProductId: { not: null } }
+        ]
+    },
+    include: {
+        childProduct: {
+            select: { id: true, wooId: true, name: true, stockQuantity: true, rawData: true }
+        },
+        childVariation: {
+            select: { wooId: true, sku: true, stockQuantity: true }
+        },
+        internalProduct: {
+            select: { id: true, name: true, stockQuantity: true }
+        }
+    }
+} satisfies Prisma.BOM$itemsArgs;
+
+type LocalBOM = Prisma.BOMGetPayload<{ include: { items: typeof localBOMItems } }>;
+type LocalStock = { stockQuantity: number | null; rawData: Prisma.JsonValue };
+type LocalProduct = LocalStock & { id: string; wooId: number };
 
 /**
  * Retry wrapper for database operations to handle transient DNS errors.
@@ -551,26 +578,7 @@ export class BOMInventorySyncService {
                 productId_variationId: { productId, variationId }
             },
             include: {
-                items: {
-                    where: {
-                        isActive: true,
-                        OR: [
-                            { childProductId: { not: null } },
-                            { internalProductId: { not: null } }
-                        ]
-                    },
-                    include: {
-                        childProduct: {
-                            select: { id: true, wooId: true, name: true, stockQuantity: true, rawData: true }
-                        },
-                        childVariation: {
-                            select: { wooId: true, sku: true, stockQuantity: true }
-                        },
-                        internalProduct: {
-                            select: { id: true, name: true, stockQuantity: true }
-                        }
-                    }
-                }
+                items: localBOMItems
             }
         });
 
@@ -578,26 +586,27 @@ export class BOMInventorySyncService {
             return null;
         }
 
-        // Get current stock from local DB
-        // For variants, we need to lookup the ProductVariation stock, not the parent
-        let currentWooStock: number | null = null;
-        if (variationId > 0) {
-            // Lookup variant stock from ProductVariation table
-            const variation = await prisma.productVariation.findUnique({
+        const variation = variationId > 0
+            ? await prisma.productVariation.findUnique({
                 where: {
                     productId_wooId: { productId, wooId: variationId }
                 },
                 select: { stockQuantity: true, rawData: true }
-            });
-            if (variation) {
-                const varRawData = variation.rawData as any;
-                currentWooStock = variation.stockQuantity ?? varRawData?.stock_quantity ?? null;
-            }
-        } else {
-            // For parent products, use the product's stock
-            const rawData = product.rawData as any;
-            currentWooStock = product.stockQuantity ?? rawData?.stock_quantity ?? null;
-        }
+            })
+            : null;
+
+        return this.calculateEffectiveStockFromLocalData(product, bom, variation);
+    }
+
+    /** Pure calculation; callers must load the product/BOM within the account scope. */
+    static calculateEffectiveStockFromLocalData(
+        product: LocalProduct,
+        bom: LocalBOM,
+        variation: LocalStock | null = null
+    ): EffectiveStockResult | null {
+        const target = bom.variationId > 0 ? variation : product;
+        const rawData = target?.rawData as any;
+        const currentWooStock = target?.stockQuantity ?? rawData?.stock_quantity ?? null;
 
         // Calculate effective stock based on each child component using local data only
         const components: EffectiveStockResult['components'] = [];

@@ -9,6 +9,8 @@ import { WooOrderSchema, WooOrder } from './wooSchemas';
 import { esClient } from '../../utils/elastic';
 import { isExcludedOrderStatus, normalizeOrderStatus } from '../../constants/orderStatus';
 import { recalculateCustomerTotals, updateCustomerTotals, withOrderTotalsTransaction } from './orderCustomerTotals';
+import { materializeContact } from '../ContactMaterialization';
+import { queueContactProjection } from '../ContactProjection';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -116,6 +118,7 @@ export class OrderSync extends BaseSync {
                     select: { wooId: true, status: true, wooCustomerId: true, billingEmail: true }
                 });
                 const associations = [...existing];
+                const contactIds: string[] = [];
                 for (const order of orders) {
                     const rawEmail = order.billing?.email;
                     const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
@@ -140,8 +143,14 @@ export class OrderSync extends BaseSync {
                             dateCreated: new Date(order.date_created_gmt || order.date_created || new Date())
                         }
                     });
+                    const contact = await materializeContact(tx, accountId, {
+                        source: 'ORDER', sourceKey: `order:${order.id}`, wooCustomerId, email: billingEmail,
+                        firstName: order.billing?.first_name, lastName: order.billing?.last_name
+                    });
+                    contactIds.push(contact.id);
                 }
-                await updateCustomerTotals(tx, accountId, associations);
+                await updateCustomerTotals(tx, accountId, associations, contactIds);
+                await queueContactProjection(tx, accountId, contactIds);
                 return existing;
             });
             const existingMap = new Map(existingOrders.map(o => [o.wooId, o.status]));

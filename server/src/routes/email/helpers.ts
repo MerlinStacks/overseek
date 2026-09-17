@@ -156,11 +156,12 @@ export async function applyDeliveryEventToLog(params: {
     const suppressionScope = 'ALL';
     const suppressionReason = params.reason?.trim()
         || (params.eventType === 'COMPLAINT' ? 'Marked as spam complaint' : 'Marked as email bounce');
+    const contactStatus = params.eventType === 'COMPLAINT' ? 'COMPLAINT' : 'BOUNCED';
 
     await prisma.emailUnsubscribe.upsert({
         where: { accountId_email: { accountId: params.accountId, email: log.to.toLowerCase() } },
-        create: { accountId: params.accountId, email: log.to.toLowerCase(), scope: suppressionScope, reason: suppressionReason },
-        update: { scope: suppressionScope, reason: suppressionReason }
+        create: { accountId: params.accountId, email: log.to.toLowerCase(), scope: suppressionScope, reason: suppressionReason, contactStatus },
+        update: { scope: suppressionScope, reason: suppressionReason, contactStatus }
     });
 
     const nextStatus = params.eventType === 'COMPLAINT' ? 'COMPLAINED' : 'BOUNCED';

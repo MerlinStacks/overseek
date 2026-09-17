@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Pagination } from '../ui/Pagination';
 import { Toast, ToastType } from '../ui/Toast';
+import { ComponentStockEditor } from './ComponentStockEditor';
 
 interface InternalProduct {
     id: string;
@@ -231,6 +232,36 @@ export function InternalProductsList() {
         }
     }
 
+    async function handleStockSave(product: InternalProduct, stockQuantity: number) {
+        if (!currentAccount || !token) throw new Error('No active account');
+
+        try {
+            const res = await fetch(`/api/inventory/internal-products/${product.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Account-ID': currentAccount.id,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ stockQuantity })
+            });
+            if (!res.ok) {
+                const error = await res.json().catch(() => null);
+                throw new Error(error?.error || 'Failed to update stock');
+            }
+            const updated: InternalProduct = await res.json();
+            setProducts((items) => items.map((item) =>
+                item.id === product.id && item.accountId === product.accountId
+                    ? { ...item, stockQuantity: updated.stockQuantity } : item
+            ));
+            showToast('Component stock updated', 'success');
+        } catch (error) {
+            Logger.error('Failed to update component stock', { error });
+            showToast(error instanceof Error ? error.message : 'Failed to update stock');
+            throw error;
+        }
+    }
+
     async function handleDelete(product: InternalProduct) {
         if (!currentAccount || !token) return;
 
@@ -342,11 +373,12 @@ export function InternalProductsList() {
                                         {product.sku || '-'}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`text-lg font-bold ${product.stockQuantity === 0 ? 'text-red-600' :
-                                            product.stockQuantity < 10 ? 'text-amber-600' : 'text-gray-900'
-                                            }`}>
-                                            {product.stockQuantity}
-                                        </span>
+                                        <ComponentStockEditor
+                                            key={`${product.accountId}:${product.id}`}
+                                            name={product.name}
+                                            quantity={product.stockQuantity}
+                                            onSave={(quantity) => handleStockSave(product, quantity)}
+                                        />
                                     </td>
                                     {canViewCogs && (
                                         <td className="px-6 py-4 text-sm text-gray-600">

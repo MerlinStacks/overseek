@@ -25,6 +25,7 @@ vi.mock('../hooks/useAccountFeature', () => ({
 }));
 
 vi.mock('../components/sync/SyncStatus', () => ({ SyncStatus: () => <div>Sync Status Content</div> }));
+vi.mock('./BOMSyncPage', () => ({ BOMSyncPage: () => <div>BOM Inventory Content</div> }));
 vi.mock('../components/chat/ChatSettings', () => ({ ChatSettings: () => <div>Chat Settings Content</div> }));
 vi.mock('../components/settings/AISettings', () => ({ AISettings: () => <div>AI Settings Content</div> }));
 vi.mock('../components/settings/TrackingScriptHelper', () => ({ TrackingScriptHelper: () => <div>Tracking Script Helper</div> }));
@@ -69,6 +70,25 @@ function renderSettings(initialEntry = '/settings') {
 }
 
 describe('SettingsPage tab behavior', () => {
+    it('mounts the sync overview once and does not load BOM details until selected', async () => {
+        renderSettings('/settings?tab=sync');
+        expect(await screen.findAllByText('Sync Status Content')).toHaveLength(1);
+        expect(screen.queryByText('BOM Inventory Content')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'BOM Inventory' }));
+        expect(await screen.findAllByText('BOM Inventory Content')).toHaveLength(1);
+        expect(screen.queryByText('Sync Status Content')).not.toBeInTheDocument();
+        expect(screen.getByTestId('location-search')).toHaveTextContent('view=bom');
+        fireEvent.click(screen.getByRole('button', { name: 'Overview & schedules' }));
+        expect(await screen.findAllByText('Sync Status Content')).toHaveLength(1);
+        expect(screen.getByTestId('location-search')).not.toHaveTextContent('view=bom');
+    });
+
+    it('opens BOM details directly from the URL', async () => {
+        renderSettings('/settings?tab=sync&view=bom');
+        expect(await screen.findAllByText('BOM Inventory Content')).toHaveLength(1);
+        expect(screen.queryByText('Sync Status Content')).not.toBeInTheDocument();
+    });
+
     beforeEach(() => {
         featureFlags.GOLD_PRICE_CALCULATOR = true;
         featureFlags.AD_TRACKING = true;

@@ -2,6 +2,9 @@ import { MarketingAutomation, Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { FlowDefinition } from './automation/types';
+import { materializeContact, lockContactAccount } from './ContactMaterialization';
+import { queueContactProjection } from './ContactProjection';
+import { updateCustomerTotals } from './sync/orderCustomerTotals';
 
 interface CreateEnrollmentInput {
     automation: MarketingAutomation;
@@ -35,7 +38,15 @@ export class AutomationEnrollmentService {
         ].join(':');
 
         return prisma.$transaction(async (tx) => {
+            await lockContactAccount(tx, input.automation.accountId);
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+
+            // Also repair a missing contact when a delivery is deduplicated or frequency-capped.
+            const contact = await materializeContact(tx, input.automation.accountId, {
+                source: 'AUTOMATION', email: normalizedEmail, wooCustomerId: input.wooCustomerId
+            });
+            await updateCustomerTotals(tx, input.automation.accountId, [], [contact.id]);
+            await queueContactProjection(tx, input.automation.accountId, [contact.id]);
 
             const frequencyCapWhere = input.frequencyCapHours && input.frequencyCapHours > 0
                 ? await tx.automationEnrollment.findFirst({
@@ -146,7 +157,7 @@ export class AutomationEnrollmentService {
                 enrollment,
                 created: true
             };
-        });
+        }, { timeout: 60000 });
     }
 
     async updateProgress(enrollmentId: string, data: {

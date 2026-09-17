@@ -284,13 +284,29 @@ describe('email click redirects', () => {
                 accountId: 'acct-1',
                 email: 'customer@example.com',
                 scope: 'MARKETING',
+                contactStatus: 'UNSUBSCRIBED',
                 reason: null,
             },
             update: {
                 scope: 'MARKETING',
+                contactStatus: 'UNSUBSCRIBED',
                 reason: null,
             },
         });
+    });
+
+    it('classifies an ALL unsubscribe as unsubscribed even with a complaint in the reason', async () => {
+        const res = await app.inject({
+            method: 'POST',
+            url: '/api/email/unsubscribe/track-1',
+            payload: { scope: 'ALL', reason: 'My complaint is too many emails' },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(prisma.emailUnsubscribe.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            create: expect.objectContaining({ scope: 'ALL', contactStatus: 'UNSUBSCRIBED', reason: 'My complaint is too many emails' }),
+            update: expect.objectContaining({ scope: 'ALL', contactStatus: 'UNSUBSCRIBED', reason: 'My complaint is too many emails' }),
+        }));
     });
 
     it('removes the tracked recipient from only the campaign list', async () => {

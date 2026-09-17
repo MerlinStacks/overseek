@@ -9,6 +9,7 @@
         "start": "node --disable-warning=DEP0040 dist/index.js",
         "test": "vitest run",
         "test:watch": "vitest",
+        "contacts:backfill": "esbuild src/scripts/backfillContacts.ts --bundle --platform=node --packages=external --outfile=dist/scripts/backfillContacts.cjs && node dist/scripts/backfillContacts.cjs",
         "build:plugin": "node scripts/build_plugin.js",
         "check:plugin-runtime": "node scripts/build_plugin.js --check",
         "lint": "eslint .",

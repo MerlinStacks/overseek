@@ -222,10 +222,12 @@ async function upsertPreference(token: string, scope?: string, reason?: string) 
                 accountId: context.emailLog.accountId,
                 email: normalizedEmail,
                 scope: unsubscribeScope,
+                contactStatus: 'UNSUBSCRIBED',
                 reason: reason || null
             },
             update: {
                 scope: unsubscribeScope,
+                contactStatus: 'UNSUBSCRIBED',
                 reason: reason || null
             }
         });

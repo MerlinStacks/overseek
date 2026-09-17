@@ -257,6 +257,7 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
                             accountId,
                             email,
                             scope: parsed.data.scope,
+                            contactStatus: 'UNSUBSCRIBED',
                             reason: parsed.data.reason?.trim() || 'Bulk unsubscribe upload'
                         }))
                     })
@@ -271,6 +272,7 @@ const emailListRoutes: FastifyPluginAsync = async (fastify) => {
                         },
                         data: {
                             scope: parsed.data.scope,
+                            contactStatus: 'UNSUBSCRIBED',
                             reason: parsed.data.reason?.trim() || 'Bulk unsubscribe upload'
                         }
                     })
@@ -497,10 +499,12 @@ export const emailListPublicRoutes: FastifyPluginAsync = async (fastify) => {
                         accountId: parsed.data.accountId,
                         email: normalizedEmail,
                         scope: explicitlyUnsubscribeAll ? 'ALL' : 'MARKETING',
+                        contactStatus: 'UNSUBSCRIBED',
                         reason: parsed.data.reason?.trim() || 'Preference center update'
                     },
                     update: {
                         scope: explicitlyUnsubscribeAll ? 'ALL' : 'MARKETING',
+                        contactStatus: 'UNSUBSCRIBED',
                         reason: parsed.data.reason?.trim() || 'Preference center update'
                     }
                 });

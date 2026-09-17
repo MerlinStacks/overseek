@@ -29,14 +29,20 @@ describe.skipIf(!databaseUrl)('customer totals PostgreSQL regression', () => {
     beforeAll(async () => {
         await db.connect();
         await db.query(`
+            CREATE TEMP TABLE "SyncState" (
+                id text PRIMARY KEY, "accountId" text, "entityType" text, cursor text, "updatedAt" timestamp,
+                UNIQUE ("accountId", "entityType")
+            );
             CREATE TEMP TABLE "WooCustomer" (
                 id text PRIMARY KEY, "accountId" text NOT NULL, "wooId" int NOT NULL, email text NOT NULL,
                 "ordersCount" int NOT NULL, "totalSpent" numeric(10,2) NOT NULL, "updatedAt" timestamp NOT NULL
             );
+            ALTER TABLE "WooCustomer" ADD COLUMN "rawData" jsonb DEFAULT '{}';
             CREATE TEMP TABLE "WooOrder" (
                 id text PRIMARY KEY, "accountId" text NOT NULL, "wooCustomerId" int,
                 "billingEmail" text, total numeric(10,2) NOT NULL, status text NOT NULL
             );
+            ALTER TABLE "WooOrder" ADD COLUMN "wooId" int;
         `);
         vi.mocked(prisma.$transaction).mockImplementation(async (work: any) => {
             await db.query('BEGIN');
@@ -55,14 +61,14 @@ describe.skipIf(!databaseUrl)('customer totals PostgreSQL regression', () => {
 
     beforeEach(async () => {
         await db.query(`
-            TRUNCATE "WooCustomer", "WooOrder";
-            INSERT INTO "WooCustomer" VALUES
+            TRUNCATE "WooCustomer", "WooOrder", "SyncState";
+            INSERT INTO "WooCustomer" (id, "accountId", "wooId", email, "ordersCount", "totalSpent", "updatedAt") VALUES
                 ('old', 'a', 1, 'old@example.com', 99, 99, '2020-01-01'),
                 ('new', 'a', 2, 'new@example.com', 99, 99, '2020-01-01'),
                 ('duplicate', 'a', 3, 'new@example.com', 99, 99, '2020-01-01'),
                 ('empty', 'a', 4, 'empty@example.com', 99, 99, '2020-01-01'),
                 ('other', 'b', 1, 'old@example.com', 99, 99, '2020-01-01');
-            INSERT INTO "WooOrder" VALUES
+            INSERT INTO "WooOrder" (id, "accountId", "wooCustomerId", "billingEmail", total, status) VALUES
                 ('registered', 'a', 1, 'new@example.com', 10.10, 'cancelled'),
                 ('guest', 'a', NULL, 'new@example.com', 20.20, 'refunded'),
                 ('unmatched', 'a', 999, 'new@example.com', 100, 'completed'),
@@ -122,7 +128,7 @@ describe.skipIf(!databaseUrl)('customer totals PostgreSQL regression', () => {
     it('rolls back order mutation and customer updates when any aggregate overflows', async () => {
         const before = await totals();
         await expect(withOrderTotalsTransaction('a', async tx => {
-            await db.query(`INSERT INTO "WooOrder" VALUES ('overflow', 'a', 1, NULL, 99999999.99, 'completed')`);
+            await db.query(`INSERT INTO "WooOrder" (id, "accountId", "wooCustomerId", "billingEmail", total, status) VALUES ('overflow', 'a', 1, NULL, 99999999.99, 'completed')`);
             await updateCustomerTotals(tx, 'a', [{ wooCustomerId: 1, billingEmail: null }]);
         })).rejects.toThrow(/overflow/i);
         expect(await totals()).toEqual(before);
@@ -132,8 +138,11 @@ describe.skipIf(!databaseUrl)('customer totals PostgreSQL regression', () => {
     it('is idempotent and does not keep unchanged customers in the recovery window', async () => {
         const associations = [{ wooCustomerId: 1, billingEmail: null }];
         await withOrderTotalsTransaction('a', tx => updateCustomerTotals(tx, 'a', associations));
+        const pending = (await db.query(`SELECT "accountId", "entityType", cursor FROM "SyncState"`)).rows;
+        expect(pending).toEqual([{ accountId: 'a', entityType: 'contact-projection:1', cursor: expect.any(String) }]);
         await db.query(`UPDATE "WooCustomer" SET "updatedAt" = '2020-01-01' WHERE id = 'old'`);
         await withOrderTotalsTransaction('a', tx => updateCustomerTotals(tx, 'a', associations));
+        expect((await db.query(`SELECT "accountId", "entityType", cursor FROM "SyncState"`)).rows).toEqual(pending);
         expect((await db.query(`SELECT "updatedAt"::text AS date FROM "WooCustomer" WHERE id = 'old'`)).rows)
             .toEqual([{ date: '2020-01-01 00:00:00' }]);
         expect(await totals()).toContainEqual({ id: 'old', count: 1, spent: '10.10' });

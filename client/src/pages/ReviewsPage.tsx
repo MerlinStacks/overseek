@@ -96,6 +96,10 @@ export const ReviewsPage = () => {
     const [replyReview, setReplyReview] = useState<ReviewRow | null>(null);
     const [replyText, setReplyText] = useState('');
     const [isGeneratingReply, setIsGeneratingReply] = useState(false);
+    const [replySuggestions, setReplySuggestions] = useState<string[]>([]);
+    const [selectedReplyOption, setSelectedReplyOption] = useState<number | 'manual' | null>('manual');
+    const [manualReplyText, setManualReplyText] = useState('');
+    const replyRequestId = useRef(0);
     const [editReview, setEditReview] = useState<ReviewRow | null>(null);
     const [editContent, setEditContent] = useState('');
     const [editRating, setEditRating] = useState(5);
@@ -375,6 +379,11 @@ export const ReviewsPage = () => {
     };
 
     const openReplyModal = (review: ReviewRow) => {
+        replyRequestId.current += 1;
+        setIsGeneratingReply(false);
+        setReplySuggestions([]);
+        setSelectedReplyOption('manual');
+        setManualReplyText('');
         setReplyReview(review);
         setReplyText('');
     };
@@ -388,6 +397,9 @@ export const ReviewsPage = () => {
     const handleGenerateAIReply = async () => {
         if (!currentAccount || !token || !replyReview || isGeneratingReply) return;
 
+        const requestId = ++replyRequestId.current;
+        const accountId = currentAccount.id;
+        const isCurrentRequest = () => requestId === replyRequestId.current && activeSettingsAccountId.current === accountId;
         setIsGeneratingReply(true);
         try {
             const res = await fetch(`/api/reviews/${replyReview.id}/ai-reply`, {
@@ -397,19 +409,24 @@ export const ReviewsPage = () => {
                     'Authorization': `Bearer ${token}`,
                     'X-Account-ID': currentAccount.id
                 },
-                body: JSON.stringify({ currentDraft: replyText })
+                body: JSON.stringify({ currentDraft: replyText, previousReplies: replySuggestions })
             });
 
-            const data = await res.json().catch(() => ({})) as { reply?: string; error?: string };
+            const data = await res.json().catch(() => ({})) as { replies?: unknown; error?: string };
+            if (!isCurrentRequest()) return;
             if (!res.ok) throw new Error(data.error || 'AI reply generation failed');
-
-            setReplyText(data.reply || '');
-            toast.success('AI reply drafted');
+            if (!Array.isArray(data.replies) || data.replies.length !== 3 || !data.replies.every((text): text is string => typeof text === 'string' && !!text.trim())) {
+                throw new Error('AI did not return three reply options. Please try again.');
+            }
+            setReplySuggestions(data.replies);
+            setSelectedReplyOption((option) => option === 'manual' ? 'manual' : null);
+            toast.success('Three reply options ready. Choose one or write your own.');
         } catch (error) {
+            if (!isCurrentRequest()) return;
             Logger.error('Review AI reply generation failed', { error });
             toast.error(error instanceof Error ? error.message : 'Failed to generate AI reply');
         } finally {
-            setIsGeneratingReply(false);
+            if (isCurrentRequest()) setIsGeneratingReply(false);
         }
     };
 
@@ -505,6 +522,10 @@ export const ReviewsPage = () => {
 
     useEffect(() => {
         settingsRequestId.current += 1;
+        replyRequestId.current += 1;
+        setReplyReview(null);
+        setReplyText('');
+        setIsGeneratingReply(false);
         setReviewSettings(DEFAULT_REVIEW_SETTINGS);
         setSettingsDraft(DEFAULT_REVIEW_SETTINGS);
         setSettingsLoadError('');
@@ -517,7 +538,7 @@ export const ReviewsPage = () => {
         if (!hasOpenModal) return;
 
         const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key !== 'Escape' || actionReviewId) return;
+            if (event.key !== 'Escape' || actionReviewId || isGeneratingReply) return;
             setReplyReview(null);
             setEditReview(null);
             setMediaViewer(null);
@@ -896,15 +917,15 @@ export const ReviewsPage = () => {
 
             {replyReview && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="presentation">
-                    <div className="w-full max-w-lg rounded-xl bg-white shadow-xl" role="dialog" aria-modal="true" aria-labelledby="review-reply-title">
-                        <div className="border-b border-gray-200 px-6 py-4">
-                            <h2 id="review-reply-title" className="text-lg font-semibold text-gray-900">Reply to review</h2>
-                            <p className="mt-1 text-sm text-gray-500">
+                    <div className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl dark:bg-slate-900 dark:text-slate-100" role="dialog" aria-modal="true" aria-labelledby="review-reply-title">
+                        <div className="border-b border-gray-200 px-6 py-4 dark:border-slate-700">
+                            <h2 id="review-reply-title" className="text-lg font-semibold text-gray-900 dark:text-slate-100">Reply to review</h2>
+                            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                                 {replyReview.reviewer || 'Customer'} on {replyReview.productName || 'Unknown Product'}
                             </p>
                         </div>
                         <div className="space-y-4 px-6 py-5">
-                            <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                            <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700 dark:bg-slate-800 dark:text-slate-200">
                                 <div className="mb-1 flex items-center gap-1 text-yellow-400">
                                     {Array.from({ length: 5 }).map((_, i) => (
                                         <Star key={i} size={14} fill={i < replyReview.rating ? "currentColor" : "none"} strokeWidth={1} />
@@ -912,36 +933,65 @@ export const ReviewsPage = () => {
                                 </div>
                                 <p className="line-clamp-4 whitespace-pre-wrap">{formatReviewText(replyReview.content) || 'No review text'}</p>
                             </div>
-                            <div className="flex items-center justify-between gap-3">
-                                <label className="block text-sm font-medium text-gray-700" htmlFor="review-reply-text">
-                                    Your reply
-                                </label>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <p className="text-sm font-medium text-gray-700 dark:text-slate-200">Choose a reply or write your own</p>
                                 <button
                                     type="button"
                                     onClick={handleGenerateAIReply}
                                     disabled={isGeneratingReply || actionReviewId === replyReview.id}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50 dark:border-purple-700 dark:bg-purple-950 dark:text-purple-200 dark:hover:bg-purple-900"
                                 >
                                     {isGeneratingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                                    {replyText.trim() ? 'Improve with AI' : 'Draft with AI'}
+                                    {isGeneratingReply ? 'Generating options...' : replySuggestions.length ? 'Generate new options' : 'Generate 3 replies'}
                                 </button>
                             </div>
+                            <div className="grid gap-3 sm:grid-cols-3" aria-label="Reply options" aria-busy={isGeneratingReply}>
+                                {replySuggestions.map((suggestion, index) => (
+                                    <button
+                                        key={`${index}-${suggestion}`}
+                                        type="button"
+                                        aria-pressed={selectedReplyOption === index}
+                                        disabled={actionReviewId === replyReview.id}
+                                        onClick={() => { setSelectedReplyOption(index); setReplyText(suggestion); }}
+                                        className={`rounded-lg border p-3 text-left text-sm transition-colors disabled:opacity-50 ${selectedReplyOption === index ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950' : 'border-gray-200 hover:border-indigo-400 dark:border-slate-700 dark:hover:border-indigo-400'}`}
+                                    >
+                                        <span className="mb-2 block font-semibold text-indigo-700 dark:text-indigo-300">Option {index + 1}</span>
+                                        <span className="whitespace-pre-wrap text-gray-700 dark:text-slate-200">{suggestion}</span>
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    aria-pressed={selectedReplyOption === 'manual'}
+                                    disabled={actionReviewId === replyReview.id}
+                                    onClick={() => { setSelectedReplyOption('manual'); setReplyText(manualReplyText); }}
+                                    className={`rounded-lg border p-3 text-left text-sm font-medium sm:col-span-3 disabled:opacity-50 ${selectedReplyOption === 'manual' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' : 'border-gray-200 text-gray-700 hover:border-indigo-400 dark:border-slate-700 dark:text-slate-200'}`}
+                                >
+                                    Write my own
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-slate-400">Generating options keeps your draft below. Select a suggestion to use it, then edit before posting.</p>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-slate-200" htmlFor="review-reply-text">Your reply</label>
                             <textarea
                                 id="review-reply-text"
                                 value={replyText}
-                                onChange={(event) => setReplyText(event.target.value)}
+                                onChange={(event) => {
+                                    setReplyText(event.target.value);
+                                    if (selectedReplyOption === 'manual') setManualReplyText(event.target.value);
+                                }}
+                                disabled={actionReviewId === replyReview.id}
+                                maxLength={12000}
                                 rows={5}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                                placeholder="Thanks for your feedback..."
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                placeholder="Write your reply or select an AI suggestion..."
                                 autoFocus
                             />
                         </div>
-                        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+                        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-slate-700">
                             <button
                                 type="button"
                                 onClick={closeReplyModal}
                                 disabled={!!actionReviewId || isGeneratingReply}
-                                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                             >
                                 Cancel
                             </button>

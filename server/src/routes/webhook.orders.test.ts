@@ -4,6 +4,11 @@ import { prisma } from '../utils/prisma';
 import { esClient } from '../utils/elastic';
 import { IndexingService } from '../services/search/IndexingService';
 import { EventBus } from '../services/events';
+import { materializeContact } from '../services/ContactMaterialization';
+import { queueContactProjection } from '../services/ContactProjection';
+
+vi.mock('../services/ContactMaterialization', () => ({ materializeContact: vi.fn() }));
+vi.mock('../services/ContactProjection', () => ({ queueContactProjection: vi.fn() }));
 
 const { tx, state } = vi.hoisted(() => ({
     tx: { $queryRaw: vi.fn(), $executeRaw: vi.fn(), wooOrder: {
@@ -32,6 +37,7 @@ const order = { id: 12, number: '12', status: 'completed', total: '12.34', curre
 describe('order webhook customer totals', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        vi.mocked(materializeContact).mockResolvedValue({ id: 'contact' } as any);
         vi.mocked(prisma.$transaction).mockImplementation(async (work: any) => {
             state.inTransaction = true;
             try { return await work(tx); } finally { state.inTransaction = false; }
@@ -53,7 +59,9 @@ describe('order webhook customer totals', () => {
         expect(tx.$queryRaw).toHaveBeenCalledWith(expect.anything(), 'order-totals:a');
         expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.wooOrder.findUnique.mock.invocationCallOrder[0]);
         expect(tx.wooOrder.upsert.mock.invocationCallOrder[0]).toBeLessThan(tx.$executeRaw.mock.invocationCallOrder[0]);
-        expect(tx.$executeRaw).toHaveBeenCalledWith(expect.anything(), 'a', [2], [], [], 'a');
+        expect(tx.$executeRaw).toHaveBeenCalledWith(expect.anything(), 'a', [2], [], ['contact'], 'a');
+        expect(materializeContact).toHaveBeenCalledWith(tx, 'a', expect.objectContaining({ source: 'ORDER', wooCustomerId: 2, email: 'new@example.com' }));
+        expect(queueContactProjection).toHaveBeenCalledWith(tx, 'a', ['contact']);
         expect(IndexingService.indexOrder).toHaveBeenCalledWith('a', order);
         expect(EventBus.emit).toHaveBeenCalledWith('created', { accountId: 'a', order });
     });
@@ -68,9 +76,9 @@ describe('order webhook customer totals', () => {
         await processWebhookPayload('a', 'order.updated', { ...order, customer_id: newId, billing: { email: newEmail } });
         expect(tx.wooOrder.findUnique).toHaveBeenCalledWith({
             where: { accountId_wooId: { accountId: 'a', wooId: 12 } },
-            select: { status: true, wooCustomerId: true, billingEmail: true }
+            select: { wooId: true, status: true, wooCustomerId: true, billingEmail: true }
         });
-        expect(tx.$executeRaw).toHaveBeenCalledWith(expect.anything(), 'a', ids, emails, [], 'a');
+        expect(tx.$executeRaw).toHaveBeenCalledWith(expect.anything(), 'a', ids, emails, ['contact'], 'a');
         expect(EventBus.emit).toHaveBeenCalledWith('status_changed', expect.objectContaining({ previousStatus: 'processing' }));
     });
 
@@ -80,7 +88,7 @@ describe('order webhook customer totals', () => {
         await processWebhookPayload('a', 'order.updated', payload);
         await processWebhookPayload('a', 'order.updated', payload);
         expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
-        expect(tx.$executeRaw).toHaveBeenLastCalledWith(expect.anything(), 'a', [], ['new@example.com'], [], 'a');
+        expect(tx.$executeRaw).toHaveBeenLastCalledWith(expect.anything(), 'a', [], ['new@example.com'], ['contact'], 'a');
         expect(tx.wooOrder.upsert).toHaveBeenCalledWith(expect.objectContaining({
             update: expect.objectContaining({ billingEmail: 'new@example.com', total: '99.99' })
         }));
