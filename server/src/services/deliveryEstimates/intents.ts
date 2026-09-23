@@ -41,6 +41,29 @@ export async function dirtyInbound(tx: Prisma.TransactionClient, accountId: stri
     });
 }
 
+export const STRANDED_INBOUND_BATCH_SIZE = 10;
+
+/** Account lock required. Older/manual control state can leave pending old-generation
+ * inputs without a full pass or target. Never relabel/replay them: queue a bounded
+ * current-source rebuild, retaining revisions, ACKs, leases and builder failures.
+ */
+export async function recoverStrandedInbound(tx: Prisma.TransactionClient, accountId: string,
+    control: { inboundFullRequested: boolean; inboundFailed: boolean }) {
+    if (control.inboundFullRequested || control.inboundFailed) return 0;
+    const rows = await tx.$queryRaw<{ wooId: number }[]>`
+        SELECT i."entityId" AS "wooId" FROM "DeliveryInputSync" i
+        JOIN "DeliverySyncAccount" c ON c."accountId" = i."accountId"
+        WHERE i."accountId" = ${accountId} AND i.scope = 'inbound' AND i.status = 'pending'
+          AND i."inboundGeneration" <> c."inboundGeneration" AND NOT c."inboundFullRequested" AND NOT c."inboundFailed"
+          AND NOT EXISTS (SELECT 1 FROM "DeliveryInboundDirtyTarget" d WHERE d."accountId" = i."accountId" AND d."wooId" = i."entityId")
+        ORDER BY i.id LIMIT ${STRANDED_INBOUND_BATCH_SIZE}`;
+    if (!rows.length) return 0;
+    // A source trigger may have inserted a target since SELECT. Preserve its version.
+    await tx.deliveryInboundDirtyTarget.createMany({ data: rows.map(row => ({ accountId, wooId: row.wooId })), skipDuplicates: true });
+    await tx.deliverySyncAccount.update({ where: { accountId }, data: { inboundRequested: true, inboundVersion: { increment: 1 } } });
+    return rows.length;
+}
+
 export const configuredInboundProducts: Prisma.WooProductWhereInput = { OR: [
     { productionMinDays: { not: null } }, { productionMaxDays: { not: null } },
     { variations: { some: { OR: [{ productionMinDays: { not: null } }, { productionMaxDays: { not: null } }] } } },

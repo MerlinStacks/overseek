@@ -12,7 +12,8 @@ vi.mock('../woo', () => ({ WooService: { forAccount: async () => ({
 vi.mock('../../utils/redis', () => ({ redisClient: {} }));
 import { lockDeliveryAccount, recordIntent, recordSettingsIntent } from './intents';
 import { queueDeliveryDisable } from './controlIntents';
-import { dispatchDeliveryInput, reconcileDeliveryDispatch } from './sync';
+import { dispatchDeliveryInput, reconcileDeliveryDispatch, recoverStrandedDeliveryInputs, deliverySyncStatus, requestDeliverySync, selectDeliveryInput } from './sync';
+import { buildInboundBatch } from './inboundResync';
 import { dispatchGuardedReceipt } from './receiptWorker';
 import { dispatchReceiptCascade } from './receiptCascade';
 import { deliveryReadiness, drainDeliveryControls, requestCutover, requestActivation } from './launch';
@@ -93,7 +94,7 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native deliv
     });
 
     it('runs readiness against the complete migration chain and atomically rolls back/commits explicit feature disable', async () => {
-        expect(fixture.migrations).toHaveLength(13);
+        expect(fixture.migrations).toHaveLength(17);
         expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([]);
         await db.exec(`UPDATE "Account" SET "receiptTransportMode"='GUARDED' WHERE id='a';
             INSERT INTO "WooProduct" (id,"accountId","wooId","productionMinDays","productionMaxDays","rawData") VALUES ('p','a',10,0,2,'{"type":"simple"}');`);
@@ -143,6 +144,72 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native deliv
         expect(await row('DeliverySyncAccount')).toMatchObject({ hasWork: false, leaseToken: null });
     });
 
+    it.each(['control', 'aggregate'])('status uses one read-only snapshot when a writer creates and requeues inputs after the %s read', async checkpoint => {
+        await input();
+        await db.exec(`UPDATE "DeliveryInputSync" SET status='synced',"ackRevision"=1,"lastAcknowledgedAt"='2026-09-22T00:00:00Z'`);
+        await m.client.receiptAccount.create({ data: { accountId: 'a' } });
+        const databaseState = async () => (await db.query(`SELECT jsonb_build_object(
+            'control', (SELECT to_jsonb(c) FROM "DeliverySyncAccount" c WHERE "accountId"='a'),
+            'inputs', (SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM "DeliveryInputSync" i WHERE "accountId"='a'),
+            'targets', (SELECT jsonb_agg(to_jsonb(d) ORDER BY "wooId") FROM "DeliveryInboundDirtyTarget" d WHERE "accountId"='a'),
+            'launch', (SELECT to_jsonb(r) FROM "ReceiptAccount" r WHERE "accountId"='a')) AS state`)).rows[0].state;
+        let afterWrite: unknown;
+        let interleaved = false;
+        const originalTransaction = m.client.$transaction.bind(m.client);
+        const transaction = vi.spyOn(m.client, '$transaction').mockImplementation((callback: any, options: any) => originalTransaction(async (tx: any) => {
+            const afterRead = async () => {
+                if (interleaved) return;
+                interleaved = true;
+                expect(await tx.$queryRawUnsafe(`SELECT current_setting('transaction_isolation') AS isolation, current_setting('transaction_read_only') AS readonly`))
+                    .toEqual([{ isolation: 'repeatable read', readonly: 'on' }]);
+                // Independent native connection commits while GET holds its snapshot.
+                // NOWAIT proves the reader did not acquire the Account writer lock.
+                await db.exec(`BEGIN; SET LOCAL lock_timeout='250ms'; SELECT id FROM "Account" WHERE id='a' FOR UPDATE NOWAIT;
+                    UPDATE "DeliveryInputSync" SET status='pending',"desiredRevision"=2,"lastError"='Transport retry pending',"updatedAt"=now();
+                    INSERT INTO "DeliveryInputSync" (id,"accountId",scope,"entityId",payload,status,"ackRevision","updatedAt","lastAcknowledgedAt")
+                        VALUES ('new-input','a','inbound',10,'{}','synced',1,now(),'2026-09-23T00:00:00Z');
+                    INSERT INTO "DeliveryInboundDirtyTarget" ("accountId","wooId","updatedAt") VALUES ('a',10,now());
+                    UPDATE "DeliverySyncAccount" SET "inboundRequested"=true,"inboundVersion"="inboundVersion"+1;
+                    UPDATE "ReceiptAccount" SET active=true,"cutoverState"='guarded'; COMMIT`);
+                afterWrite = await databaseState();
+            };
+            return callback(new Proxy(tx, { get(target, key) {
+                if (key === 'deliverySyncAccount' && checkpoint === 'control') return new Proxy(target.deliverySyncAccount, { get(delegate, method) {
+                    if (method === 'findUnique') return async (...args: any[]) => { const result = await delegate.findUnique(...args); await afterRead(); return result; };
+                    const value = delegate[method]; return typeof value === 'function' ? value.bind(delegate) : value;
+                } });
+                if (key === '$queryRaw' && checkpoint === 'aggregate') return async (sql: TemplateStringsArray, ...args: any[]) => {
+                    const result = await target.$queryRaw(sql, ...args);
+                    if (sql.join('').includes('COUNT(*)')) await afterRead();
+                    return result;
+                };
+                const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
+            } }));
+        }, options));
+        let before;
+        try { before = (await deliverySyncStatus('a')).status; }
+        finally { transaction.mockRestore(); }
+        expect(interleaved).toBe(true);
+        expect(before).toMatchObject({ configurationSync: 'synced', pendingCount: 0, syncedCount: 1, storefrontActivated: false, receiptSafety: 'unverified',
+            lastAcknowledgedAt: '2026-09-22T00:00:00.000Z', lastError: null,
+            progress: { totalInputs: 1, acknowledgedInputs: 1, pendingInputs: 0, dirtyProducts: 0, rebuildingInbound: false } });
+        expect(await databaseState()).toEqual(afterWrite);
+        const after = (await deliverySyncStatus('a')).status;
+        expect(after).toMatchObject({ configurationSync: 'pending', pendingCount: 2, syncedCount: 1, storefrontActivated: true, receiptSafety: 'guarded',
+            lastAcknowledgedAt: '2026-09-23T00:00:00.000Z', lastError: 'Transport retry pending',
+            progress: { totalInputs: 2, acknowledgedInputs: 2, pendingInputs: 1, dirtyProducts: 1, rebuildingInbound: true } });
+        for (const status of [before!, after]) {
+            const progress = status.progress;
+            expect(progress.acknowledgedInputs).toBeLessThanOrEqual(progress.totalInputs);
+            expect(progress.scopes.reduce((n, scope) => n + scope.total, 0)).toBe(progress.totalInputs);
+            expect(progress.scopes.reduce((n, scope) => n + scope.acknowledged, 0)).toBe(progress.acknowledgedInputs);
+            expect(progress.scopes.reduce((n, scope) => n + scope.synced, 0)).toBe(status.syncedCount);
+            expect(progress.scopes.every(scope => scope.acknowledged <= scope.total)).toBe(true);
+            expect(status.pendingCount).toBe(progress.totalInputs - status.syncedCount + Number(progress.rebuildingProducts) + Number(progress.rebuildingInbound));
+        }
+        expect(await databaseState()).toEqual(afterWrite);
+    });
+
     it('rejects an input ACK and cleanup from a replaced lease owner', async () => {
         const job = await input();
         m.input.mockImplementationOnce(async (e: any) => {
@@ -166,6 +233,88 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native deliv
         expect(await row('DeliverySyncAccount')).toMatchObject({ inboundGeneration: 1, inboundVersion: 1, inboundRequested: true, leaseToken: null });
         await reconcileDeliveryDispatch('a');
         expect((await row('DeliverySyncAccount')).hasWork).toBe(false);
+        expect(await row('DeliverySyncAccount')).toMatchObject({ inboundRequested: true, inboundFullRequested: false, inboundGeneration: 1 });
+        expect((await db.query('SELECT "wooId",version FROM "DeliveryInboundDirtyTarget"')).rows).toEqual([{ wooId: 10, version: 1 }]);
+        expect((await deliverySyncStatus('a')).status.progress).toMatchObject({ totalInputs: 1, pendingInputs: 1, acknowledgedInputs: 0, dirtyProducts: 1, rebuildingInbound: true });
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('already_running');
+        expect(await row('DeliveryInputSync')).toMatchObject({ desiredRevision: '1', ackRevision: '0', inboundGeneration: 0 });
+        // Recovery builds current sources, including a real deleted-product tombstone.
+        await buildInboundBatch('a');
+        const rebuilt = await m.client.deliveryInputSync.findUniqueOrThrow({ where: { id: job.id } });
+        expect(rebuilt).toMatchObject({ desiredRevision: 2n, inboundGeneration: 1, payload: { wooId: 10, targets: [] } });
+        await dispatchDeliveryInput(job);
+        expect(m.input).not.toHaveBeenCalled();
+        await dispatchDeliveryInput(rebuilt);
+        expect(m.input).toHaveBeenCalledTimes(1);
+        expect(await m.client.deliveryInputSync.findUniqueOrThrow({ where: { id: job.id } })).toMatchObject({ desiredRevision: 2n, ackRevision: 2n, status: 'synced' });
+    });
+
+    it('recovers sleeping stranded generations in bounded target pages without changing historical ACKs or restarting a full pass', async () => {
+        await m.client.deliveryInputSync.createMany({ data: Array.from({ length: 23 }, (_, index) => ({
+            id: `stranded-${String(index).padStart(2, '0')}`, accountId: 'a', scope: 'inbound', entityId: index + 1,
+            desiredRevision: 9n, ackRevision: 8n, payload: { wooId: index + 1, generatedAt: '2020-01-01T00:00:00Z', targets: [] },
+        })) });
+        await db.exec(`UPDATE "DeliverySyncAccount" SET "hasWork"=false,"inboundRequested"=false,"inboundFullRequested"=false,"inboundGeneration"=7`);
+        expect(await selectDeliveryInput('a')).toBeUndefined();
+        for (const expected of [10, 10, 3]) {
+            await recoverStrandedDeliveryInputs();
+            expect((await db.query('SELECT * FROM "DeliveryInboundDirtyTarget"')).rowCount).toBe(expected);
+            expect(await row('DeliverySyncAccount')).toMatchObject({ inboundRequested: true, inboundFullRequested: false, inboundGeneration: 7, resyncGeneration: 0 });
+            expect((await deliverySyncStatus('a')).status.progress.acknowledgedInputs).toBe(23);
+            await buildInboundBatch('a');
+        }
+        const recovered = await m.client.deliveryInputSync.findMany({ where: { accountId: 'a', scope: 'inbound' } });
+        expect(recovered).toHaveLength(23);
+        expect(recovered.every((input: any) => input.desiredRevision === 10n && input.ackRevision === 8n && input.inboundGeneration === 7 && input.payload.generatedAt !== '2020-01-01T00:00:00Z')).toBe(true);
+        expect(await row('DeliverySyncAccount')).toMatchObject({ inboundRequested: false, inboundFullRequested: false, inboundGeneration: 7 });
+        expect((await db.query('SELECT * FROM "DeliveryInboundDirtyTarget"')).rowCount).toBe(0);
+    });
+
+    it('manual retry repairs a sleeping stranded row, while a real full pass retains responsibility for its old generations', async () => {
+        const job = await input('inbound');
+        await db.exec(`UPDATE "DeliverySyncAccount" SET "hasWork"=false,"inboundRequested"=false,"inboundFullRequested"=false,"inboundGeneration"=2`);
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('retrying');
+        expect(await row('DeliveryInputSync')).toMatchObject({ desiredRevision: '1', ackRevision: '0', inboundGeneration: 0 });
+        await db.exec(`DELETE FROM "DeliveryInboundDirtyTarget"; UPDATE "DeliverySyncAccount" SET "inboundFullRequested"=true,"inboundRequested"=true`);
+        await reconcileDeliveryDispatch('a');
+        await recoverStrandedDeliveryInputs();
+        expect((await db.query('SELECT * FROM "DeliveryInboundDirtyTarget"')).rowCount).toBe(0);
+        expect((await row('DeliverySyncAccount')).hasWork).toBe(false);
+        await dispatchDeliveryInput(job);
+        expect(m.input).not.toHaveBeenCalled();
+    });
+
+    it('preserves a failed builder and its cursor until explicit retry queues stranded source recovery', async () => {
+        await input('inbound');
+        await db.exec(`UPDATE "DeliverySyncAccount" SET "inboundGeneration"=3,"inboundRequested"=true,
+            "inboundFailed"=true,"inboundAttempts"=8,"inboundCursor"='saved-cursor',"inboundNextAttemptAt"=now()+interval '1 hour'`);
+        await recoverStrandedDeliveryInputs();
+        await reconcileDeliveryDispatch('a');
+        expect((await db.query('SELECT * FROM "DeliveryInboundDirtyTarget"')).rowCount).toBe(0);
+        expect(await row('DeliverySyncAccount')).toMatchObject({ hasWork: false, inboundFailed: true, inboundAttempts: 8, inboundCursor: 'saved-cursor' });
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('retrying');
+        expect(await row('DeliverySyncAccount')).toMatchObject({ inboundFailed: false, inboundAttempts: 0, inboundCursor: 'saved-cursor', inboundGeneration: 3, inboundFullRequested: false });
+        expect((await db.query('SELECT "wooId" FROM "DeliveryInboundDirtyTarget"')).rows).toEqual([{ wooId: 10 }]);
+        expect(await row('DeliveryInputSync')).toMatchObject({ desiredRevision: '1', ackRevision: '0', inboundGeneration: 0 });
+    });
+
+    it('requires dirty-target absence even with matching generation and no full pass, including a SQL source edit during HTTP', async () => {
+        await db.exec(`INSERT INTO "WooProduct" (id,"accountId","wooId","productionMinDays","productionMaxDays","rawData") VALUES ('p','a',10,0,2,'{"type":"simple"}')`);
+        const job = await input('inbound');
+        expect(await row('DeliverySyncAccount')).toMatchObject({ inboundGeneration: 0, inboundFullRequested: false });
+        await dispatchDeliveryInput(job);
+        expect(m.input).not.toHaveBeenCalled();
+        await reconcileDeliveryDispatch('a');
+        expect((await row('DeliverySyncAccount')).hasWork).toBe(false);
+        await db.exec(`DELETE FROM "DeliveryInboundDirtyTarget"`);
+        m.input.mockImplementationOnce(async (e: any) => {
+            await db.exec(`UPDATE "WooProduct" SET "productionMaxDays"=3 WHERE id='p'`);
+            return { schemaVersion: 1, scope: e.scope, entityId: e.entityId, revision: e.revision, storedRevision: e.revision, applied: true, storefrontActivated: false };
+        });
+        await dispatchDeliveryInput(job);
+        expect(m.input).toHaveBeenCalledTimes(1);
+        expect(await row('DeliveryInputSync')).toMatchObject({ ackRevision: '1', status: 'pending' });
+        expect((await db.query('SELECT "wooId" FROM "DeliveryInboundDirtyTarget"')).rows).toEqual([{ wooId: 10 }]);
     });
 
     it.each(['revision', 'lease'])('fences control ACK finalization after competing %s replacement', async replacement => {

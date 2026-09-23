@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { DeliveryInputSync } from '@prisma/client';
+import { DeliveryInputSync, Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { WooService } from '../woo';
-import { dirtyInboundProducts, lockDeliveryAccount } from './intents';
+import { dirtyInboundProducts, lockDeliveryAccount, recoverStrandedInbound } from './intents';
 import { enqueueDeliveryResync, drainDeliveryResyncs } from './resync';
 import { drainInboundBuilds } from './inboundResync';
 
@@ -13,24 +13,58 @@ const CAPABILITY_CACHE_MS = 60 * 60 * 1000;
 const syncCapabilities = z.object({ schemaVersion: z.number().int().positive(), capabilities: z.object({ configurationSync: z.boolean(), inboundInputs: z.boolean().optional(), inboundReceiptSafety: z.boolean().optional() }) });
 
 export async function deliverySyncStatus(accountId: string) {
-    const control = await prisma.deliverySyncAccount.findUnique({ where: { accountId } });
-    const launch = await prisma.receiptAccount.findUnique({ where: { accountId } });
-    const groups = await prisma.deliveryInputSync.groupBy({ by: ['status'], where: { accountId }, _count: true });
-    const counts = new Map(groups.map(group => [group.status, group._count]));
+    return prisma.$transaction(async tx => {
+        // Polling must not mix pre-build totals with post-ACK history/control state.
+        // MVCC provides this snapshot without Account locks or writer blocking.
+        await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+        return readDeliverySyncStatus(tx, accountId);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+}
+
+async function readDeliverySyncStatus(tx: Prisma.TransactionClient, accountId: string) {
+    const control = await tx.deliverySyncAccount.findUnique({ where: { accountId } });
+    const launch = await tx.receiptAccount.findUnique({ where: { accountId } });
+    const groups = await tx.$queryRaw<{ scope: string; status: string; total: bigint; acknowledged: bigint }[]>`
+        SELECT scope, status, COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE "ackRevision" > 0) AS acknowledged
+        FROM "DeliveryInputSync" WHERE "accountId" = ${accountId}
+        GROUP BY scope, status`;
+    const counts = new Map<string, number>();
+    for (const group of groups) counts.set(group.status, (counts.get(group.status) ?? 0) + Number(group.total));
     const syncedCount = counts.get('synced') ?? 0;
-    const pendingCount = groups.reduce((sum, group) => sum + (group.status === 'synced' ? 0 : group._count), 0) + (control?.resyncRequested ? 1 : 0) + (control?.inboundRequested ? 1 : 0);
-    const latest = await prisma.deliveryInputSync.findFirst({ where: { accountId, lastAcknowledgedAt: { not: null } }, orderBy: { lastAcknowledgedAt: 'desc' }, select: { lastAcknowledgedAt: true } });
-    const error = await prisma.deliveryInputSync.findFirst({ where: { accountId, lastError: { not: null } }, orderBy: { updatedAt: 'desc' }, select: { lastError: true } });
+    const pendingCount = groups.reduce((sum, group) => sum + (group.status === 'synced' ? 0 : Number(group.total)), 0) + (control?.resyncRequested ? 1 : 0) + (control?.inboundRequested ? 1 : 0);
+    const latest = await tx.deliveryInputSync.findFirst({ where: { accountId, lastAcknowledgedAt: { not: null } }, orderBy: { lastAcknowledgedAt: 'desc' }, select: { lastAcknowledgedAt: true } });
+    const error = await tx.deliveryInputSync.findFirst({ where: { accountId, lastError: { not: null } }, orderBy: { updatedAt: 'desc' }, select: { lastError: true } });
     const accountParked = control && ['blocked', 'plugin_update_required'].includes(control.capabilityStatus);
     const configurationSync = control?.resyncRequested ? (control.buildFailed ? 'failed' : 'pending') : control?.inboundRequested ? (control.inboundFailed ? 'failed' : 'pending') : accountParked ? control.capabilityStatus : ['blocked', 'plugin_update_required', 'failed', 'pending'].find(status => counts.has(status)) ?? (syncedCount ? 'synced' : 'not_requested');
     const buildError = control?.resyncRequested ? control.buildLastError : null;
-    return { status: { configurationSync, storefrontActivated: launch?.active ?? false, receiptSafety: launch?.cutoverState === 'guarded' ? 'guarded' : 'unverified', inboundCapability: control?.inboundCapabilityStatus ?? 'unknown', pendingCount, syncedCount, lastAcknowledgedAt: latest?.lastAcknowledgedAt.toISOString() ?? null, lastError: launch?.controlError ?? buildError ?? control?.inboundLastError ?? control?.lastError ?? error?.lastError ?? null } };
+    const dirtyProducts = await tx.deliveryInboundDirtyTarget.count({ where: { accountId } });
+    const scopes = (['settings', 'product', 'inbound'] as const).map(scope => {
+        const rows = groups.filter(row => row.scope === scope);
+        const count = (status: string) => Number(rows.find(row => row.status === status)?.total ?? 0);
+        return { scope, total: rows.reduce((sum, row) => sum + Number(row.total), 0), synced: count('synced'),
+            acknowledged: rows.reduce((sum, row) => sum + Number(row.acknowledged), 0),
+            pending: count('pending'), blocked: count('blocked'), failed: count('failed'), pluginUpdateRequired: count('plugin_update_required') };
+    });
+    const sum = (key: 'total' | 'acknowledged' | 'pending' | 'blocked' | 'failed' | 'pluginUpdateRequired') => scopes.reduce((total, scope) => total + scope[key], 0);
+    const progress = { totalInputs: sum('total'), acknowledgedInputs: sum('acknowledged'), pendingInputs: sum('pending'),
+        blockedInputs: sum('blocked'), failedInputs: sum('failed'), pluginUpdateRequiredInputs: sum('pluginUpdateRequired'),
+        dirtyProducts, rebuildingProducts: control?.resyncRequested ?? false, rebuildingInbound: control?.inboundRequested ?? false, scopes };
+    return { status: { configurationSync, storefrontActivated: launch?.active ?? false, receiptSafety: launch?.cutoverState === 'guarded' ? 'guarded' : 'unverified', inboundCapability: control?.inboundCapabilityStatus ?? 'unknown', pendingCount, syncedCount, progress, lastAcknowledgedAt: latest?.lastAcknowledgedAt.toISOString() ?? null, lastError: launch?.controlError ?? buildError ?? control?.inboundLastError ?? control?.lastError ?? error?.lastError ?? null } };
 }
 
 /** Request work only; catalogue pagination happens in bounded background transactions. */
 export async function requestDeliverySync(accountId: string) {
-    await enqueueDeliveryResync(accountId);
-    return deliverySyncStatus(accountId);
+    const requestDisposition = await enqueueDeliveryResync(accountId);
+    return { ...await deliverySyncStatus(accountId), requestDisposition };
+}
+
+/** Caller holds Account: source writers, generations and dirty targets share this lock. */
+async function sourceCurrent(tx: Prisma.TransactionClient, candidate: DeliveryInputSync) {
+    if (candidate.scope !== 'inbound') return true;
+    const control = await tx.deliverySyncAccount.findUnique({ where: { accountId: candidate.accountId } });
+    if (!control || control.inboundGeneration !== candidate.inboundGeneration) return false;
+    return !await tx.deliveryInboundDirtyTarget.findFirst({ where: { accountId: candidate.accountId, wooId: candidate.entityId }, select: { wooId: true } });
 }
 
 class SyncFailure extends Error {
@@ -54,9 +88,9 @@ export async function dispatchDeliveryInput(candidate: DeliveryInputSync) {
     // One transport owner per account (also the capability probe single-flight owner).
     const control = await prisma.deliverySyncAccount.findUnique({ where: { accountId: candidate.accountId } });
     if (!control || control.resyncRequested || !['unknown', 'supported'].includes(control.capabilityStatus)) return;
-    if (candidate.scope === 'inbound' && (control.inboundRequested || control.inboundCapabilityStatus === 'plugin_update_required')) return;
+    if (candidate.scope === 'inbound' && control.inboundCapabilityStatus === 'plugin_update_required') return;
     const accountOwner = { accountId: candidate.accountId, leaseToken: token };
-    const inboundFence = candidate.scope === 'inbound' ? { inboundVersion: control.inboundVersion, inboundGeneration: control.inboundGeneration, inboundRequested: false } : {};
+    const inboundFence = candidate.scope === 'inbound' ? { inboundGeneration: control.inboundGeneration } : {};
     const accountVersion = { ...accountOwner, ...inboundFence, resyncGeneration: control.resyncGeneration, resyncRequested: false };
     const accountClaim = await prisma.deliverySyncAccount.updateMany({
         where: { accountId: candidate.accountId, resyncGeneration: control.resyncGeneration, resyncRequested: false,
@@ -103,17 +137,26 @@ export async function dispatchDeliveryInput(candidate: DeliveryInputSync) {
         }
         if (candidate.scope === 'inbound' && inboundCapability !== 'supported') return;
         // Avoid sending a superseded enabled payload if a disable arrived during discovery.
-        const current = await prisma.deliveryInputSync.findFirst({ where: sent, select: { id: true } });
+        const current = await prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, candidate.accountId);
+            return !!await tx.deliveryInputSync.findFirst({ where: sent, select: { id: true } }) &&
+                !!await tx.deliverySyncAccount.findFirst({ where: { ...accountVersion, leaseExpiresAt: { gt: new Date() } }, select: { accountId: true } }) &&
+                await sourceCurrent(tx, candidate);
+        });
         if (!current) return;
-        if (!await prisma.deliverySyncAccount.findFirst({ where: accountVersion, select: { accountId: true } })) return;
         if (Date.now() - now.getTime() > DELIVERY_LEASE_MS - 15_000) throw new Error('Lease budget exhausted');
         const envelope = { schemaVersion: 1 as const, scope: candidate.scope, entityId: candidate.entityId, revision: Number(candidate.desiredRevision), payload: candidate.payload };
         if (Buffer.byteLength(JSON.stringify(envelope), 'utf8') > 512 * 1024) throw new SyncFailure('blocked', 'Delivery envelope exceeds size bound.');
         const ack = await woo.postDeliveryInputs(envelope);
         if (!validDeliveryAck(ack, candidate)) throw new SyncFailure('blocked', 'Invalid delivery acknowledgement.');
         // Record only the revision actually sent, then conditionally mark its desired state synced.
-        await prisma.deliveryInputSync.updateMany({ where: { ...owner, ...accountLease, ackRevision: { lt: candidate.desiredRevision } }, data: { ackRevision: candidate.desiredRevision, lastAcknowledgedAt: new Date() } });
-        await prisma.deliveryInputSync.updateMany({ where: sent, data: { status: 'synced', lastError: null, attempts: 0, proofRebuilds: 0 } });
+        await prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, candidate.accountId);
+            await tx.deliveryInputSync.updateMany({ where: { ...owner, ...accountLease, ackRevision: { lt: candidate.desiredRevision } }, data: { ackRevision: candidate.desiredRevision, lastAcknowledgedAt: new Date() } });
+            if (await tx.deliverySyncAccount.findFirst({ where: accountVersion, select: { accountId: true } }) && await sourceCurrent(tx, candidate)) {
+                await tx.deliveryInputSync.updateMany({ where: sent, data: { status: 'synced', lastError: null, attempts: 0, proofRebuilds: 0 } });
+            }
+        });
     } catch (error) {
         const proofConflict = (error as { response?: { data?: { code?: string } } }).response?.data?.code === 'overseek_delivery_stale_proof';
         if (candidate.scope === 'inbound' && proofConflict && candidate.proofRebuilds < 3) {
@@ -167,22 +210,66 @@ export async function reconcileDeliveryDispatch(accountId: string) {
         const control = await tx.deliverySyncAccount.findUnique({ where: { accountId } });
         const now = new Date();
         if (!control || control.resyncRequested || (control.leaseExpiresAt && control.leaseExpiresAt > now)) return;
-        const where = { accountId, status: 'pending',
-            ...(control.inboundRequested || control.inboundCapabilityStatus === 'plugin_update_required' ? { scope: { not: 'inbound' } } : {}),
-        };
-        const next = await tx.deliveryInputSync.findFirst({ where: { ...where, OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }] }, orderBy: { nextAttemptAt: 'asc' }, select: { nextAttemptAt: true } });
-        // A crashed row owner may outlive its account lease; retain a recovery wake.
-        const leased = next ? null : await tx.deliveryInputSync.findFirst({ where: { ...where, leaseExpiresAt: { gt: now } }, orderBy: { leaseExpiresAt: 'asc' }, select: { nextAttemptAt: true, leaseExpiresAt: true } });
-        const nextAttemptAt = next?.nextAttemptAt ?? (leased ? new Date(Math.max(leased.nextAttemptAt.getTime(), leased.leaseExpiresAt!.getTime())) : null);
+        const recovered = await recoverStrandedInbound(tx, accountId, control);
+        // Use the same strict source predicate as dispatch, including when there is
+        // no full pass. Dirty/stale rows wait for builders, not a hot transport loop.
+        // A crashed row owner may outlive the account lease: retain its future wake.
+        const [next] = await tx.$queryRaw<{ nextAttemptAt: Date }[]>`
+            SELECT GREATEST(i."nextAttemptAt", i."leaseExpiresAt") AS "nextAttemptAt"
+            FROM "DeliveryInputSync" i JOIN "DeliverySyncAccount" c ON c."accountId" = i."accountId"
+            WHERE i."accountId" = ${accountId} AND i.status = 'pending'
+              AND (i.scope <> 'inbound' OR (c."inboundCapabilityStatus" <> 'plugin_update_required'
+                AND i."inboundGeneration" = c."inboundGeneration"
+                AND NOT EXISTS (SELECT 1 FROM "DeliveryInboundDirtyTarget" d WHERE d."accountId" = i."accountId" AND d."wooId" = i."entityId")))
+            ORDER BY GREATEST(i."nextAttemptAt", i."leaseExpiresAt"), i.id LIMIT 1`;
+        const nextAttemptAt = next?.nextAttemptAt ?? null;
         await tx.deliverySyncAccount.updateMany({ where: { accountId, leaseToken: control.leaseToken, leaseExpiresAt: control.leaseExpiresAt,
-            resyncGeneration: control.resyncGeneration, inboundVersion: control.inboundVersion,
+            resyncGeneration: control.resyncGeneration, inboundGeneration: control.inboundGeneration,
+            inboundVersion: control.inboundVersion + (recovered ? 1 : 0),
         }, data: { hasWork: !!nextAttemptAt, lastServedAt: now, ...(nextAttemptAt ? { nextAttemptAt } : {}) } });
     });
+}
+
+/** Recover sleeping legacy/manual state too. Four accounts × ten identities per tick;
+ * full passes, parked/failed and disabled accounts retain their normal recovery path.
+ */
+export async function recoverStrandedDeliveryInputs() {
+    const accounts = await prisma.$queryRaw<{ accountId: string }[]>`
+        SELECT c."accountId" FROM "DeliverySyncAccount" c
+        WHERE NOT c."inboundFullRequested" AND NOT c."inboundFailed"
+          AND c."capabilityStatus" IN ('unknown', 'supported') AND c."inboundCapabilityStatus" <> 'plugin_update_required'
+          AND NOT EXISTS (SELECT 1 FROM "AccountFeature" f WHERE f."accountId" = c."accountId" AND f."featureKey" = 'DELIVERY_ESTIMATES' AND NOT f."isEnabled")
+          AND EXISTS (SELECT 1 FROM "DeliveryInputSync" i WHERE i."accountId" = c."accountId" AND i.scope = 'inbound'
+            AND i.status = 'pending' AND i."inboundGeneration" <> c."inboundGeneration"
+            AND NOT EXISTS (SELECT 1 FROM "DeliveryInboundDirtyTarget" d WHERE d."accountId" = i."accountId" AND d."wooId" = i."entityId"))
+        ORDER BY c."inboundLastBuildAt", c."accountId" LIMIT 4`;
+    for (const { accountId } of accounts) await prisma.$transaction(async tx => {
+        await lockDeliveryAccount(tx, accountId);
+        const control = await tx.deliverySyncAccount.findUnique({ where: { accountId } });
+        if (control && ['unknown', 'supported'].includes(control.capabilityStatus) && control.inboundCapabilityStatus !== 'plugin_update_required') {
+            await recoverStrandedInbound(tx, accountId, control);
+        }
+    });
+}
+
+/** Filter before LIMIT: a continuously dirtied oldest row cannot starve ready siblings. */
+export async function selectDeliveryInput(accountId: string) {
+    const [candidate] = await prisma.$queryRaw<DeliveryInputSync[]>`
+        SELECT i.* FROM "DeliveryInputSync" i
+        JOIN "DeliverySyncAccount" c ON c."accountId" = i."accountId"
+        WHERE i."accountId" = ${accountId} AND i.status = 'pending'
+          AND i."nextAttemptAt" <= NOW() AND (i."leaseExpiresAt" IS NULL OR i."leaseExpiresAt" <= NOW())
+          AND (i.scope <> 'inbound' OR (c."inboundCapabilityStatus" <> 'plugin_update_required'
+            AND i."inboundGeneration" = c."inboundGeneration"
+            AND NOT EXISTS (SELECT 1 FROM "DeliveryInboundDirtyTarget" d WHERE d."accountId" = i."accountId" AND d."wooId" = i."entityId")))
+        ORDER BY i.priority, i."nextAttemptAt", i.id LIMIT 1`;
+    return candidate;
 }
 
 /** Fair account scheduling with a total job budget, including repeat rounds for small stores. */
 export async function drainDeliveryInputs(limit = 10) {
     await drainDeliveryResyncs();
+    await recoverStrandedDeliveryInputs();
     await drainInboundBuilds();
     for (let budget = Math.min(25, Math.max(1, limit)); budget > 0;) {
         const now = new Date();
@@ -192,14 +279,14 @@ export async function drainDeliveryInputs(limit = 10) {
             // An inbound-only rebuilding/parked account must not monopolize the oldest
             // dispatch slots while configuration work on other accounts waits.
             AND: [{ OR: [
-                { inboundRequested: false, inboundCapabilityStatus: { not: 'plugin_update_required' } },
+                { inboundCapabilityStatus: { not: 'plugin_update_required' } },
                 { account: { deliveryInputSyncs: { some: { scope: { not: 'inbound' }, status: 'pending', nextAttemptAt: { lte: now } } } } },
             ] }],
         }, orderBy: [{ lastServedAt: 'asc' }, { accountId: 'asc' }], take: Math.min(5, budget), select: { accountId: true } });
         if (!accounts.length) break;
         budget -= accounts.length;
         const results = await Promise.allSettled(accounts.map(async account => {
-            const candidate = await prisma.deliveryInputSync.findFirst({ where: { accountId: account.accountId, status: 'pending', AND: [{ OR: [{ scope: { not: 'inbound' } }, { account: { deliverySyncAccount: { is: { inboundRequested: false, inboundCapabilityStatus: { not: 'plugin_update_required' } } } } }] }], nextAttemptAt: { lte: new Date() }, OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: new Date() } }] }, orderBy: [{ priority: 'asc' }, { nextAttemptAt: 'asc' }] });
+            const candidate = await selectDeliveryInput(account.accountId);
             if (candidate) await dispatchDeliveryInput(candidate);
             else await reconcileDeliveryDispatch(account.accountId);
         }));

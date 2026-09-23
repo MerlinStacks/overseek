@@ -186,6 +186,8 @@ export function InventoryPage() {
     const [newProductGalleryUrls, setNewProductGalleryUrls] = useState('');
     const [categories, setCategories] = useState<ProductTerm[]>([]);
     const [tags, setTags] = useState<ProductTerm[]>([]);
+    const [tagSearch, setTagSearch] = useState('');
+    const visibleFilterTags = tags.filter(tag => tag.name.toLowerCase().includes(tagSearch.toLowerCase()));
     const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
     const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
     const shouldRefreshOnVisible = useVisibilityRefreshThrottle(45_000);
@@ -477,33 +479,7 @@ export function InventoryPage() {
                     <InternalProductsList />
                 ) : (
                     <>
-                        <div className="flex flex-wrap gap-3 justify-between items-center mb-4">
-                            <div className="flex items-center gap-2 text-sm text-gray-500">
-                                {sortField && (
-                                    <>
-                                        <span>Sorted by <span className="font-medium text-gray-700">{sortField === 'name' ? 'Name' : 'Price'}</span></span>
-                                        <button
-                                            onClick={() => setSortField(null)}
-                                            className="text-xs text-blue-600 hover:text-blue-800 underline"
-                                        >
-                                            Clear
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                <input
-                                    type="text"
-                                    placeholder="Search name, SKU or Woo ID..."
-                                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 w-64"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-end gap-3 mb-4" aria-label="Product filters">
+                        <div role="group" className="flex flex-wrap items-end gap-3 mb-4" aria-label="Product filters">
                             <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
                                 Status
                                 <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
@@ -547,29 +523,54 @@ export function InventoryPage() {
                                     Tags ({tagFilter.length} selected){termsLoading ? ' — Loading…' : ''}
                                 </summary>
                                 <fieldset disabled={termsLoading || termsError || !token || !currentAccount?.id}
-                                    className="absolute z-20 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-gray-300 bg-white p-3 shadow-lg dark:border-slate-600 dark:bg-slate-800 disabled:opacity-60">
+                                    className="absolute z-20 mt-1 w-64 rounded-lg border border-gray-300 bg-white p-3 shadow-lg dark:border-slate-600 dark:bg-slate-800 disabled:opacity-60">
                                     <legend className="sr-only">Filter by tags</legend>
-                                    {tags.map(tag => (
-                                        <label key={tag.id} className="flex items-center gap-2 py-1">
-                                            <input type="checkbox" checked={tagFilter.includes(String(tag.id))}
-                                                onChange={() => toggleTagFilter(String(tag.id))} />
-                                            {tag.name}
-                                        </label>
-                                    ))}
-                                    {!termsLoading && !termsError && tags.length === 0 && <p>No tags available</p>}
+                                    <input type="search" aria-label="Search tags" placeholder="Search tags..."
+                                        value={tagSearch} onChange={e => setTagSearch(e.target.value)}
+                                        className="mb-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500" />
+                                    <div className="max-h-64 overflow-y-auto">
+                                        {visibleFilterTags.map(tag => (
+                                            <label key={tag.id} className="flex items-center gap-2 py-1">
+                                                <input type="checkbox" checked={tagFilter.includes(String(tag.id))}
+                                                    onChange={() => toggleTagFilter(String(tag.id))} />
+                                                {tag.name}
+                                            </label>
+                                        ))}
+                                        {!termsLoading && !termsError && tags.length === 0 && <p>No tags available</p>}
+                                        {!termsLoading && !termsError && tags.length > 0 && visibleFilterTags.length === 0 && <p role="status">No matching tags</p>}
+                                    </div>
+                                    <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Products must match any selected tag and all other selected filters.</p>
                                 </fieldset>
                             </details>
-                            {tagFilter.map(id => {
-                                const name = tags.find(tag => String(tag.id) === id)?.name || `Tag #${id}`;
-                                return <button key={id} type="button" aria-label={`Remove tag ${name}`}
-                                    onClick={() => toggleTagFilter(id)}
-                                    className="rounded-full bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-slate-700 dark:text-blue-300">
-                                    {name} ×
-                                </button>;
-                            })}
                             {hasFilters && <button onClick={clearFilters} className="px-2 py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline">Clear filters</button>}
-                            <p className="w-full text-xs text-gray-500 dark:text-slate-400">Products must match any selected tag and all other selected filters.</p>
-                            {termsError && <p role="alert" className="text-sm text-red-600 dark:text-red-400 py-2">
+                            {sortField && (
+                                <div className="flex items-center gap-2 py-2 text-sm text-gray-500 dark:text-slate-400">
+                                    <span>Sorted by <span className="font-medium text-gray-700 dark:text-slate-300">{sortField === 'name' ? 'Name' : 'Price'}</span></span>
+                                    <button onClick={() => setSortField(null)} className="text-xs text-blue-600 hover:text-blue-800 underline dark:text-blue-400">Clear</button>
+                                </div>
+                            )}
+                            <div className="relative w-full sm:ml-auto sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                <input
+                                    type="text"
+                                    aria-label="Search products"
+                                    placeholder="Search name, SKU or Woo ID..."
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            {tagFilter.length > 0 && <div className="flex w-full flex-wrap gap-2">
+                                {tagFilter.map(id => {
+                                    const name = tags.find(tag => String(tag.id) === id)?.name || `Tag #${id}`;
+                                    return <button key={id} type="button" aria-label={`Remove tag ${name}`}
+                                        onClick={() => toggleTagFilter(id)}
+                                        className="rounded-full bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-slate-700 dark:text-blue-300">
+                                        {name} ×
+                                    </button>;
+                                })}
+                            </div>}
+                            {termsError && <p role="alert" className="w-full text-sm text-red-600 dark:text-red-400 py-2">
                                 Could not load categories and tags. <button onClick={() => setTermsRetry(value => value + 1)} className="underline">Retry</button>
                             </p>}
                         </div>

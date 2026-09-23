@@ -33,6 +33,8 @@ describe.skipIf(!hasFreshnessTestDatabase)('isolated complete new delivery migra
                 '20260922134000_delivery_inbound_scope_constraints',
                 '20260922160000_delivery_launch_recovery',
                 '20260922170000_receipt_cascade',
+                '20260923100000_variant_suppliers', '20260923110000_variant_supplier_freshness',
+                '20260923120000_stock_write_offs', '20260923130000_delivery_bom_noop_guards',
             ];
             for (const migration of migrations) await db.exec(await readFile(`prisma/migrations/${migration}/migration.sql`, 'utf8'));
             expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([]);

@@ -5,6 +5,7 @@ import { ShippingTransitGrid } from './ShippingTransitGrid';
 import { responseFixture } from './fixtures.test-support';
 import { settingsErrors } from './validation';
 import type { DeliverySettings } from './types';
+import type { ShippingDiscovery } from './discovery';
 
 it('edits explicit WBS policy and selects the exact mapping identity as default', () => {
     let latest: DeliverySettings = responseFixture().settings;
@@ -68,4 +69,34 @@ it('adds an exact mapping without allowing the provider name or identity to chan
     expect(onChange.mock.calls[0][0].shippingMethods[1]).toEqual({
         ...settings.shippingMethods[0], mappingKind: 'exact_rate', rateId: '', allRatesConfirmed: undefined, enabled: false,
     });
+});
+
+it('distinguishes repeated weight-based providers by zone without changing stored names', () => {
+    const settings = responseFixture().settings;
+    settings.shippingMethods = [
+        { ...settings.shippingMethods[0], methodId: 'wbsng', instanceId: 28, title: 'Weight Based Shipping', zoneName: 'Newcastle' },
+        { ...settings.shippingMethods[0], methodId: 'wbsng', instanceId: 31, title: 'Weight Based Shipping', zoneName: 'N1 - Zone' },
+    ];
+    const onChange = vi.fn();
+    render(<ShippingTransitGrid settings={settings} onChange={onChange} />);
+    expect(screen.getByText('Newcastle — Weight-based rates')).toBeTruthy();
+    expect(screen.getByText('N1 - Zone — Weight-based rates')).toBeTruthy();
+    expect(screen.getByText('Mapping · wbsng · Instance #28')).toBeTruthy();
+    expect(screen.getByText('Mapping · wbsng · Instance #31')).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+});
+
+it('uses observed option labels only for matching exact rates, not the whole provider instance', () => {
+    const settings = responseFixture().settings;
+    const row = { ...settings.shippingMethods[0], methodId: 'wbsng', instanceId: 28, title: 'Weight Based Shipping', zoneName: 'Newcastle' };
+    settings.shippingMethods = [row, { ...row, mappingKind: 'exact_rate', rateId: 'wbsng:28:express' }];
+    const discovery: ShippingDiscovery = {
+        status: 'available', warnings: [], methods: [{
+            ...row, provider: 'weight_based', rateIdentityScope: 'method_instance', requiresRateVerification: true,
+            observedRates: [{ rateId: 'wbsng:28:express', title: 'Express Auspost', capturedAt: '2026-09-23T00:00:00Z' }],
+        }],
+    };
+    render(<ShippingTransitGrid settings={settings} onChange={vi.fn()} discovery={discovery} />);
+    expect(screen.getByText('Newcastle — Weight-based rates')).toBeTruthy();
+    expect(screen.getByText('Newcastle — Express Auspost')).toBeTruthy();
 });

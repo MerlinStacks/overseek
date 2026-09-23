@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { DeliveryEstimateService } from './service';
-import { dirtyInbound, lockDeliveryAccount, recordIntent, recordProductIntent, recordSettingsIntent } from './intents';
+import { dirtyInbound, lockDeliveryAccount, recordIntent, recordProductIntent, recordSettingsIntent, recoverStrandedInbound } from './intents';
 
 export const RESYNC_BATCH_SIZE = 25;
 export const RESYNC_MAX_ATTEMPTS = 8;
@@ -11,20 +11,30 @@ const resetBuildFailure = () => ({ buildAttempts: 0, buildFailed: false, buildLa
 
 /** Constant work on the request path. Repeated requests coalesce into the running build. */
 export async function enqueueDeliveryResync(accountId: string) {
-    await prisma.$transaction(async tx => {
+    return prisma.$transaction(async tx => {
         await lockDeliveryAccount(tx, accountId);
         const control = await tx.deliverySyncAccount.upsert({ where: { accountId }, create: { accountId }, update: {} });
-        await dirtyInbound(tx, accountId);
-        await tx.deliverySyncAccount.update({ where: { accountId }, data: {
-            inboundCapabilityStatus: 'unknown', inboundFailed: false, inboundAttempts: 0, inboundLastError: null,
-            inboundNextAttemptAt: new Date(), inboundVersion: { increment: 1 },
-        } });
-        if (control.resyncRequested) {
-            // Resume the failed page, not a new generation. Do not re-seed settings or
-            // increment any entity revisions merely to wake an interrupted build.
-            await tx.deliverySyncAccount.update({ where: { accountId }, data: resetBuildFailure() });
-            return;
+        const parked = await tx.deliveryInputSync.findFirst({ where: { accountId, status: { in: ['blocked', 'failed', 'plugin_update_required'] } }, select: { id: true } });
+        const retry = !!parked || control.buildFailed || control.inboundFailed ||
+            ['blocked', 'plugin_update_required'].includes(control.capabilityStatus) || control.inboundCapabilityStatus === 'plugin_update_required';
+        if (retry) {
+            await tx.deliverySyncAccount.update({ where: { accountId }, data: {
+                ...(control.buildFailed ? resetBuildFailure() : {}),
+                ...(control.inboundFailed ? { inboundFailed: false, inboundAttempts: 0, inboundLastError: null, inboundNextAttemptAt: new Date(), inboundVersion: { increment: 1 } } : {}),
+                capabilityStatus: 'unknown', capabilityExpiresAt: null, inboundCapabilityStatus: 'unknown',
+                lastError: null, hasWork: true, nextAttemptAt: new Date(),
+            } });
+            await tx.deliveryInputSync.updateMany({ where: { accountId, status: { in: ['blocked', 'failed', 'plugin_update_required'] } },
+                data: { status: 'pending', attempts: 0, proofRebuilds: 0, lastError: null, nextAttemptAt: new Date() } });
+            await recoverStrandedInbound(tx, accountId, { ...control, inboundFailed: false });
+            return 'retrying' as const;
         }
+        if (await recoverStrandedInbound(tx, accountId, control)) return 'retrying' as const;
+        const unfinished = await tx.deliveryInputSync.findFirst({ where: { accountId, OR: [{ status: { not: 'synced' } }, { leaseExpiresAt: { gt: new Date() } }] }, select: { id: true } });
+        const dirty = await tx.deliveryInboundDirtyTarget.findFirst({ where: { accountId }, select: { wooId: true } });
+        if (control.resyncRequested || control.inboundRequested || control.inboundFullRequested || unfinished || dirty ||
+            (control.leaseExpiresAt && control.leaseExpiresAt > new Date())) return 'already_running' as const;
+        await dirtyInbound(tx, accountId);
         await tx.deliverySyncAccount.update({ where: { accountId }, data: {
             resyncRequested: true, resyncGeneration: { increment: 1 }, resyncPhase: 'products', resyncCursor: null,
             capabilityStatus: 'unknown', capabilityExpiresAt: null, lastError: null, hasWork: true, nextAttemptAt: new Date(),
@@ -32,6 +42,7 @@ export async function enqueueDeliveryResync(accountId: string) {
         } });
         // Settings are current immediately; transport remains gated until the build finishes.
         await recordSettingsIntent(tx, accountId);
+        return 'queued' as const;
     });
 }
 

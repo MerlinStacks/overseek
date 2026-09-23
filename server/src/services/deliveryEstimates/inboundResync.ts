@@ -20,7 +20,7 @@ export async function buildInboundBatch(accountId: string, scanned?: Checkpoint)
             checkpoint = control;
             const generation = control.inboundBuildGeneration || control.inboundGeneration;
             const cursor = control.inboundCursor;
-            const record = async (wooId: number) => {
+            const record = async (wooId: number, snapshotGeneration = generation) => {
                 await ensureSettingsIntent(tx, accountId);
                 // Reconcile topology and deletion clears with the same durable target.
                 const product = await tx.wooProduct.findFirst({ where: { accountId, wooId }, select: {
@@ -29,13 +29,13 @@ export async function buildInboundBatch(accountId: string, scanned?: Checkpoint)
                 } });
                 await recordProductIntent(tx, accountId, product ?? { wooId, productionMinDays: null, productionMaxDays: null, variations: [] }, true);
                 await recordIntent(tx, accountId, 'inbound', wooId, await buildInbound(tx, accountId, wooId));
-                await tx.deliveryInputSync.update({ where: { accountId_scope_entityId: { accountId, scope: 'inbound', entityId: wooId } }, data: { inboundGeneration: generation } });
+                await tx.deliveryInputSync.update({ where: { accountId_scope_entityId: { accountId, scope: 'inbound', entityId: wooId } }, data: { inboundGeneration: snapshotGeneration } });
             };
             const common = { inboundLastBuildAt: new Date(), inboundVersion: { increment: 1 }, inboundAttempts: 0, inboundLastError: null, inboundNextAttemptAt: new Date(), inboundBuildGeneration: generation };
             const targets = await tx.deliveryInboundDirtyTarget.findMany({ where: { accountId }, orderBy: [{ createdAt: 'asc' }, { wooId: 'asc' }], take: INBOUND_PAGE_SIZE });
             if (targets.length) {
                 for (const target of targets) {
-                    await record(target.wooId);
+                    await record(target.wooId, control.inboundGeneration);
                     // CAS also protects a re-dirty if locking behaviour changes later.
                     await tx.deliveryInboundDirtyTarget.deleteMany({ where: { accountId, wooId: target.wooId, version: target.version } });
                 }
@@ -44,7 +44,9 @@ export async function buildInboundBatch(accountId: string, scanned?: Checkpoint)
                     ...common, inboundBuildGeneration: control.inboundBuildGeneration,
                     inboundRequested: control.inboundFullRequested || !!remaining, hasWork: true, nextAttemptAt: new Date(),
                 } });
-                return;
+                // Reserve a bounded full-pass page too: continuous dirty targets must
+                // not starve configured products that have not yet been visited.
+                if (!control.inboundFullRequested) return;
             }
             if (!control.inboundFullRequested) {
                 await tx.deliverySyncAccount.update({ where: { accountId }, data: { ...common, inboundBuildGeneration: 0, inboundRequested: false, hasWork: true, nextAttemptAt: new Date() } });
@@ -53,17 +55,18 @@ export async function buildInboundBatch(accountId: string, scanned?: Checkpoint)
             if (control.inboundPhase === 'products') {
                 // Only manual/supplier fanout uses this scan; untouched products never enrol.
                 const products = await tx.wooProduct.findMany({ where: { accountId, ...configuredInboundProducts, ...(cursor ? { id: { gt: cursor } } : {}) }, orderBy: { id: 'asc' }, take: INBOUND_PAGE_SIZE, select: { id: true, wooId: true } });
-                for (const product of products) await record(product.wooId);
+                for (const product of products) await record(product.wooId, control.inboundGeneration);
                 await tx.deliverySyncAccount.update({ where: { accountId }, data: { ...common,
                     ...(products.length < INBOUND_PAGE_SIZE ? { inboundPhase: 'replay', inboundCursor: null } : { inboundCursor: products[products.length - 1].id }),
                 } });
             } else {
                 // Previously projected products survive deletion as empty replacements.
                 const rows = await tx.deliveryInputSync.findMany({ where: { accountId, scope: 'inbound', inboundGeneration: { not: generation }, ...(cursor ? { id: { gt: cursor } } : {}) }, orderBy: { id: 'asc' }, take: INBOUND_PAGE_SIZE, select: { id: true, entityId: true } });
-                for (const row of rows) await record(row.entityId);
+                for (const row of rows) await record(row.entityId, control.inboundGeneration);
                 const finished = rows.length < INBOUND_PAGE_SIZE;
+                const remaining = finished ? await tx.deliveryInboundDirtyTarget.findFirst({ where: { accountId }, select: { wooId: true } }) : null;
                 await tx.deliverySyncAccount.update({ where: { accountId }, data: { ...common,
-                    ...(finished ? { inboundRequested: control.inboundGeneration !== generation, inboundFullRequested: control.inboundGeneration !== generation, inboundBuildGeneration: 0, inboundPhase: 'products', inboundCursor: null, hasWork: true, nextAttemptAt: new Date() }
+                    ...(finished ? { inboundRequested: control.inboundGeneration !== generation || !!remaining, inboundFullRequested: control.inboundGeneration !== generation, inboundBuildGeneration: 0, inboundPhase: 'products', inboundCursor: null, hasWork: true, nextAttemptAt: new Date() }
                         : { inboundCursor: rows[rows.length - 1].id }),
                 } });
             }

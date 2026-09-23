@@ -37,6 +37,16 @@ describe.skipIf(!hasFreshnessTestDatabase)('freshness migration transactional so
         await db.exec(await readFile('prisma/migrations/20260922133000_delivery_freshness_prerequisite/migration.sql', 'utf8'));
         await db.exec(await readFile('prisma/migrations/20260923100000_variant_suppliers/migration.sql', 'utf8'));
         await db.exec(await readFile('prisma/migrations/20260923110000_variant_supplier_freshness/migration.sql', 'utf8'));
+        expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([
+            { missing: 'function:delivery_bom_changed' }, { missing: 'function:delivery_bom_item_changed' }
+        ]);
+        await db.exec(await readFile('prisma/migrations/20260923120000_stock_write_offs/migration.sql', 'utf8'));
+        await db.exec(await readFile('prisma/migrations/20260923130000_delivery_bom_noop_guards/migration.sql', 'utf8'));
+        await db.exec(`ALTER TABLE "BOM" ADD COLUMN "updatedAt" timestamp;
+            ALTER TABLE "BOMItem" ADD COLUMN "updatedAt" timestamp, ADD COLUMN "childProductId" text,
+                ADD COLUMN "childVariationId" int, ADD COLUMN "internalProductId" text, ADD COLUMN "supplierItemId" text,
+                ADD COLUMN "wasteFactor" numeric, ADD COLUMN "deactivatedReason" text;
+            ALTER TABLE "Supplier" ADD COLUMN "contactName" text, ADD COLUMN email text;`);
         expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([]);
     }, 30_000);
     afterAll(async () => { await db?.close(); });
@@ -98,6 +108,36 @@ describe.skipIf(!hasFreshnessTestDatabase)('freshness migration transactional so
         await db.exec(`TRUNCATE "DeliveryInboundDirtyTarget"; DELETE FROM "ProductVariation" WHERE id='v'`);
         expect(await targets()).toEqual([{ accountId: 'a', wooId: 20 }]);
     });
+    it('ignores identical and timestamp-only BOM writes, but dirties every changed source field exactly once', async () => {
+        await db.exec(`INSERT INTO "BOM" (id,"productId","variationId") VALUES ('bom','p',0),('sibling','p',11),('other-bom','other',0);
+            INSERT INTO "BOMItem" (id,"bomId","isActive",quantity) VALUES ('item','bom',true,1);
+            TRUNCATE "DeliveryInboundDirtyTarget";
+            UPDATE "BOM" SET "updatedAt"=now(), "variationId"="variationId";
+            UPDATE "BOMItem" SET "updatedAt"=now(), quantity=quantity;`);
+        expect(await targets()).toEqual([]);
+        for (const assignment of [
+            'quantity=2', '"wasteFactor"=0.1', '"isActive"=false',
+            '"deactivatedReason"=\'VARIATION_DELETED_IN_WOO\'', '"deactivatedReason"=NULL',
+            '"childProductId"=\'other\'', '"childVariationId"=21', '"childVariationId"=NULL',
+            '"internalProductId"=\'internal\'', '"supplierItemId"=\'supplier-item\'', '"bomId"=\'sibling\''
+        ]) {
+            await db.exec(`UPDATE "BOMItem" SET ${assignment} WHERE id='item'`);
+            await onlyParent();
+            expect((await db.query('SELECT version FROM "DeliveryInboundDirtyTarget"')).rows).toEqual([{ version: 1 }]);
+            await db.exec(`TRUNCATE "DeliveryInboundDirtyTarget"; UPDATE "BOMItem" SET ${assignment} WHERE id='item'`);
+            expect(await targets()).toEqual([]);
+        }
+        await db.exec(`UPDATE "BOM" SET "variationId"=12 WHERE id='sibling'`);
+        expect((await db.query('SELECT version FROM "DeliveryInboundDirtyTarget"')).rows).toEqual([{ version: 1 }]);
+        for (const sql of [
+            `UPDATE "BOMItem" SET "bomId"='other-bom' WHERE id='item'`,
+            `UPDATE "BOM" SET "productId"='other' WHERE id='sibling'`
+        ]) {
+            await db.exec(`TRUNCATE "DeliveryInboundDirtyTarget"; ${sql}`);
+            expect((await db.query('SELECT "wooId",version FROM "DeliveryInboundDirtyTarget" ORDER BY "wooId"')).rows)
+                .toEqual([{ wooId: 10, version: 1 }, { wooId: 20, version: 1 }]);
+        }
+    });
     it('preserves enrolled null-range/deletion tombstones and never enrols an untouched catalogue', async () => {
         await db.exec(`INSERT INTO "DeliveryInputSync" (id,"accountId",scope,"entityId",payload) VALUES ('old','a','inbound',30,'{}');
             DELETE FROM "WooProduct" WHERE id='untouched'`);
@@ -107,7 +147,7 @@ describe.skipIf(!hasFreshnessTestDatabase)('freshness migration transactional so
         await db.exec(`TRUNCATE "DeliveryInboundDirtyTarget"; DELETE FROM "WooProduct" WHERE id='p'`); await onlyParent();
     });
     it('targets supplier lead edits/deletion only to assigned eligible products', async () => {
-        await db.exec(`UPDATE "Supplier" SET name='New name' WHERE id='s'`); expect(await targets()).toEqual([]);
+        await db.exec(`UPDATE "Supplier" SET name='New name', "contactName"='Contact', email='new@example.test', "leadTimeMin"="leadTimeMin" WHERE id='s'`); expect(await targets()).toEqual([]);
         await db.exec(`UPDATE "Supplier" SET "leadTimeMin"=1 WHERE id='s'`); await onlyParent();
         await db.exec(`TRUNCATE "DeliveryInboundDirtyTarget"; DELETE FROM "Supplier" WHERE id='s'`); await onlyParent();
     });

@@ -28,7 +28,15 @@ export function persistWooProduct(type: unknown, args: Prisma.WooProductUpsertAr
         // Never promote them to variationId=0 or deactivate parent recipe items
         // unless they reference a removed variant (handled above).
         await tx.bOMItem.updateMany({
-            where: { bom: { productId: product.id, variationId: { not: 0 } } },
+            where: {
+                bom: { productId: product.id, variationId: { not: 0 } },
+                // Prisma's `not` excludes SQL NULL, which also needs repairing.
+                OR: [
+                    { isActive: true },
+                    { deactivatedReason: null },
+                    { deactivatedReason: { not: 'VARIATION_DELETED_IN_WOO' } }
+                ]
+            },
             data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }
         });
         await tx.productVariation.deleteMany({ where: { productId: product.id } });

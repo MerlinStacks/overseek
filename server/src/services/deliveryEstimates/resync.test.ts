@@ -5,10 +5,13 @@ const mocks = vi.hoisted(() => ({ page: vi.fn(), product: vi.fn(), lock: vi.fn()
 vi.mock('../../utils/logger', () => ({ Logger: { warn: mocks.warn } }));
 vi.mock('../../utils/prisma', () => {
     const db = {
-        $queryRaw: mocks.lock,
+        $queryRaw: (sql: TemplateStringsArray, ...args: unknown[]) => sql.join('').includes('COUNT(*)') ? mocks.groups() : mocks.lock(sql, ...args),
+        $executeRaw: vi.fn(),
         receiptAccount: { findUnique: async () => null },
         deliverySyncAccount: { findUnique: mocks.controlFind, upsert: mocks.controlUpsert, update: mocks.controlUpdate, findMany: mocks.controlScan, updateMany: mocks.controlMany },
-        deliveryInputSync: { findUnique: mocks.inputFind, upsert: mocks.inputUpsert, findMany: mocks.inputScan, groupBy: mocks.groups, findFirst: mocks.latest },
+        deliveryInputSync: { findUnique: mocks.inputFind, upsert: mocks.inputUpsert, findMany: mocks.inputScan, groupBy: mocks.groups, findFirst: mocks.latest,
+            updateMany: async ({ where, data }: any) => { for (const row of state.rows.values()) if (where.status.in.includes(row.status)) update(row, data); return { count: 1 }; } },
+        deliveryInboundDirtyTarget: { findFirst: async () => null, count: async () => 0 },
         wooProduct: { findMany: mocks.page, findFirst: mocks.product },
         account: { findUniqueOrThrow: async () => ({ timezone: 'UTC' }) },
         accountFeature: { findUnique: async () => ({ isEnabled: false }) },
@@ -39,6 +42,7 @@ function scanDueBuilds() {
 describe('durable background resync and truthful status', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        mocks.lock.mockResolvedValue([]);
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-09-21T12:00:00Z'));
         state = { control: null, rows: new Map(), products: [] };
@@ -73,11 +77,21 @@ describe('durable background resync and truthful status', () => {
         mocks.product.mockImplementation(async ({ where }) => structuredClone(state.products.find(p => p.accountId === where.accountId && (where.id ? p.id === where.id : p.wooId === where.wooId)) ?? null));
         mocks.inputScan.mockImplementation(async ({ where, take }) => [...state.rows.values()].filter(row => row.scope === 'product' && row.resyncGeneration !== where.resyncGeneration.not && (!where.id || row.id > where.id.gt)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, take));
         mocks.groups.mockImplementation(async () => {
-            const counts = new Map<string, number>();
-            for (const row of state.rows.values()) counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
-            return [...counts].map(([status, _count]) => ({ status, _count }));
+            const counts = new Map<string, { scope: string; status: string; total: bigint; acknowledged: bigint }>();
+            for (const row of state.rows.values()) {
+                const key = `${row.scope}:${row.status}`;
+                const count = counts.get(key) ?? { scope: row.scope, status: row.status, total: 0n, acknowledged: 0n };
+                count.total++;
+                if (row.ackRevision > 0n) count.acknowledged++;
+                counts.set(key, count);
+            }
+            return [...counts.values()];
         });
-        mocks.latest.mockResolvedValue(null);
+        mocks.latest.mockImplementation(async ({ where }) => {
+            if (where.status?.in) return [...state.rows.values()].find(row => where.status.in.includes(row.status)) ?? null;
+            if (where.OR) return [...state.rows.values()].find(row => row.status !== 'synced') ?? null;
+            return null;
+        });
     });
     afterEach(() => vi.useRealTimers());
     it('enqueues 10,000 products with no catalogue read, row-wide wake or network, and coalesces repeats', async () => {
@@ -98,6 +112,52 @@ describe('durable background resync and truthful status', () => {
         await requestDeliverySync('a');
         expect(state.control).toMatchObject({ inboundCapabilityStatus: 'unknown', inboundFailed: false, inboundAttempts: 0, inboundLastError: null, inboundCursor: 'p001', inboundBuildGeneration: 1 });
         expect(mocks.page).not.toHaveBeenCalled(); expect(mocks.inputScan).not.toHaveBeenCalled();
+    });
+    it('healthy repeats leave every generation, revision and deadline unchanged during builds and transport', async () => {
+        await requestDeliverySync('a');
+        const before = structuredClone(state);
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('already_running');
+        expect(state).toEqual(before);
+        Object.assign(state.control, { resyncRequested: false, inboundRequested: false, inboundFullRequested: false });
+        const delivering = structuredClone(state);
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('already_running');
+        expect(state).toEqual(delivering);
+    });
+    it.each(['blocked', 'failed', 'plugin_update_required'])('retries %s transport without a new catalogue wave or revision reset', async status => {
+        await requestDeliverySync('a');
+        Object.assign(state.control, { resyncRequested: false, inboundRequested: false, inboundFullRequested: false });
+        const row = state.rows.get('settings:0');
+        Object.assign(row, { status, desiredRevision: 9n, ackRevision: 8n, attempts: 8 });
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('retrying');
+        expect(row).toMatchObject({ status: 'pending', desiredRevision: 9n, ackRevision: 8n, attempts: 0 });
+        expect(state.control).toMatchObject({ resyncRequested: false, inboundRequested: false, resyncGeneration: 1, inboundGeneration: 1 });
+    });
+    it('coalesces nonterminal transport backoff without expediting its retry deadline', async () => {
+        await requestDeliverySync('a');
+        const nextAttemptAt = new Date(Date.now() + 120_000);
+        Object.assign(state.control, { resyncRequested: false, inboundRequested: false, inboundFullRequested: false, nextAttemptAt });
+        Object.assign(state.rows.get('settings:0'), { attempts: 3, lastError: 'Delivery transport unavailable.', nextAttemptAt });
+        const before = structuredClone(state);
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('already_running');
+        expect(state).toEqual(before);
+    });
+    it('reports per-scope ACK history separately from current pending and parked inputs', async () => {
+        await requestDeliverySync('a');
+        Object.assign(state.rows.get('settings:0'), { status: 'synced', ackRevision: 1n });
+        for (const [scope, status, ackRevision, entityId] of [
+            ['product', 'pending', 2n, 1], ['product', 'failed', 0n, 2],
+            ['inbound', 'blocked', 3n, 1], ['inbound', 'plugin_update_required', 0n, 2],
+        ] as const) state.rows.set(`${scope}:${entityId}`, { scope, status, ackRevision });
+        const { status } = await deliverySyncStatus('a');
+        expect(status).toMatchObject({ pendingCount: 6, syncedCount: 1, progress: {
+            totalInputs: 5, acknowledgedInputs: 3, pendingInputs: 1, blockedInputs: 1, failedInputs: 1, pluginUpdateRequiredInputs: 1,
+            dirtyProducts: 0, rebuildingProducts: true, rebuildingInbound: true,
+            scopes: [
+                { scope: 'settings', total: 1, synced: 1, acknowledged: 1, pending: 0, blocked: 0, failed: 0, pluginUpdateRequired: 0 },
+                { scope: 'product', total: 2, synced: 0, acknowledged: 1, pending: 1, blocked: 0, failed: 1, pluginUpdateRequired: 0 },
+                { scope: 'inbound', total: 2, synced: 0, acknowledged: 1, pending: 0, blocked: 1, failed: 0, pluginUpdateRequired: 1 },
+            ],
+        } });
     });
     it('bounds each page, checkpoints atomically, and resumes after a crash without double increment', async () => {
         state.products = Array.from({ length: 60 }, (_, n) => product(n + 1));
@@ -128,9 +188,9 @@ describe('durable background resync and truthful status', () => {
             await recordProductIntent(tx, 'a', product(2, 8));
             await recordProductIntent(tx, 'a', product(3, null));
         });
-        for (const row of state.rows.values()) row.status = 'plugin_update_required';
+        for (const row of state.rows.values()) row.status = 'synced';
         await requestDeliverySync('a');
-        expect(state.rows.get('product:1')).toMatchObject({ desiredRevision: 1n, status: 'plugin_update_required', payload: { productionMinDays: 8 } });
+        expect(state.rows.get('product:1')).toMatchObject({ desiredRevision: 1n, status: 'synced', payload: { productionMinDays: 8 } });
         await buildDeliveryResyncBatch('a');
         expect(state.control.resyncRequested).toBe(true);
         await buildDeliveryResyncBatch('a');
@@ -151,7 +211,10 @@ describe('durable background resync and truthful status', () => {
         await buildDeliveryResyncBatch('a');
         await buildDeliveryResyncBatch('a');
         expect(state.rows.get('product:26')).toMatchObject({ desiredRevision: 1n, payload: { productionMinDays: null } });
-        await requestDeliverySync('a');
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('already_running');
+        for (const row of state.rows.values()) row.status = 'synced';
+        Object.assign(state.control, { inboundRequested: false, inboundFullRequested: false });
+        expect((await requestDeliverySync('a')).requestDisposition).toBe('queued');
         expect(state.control).toMatchObject({ resyncGeneration: 2, resyncCursor: null, resyncRequested: true });
     });
     it('reports pending while a build exists even if all materialized rows were acknowledged', async () => {
@@ -248,7 +311,7 @@ describe('durable background resync and truthful status', () => {
         expect(state.control).toMatchObject({ buildAttempts: 0, buildFailed: false, buildLastError: null, resyncPhase: 'replay' });
         expect((await deliverySyncStatus('a')).status.lastError).toBeNull();
     });
-    it.each(['explicit retry', 'another worker'] as const)('a stale failure cannot overwrite %s after rollback', async action => {
+    it.each(['another worker'] as const)('a stale failure cannot overwrite %s after rollback', async action => {
         state.products = Array.from({ length: 30 }, (_, n) => product(n + 1));
         await requestDeliverySync('a');
         mocks.page.mockRejectedValueOnce(new Error('stale failure'));
@@ -256,8 +319,7 @@ describe('durable background resync and truthful status', () => {
         let transactions = 0;
         mocks.transaction.mockImplementation(async (callback, db) => {
             if (++transactions === 2) {
-                if (action === 'explicit retry') await requestDeliverySync('a');
-                else await buildDeliveryResyncBatch('a');
+                await buildDeliveryResyncBatch('a');
             }
             return original(callback, db);
         });

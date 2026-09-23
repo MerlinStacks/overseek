@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { persistWooProduct } from '../persistWooProduct';
+import { openNativeDeliveryDatabase } from '../deliveryEstimates/__tests__/nativeDeliveryDatabase';
 
 const { db, tx } = vi.hoisted(() => ({
     db: { wooProduct: { upsert: vi.fn() }, $transaction: vi.fn() },
@@ -36,7 +37,10 @@ describe('atomic Woo simple-product persistence', () => {
             data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO', childProductId: null, childVariationId: null }
         });
         expect(tx.bOMItem.updateMany).toHaveBeenNthCalledWith(2, {
-            where: { bom: { productId: 'p', variationId: { not: 0 } } },
+            where: {
+                bom: { productId: 'p', variationId: { not: 0 } },
+                OR: [{ isActive: true }, { deactivatedReason: null }, { deactivatedReason: { not: 'VARIATION_DELETED_IN_WOO' } }]
+            },
             data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }
         });
         expect(tx.bOMItem.updateMany).toHaveBeenCalledTimes(4);
@@ -68,5 +72,60 @@ describe('atomic Woo simple-product persistence', () => {
         expect(tx.productVariation.deleteMany).toHaveBeenCalledTimes(stage === 'variations' ? 1 : 0);
         expect(tx.bOM.deleteMany).not.toHaveBeenCalled();
         expect(tx.bOMItem.deleteMany).not.toHaveBeenCalled();
+    });
+});
+
+// Real Prisma predicates and trigger execution, only in an explicitly opted-in
+// isolated native test schema. Never falls back to the application DATABASE_URL.
+describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('simple snapshot BOM no-op (native PostgreSQL)', () => {
+    let fixture: Awaited<ReturnType<typeof openNativeDeliveryDatabase>>;
+    beforeAll(async () => {
+        fixture = await openNativeDeliveryDatabase();
+        await fixture.db.exec(`ALTER TABLE "WooProduct" ADD COLUMN name text, ADD COLUMN "stockQuantity" int,
+                ADD COLUMN "updatedAt" timestamp, ADD COLUMN "createdAt" timestamp,
+                ADD COLUMN images jsonb, ADD COLUMN "isGoldPriceApplied" boolean, ADD COLUMN "miscCosts" jsonb,
+                ADD COLUMN "seoScore" int, ADD COLUMN "seoData" jsonb, ADD COLUMN "merchantCenterScore" int,
+                ADD COLUMN "merchantCenterIssues" jsonb, ADD UNIQUE ("accountId","wooId");
+            INSERT INTO "WooProduct" (id,"accountId","wooId",name,"stockQuantity","manageStock","rawData","productionMinDays","productionMaxDays")
+                VALUES ('p','a',10,'Simple',7,true,'{"type":"simple"}',0,0);
+            INSERT INTO "BOM" VALUES ('obsolete','p',11);
+            INSERT INTO "BOMItem" (id,"bomId","isActive",quantity,"deactivatedReason")
+                VALUES ('retained','obsolete',false,1,'VARIATION_DELETED_IN_WOO');
+            INSERT INTO "DeliveryInputSync" (id,"accountId",scope,"entityId",payload,"updatedAt")
+                VALUES ('projection','a','inbound',10,'{"targets":[]}',now());
+            TRUNCATE "DeliveryInboundDirtyTarget";`);
+    }, 30_000);
+    afterAll(async () => { await fixture?.close(); });
+    beforeEach(() => {
+        vi.resetAllMocks();
+        db.$transaction.mockImplementation(work => fixture.client.$transaction(work));
+    });
+    const dirty = async () => (await fixture.db.query('SELECT "wooId",version FROM "DeliveryInboundDirtyTarget"')).rows;
+    const revisions = async () => (await fixture.db.query('SELECT "desiredRevision","ackRevision",status FROM "DeliveryInputSync"')).rows;
+    const snapshot = () => persistWooProduct('simple', { ...args, select: { id: true } });
+
+    it('syncs the same payload twice with acknowledgement between, without requeue or revision changes', async () => {
+        await snapshot();
+        expect(await dirty()).toEqual([]);
+        await fixture.db.exec(`UPDATE "DeliveryInputSync" SET "ackRevision"="desiredRevision",status='synced';
+            DELETE FROM "DeliveryInboundDirtyTarget";`);
+        const acknowledged = await revisions();
+        await snapshot();
+        expect(await dirty()).toEqual([]);
+        expect(await revisions()).toEqual(acknowledged);
+    });
+
+    it.each([
+        ['false', 'NULL'], ['false', "'PRODUCT_404'"], ['true', "'VARIATION_DELETED_IN_WOO'"]
+    ])('repairs active=%s reason=%s once, including NULL reasons', async (active, reason) => {
+        await fixture.db.exec(`UPDATE "BOMItem" SET "isActive"=${active},"deactivatedReason"=${reason} WHERE id='retained';
+            TRUNCATE "DeliveryInboundDirtyTarget";`);
+        await snapshot();
+        expect(await dirty()).toEqual([{ wooId: 10, version: 1 }]);
+        await fixture.db.exec('DELETE FROM "DeliveryInboundDirtyTarget"');
+        await snapshot();
+        expect(await dirty()).toEqual([]);
+        expect((await fixture.db.query('SELECT "isActive","deactivatedReason" FROM "BOMItem"')).rows)
+            .toEqual([{ isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }]);
     });
 });

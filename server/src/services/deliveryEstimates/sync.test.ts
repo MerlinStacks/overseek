@@ -1,22 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeliveryInputSync } from '@prisma/client';
-const mocks = vi.hoisted(() => ({ update: vi.fn(), find: vi.fn(), scan: vi.fn(), caps: vi.fn(), post: vi.fn(), woo: vi.fn(), account: vi.fn(), accountUpdate: vi.fn(), accountFirst: vi.fn(), accountScan: vi.fn(), build: vi.fn(), launchWrite: vi.fn() }));
+const mocks = vi.hoisted(() => ({ recover: vi.fn(), schedule: vi.fn(), dirtyQueue: vi.fn(), raw: vi.fn(), dirty: vi.fn(), update: vi.fn(), find: vi.fn(), scan: vi.fn(), caps: vi.fn(), post: vi.fn(), woo: vi.fn(), account: vi.fn(), accountUpdate: vi.fn(), accountFirst: vi.fn(), accountScan: vi.fn(), build: vi.fn(), launchWrite: vi.fn() }));
 vi.mock('../../utils/prisma', () => {
-    const db = { $queryRaw: vi.fn(), receiptAccount: { update: mocks.launchWrite, updateMany: mocks.launchWrite, upsert: mocks.launchWrite }, deliveryInputSync: { updateMany: mocks.update, findFirst: mocks.find, findMany: mocks.scan },
+    const db = { $queryRaw: (sql: TemplateStringsArray, ...args: unknown[]) => {
+        if (sql.join('').includes('SELECT GREATEST')) return mocks.schedule(sql, ...args);
+        if (sql.join('').includes('SELECT i.*')) return mocks.raw(sql, ...args);
+        return Promise.resolve([]);
+    }, deliveryInboundDirtyTarget: { findFirst: mocks.dirty }, receiptAccount: { update: mocks.launchWrite, updateMany: mocks.launchWrite, upsert: mocks.launchWrite }, deliveryInputSync: { updateMany: mocks.update, findFirst: mocks.find, findMany: mocks.scan },
         deliverySyncAccount: { findUnique: mocks.account, updateMany: mocks.accountUpdate, findFirst: mocks.accountFirst, findMany: mocks.accountScan } };
     return { prisma: { ...db, $transaction: (callback: (tx: unknown) => unknown) => callback(db) } };
 });
 vi.mock('./resync', () => ({ drainDeliveryResyncs: mocks.build, enqueueDeliveryResync: vi.fn() }));
 vi.mock('./inboundResync', () => ({ drainInboundBuilds: vi.fn() }));
+vi.mock('./intents', async importOriginal => ({ ...await importOriginal<typeof import('./intents')>(), dirtyInboundProducts: mocks.dirtyQueue, recoverStrandedInbound: mocks.recover }));
 vi.mock('../woo', () => ({ WooService: { forAccount: mocks.woo } }));
 import { dispatchDeliveryInput, drainDeliveryInputs, reconcileDeliveryDispatch, validDeliveryAck } from './sync';
 
-const job = { id: 'j', accountId: 'a', scope: 'settings', entityId: 0, desiredRevision: 2n, ackRevision: 0n, attempts: 0, payload: { enabled: false }, status: 'pending' } as unknown as DeliveryInputSync;
+const job = { id: 'j', accountId: 'a', scope: 'settings', entityId: 0, inboundGeneration: 1, desiredRevision: 2n, ackRevision: 0n, attempts: 0, payload: { enabled: false }, status: 'pending' } as unknown as DeliveryInputSync;
 const ack = { schemaVersion: 1, scope: 'settings', entityId: 0, revision: 2, storedRevision: 2, applied: true, storefrontActivated: false };
 function installAccountState(overrides: Record<string, unknown> = {}) {
-    const row: any = { accountId: 'a', capabilityStatus: 'unknown', capabilityExpiresAt: null, resyncRequested: false, resyncGeneration: 0, leaseToken: null, leaseExpiresAt: null, ...overrides };
+    const row: any = { accountId: 'a', capabilityStatus: 'unknown', capabilityExpiresAt: null, resyncRequested: false, resyncGeneration: 0, inboundVersion: 0, leaseToken: null, leaseExpiresAt: null, ...overrides };
     const matches = (where: any) => {
         for (const name of ['leaseToken', 'leaseExpiresAt', 'resyncGeneration', 'resyncRequested', 'capabilityStatus', 'capabilityExpiresAt', 'inboundVersion', 'inboundGeneration', 'inboundRequested']) {
+            if (name === 'leaseExpiresAt' && where[name]?.gt) { if (!(row[name] > where[name].gt)) return false; continue; }
             if (name in where && String(where[name]) !== String(row[name])) return false;
         }
         if (where.OR && row.leaseExpiresAt && row.leaseExpiresAt > where.OR[1].leaseExpiresAt.lte) return false;
@@ -33,6 +39,10 @@ function installAccountState(overrides: Record<string, unknown> = {}) {
 describe('durable delivery worker', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        mocks.raw.mockResolvedValue([]);
+        mocks.schedule.mockResolvedValue([]);
+        mocks.recover.mockResolvedValue(0);
+        mocks.dirty.mockResolvedValue(null);
         mocks.update.mockResolvedValue({ count: 1 });
         mocks.find.mockResolvedValue({ id: 'j' });
         mocks.woo.mockResolvedValue({ getDeliveryDiscovery: mocks.caps, postDeliveryInputs: mocks.post });
@@ -78,10 +88,10 @@ describe('durable delivery worker', () => {
         await dispatchDeliveryInput({ ...inbound, attempts: 1 });
         expect(mocks.post.mock.calls.map(([envelope]) => envelope.payload)).toEqual([payload, payload]);
     });
-    it('does not dispatch inbound while its source generation is rebuilding', async () => {
-        installAccountState({ inboundRequested: true });
+    it('does not dispatch an outdated generation while rebuilding', async () => {
+        installAccountState({ inboundRequested: true, inboundGeneration: 2 });
         await dispatchDeliveryInput({ ...job, scope: 'inbound' });
-        expect(mocks.woo).not.toHaveBeenCalled();
+        expect(mocks.post).not.toHaveBeenCalled();
         await dispatchDeliveryInput(job);
         expect(mocks.post).toHaveBeenCalledTimes(1);
     });
@@ -93,6 +103,55 @@ describe('durable delivery worker', () => {
         });
         await dispatchDeliveryInput({ ...job, scope: 'inbound', entityId: 10 });
         expect(mocks.post).not.toHaveBeenCalled();
+    });
+    it('drains current inbound rows despite uninterrupted unrelated target updates', async () => {
+        const row = installAccountState({ inboundCapabilityStatus: 'supported', inboundRequested: true, inboundGeneration: 1, inboundVersion: 1 });
+        mocks.caps.mockImplementation(async () => {
+            row.inboundVersion++;
+            return { schemaVersion: 1, capabilities: { configurationSync: true, inboundInputs: true } };
+        });
+        mocks.post.mockImplementation(async envelope => {
+            row.inboundVersion++;
+            return { ...ack, scope: envelope.scope, entityId: envelope.entityId };
+        });
+        for (let entityId = 10; entityId < 20; entityId++) await dispatchDeliveryInput({ ...job, scope: 'inbound', entityId });
+        expect(mocks.post).toHaveBeenCalledTimes(10);
+        expect(mocks.update.mock.calls.filter(([q]) => q.data.status === 'synced')).toHaveLength(10);
+        expect(row.inboundRequested).toBe(true);
+    });
+    it('never sends a dirty product even with matching revision and generation', async () => {
+        installAccountState({ inboundCapabilityStatus: 'supported', inboundRequested: true, inboundGeneration: 1 });
+        mocks.dirty.mockResolvedValue({ wooId: 10 });
+        await dispatchDeliveryInput({ ...job, scope: 'inbound', entityId: 10 });
+        expect(mocks.post).not.toHaveBeenCalled();
+    });
+    it.each([0, 3])('retains bounded Woo stale-proof rejection at %s prior rebuilds', async proofRebuilds => {
+        installAccountState({ inboundCapabilityStatus: 'supported', inboundRequested: true, inboundGeneration: 1 });
+        mocks.post.mockRejectedValue({ response: { status: 409, data: { code: 'overseek_delivery_stale_proof' } } });
+        await dispatchDeliveryInput({ ...job, scope: 'inbound', entityId: 10, proofRebuilds });
+        expect(mocks.update.mock.calls.some(([q]) => q.data.ackRevision !== undefined || q.data.status === 'synced')).toBe(false);
+        expect(mocks.dirtyQueue).toHaveBeenCalledTimes(proofRebuilds < 3 ? 1 : 0);
+        expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: proofRebuilds < 3 ? 'pending' : 'blocked' }) }));
+    });
+    it('records ACK history but does not mark a newly dirtied source current', async () => {
+        installAccountState({ inboundCapabilityStatus: 'supported', inboundRequested: false, inboundGeneration: 1 });
+        mocks.post.mockImplementation(async () => {
+            mocks.dirty.mockResolvedValue({ wooId: 10 });
+            return { ...ack, scope: 'inbound', entityId: 10 };
+        });
+        await dispatchDeliveryInput({ ...job, scope: 'inbound', entityId: 10 });
+        expect(mocks.update.mock.calls.some(([q]) => q.data.ackRevision === 2n)).toBe(true);
+        expect(mocks.update.mock.calls.some(([q]) => q.data.status === 'synced')).toBe(false);
+    });
+    it('does not mark an old-generation ACK synced after full source invalidation', async () => {
+        const row = installAccountState({ inboundCapabilityStatus: 'supported', inboundGeneration: 1 });
+        mocks.post.mockImplementation(async () => {
+            row.inboundGeneration++;
+            return { ...ack, scope: 'inbound', entityId: 10 };
+        });
+        await dispatchDeliveryInput({ ...job, scope: 'inbound', entityId: 10 });
+        expect(mocks.update.mock.calls.some(([q]) => q.data.ackRevision === 2n)).toBe(true);
+        expect(mocks.update.mock.calls.some(([q]) => q.data.status === 'synced')).toBe(false);
     });
     it('does not send after losing a concurrent claim', async () => {
         mocks.update.mockResolvedValueOnce({ count: 0 });
@@ -229,6 +288,7 @@ describe('durable delivery worker', () => {
     it('uses a total dispatch budget across rounds rather than limiting a large account to one job', async () => {
         installAccountState();
         mocks.accountScan.mockResolvedValue([{ accountId: 'a' }]);
+        mocks.raw.mockResolvedValue([job]);
         mocks.find.mockImplementation(async ({ where, select }) => select?.nextAttemptAt ? { nextAttemptAt: new Date() } : where.leaseToken ? { id: 'j' } : job);
         await drainDeliveryInputs(10_000);
         expect(mocks.post).toHaveBeenCalledTimes(25);
@@ -244,6 +304,7 @@ describe('durable delivery worker', () => {
                 inboundRequested: false, inboundVersion: 0, inboundCapabilityStatus: 'unknown', leaseToken: null, leaseExpiresAt: null } as any];
         }));
         let pending = true;
+        mocks.raw.mockImplementation(async (_sql, accountId) => accountId === 'a' && pending ? [job] : []);
         mocks.accountScan.mockImplementation(async ({ take }) => [...rows.values()].filter(row => row.hasWork && row.nextAttemptAt <= new Date()).sort((a, b) => a.lastServedAt - b.lastServedAt).slice(0, take).map(row => ({ accountId: row.accountId })));
         mocks.account.mockImplementation(async ({ where }) => structuredClone(rows.get(where.accountId)));
         mocks.accountUpdate.mockImplementation(async ({ where, data }) => {
@@ -266,13 +327,26 @@ describe('durable delivery worker', () => {
     it('rechecks pending work after a stale no-candidate scan, retaining a newly saved wake', async () => {
         const row = installAccountState({ hasWork: true, inboundVersion: 1 });
         const next = new Date();
-        mocks.find.mockResolvedValue({ nextAttemptAt: next });
+        mocks.schedule.mockResolvedValue([{ nextAttemptAt: next }]);
         await reconcileDeliveryDispatch('a');
         expect(row).toMatchObject({ hasWork: true, nextAttemptAt: next, lastServedAt: expect.any(Date) });
     });
+    it('rotates a continuously dirty no-candidate account while another account sends', async () => {
+        mocks.accountScan.mockResolvedValueOnce([{ accountId: 'hot' }, { accountId: 'a' }]).mockResolvedValue([]);
+        mocks.account.mockImplementation(async ({ where }) => ({ accountId: where.accountId, capabilityStatus: 'supported', capabilityExpiresAt: new Date(Date.now() + 60_000), inboundCapabilityStatus: 'supported', inboundRequested: true, inboundVersion: 1, resyncRequested: false, resyncGeneration: 0 }));
+        mocks.raw.mockImplementation(async (_sql, accountId) => accountId === 'a' ? [job] : []);
+        mocks.find.mockImplementation(async ({ select }) => select?.nextAttemptAt ? { nextAttemptAt: new Date() } : { id: 'j' });
+        mocks.schedule.mockResolvedValue([{ nextAttemptAt: new Date() }]);
+        await drainDeliveryInputs(2);
+        expect(mocks.post).toHaveBeenCalledTimes(1);
+        expect(mocks.accountUpdate).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ accountId: 'hot' }),
+            data: expect.objectContaining({ hasWork: true, lastServedAt: expect.any(Date) }),
+        }));
+    });
     it('CAS does not overwrite a lease claimed during no-candidate reconciliation', async () => {
         const row = installAccountState({ hasWork: true, inboundVersion: 1 });
-        mocks.find.mockImplementation(async () => { row.leaseToken = 'new-owner'; row.leaseExpiresAt = new Date(Date.now() + 120_000); return null; });
+        mocks.schedule.mockImplementation(async () => { row.leaseToken = 'new-owner'; row.leaseExpiresAt = new Date(Date.now() + 120_000); return []; });
         await reconcileDeliveryDispatch('a');
         expect(row).toMatchObject({ hasWork: true, leaseToken: 'new-owner' });
         expect(row.lastServedAt).toBeUndefined();
@@ -284,11 +358,11 @@ describe('durable delivery worker', () => {
         expect(mocks.accountUpdate).not.toHaveBeenCalled();
         row.leaseToken = null; row.leaseExpiresAt = null;
         const future = new Date(Date.now() + 60_000);
-        mocks.find.mockResolvedValueOnce({ nextAttemptAt: future });
+        mocks.schedule.mockResolvedValueOnce([{ nextAttemptAt: future }]);
         await reconcileDeliveryDispatch('a');
         expect(row).toMatchObject({ hasWork: true, nextAttemptAt: future });
         const expiry = new Date(Date.now() + 120_000);
-        mocks.find.mockResolvedValueOnce(null).mockResolvedValueOnce({ nextAttemptAt: new Date(), leaseExpiresAt: expiry });
+        mocks.schedule.mockResolvedValueOnce([{ nextAttemptAt: expiry }]);
         await reconcileDeliveryDispatch('a');
         expect(row).toMatchObject({ hasWork: true, nextAttemptAt: expiry });
     });

@@ -17,7 +17,9 @@ The wire contract remains `inbound-contract.md`. This implementation sends only
   invalidation by `(accountId, wooId)` with an incrementing version.
 - Source mutation transactions lock **Account first**, before source/stock writes
   and before the PO advisory lock. Dirty intents commit or roll back with source data.
-- Each background page visits at most 10 dirty targets or full-build products/outboxes;
+- Each background transaction visits at most 10 dirty targets and, when a full build is
+  pending, one additional page of at most 10 products/outboxes. Reserving the full-build
+  page prevents a continuous target stream from starving the scan;
   at most four pages per drain, oldest-served accounts first. Targets take precedence.
   A target snapshot/outbox and version-CAS deletion commit atomically. A re-dirtied
   version survives deletion of the older version; failed pages retain their targets.

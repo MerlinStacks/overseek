@@ -98,6 +98,26 @@ describe('durable bounded inbound rebuild', () => {
         expect(mocks.page).not.toHaveBeenCalled(); expect(mocks.replay).not.toHaveBeenCalled();
         expect(state.rows.get(9999)).toEqual({ revision: 7, payload: { old: true } });
     });
+    it('reserves a bounded full-pass page under a continuous dirty-owner stream', async () => {
+        state.products = Array.from({ length: 25 }, (_, n) => ({ id: String(n).padStart(6, '0'), wooId: n + 1 }));
+        await dirty();
+        for (let page = 0; page < 4; page++) {
+            state.targets.set(999, page + 1);
+            const before = mocks.build.mock.calls.length;
+            await buildInboundBatch('a');
+            expect(mocks.build.mock.calls.length - before).toBeLessThanOrEqual(2 * INBOUND_PAGE_SIZE);
+        }
+        expect(state.control.inboundFullRequested).toBe(false);
+        for (let wooId = 1; wooId <= 25; wooId++) expect(state.rows.get(wooId)).toMatchObject({ inboundGeneration: 1 });
+    });
+    it('stamps current source snapshots with the latest generation while an older pass finishes', async () => {
+        Object.assign(state.control, { inboundRequested: true, inboundFullRequested: true, inboundGeneration: 2, inboundBuildGeneration: 1 });
+        state.targets.set(999, 1);
+        state.products = [{ id: '1', wooId: 1 }];
+        await buildInboundBatch('a');
+        expect(state.rows.get(999).inboundGeneration).toBe(2);
+        expect(state.rows.get(1).inboundGeneration).toBe(2);
+    });
     it('CAS retains a re-dirtied target and rollback retains its durable work', async () => {
         state.control.inboundRequested = true; state.targets.set(10, 1);
         mocks.build.mockImplementationOnce(async () => { state.targets.set(10, 2); return { wooId: 10, targets: [] }; });

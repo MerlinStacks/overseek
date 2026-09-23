@@ -11,6 +11,18 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
     const selectedKey = settings.defaultMethod ? methodKey(settings.defaultMethod) : '';
     const defaultValid = !selectedKey || settings.shippingMethods.some(row => row.enabled && methodKey(row) === selectedKey);
     const unconfiguredKey = (row: ShippingMethod) => unconfigured.find(key => key === methodKey(row) || key === `${row.methodId}:${row.instanceId}`);
+    // Instance titles are provider labels, not necessarily the options shown at checkout.
+    // Use observations only for a matching exact identity; never infer an option by title.
+    const displayTitle = (row: ShippingMethod) => {
+        const observed = discovery?.status === 'available' && row.mappingKind === 'exact_rate'
+            ? discovery.methods.find(method => method.methodId === row.methodId && method.instanceId === row.instanceId)
+                ?.observedRates?.find(rate => rate.rateId === row.rateId)?.title
+            : undefined;
+        if (!['wbs', 'wbsng'].includes(row.methodId)) return observed || row.title || 'Untitled shipping method';
+        const zone = row.zoneName || (row.instanceId === 0 ? 'Global shipping' : `Zone ${row.zoneId}`);
+        const title = observed || (row.title && !/^weight[ -]based shipping$/i.test(row.title.trim()) ? row.title : 'Weight-based rates');
+        return `${zone} — ${title}`;
+    };
     return <section className="space-y-4">
         <h3 className="text-lg font-semibold">Draft shipping transit grid</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400">Names and provider details come from WooCommerce. Set transit days here; expand Mapping for provider-specific options.</p>
@@ -19,9 +31,9 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
                 <thead><tr>{['Shipping method', 'Zone', 'Fulfilment', 'Days (min / max)', 'Enabled', ''].map((title, i) => <th className="p-2 text-left" key={i} scope="col">{title}</th>)}</tr></thead>
                 <tbody>{settings.shippingMethods.map((row, index) => <tr key={index} className="align-top border-t border-slate-200 dark:border-slate-700">
                     <td className="p-2 min-w-56">
-                        <p className="font-medium">{row.title || 'Untitled shipping method'}</p>
+                        <p className="font-medium">{displayTitle(row)}</p>
                         <details className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            <summary className="cursor-pointer w-fit rounded focus-visible:outline-2 focus-visible:outline-indigo-500">Mapping · {row.methodId}:{row.instanceId}</summary>
+                            <summary className="cursor-pointer w-fit rounded focus-visible:outline-2 focus-visible:outline-indigo-500">Mapping · {row.methodId} · Instance #{row.instanceId}</summary>
                             <div className="mt-2 max-w-sm space-y-2">
                         <p>Exact options require the full Woo rate ID, not a title or rule number. Exact overrides win. Renaming an option in WooCommerce may change its ID.</p>
                         <label>Mapping policy<select aria-label={`Row ${index + 1} mapping policy`} value={row.mappingKind ?? 'core_instance'} onChange={e => update(index, { mappingKind: e.target.value as ShippingMethod['mappingKind'], rateId: undefined, allRatesConfirmed: undefined })}>
@@ -73,7 +85,7 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
         }}>
             <option value="">No default selected</option>
             {!defaultValid && <option value={selectedKey}>Unavailable: {selectedKey} — choose a default or clear</option>}
-            {settings.shippingMethods.filter(row => row.enabled).map((row, index) => <option key={index} value={methodKey(row)}>{row.title || 'Untitled'} — {methodKey(row)} (zone {row.zoneId})</option>)}
+            {settings.shippingMethods.filter(row => row.enabled).map((row, index) => <option key={index} value={methodKey(row)}>{displayTitle(row)} — {methodKey(row)} (zone {row.zoneId})</option>)}
         </select></label>
         {settings.defaultMethod?.mappingKind === 'all_provider_rates' && <label className="block">Default actual rate ID (optional; required when multiple options are offered)<input maxLength={200} value={settings.defaultMethod.rateId ?? ''} onChange={e => onChange({ ...settings, defaultMethod: { ...settings.defaultMethod!, rateId: e.target.value || undefined } })} /></label>}
         <p className="text-sm text-slate-500 dark:text-slate-400">Changing, disabling or removing the selected identity requires choosing a valid default or clearing it. Collection wording is separate; collection timing still requires rollout verification.</p>

@@ -1,6 +1,7 @@
 import { prisma } from '../../utils/prisma';
 
 export const FRESHNESS_SQL_VERSION = 'overseek-delivery-freshness-v1';
+export const BOM_FRESHNESS_SQL_VERSION = 'overseek-delivery-bom-noop-v2';
 export const FRESHNESS_PREREQUISITE_CACHE_MS = 15_000;
 
 /** Static catalog query: checks exact table/trigger/function bindings in the active
@@ -58,7 +59,9 @@ SELECT 'function:' || e.function_name FROM expected_functions e WHERE NOT EXISTS
  WHERE n.nspname = current_schema() AND p.proname = e.function_name
    AND pg_catalog.oidvectortypes(p.proargtypes) = e.arg_types
    AND pg_catalog.format_type(p.prorettype, NULL) = e.result_type
-   AND pg_catalog.obj_description(p.oid, 'pg_proc') = '${FRESHNESS_SQL_VERSION}'
+    AND pg_catalog.obj_description(p.oid, 'pg_proc') = CASE
+      WHEN e.function_name IN ('delivery_bom_changed', 'delivery_bom_item_changed') THEN '${BOM_FRESHNESS_SQL_VERSION}'
+      ELSE '${FRESHNESS_SQL_VERSION}' END
    AND (e.function_name <> 'delivery_freshness_version' OR trim(p.prosrc) = 'SELECT ''${FRESHNESS_SQL_VERSION}''::text')
 )
 ORDER BY missing`;

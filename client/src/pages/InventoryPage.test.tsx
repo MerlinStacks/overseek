@@ -192,6 +192,64 @@ describe('InventoryPage catalog filters', () => {
         await waitFor(() => expect(lastTagParams()).toEqual([]));
     });
 
+    it('keeps filters and product search in one bottom-aligned wrapping toolbar', async () => {
+        renderInventory();
+        await ready();
+        const toolbar = screen.getByRole('group', { name: 'Product filters' });
+        expect(toolbar).toHaveClass('flex', 'flex-wrap', 'items-end');
+        for (const name of ['Status', 'Stock status', 'Category']) {
+            expect(within(toolbar).getByRole('combobox', { name }).parentElement?.parentElement).toBe(toolbar);
+        }
+        const search = within(toolbar).getByRole('textbox', { name: 'Search products' });
+        expect(search.parentElement?.parentElement).toBe(toolbar);
+        expect(search.parentElement).toHaveClass('sm:ml-auto');
+        expect(within(toolbar).getByText('Tags (0 selected)').parentElement?.parentElement).toBe(toolbar);
+        expect(screen.queryByText(/Sorted by/)).not.toBeInTheDocument();
+    });
+
+    it('searches tag names case-insensitively and restores options when cleared', async () => {
+        renderInventory();
+        await ready();
+        fireEvent.click(screen.getByText('Tags (0 selected)'));
+        const search = screen.getByRole('searchbox', { name: 'Search tags' });
+        fireEvent.change(search, { target: { value: 'uMm' } });
+        expect(screen.getByRole('checkbox', { name: 'Summer' })).toBeInTheDocument();
+        expect(screen.queryByRole('checkbox', { name: 'Winter' })).not.toBeInTheDocument();
+
+        fireEvent.change(search, { target: { value: 'no-such-tag' } });
+        expect(within(screen.getByRole('group', { name: 'Filter by tags' })).getByRole('status')).toHaveTextContent('No matching tags');
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+        expect(search).toBeVisible();
+
+        fireEvent.change(search, { target: { value: '' } });
+        expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+        expect(screen.queryByText('No matching tags')).not.toBeInTheDocument();
+    });
+
+    it('preserves tag selections across searches without changing product search', async () => {
+        renderInventory('?q=mug');
+        await ready();
+        fireEvent.click(screen.getByText('Tags (0 selected)'));
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Summer' }));
+        await waitFor(() => expect(lastTagParams()).toEqual(['34']));
+        const search = screen.getByRole('searchbox', { name: 'Search tags' });
+        const requests = productQueries().length;
+        fireEvent.change(search, { target: { value: 'WIN' } });
+        expect(screen.getByRole('button', { name: 'Remove tag Summer' })).toBeInTheDocument();
+        expect(productQueries()).toHaveLength(requests);
+        expect(lastTagParams()).toEqual(['34']);
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Winter' }));
+        await waitFor(() => expect(lastTagParams()).toEqual(['34', '56']));
+        fireEvent.change(search, { target: { value: 'no-such-tag' } });
+        expect(screen.getByText('Tags (2 selected)')).toBeInTheDocument();
+        fireEvent.change(search, { target: { value: '' } });
+        expect(screen.getByRole('checkbox', { name: 'Summer' })).toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Winter' })).toBeChecked();
+        expect(screen.getByRole('textbox', { name: 'Search products' })).toHaveValue('mug');
+        expect(productQueries().at(-1)).toMatchObject({ q: 'mug' });
+        expect(lastTagParams()).toEqual(['34', '56']);
+    });
+
     it('restores normalized repeated URL tags and visibly preserves unknown IDs', async () => {
         renderInventory('?tag=56&tag=034&tag=56&tag=999&tag=-1&tag=9007199254740992');
         await ready();

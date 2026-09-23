@@ -42,8 +42,8 @@ export async function openNativeDeliveryDatabase(beforeMigration?: (db: any, mig
                 "wooId" int,"parentWooId" int,"quantityDeducted" double precision,"previousStock" double precision,"newStock" double precision,status text DEFAULT 'EXECUTED',"createdAt" timestamp DEFAULT now(),"rolledBackAt" timestamp);
             INSERT INTO "Account" (id) VALUES ('a'), ('other');
         `);
-        const migrations = (await readdir('prisma/migrations')).filter(name => /^2026092[12]/.test(name)).sort();
-        if (migrations.length !== 13) throw new Error(`Review delivery migration chain: expected 13 files, found ${migrations.length}`);
+        const migrations = (await readdir('prisma/migrations')).filter(name => /^2026092[123]/.test(name)).sort();
+        if (migrations.length !== 17) throw new Error(`Review delivery migration chain: expected 17 files, found ${migrations.length}`);
         for (const migration of migrations) {
             await beforeMigration?.(db, migration);
             await db.exec(await readFile(`prisma/migrations/${migration}/migration.sql`, 'utf8'));
