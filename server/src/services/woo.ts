@@ -507,6 +507,19 @@ export class WooService {
         return this.deliveryRequest(`receipts/${phase}`, envelope, 16 * 1024);
     }
 
+    /** Uncached, bounded preflight for a negative write-off. This observation is
+     * not a compare-and-decrement guarantee; native apply still owns replay. */
+    async getGuardedStockOwner(productWooId: number, stockOwnerWooId: number): Promise<unknown> {
+        if (!this.accountId) throw new Error('Account context required');
+        const api = new WooCommerceRestApi({
+            url: this.url, consumerKey: this.consumerKey, consumerSecret: this.consumerSecret,
+            version: 'wc/v3', queryStringAuth: true,
+            axiosConfig: { ...this.axiosConfig, timeout: 10_000, signal: AbortSignal.timeout(10_000), maxRedirects: 0, maxContentLength: 1024 * 1024 },
+        });
+        const path = stockOwnerWooId === productWooId ? `products/${productWooId}` : `products/${productWooId}/variations/${stockOwnerWooId}`;
+        return (await api.get(path)).data;
+    }
+
     async deliveryControl(input?: object, timeoutMs = 10_000): Promise<unknown> { return this.deliveryRequest('control', input, 64 * 1024, timeoutMs); }
 
     async legacyReceipt(action: 'observe' | 'reconcile', input: object): Promise<unknown> {
@@ -706,7 +719,7 @@ export class WooService {
      * Get a single product with Redis caching.
      * Cache TTL: 30 seconds to balance freshness with API savings.
      */
-    async getProduct(id: number) {
+    async getProduct(id: number, options: { bypassCache?: boolean } = {}) {
         if (this.isDemo) {
             const product = MOCK_PRODUCTS.find(p => p.id === id);
             if (!product) throw new Error("Product not found (Demo)");
@@ -718,7 +731,7 @@ export class WooService {
         const cacheKey = `woo:product:${cacheKeyPart(this.accountId)}:${cacheKeyPart(id)}`;
 
         try {
-            const cached = await redisClient.get(cacheKey);
+            const cached = options.bypassCache ? null : await redisClient.get(cacheKey);
             if (cached) {
                 // Guard: reject cached values over 5MB (products shouldn't be this large)
                 if (cached.length > 5 * 1024 * 1024) {
@@ -752,7 +765,7 @@ export class WooService {
      * Cache TTL: 30 seconds to balance freshness with API savings.
      * Throws on API failure so callers can distinguish "store down" from "no variations."
      */
-    async getProductVariations(productId: number): Promise<any[]> {
+    async getProductVariations(productId: number, options: { bypassCache?: boolean } = {}): Promise<any[]> {
         if (this.isDemo) return [];
 
         // Try cache first to avoid redundant API calls (BOM sync may fetch same parent repeatedly)
@@ -760,7 +773,7 @@ export class WooService {
         const cacheKey = `woo:variations:${cacheKeyPart(this.accountId)}:${cacheKeyPart(productId)}`;
 
         try {
-            const cached = await redisClient.get(cacheKey);
+            const cached = options.bypassCache ? null : await redisClient.get(cacheKey);
             if (cached) {
                 if (cached.length > 5 * 1024 * 1024) {
                     Logger.warn('[WooService] Cached variation payload exceeds safe size, skipping cache', {

@@ -4,6 +4,7 @@ import { Clock, User, Package, Bot } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { format } from 'date-fns';
+import { auditActionText, auditChangeText } from '../../utils/auditFormatting';
 
 interface AuditLog {
     id: string;
@@ -98,7 +99,7 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
     /** Format the actor name based on source */
     const getActorDisplay = (log: AuditLog) => {
         if (log.source === 'SYSTEM_BOM') {
-            return { name: 'BOM Auto-Deduct', icon: Package, isSystem: true };
+            return { name: 'Automatic component stock update', icon: Package, isSystem: true };
         }
         if (log.source === 'SYSTEM_SYNC') {
             return { name: 'Stock Sync', icon: Bot, isSystem: true };
@@ -115,10 +116,11 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
             const prev = log.previousValue?.stock_quantity;
             const next = log.details.stock_quantity;
             const orderNum = log.details.orderNumber;
-            return `Stock adjusted: ${prev} → ${next} (Order #${orderNum})`;
+            const stock = next == null ? 'Stock adjusted' : prev == null ? `Stock set to ${next}` : `Stock changed from ${prev} to ${next}`;
+            return `${stock}${orderNum == null ? '' : ` for order #${orderNum}`}`;
         }
 
-        return `${log.action.toLowerCase()}d this ${log.resource.toLowerCase()}`;
+        return auditActionText(log.action, log.resource);
     };
 
     /** Get timeline dot color based on source */
@@ -142,8 +144,8 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
                             <div className={`absolute -left-1.5 top-1.5 w-3 h-3 rounded-full border-2 ${getDotColor(log)}`}></div>
 
                             <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-xs">
-                                <div className="flex justify-between items-start mb-2">
-                                    <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <div className={`w-6 h-6 rounded-full flex items-center justify-center ${actor.isSystem ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
                                             <ActorIcon size={14} />
                                         </div>
@@ -162,9 +164,9 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
                                 {log.source === 'SYSTEM_BOM' && isOrderBomDeductionDetails(log.details) && (
                                     <div className="mt-3 bg-orange-50/50 rounded-sm p-3 text-xs">
                                         <div className="flex flex-wrap gap-4 text-gray-600">
-                                            <span><strong>Qty Sold:</strong> {log.details.quantitySold}</span>
-                                            <span><strong>BOM Multiplier:</strong> {log.details.bomItemQty}x</span>
-                                            <span><strong>Deducted:</strong> {log.details.deductionQty}</span>
+                                            <span><strong>Quantity sold:</strong> {log.details.quantitySold}</span>
+                                            <span><strong>Components per item:</strong> {log.details.bomItemQty}</span>
+                                            <span><strong>Stock deducted:</strong> {log.details.deductionQty}</span>
                                         </div>
                                         {log.validationStatus === 'MISMATCH_OVERRIDE' && (
                                             <div className="mt-2 text-orange-600 font-medium">
@@ -174,16 +176,15 @@ export function HistoryTimeline({ resource, resourceId }: HistoryTimelineProps) 
                                     </div>
                                 )}
 
-                                {/* Generic changes display for non-BOM entries */}
-                                {log.source !== 'SYSTEM_BOM' && log.details && Object.keys(log.details).length > 0 && (
-                                    <div className="mt-3 bg-gray-50/50 rounded-sm p-3 text-xs font-mono text-gray-600">
+                                {/* Readable changes, including automated component stock syncs. */}
+                                {!(log.source === 'SYSTEM_BOM' && isOrderBomDeductionDetails(log.details)) && log.details && Object.keys(log.details).length > 0 && (
+                                    <ul className="mt-3 space-y-2 bg-gray-50/50 dark:bg-slate-800/50 rounded-sm p-3 text-sm text-gray-600 dark:text-slate-300">
                                         {Object.entries(log.details).map(([key, value]) => (
-                                            <div key={key} className="flex gap-2">
-                                                <span className="font-semibold text-gray-700">{key}:</span>
-                                                <span className="truncate max-w-xs">{JSON.stringify(value)}</span>
-                                            </div>
+                                            <li key={key} className="break-words">
+                                                {auditChangeText(key, value, log.previousValue)}
+                                            </li>
                                         ))}
-                                    </div>
+                                    </ul>
                                 )}
                             </div>
                         </div>

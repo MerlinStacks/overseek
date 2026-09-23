@@ -1,4 +1,7 @@
 import { BaseSync, SyncResult } from './BaseSync';
+import { persistWooProduct } from '../persistWooProduct';
+import { isWooProductNotFound, permanentlyDeleteWooProduct, trashWooProduct } from '../productDeletion';
+import { activeProductWhere } from '../productStatus';
 import { WooService } from '../woo';
 import { prisma } from '../../utils/prisma';
 import { IndexingService } from '../search/IndexingService';
@@ -47,6 +50,10 @@ export class ProductSync extends BaseSync {
             // Validate products with Zod schema, skip invalid ones
             const products: WooProduct[] = [];
             for (const raw of rawProducts) {
+                if (raw?.status === 'trash' && Number.isSafeInteger(raw.id) && raw.id > 0) {
+                    await trashWooProduct(accountId, raw.id);
+                    continue;
+                }
                 const result = WooProductSchema.safeParse(raw);
                 if (result.success) {
                     products.push(result.data);
@@ -91,7 +98,9 @@ export class ProductSync extends BaseSync {
                 // stock_quantity null means "stock management disabled" (unlimited)
                 // stock_quantity 0 means "stock managed and depleted"
 
-                return prisma.wooProduct.upsert({
+                // COGS is Overseek-owned: remote native COGS stays in rawData only.
+                // Never hydrate the local cogs column, including on initial import.
+                return () => persistWooProduct(p.type, {
                     where: { accountId_wooId: { accountId, wooId: p.id } },
                     update: {
                         name: p.name,
@@ -144,7 +153,7 @@ export class ProductSync extends BaseSync {
             for (let i = 0; i < upsertOperations.length; i += UPSERT_CHUNK) {
                 const ops = upsertOperations.slice(i, i + UPSERT_CHUNK);
                 const productSlice = products.slice(i, i + UPSERT_CHUNK);
-                await Promise.all(ops.map((op, idx) => op.catch((err) => {
+                await Promise.all(ops.map((op, idx) => op().catch((err) => {
                     totalSkipped++;
                     totalUpsertFailures++;
                     failedProductWooIds.push(productSlice[idx].id);
@@ -236,6 +245,9 @@ export class ProductSync extends BaseSync {
                 await IndexingService.bulkIndexProducts(accountId, productsToIndex);
             } catch (error: any) {
                 Logger.warn('Bulk index products failed', { accountId, syncId, error: error.message });
+                // Indexing can also remove rows trashed concurrently. Never advance
+                // the checkpoint past a failed search deletion.
+                throw error;
             }
             totalProcessed += persistedProducts.length;
 
@@ -243,13 +255,8 @@ export class ProductSync extends BaseSync {
             const variableProducts = persistedProducts.filter(p =>
                 p.type === 'variable' || (p.type && p.type.includes('variable'))
             );
-            const variableProductIds = new Set(variableProducts.map(product => product.id));
-            for (const product of persistedProducts) {
-                if (!variableProductIds.has(product.id)) {
-                    const parentDbProduct = productMap.get(product.id);
-                    if (parentDbProduct) variationReconciliationParentIds.add(parentDbProduct.id);
-                }
-            }
+            // Explicit simple products were cleaned atomically above. Missing or
+            // custom types alone must never authorize destructive reconciliation.
 
             const VAR_BATCH_SIZE = 2;
             const VARIATION_UPSERT_CHUNK = 25;
@@ -292,7 +299,7 @@ export class ProductSync extends BaseSync {
                         // already persisted in ProductVariation.rawData. Duplicating it
                         // here doubled heap usage for variable products with many SKUs.
 
-                        // Batch upsert variations
+                        // Batch upsert variations; preserve Overseek-owned cogs here too.
                         const variationOps = variations.map(v =>
                             prisma.productVariation.upsert({
                                 where: { productId_wooId: { productId: parentDbProduct.id, wooId: v.id } },
@@ -393,10 +400,24 @@ export class ProductSync extends BaseSync {
             });
         }
 
+        // Scan trash first, including during incremental sync. Only explicit status
+        // is authoritative; a store ignoring the status filter must not trash live rows.
+        let trashPage = 1;
+        while (true) {
+            const { data: trashedProducts, totalPages } = await woo.getProducts({ page: trashPage, per_page: 100, status: 'trash' });
+            for (const product of trashedProducts) {
+                if (product.status === 'trash' && Number.isSafeInteger(product.id) && product.id > 0) {
+                    await trashWooProduct(accountId, product.id);
+                }
+            }
+            if (!trashedProducts.length || !this.hasMorePages(trashPage, totalPages, trashedProducts.length, 100)) break;
+            trashPage++;
+        }
+
         // Reconciliation: remove products/variations not touched during this full sync.
         // Count-first pattern: evaluate the 30% safety cap via SQL count() rather
         // than loading every stale id/wooId into Node memory.
-        if (!incremental && totalProcessed > 0 && validationFailures === 0) {
+        if (!incremental && validationFailures === 0) {
             const staleProductCount = await prisma.wooProduct.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
             });
@@ -410,31 +431,34 @@ export class ProductSync extends BaseSync {
                         accountId, syncId, toDelete: staleProductCount, localTotal
                     });
                 } else {
-                    // Stream ES deletions in chunks so we never hold the full ID list.
-                    const ES_DELETE_CHUNK = 500;
+                    // List absence alone is not proof of deletion (trash, permissions,
+                    // pagination). Confirm each candidate with an uncached product GET.
+                    const DELETE_CHUNK = 500;
                     let cursor: string | undefined;
                     while (true) {
                         const chunk: { id: string; wooId: number }[] = await prisma.wooProduct.findMany({
-                            where: { accountId, updatedAt: { lt: syncStartedAt } },
+                            where: { accountId, updatedAt: { lt: syncStartedAt }, ...(cursor ? { id: { gt: cursor } } : {}) },
                             select: { id: true, wooId: true },
                             orderBy: { id: 'asc' },
-                            take: ES_DELETE_CHUNK,
-                            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+                            take: DELETE_CHUNK
                         });
                         if (chunk.length === 0) break;
-                        await reconcileWholesaleProductsBestEffort(accountId, chunk.map(product => product.id), { deleted: true });
-                        await Promise.allSettled(
-                            chunk.map(p => IndexingService.deleteProduct(accountId, p.wooId))
-                        );
+                        for (const candidate of chunk) {
+                            let remote;
+                            try {
+                                remote = await woo.getProduct(candidate.wooId, { bypassCache: true });
+                            } catch (error) {
+                                if (!isWooProductNotFound(error)) throw error;
+                                totalDeleted += await permanentlyDeleteWooProduct(accountId, candidate.wooId);
+                                continue;
+                            }
+                            if (remote?.status === 'trash') await trashWooProduct(accountId, candidate.wooId);
+                        }
                         cursor = chunk[chunk.length - 1].id;
-                        if (chunk.length < ES_DELETE_CHUNK) break;
+                        if (chunk.length < DELETE_CHUNK) break;
                     }
 
-                    const { count } = await prisma.wooProduct.deleteMany({
-                        where: { accountId, updatedAt: { lt: syncStartedAt } }
-                    });
-                    totalDeleted += count;
-                    Logger.info(`Reconciliation: Deleted ${count} orphaned products`, { accountId, syncId });
+                    Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned products`, { accountId, syncId });
                 }
             }
 
@@ -445,6 +469,7 @@ export class ProductSync extends BaseSync {
                 const { count: staleVarCount } = await prisma.productVariation.deleteMany({
                     where: {
                         productId: { in: reconciledParentIds },
+                        product: { accountId, ...activeProductWhere },
                         updatedAt: { lt: syncStartedAt }
                     }
                 });
@@ -452,57 +477,6 @@ export class ProductSync extends BaseSync {
                     Logger.info(`Reconciliation: Deleted ${staleVarCount} orphaned variations`, { accountId, syncId });
                 }
             }
-        }
-
-        // Incremental sync does not reconcile untouched products, so explicitly
-        // remove products currently in WooCommerce trash.
-        try {
-            let trashPage = 1;
-            let hasMoreTrash = true;
-            let trashedWooIds: number[] = [];
-
-            while (hasMoreTrash) {
-                const { data: trashedProducts, totalPages } = await woo.getProducts({
-                    page: trashPage,
-                    per_page: 100,
-                    status: 'trash'
-                });
-
-                if (!trashedProducts.length) break;
-
-                trashedWooIds.push(...trashedProducts.map((p: any) => Number(p.id)).filter((id: number) => Number.isFinite(id)));
-                hasMoreTrash = trashPage < totalPages;
-                trashPage++;
-            }
-
-            trashedWooIds = Array.from(new Set(trashedWooIds));
-
-            if (trashedWooIds.length > 0) {
-                const staleProducts = await prisma.wooProduct.findMany({
-                    where: { accountId, wooId: { in: trashedWooIds } },
-                    select: { id: true, wooId: true }
-                });
-
-                if (staleProducts.length > 0) {
-                    await reconcileWholesaleProductsBestEffort(accountId, staleProducts.map(product => product.id), { deleted: true });
-                    await Promise.allSettled(staleProducts.map(p => IndexingService.deleteProduct(accountId, p.wooId)));
-                    const { count } = await prisma.wooProduct.deleteMany({
-                        where: { accountId, wooId: { in: staleProducts.map(p => p.wooId) } }
-                    });
-                    totalDeleted += count;
-                    Logger.info('Deleted trashed WooCommerce products during sync', {
-                        accountId,
-                        syncId,
-                        deletedCount: count
-                    });
-                }
-            }
-        } catch (error: any) {
-            Logger.warn('Failed to reconcile trashed WooCommerce products', {
-                accountId,
-                syncId,
-                error: error.message
-            });
         }
 
         await reconcileWholesaleProductsBestEffort(accountId, [...wholesaleReconciliationProductIds]);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ db: {} as any, woo: vi.fn(), caps: vi.fn(), send: vi.fn(), dirty: vi.fn(), cascade: vi.fn(), audit: vi.fn() }));
+const mocks = vi.hoisted(() => ({ db: {} as any, woo: vi.fn(), caps: vi.fn(), send: vi.fn(), stock: vi.fn(), dirty: vi.fn(), cascade: vi.fn(), audit: vi.fn() }));
 vi.mock('../BOMConsumptionService', () => ({ BOMConsumptionService: { cascadeSyncAffectedProducts: mocks.cascade } }));
 vi.mock('../../utils/prisma', () => ({ prisma: mocks.db }));
 vi.mock('../woo', () => ({ WooService: { forAccount: mocks.woo } }));
@@ -48,7 +48,8 @@ const due = () => { state.owners.forEach(o => { o.nextAttemptAt = new Date(0); }
 beforeEach(() => {
     vi.clearAllMocks(); state = { accounts: [], owners: [], operations: [] }; enrol();
     Object.assign(mocks.db, client(() => state), { $transaction: async (callback: any) => { const staged = structuredClone(state); const result = await callback(client(() => staged)); state = staged; return result; } });
-    mocks.woo.mockResolvedValue({ getDeliveryDiscovery: mocks.caps, postGuardedReceipt: mocks.send });
+    mocks.woo.mockResolvedValue({ getDeliveryDiscovery: mocks.caps, postGuardedReceipt: mocks.send, getGuardedStockOwner: mocks.stock });
+    mocks.stock.mockResolvedValue({ id: 10, manage_stock: true, stock_quantity: 8 });
     mocks.caps.mockResolvedValue({ schemaVersion: 1, capabilities: { guardedReceipts: true, receiptFinalization: false, inboundReceiptSafety: false, storefront: false } });
     mocks.send.mockImplementation(async (phase, op) => ack(op, phase)); mocks.dirty.mockResolvedValue(undefined);
     mocks.cascade.mockImplementation(async (_account, _product, _variation, _type, _visited, options) => { await options.beforeWrite('derived', 0); });
@@ -56,6 +57,54 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('guarded receipt worker ordering and fencing', () => {
+    it.each([1, null, 1.5])('parks a write-off with insufficient/unverified live stock %s before apply', async quantity => {
+        Object.assign(state.operations[0], { sourceType: 'stock_write_off', delta: -2 });
+        mocks.stock.mockResolvedValue({ id: 10, manage_stock: true, stock_quantity: quantity });
+        await dispatchGuardedReceipt('a');
+        expect(mocks.send.mock.calls.map(([phase]) => phase)).toEqual(['prepare']);
+        expect(state.operations[0].state).toBe('parked'); expect(state.owners[0].appliedSequence).toBe(0n);
+        expect(state.operations[0].lastError).toMatch(/Insufficient|unverified/);
+    });
+    it('checks the physical parent for inherited write-offs and variation owner for independent stock', async () => {
+        Object.assign(state.operations[0], { sourceType: 'stock_write_off', delta: -2, variationWooId: 11 });
+        await dispatchGuardedReceipt('a');
+        expect(mocks.stock).toHaveBeenCalledWith(10, 10);
+        expect(state.operations[0].state).toBe('applied');
+        enrol('b', 11, 1);
+        Object.assign(state.operations[2], { sourceType: 'stock_write_off', delta: -2, productWooId: 10, variationWooId: 11 });
+        mocks.stock.mockResolvedValue({ id: 11, manage_stock: true, stock_quantity: 2 });
+        await dispatchGuardedReceipt('b');
+        expect(mocks.stock).toHaveBeenLastCalledWith(10, 11); expect(state.operations[2].state).toBe('applied');
+    });
+    it('replays the journal after a lost write-off apply ACK without checking depleted stock or decrementing again', async () => {
+        Object.assign(state.operations[0], { sourceType: 'stock_write_off', delta: -2 });
+        let applied = false; let decrements = 0;
+        mocks.send.mockImplementation(async (phase, op) => {
+            if (applied) return { ...ack(op, 'apply'), stockQuantity: 0 };
+            if (phase === 'apply') { applied = true; decrements++; throw new Error('lost ACK'); }
+            return ack(op, phase);
+        });
+        await dispatchGuardedReceipt('a');
+        expect(state.operations[0].state).toBe('prepared');
+        mocks.stock.mockResolvedValue({ id: 10, manage_stock: true, stock_quantity: 0 });
+        due(); await dispatchGuardedReceipt('a');
+        expect(mocks.send.mock.calls.map(([phase]) => phase)).toEqual(['prepare', 'apply', 'prepare']);
+        expect(mocks.stock).toHaveBeenCalledTimes(1); expect(decrements).toBe(1); expect(state.operations[0].state).toBe('applied');
+    });
+    it('rechecks live stock when a prepared write-off has not applied, including after process death', async () => {
+        Object.assign(state.operations[0], { sourceType: 'stock_write_off', state: 'prepared', delta: -2 });
+        mocks.stock.mockResolvedValue({ id: 10, manage_stock: true, stock_quantity: 1 });
+        await dispatchGuardedReceipt('a');
+        expect(mocks.send.mock.calls.map(([phase]) => phase)).toEqual(['prepare']);
+        expect(state.operations[0].state).toBe('parked');
+    });
+    it('does not apply after a live-stock fetch loses the transport lease', async () => {
+        Object.assign(state.operations[0], { sourceType: 'stock_write_off', delta: -2 });
+        mocks.stock.mockImplementationOnce(async () => { state.accounts[0].leaseToken = 'replacement'; return { id: 10, manage_stock: true, stock_quantity: 8 }; });
+        await dispatchGuardedReceipt('a');
+        expect(mocks.send.mock.calls.map(([phase]) => phase)).toEqual(['prepare']);
+        expect(state.operations[0].state).toBe('prepared');
+    });
     it('durably queues cascade once after stock ACK without stalling the next same-owner stock sequence', async () => {
         await dispatchGuardedReceipt('a');
         expect(state.operations[0]).toMatchObject({ state: 'applied', cascadeState: 'pending', cascadeAttempts: 0 });

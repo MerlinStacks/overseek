@@ -213,6 +213,11 @@ export class IndexingService {
         const rawData = product.rawData || product;
         const externalId = product.wooId ?? product.id;
 
+        if (product.status === 'trash' || rawData.status === 'trash') {
+            await this.deleteProduct(accountId, externalId);
+            return;
+        }
+
         await esClient.index({
             index: 'products',
             id: `${accountId}_${externalId}`,
@@ -423,6 +428,12 @@ export class IndexingService {
      * Bulk index products in a single ES request.
      */
     static async bulkIndexProducts(accountId: string, products: any[]) {
+        for (const product of products) {
+            if (product.status === 'trash' || product.rawData?.status === 'trash') {
+                await this.deleteProduct(accountId, product.wooId ?? product.id);
+            }
+        }
+        products = products.filter(product => product.status !== 'trash' && product.rawData?.status !== 'trash');
         if (!products.length) return;
         if (!await isElasticsearchAvailable()) return;
 
@@ -571,6 +582,7 @@ export class IndexingService {
         } catch (error: any) {
             if (error.meta?.statusCode !== 404) {
                 Logger.warn(`Failed to delete product from ES`, { accountId, wooId, error: error.message });
+                throw error;
             }
         }
     }

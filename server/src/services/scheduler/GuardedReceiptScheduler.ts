@@ -3,6 +3,7 @@ import { drainDeliveryControls } from '../deliveryEstimates/launch';
 import { drainReconciliations } from '../deliveryEstimates/reconciliation';
 import { drainLegacyResolutions } from '../deliveryEstimates/legacyRecovery';
 import { drainReceiptCascades } from '../deliveryEstimates/receiptCascade';
+import { drainWriteOffCascades } from '../stockWriteOffCascade';
 import { Logger } from '../../utils/logger';
 
 export class GuardedReceiptScheduler {
@@ -27,8 +28,12 @@ export class GuardedReceiptScheduler {
     static async cascadeTick() {
         if (this.cascadeRunning) return;
         this.cascadeRunning = true;
-        try { await drainReceiptCascades(); }
-        catch { Logger.warn('Receipt BOM cascade drain failed'); }
+        try {
+            try { await drainReceiptCascades(); }
+            catch { Logger.warn('Receipt BOM cascade drain failed'); }
+            try { await drainWriteOffCascades(); }
+            catch { Logger.warn('Internal write-off cascade drain failed'); }
+        }
         finally { this.cascadeRunning = false; }
     }
     static stop() { clearInterval(this.timer); clearInterval(this.cascadeTimer); this.timer = undefined; this.cascadeTimer = undefined; }

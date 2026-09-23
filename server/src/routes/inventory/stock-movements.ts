@@ -2,9 +2,12 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { REVENUE_STATUSES } from '../../constants/orderStatus';
 
 const querySchema = z.object({
-    limit: z.coerce.number().int().positive().max(200).default(100)
+    limit: z.coerce.number().int().positive().max(200).default(100),
+    page: z.coerce.number().int().positive().default(1),
+    productId: z.string().trim().min(1).optional()
 });
 
 type Movement = {
@@ -12,11 +15,12 @@ type Movement = {
     productId: string;
     productName: string;
     sku: string | null;
-    previousStock: number;
-    newStock: number;
+    previousStock: number | null;
+    newStock: number | null;
     quantity: number;
     type: string;
     reference: string | null;
+    orderId: number | null;
     reason: string | null;
     createdAt: Date;
     isBomProduct: boolean;
@@ -31,6 +35,11 @@ function getVariationLabel(rawData: unknown, sku: string | null, wooId: number):
     return attributes.join(' / ') || sku || `Variation #${wooId}`;
 }
 
+function getOrderId(value: unknown): number | null {
+    const id = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/stock-movements', async (request, reply) => {
         const parsed = querySchema.safeParse(request.query);
@@ -39,18 +48,25 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const accountId = request.accountId!;
-        const { limit } = parsed.data;
+        const { limit, page, productId } = parsed.data;
 
         try {
+            const scopedProduct = productId ? await prisma.wooProduct.findFirst({
+                where: { accountId, id: productId },
+                select: { id: true, wooId: true, name: true, sku: true }
+            }) : null;
+            if (productId && !scopedProduct) return reply.code(404).send({ error: 'Product not found' });
+
             const [auditLogs, ledgerEntries] = await Promise.all([
                 prisma.auditLog.findMany({
                     where: {
                         accountId,
                         resource: 'PRODUCT',
-                        action: 'UPDATE'
+                        action: 'UPDATE',
+                        ...(scopedProduct ? { resourceId: { in: [scopedProduct.id, String(scopedProduct.wooId)] } } : {})
                     },
                     orderBy: { createdAt: 'desc' },
-                    take: limit * 2,
+                    ...(scopedProduct ? {} : { take: limit * 2 }),
                     select: {
                         id: true,
                         resourceId: true,
@@ -61,9 +77,12 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                     }
                 }),
                 prisma.bOMDeductionLedger.findMany({
-                    where: { accountId, status: { in: ['COMPLETED', 'REVERSED'] } },
+                    where: {
+                        accountId, status: { in: ['COMPLETED', 'REVERSED'] },
+                        ...(scopedProduct ? { componentId: scopedProduct.id, componentType: { in: ['WooProduct', 'ProductVariation'] } } : {})
+                    },
                     orderBy: { createdAt: 'desc' },
-                    take: limit,
+                    ...(scopedProduct ? {} : { take: limit }),
                     select: {
                         id: true,
                         orderId: true,
@@ -84,14 +103,19 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
             const stockLogs = auditLogs.flatMap((log) => {
                 const previous = log.previousValue as Record<string, unknown> | null;
                 const details = log.details as Record<string, unknown> | null;
+                // Null/empty balances mean unknown, not zero. Keep legacy global conversion unchanged.
+                if (scopedProduct && (details?.productType === 'INTERNAL'
+                    || ![previous?.stock_quantity, details?.stock_quantity].every(value =>
+                        typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')))) return [];
                 const previousStock = Number(previous?.stock_quantity);
                 const newStock = Number(details?.stock_quantity);
                 if (!Number.isFinite(previousStock) || !Number.isFinite(newStock) || previousStock === newStock) return [];
-                return [{ ...log, previousStock, newStock, details: details || {} }];
+                return [{ ...log, resourceId: scopedProduct?.id || log.resourceId, previousStock, newStock, details: details || {} }];
             });
 
             const wooProductIds = new Set<string>();
             const internalProductIds = new Set<string>();
+            if (scopedProduct) wooProductIds.add(scopedProduct.id);
             for (const log of stockLogs) {
                 if (log.details.productType === 'INTERNAL') internalProductIds.add(log.resourceId);
                 else wooProductIds.add(log.resourceId);
@@ -131,7 +155,10 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                     select: { productId: true, variationId: true }
                 }),
                 prisma.wooOrder.findMany({
-                    where: { accountId, wooId: { in: [...new Set(ledgerEntries.map((entry) => entry.orderId))] } },
+                    where: { accountId, wooId: { in: [...new Set([
+                        ...ledgerEntries.map((entry) => entry.orderId),
+                        ...stockLogs.flatMap(log => getOrderId(log.details.orderId) ? [getOrderId(log.details.orderId)!] : [])
+                    ])] } },
                     select: { wooId: true, number: true }
                 })
             ]);
@@ -219,6 +246,7 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                     quantity: log.newStock - log.previousStock,
                     type: movementType,
                     reference: typeof log.details.reference === 'string' ? log.details.reference : null,
+                    orderId: getOrderId(log.details.orderId),
                     reason: typeof log.details.reason === 'string' ? log.details.reason : null,
                     createdAt: log.createdAt,
                     isBomProduct: !isInternal && (ownBomKeys.has(`${log.resourceId}:${variationId}`) || ownBomKeys.has(`${log.resourceId}:0`)),
@@ -246,6 +274,7 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                     newStock: entry.newStock,
                     quantity: -entry.quantityDeducted,
                     type: 'ORDER_CONSUMPTION',
+                    orderId: entry.orderId,
                     reference,
                     reason: 'BOM components consumed by order',
                     createdAt: entry.createdAt,
@@ -264,6 +293,7 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                         newStock: entry.previousStock,
                         quantity: entry.quantityDeducted,
                         type: 'ORDER_REVERSAL',
+                        orderId: entry.orderId,
                         reference,
                         reason: 'BOM consumption reversed',
                         createdAt: entry.rolledBackAt,
@@ -273,7 +303,51 @@ export const stockMovementRoutes: FastifyPluginAsync = async (fastify) => {
                 }
             }
 
-            movements.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+            if (scopedProduct) {
+                // Match the sales-history route's revenue statuses, without ES result-window/inner-hit limits.
+                const saleOrders = await prisma.wooOrder.findMany({
+                    where: {
+                        accountId,
+                        status: { in: REVENUE_STATUSES },
+                        rawData: { path: ['line_items'], array_contains: [{ product_id: scopedProduct.wooId }] }
+                    },
+                    select: { wooId: true, number: true, dateCreated: true, rawData: true }
+                });
+                const representedQuantities = new Map<number, number>();
+                for (const movement of movements) {
+                    if (movement.orderId !== null && movement.quantity < 0) {
+                        representedQuantities.set(movement.orderId,
+                            (representedQuantities.get(movement.orderId) || 0) - movement.quantity);
+                    }
+                }
+                for (const order of saleOrders) {
+                    const raw = order.rawData as { line_items?: Array<{ product_id?: number; quantity?: number }> } | null;
+                    const quantity = Array.isArray(raw?.line_items) ? raw.line_items.reduce((sum, item) =>
+                        item.product_id === scopedProduct.wooId && typeof item.quantity === 'number' && Number.isFinite(item.quantity)
+                            ? sum + item.quantity : sum, 0) : 0;
+                    if (quantity <= 0) continue;
+                    // Only suppress a sale when linked deductions account for its full quantity.
+                    // A partial/component movement alone is not evidence that the sale is represented.
+                    if (representedQuantities.get(order.wooId) === quantity) continue;
+                    movements.push({
+                        id: `sale:${order.wooId}:${scopedProduct.id}`,
+                        productId: scopedProduct.id, productName: scopedProduct.name, sku: scopedProduct.sku,
+                        previousStock: null, newStock: null, quantity: -quantity, type: 'SALE',
+                        orderId: order.wooId, reference: order.number || `#${order.wooId}`,
+                        reason: 'Product sold in order; stock balances unavailable', createdAt: order.dateCreated,
+                        isBomProduct: ownBoms.length > 0, bomParents: bomParents.get(`woo:${scopedProduct.id}:0`) || []
+                    });
+                }
+            }
+
+            movements.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+                || (scopedProduct ? a.id.localeCompare(b.id) : 0));
+            if (scopedProduct) {
+                return {
+                    movements: movements.slice((page - 1) * limit, page * limit),
+                    total: movements.length, page, limit, totalPages: Math.ceil(movements.length / limit)
+                };
+            }
             const visibleMovements = movements.filter((movement) => movement.type !== 'BOM_SYNC');
             return { movements: visibleMovements.slice(0, limit), total: Math.min(visibleMovements.length, limit) };
         } catch (error) {

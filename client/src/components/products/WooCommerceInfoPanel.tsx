@@ -1,20 +1,11 @@
 import { Package, FolderTree, Tags } from 'lucide-react';
+import { WooTermField, type WooTerm } from './WooTermField';
 
-interface WooCategory {
-    id: number;
-    name: string;
-    slug: string;
-}
-
-interface WooTag {
-    id: number;
-    name: string;
-    slug: string;
-}
-
-interface WooCommerceInfoPanelProps {
-    categories: WooCategory[];
-    tags: WooTag[];
+export interface WooCommerceInfoPanelProps {
+    categories: WooTerm[];
+    tags: WooTerm[];
+    onCategoriesChange?: (categories: WooTerm[]) => void;
+    onTagsChange?: (tags: WooTerm[]) => void;
 }
 
 /**
@@ -22,10 +13,10 @@ interface WooCommerceInfoPanelProps {
  * - Product categories
  * - Product tags
  */
-export function WooCommerceInfoPanel({ categories, tags }: WooCommerceInfoPanelProps) {
+export function WooCommerceInfoPanel({ categories, tags, onCategoriesChange, onTagsChange }: WooCommerceInfoPanelProps) {
     return (
-        <div className="bg-white/70 backdrop-blur-md rounded-xl shadow-xs border border-white/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4 flex items-center gap-2">
+        <div className="bg-white/70 dark:bg-slate-800/80 backdrop-blur-md rounded-xl shadow-xs border border-white/50 dark:border-slate-700/50 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide mb-4 flex items-center gap-2">
                 <Package size={16} className="text-purple-600" />
                 WooCommerce Info
             </h3>
@@ -36,44 +27,18 @@ export function WooCommerceInfoPanel({ categories, tags }: WooCommerceInfoPanelP
                 <div>
                     <div className="flex items-center gap-2 mb-2">
                         <FolderTree size={14} className="text-gray-500" />
-                        <span className="text-sm font-medium text-gray-700">Categories</span>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Categories</span>
                     </div>
-                    {categories.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                            {categories.map((cat) => (
-                                <span
-                                    key={cat.id}
-                                    className="inline-flex items-center px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
-                                >
-                                    {cat.name}
-                                </span>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-sm text-gray-400 italic">No categories assigned</p>
-                    )}
+                    <WooTermField kind="categories" selected={categories} onChange={onCategoriesChange} />
                 </div>
 
                 {/* Tags */}
                 <div>
                     <div className="flex items-center gap-2 mb-2">
                         <Tags size={14} className="text-gray-500" />
-                        <span className="text-sm font-medium text-gray-700">Tags</span>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Tags</span>
                     </div>
-                    {tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                            {tags.map((tag) => (
-                                <span
-                                    key={tag.id}
-                                    className="inline-flex items-center px-3 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-full border border-amber-200 hover:bg-amber-100 transition-colors"
-                                >
-                                    #{tag.name}
-                                </span>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-sm text-gray-400 italic">No tags assigned</p>
-                    )}
+                    <WooTermField kind="tags" selected={tags} onChange={onTagsChange} />
                 </div>
             </div>
         </div>

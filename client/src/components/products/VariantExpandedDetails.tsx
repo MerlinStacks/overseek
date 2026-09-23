@@ -8,9 +8,12 @@ import { DollarSign, TrendingUp } from 'lucide-react';
 import { ProductVariant } from './variantTypes';
 import { BOMPanel, BOMPanelRef } from './BOMPanel';
 import { VariantVideoEditor } from './ProductVideoGallery';
+import { ProductionRangeFields, type ProductionRangeFieldsProps } from './ProductionRangeFields';
 
 interface VariantExpandedDetailsProps {
     variant: ProductVariant;
+    suppliers: Array<{ id: string; name: string }>;
+    parentSupplierId?: string | null;
     productId: string;
     productWooId: number;
     bomPanelRef: (ref: BOMPanelRef | null) => void;
@@ -23,10 +26,13 @@ interface VariantExpandedDetailsProps {
     bomCogs: number | null;
     bomCogsLoading: boolean;
     calculateGoldCogs: (variant: ProductVariant) => number | null;
+    production?: Omit<ProductionRangeFieldsProps, 'label'>;
 }
 
 export function VariantExpandedDetails({
     variant: v,
+    suppliers,
+    parentSupplierId,
     productId,
     productWooId,
     bomPanelRef,
@@ -38,16 +44,19 @@ export function VariantExpandedDetails({
     isGoldPriceEnabled,
     bomCogs,
     bomCogsLoading,
-    calculateGoldCogs
+    calculateGoldCogs,
+    production
 }: VariantExpandedDetailsProps) {
     const goldCogs = calculateGoldCogs(v);
     const hasBom = bomCogs !== null;
     const hasGold = goldCogs != null && goldCogs > 0;
+    const inheritedSupplier = suppliers.find(supplier => supplier.id === parentSupplierId);
 
     return (
         <tr className="bg-gray-50/30">
             <td colSpan={9} className="p-4 border-t border-gray-100/50">
                 <div className="ml-8 space-y-4">
+                    {production && <ProductionRangeFields {...production} label={`Variant #${v.id} production range`} />}
                     {/* Inventory Tracking Toggle */}
                     <div className="flex items-center justify-between py-2 px-3 bg-gray-50/80 rounded-lg border border-gray-100">
                         <div>
@@ -98,6 +107,21 @@ export function VariantExpandedDetails({
 
                     {/* Additional fields */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <div>
+                            <label htmlFor={`variant-${v.id}-supplier`} className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Supplier</label>
+                            <select
+                                id={`variant-${v.id}-supplier`}
+                                value={v.supplierId ?? ''}
+                                onChange={e => onFieldChange('supplierId', e.target.value || null)}
+                                className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-gray-100"
+                            >
+                                <option value="">Use parent supplier{inheritedSupplier ? ` (${inheritedSupplier.name})` : ''}</option>
+                                {v.supplierId && !suppliers.some(supplier => supplier.id === v.supplierId) && (
+                                    <option value={v.supplierId}>Current supplier (unavailable)</option>
+                                )}
+                                {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                            </select>
+                        </div>
                         {canViewCogs && (
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">

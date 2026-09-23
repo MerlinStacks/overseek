@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overseek · Product delivery estimate preview</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f3f1ed; color: #252c28; font-family: Arial, Helvetica, sans-serif; }
+    button, select, input { font: inherit; }
+    button, select { min-height: 42px; }
+    button, select, input { accent-color: #315b48; }
+    :focus-visible { outline: 3px solid #588672; outline-offset: 3px; }
+    .preview { max-width: 1140px; margin: 0 auto; padding: 32px 24px; }
+    .preview h1 { margin: 0 0 8px; font-size: 22px; }
+    .preview-intro { margin: 0 0 24px; color: #606962; font-size: 14px; line-height: 1.6; }
+    .controls { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin-bottom: 24px; }
+    .control { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; }
+    .control select { max-width: 100%; padding: 8px 34px 8px 12px; border: 1px solid #d0d6d0; border-radius: 6px; background: white; color: #252c28; }
+    .control input[type="color"] { width: 56px; height: 42px; padding: 4px; background: white; border: 1px solid #d0d6d0; border-radius: 6px; }
+    .icon-control { display: flex; align-items: center; gap: 8px; min-height: 42px; font-size: 13px; }
+    .store { --brand: #315b48; margin: 0 auto; max-width: 1080px; background: #fff; border: 1px solid #e0e3dc; border-radius: 12px; box-shadow: 0 10px 40px #25332808; }
+    .store-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 22px 32px; border-bottom: 1px solid #eceee8; }
+    .brand { font-family: Georgia, serif; font-size: 24px; letter-spacing: -.6px; }
+    .store-tag { font-size: 11px; color: #6b746d; letter-spacing: 1px; text-transform: uppercase; }
+    .breadcrumbs { padding: 22px 32px 0; color: #7a817a; font-size: 12px; }
+    .product { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding: 24px 32px 36px; }
+    .product > * { min-width: 0; }
+    .product-image { display: grid; place-items: center; margin: 0; border-radius: 8px; aspect-ratio: 1; background: #f0f2ec; overflow: hidden; }
+    .product-image svg { display: block; width: 80%; max-height: 440px; }
+    .eyebrow { margin: 10px 0 12px; color: var(--brand); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+    .product h2 { margin: 0 0 16px; font-family: Georgia, serif; font-weight: 400; font-size: 34px; line-height: 1.15; }
+    .price { margin: 0 0 16px; font-size: 23px; }
+    .description { margin: 0 0 22px; color: #667069; font-size: 14px; line-height: 1.7; }
+    .option { display: block; margin-bottom: 7px; font-size: 13px; font-weight: 600; }
+    .option-value { margin: 0 0 20px; color: #647168; font-size: 14px; }
+    .estimate-slot { margin: 0 0 16px; }
+    .estimate-slot[hidden] { display: none; }
+    /* Matches the plugin's compact shared renderer; the surrounding page is illustrative. */
+    .os-delivery-estimate { display: inline-flex; align-items: baseline; gap: .35em; max-width: 100%; box-sizing: border-box; font-family: inherit; font-weight: inherit; font-size: 14px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; padding: .15em 0; color: var(--brand); }
+    .os-delivery-estimate > span { min-width: 0; }
+    .os-delivery-estimate svg { flex: none; width: 1em; height: 1em; }
+    .os-delivery-estimate svg[hidden] { display: none; }
+    .purchase { display: flex; gap: 10px; }
+    .quantity { width: 68px; min-width: 0; text-align: center; border: 1px solid #d6dcd5; border-radius: 5px; padding: 10px 4px; background: #fff; }
+    .add-to-cart { flex: 1; min-width: 0; min-height: 46px; border: 0; border-radius: 5px; background: var(--brand); color: white; font-weight: 600; cursor: pointer; }
+    .product-note { margin: 18px 0 0; color: #758077; font-size: 12px; line-height: 1.6; }
+    .demo-status { min-height: 20px; margin-top: 8px; color: #606962; font-size: 12px; }
+    .explanation { margin: 22px 0 0; font-size: 13px; line-height: 1.7; color: #606962; }
+    .explanation summary { cursor: pointer; font-weight: 600; }
+    .explanation code { color: #33493b; }
+    .store[data-preview="mobile"] { max-width: 390px; }
+    .store[data-preview="mobile"] .product { grid-template-columns: 1fr; gap: 22px; padding: 20px; }
+    .store[data-preview="mobile"] .store-header { padding: 18px 20px; }
+    .store[data-preview="mobile"] .breadcrumbs { padding: 18px 20px 0; }
+    .store[data-preview="mobile"] .store-tag { display: none; }
+    .store[data-preview="mobile"] .product-image { aspect-ratio: 4 / 3; }
+    .store[data-preview="mobile"] h2 { font-size: 29px; }
+    @media (max-width: 640px) {
+      .preview { padding: 20px 12px; }
+      .control { max-width: 100%; }
+      .store-header { padding: 18px 20px; }
+      .store-tag { display: none; }
+      .breadcrumbs { padding: 18px 20px 0; }
+      .product { grid-template-columns: 1fr; gap: 22px; padding: 20px; }
+      .product-image { aspect-ratio: 4 / 3; }
+      .product h2 { font-size: 29px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="preview">
+    <h1>Product-page delivery estimate</h1>
+    <p class="preview-intro">A standalone visual example using fixed sample dates. No live stock, orders, shipping rates or services are connected.</p>
+
+    <section class="controls" aria-label="Preview controls — not part of the storefront">
+      <label class="control">Example
+        <select id="example">
+          <option value="delivery">Estimated delivery</option>
+          <option value="collection">Click &amp; Collect</option>
+          <option value="unset">No production time set</option>
+        </select>
+      </label>
+      <label class="control">Layout
+        <select id="layout"><option value="desktop">Desktop</option><option value="mobile">Mobile width</option></select>
+      </label>
+      <label class="control">Brand colour<input id="brand-color" type="color" value="#315b48"></label>
+      <label class="icon-control"><input id="show-icon" type="checkbox" checked> Show small calendar icon</label>
+    </section>
+
+    <article class="store" id="store" data-preview="desktop" aria-label="Illustrative product page">
+      <header class="store-header"><span class="brand">North &amp; Oak</span><span class="store-tag">Example business</span></header>
+      <nav class="breadcrumbs" aria-label="Breadcrumb">Home &nbsp;/&nbsp; Drinkware &nbsp;/&nbsp; Travel tumbler</nav>
+      <div class="product">
+        <figure class="product-image">
+          <svg viewBox="0 0 400 400" role="img" aria-labelledby="tumbler-title">
+            <title id="tumbler-title">Illustration of a green travel tumbler</title>
+            <ellipse cx="204" cy="343" rx="82" ry="12" fill="#d7ddd2"/>
+            <path d="M126 97h148l-16 229c-1 16-113 16-114 0z" fill="var(--brand)"/>
+            <path d="M144 107h22l9 212c-14 0-19-2-19-6z" fill="#ffffff" opacity=".1"/>
+            <rect x="119" y="76" width="162" height="30" rx="10" fill="#303934"/>
+            <rect x="131" y="64" width="138" height="17" rx="8" fill="#414c45"/>
+            <rect x="175" y="62" width="50" height="6" rx="3" fill="#839185"/>
+            <text x="200" y="219" fill="#f0eadc" font-size="24" font-family="Georgia, serif" text-anchor="middle">Alex</text>
+            <path d="M178 231h44" stroke="#f0eadc" opacity=".6"/>
+          </svg>
+        </figure>
+        <section aria-labelledby="product-title">
+          <p class="eyebrow">Made for you</p>
+          <h2 id="product-title">Engraved Travel Tumbler</h2>
+          <p class="price">$39.95</p>
+          <p class="description">Illustrative product content. The estimate is a small line of text near the purchase controls—not a large banner or card.</p>
+          <span class="option">Colour</span><p class="option-value">Forest green · 350 ml</p>
+
+          <!-- The block or shortcode outputs this compact estimate once data is available. -->
+          <div class="estimate-slot" id="estimate-slot" aria-live="polite" aria-atomic="true">
+            <span class="os-delivery-estimate">
+              <svg id="estimate-icon" aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="5" width="18" height="16" rx="2"/>
+                <path d="M3 10h18M8 3v4M16 3v4"/>
+              </svg>
+              <span id="estimate-text">Estimated delivery: 2 October 2026 – 5 October 2026</span>
+            </span>
+          </div>
+
+          <div class="purchase">
+            <label for="quantity" hidden>Quantity</label>
+            <input id="quantity" class="quantity" type="number" min="1" step="1" value="1" aria-label="Quantity (preview only)">
+            <button class="add-to-cart" type="button" id="add-to-cart">Add to cart</button>
+          </div>
+          <p class="product-note">This is a layout preview. Changing quantity does not recalculate the fixed example dates.</p>
+          <p class="demo-status" id="demo-status" role="status"></p>
+        </section>
+      </div>
+    </article>
+
+    <details class="explanation">
+      <summary>About this example</summary>
+      <ul>
+        <li>The estimate uses the surrounding store font, a small optional icon and the business’s accent colour.</li>
+        <li>Click &amp; Collect changes the wording to “Ready for collection”.</li>
+        <li>Choosing “No production time set” removes the estimate and its space entirely.</li>
+        <li>These controls are for this mockup only. Real settings are managed in Overseek.</li>
+        <li>Place the real <code>Overseek Delivery Estimate</code> block or <code>[overseek_delivery_estimate]</code> shortcode wherever it fits your product template.</li>
+      </ul>
+    </details>
+  </main>
+  <script>
+    const example = document.getElementById('example');
+    const slot = document.getElementById('estimate-slot');
+    example.addEventListener('change', () => {
+      slot.hidden = example.value === 'unset';
+      document.getElementById('estimate-text').textContent = example.value === 'collection'
+        ? 'Ready for collection: 1 October 2026 – 2 October 2026'
+        : 'Estimated delivery: 2 October 2026 – 5 October 2026';
+    });
+    document.getElementById('layout').addEventListener('change', event => {
+      document.getElementById('store').dataset.preview = event.target.value;
+    });
+    document.getElementById('brand-color').addEventListener('input', event => {
+      document.getElementById('store').style.setProperty('--brand', event.target.value);
+    });
+    document.getElementById('show-icon').addEventListener('change', event => {
+      document.getElementById('estimate-icon').toggleAttribute('hidden', !event.target.checked);
+    });
+    document.getElementById('add-to-cart').addEventListener('click', () => {
+      document.getElementById('demo-status').textContent = 'Preview only — nothing has been added to a cart.';
+    });
+  </script>
+</body>
+</html>

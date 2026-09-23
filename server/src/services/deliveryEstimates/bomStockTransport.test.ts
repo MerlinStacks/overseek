@@ -17,6 +17,7 @@ beforeEach(() => {
         $queryRaw: async (parts: TemplateStringsArray, ...args: any[]) => {
             const sql = parts.join('?');
             if (sql.includes('AS guarded')) return [{ guarded: true }];
+            if (sql.includes('FOR UPDATE') && sql.includes('"WooProduct"')) return [{ id: 'component' }];
             if (sql.startsWith('UPDATE')) { m.state.stock += args[0]; return [{ stock: m.state.stock }]; }
             return [];
         },

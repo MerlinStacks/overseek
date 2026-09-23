@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Logger } from '../utils/logger';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,8 @@ import { SeoScoreBadge } from '../components/Seo/SeoScoreBadge';
 
 import { Pagination } from '../components/ui/Pagination';
 import { InternalProductsList } from '../components/inventory/InternalProductsList';
+import { StockWriteOffsTab } from '../components/inventory/StockWriteOffsTab';
+import { usePermissions } from '../hooks/usePermissions';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Modal } from '../components/ui/Modal';
 import { subscribeToProductChanges } from '../utils/productCrossTabEvents';
@@ -67,6 +69,11 @@ interface ProductTerm {
 
 import { ProductService } from '../services/ProductService';
 
+function validTermId(value: string | null): string {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? String(id) : '';
+}
+
 function isSeoTest(value: unknown): value is SeoTest {
     return (
         typeof value === 'object' &&
@@ -83,11 +90,13 @@ export function InventoryPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const toast = useToast();
+    const { hasPermission } = usePermissions();
+    const canWriteOff = hasPermission('manage_inventory') && hasPermission('view_cogs');
 
     // Read initial tab from URL query param, default to 'catalog'
-    const tabFromUrl = searchParams.get('tab') as 'catalog' | 'components' | null;
+    const tabFromUrl = searchParams.get('tab') as 'catalog' | 'components' | 'write-offs' | null;
     const legacySupplyChainTab = searchParams.get('tab');
-    const validTabs = ['catalog', 'components'];
+    const validTabs = ['catalog', 'components', 'write-offs'];
     const initialTab = (tabFromUrl && validTabs.includes(tabFromUrl)) ? tabFromUrl : 'catalog';
     const sortFieldFromUrl = searchParams.get('sortField');
     const queryFromUrl = searchParams.get('q') || '';
@@ -98,7 +107,7 @@ export function InventoryPage() {
     const initialSortDirection: 'asc' | 'desc' = sortDirectionFromUrl === 'desc' ? 'desc' : 'asc';
     const pageFromUrl = Number(searchParams.get('page') || '1');
     const initialPage = Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? Math.trunc(pageFromUrl) : 1;
-    const [activeTab, setActiveTab] = useState<'catalog' | 'components'>(initialTab);
+    const [activeTab, setActiveTab] = useState<'catalog' | 'components' | 'write-offs'>(initialTab);
 
     useEffect(() => {
         if (legacySupplyChainTab === 'suppliers' || legacySupplyChainTab === 'purchasing') {
@@ -132,6 +141,35 @@ export function InventoryPage() {
     const [limit, setLimit] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
     const [debouncedQuery, setDebouncedQuery] = useState(queryFromUrl);
+    const [statusFilter, setStatusFilter] = useState(() => {
+        const value = searchParams.get('status') || '';
+        return ['publish', 'private', 'draft', 'pending', 'future'].includes(value) ? value : '';
+    });
+    const [categoryFilter, setCategoryFilter] = useState(() => validTermId(searchParams.get('category')));
+    const [tagFilter, setTagFilter] = useState<string[]>(() =>
+        [...new Set(searchParams.getAll('tag').map(validTermId).filter(Boolean))].sort((a, b) => Number(a) - Number(b))
+    );
+    const [stockStatusFilter, setStockStatusFilter] = useState(() => {
+        const value = searchParams.get('stockStatus') || '';
+        return ['instock', 'outofstock', 'onbackorder'].includes(value) ? value : '';
+    });
+    const hasFilters = Boolean(statusFilter || categoryFilter || tagFilter.length || stockStatusFilter);
+    const productRequest = useRef(0);
+    const [termsLoading, setTermsLoading] = useState(false);
+    const [termsError, setTermsError] = useState(false);
+    const [termsRetry, setTermsRetry] = useState(0);
+    const clearFilters = () => {
+        setStatusFilter('');
+        setStockStatusFilter('');
+        setCategoryFilter('');
+        setTagFilter([]);
+        setPage(1);
+    };
+
+    const toggleTagFilter = (id: string) => {
+        setTagFilter(ids => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id].sort((a, b) => Number(a) - Number(b)));
+        setPage(1);
+    };
 
     // BOM State
     // const [editingBOM, setEditingBOM] = useState<string | null>(null);
@@ -168,33 +206,51 @@ export function InventoryPage() {
     };
 
     useEffect(() => {
+        const controller = new AbortController();
+        setCategories([]);
+        setTags([]);
         const fetchTerms = async () => {
-            if (!showCreateModal || !token || !currentAccount?.id) return;
+            if (!token || !currentAccount?.id) return;
+            setTermsLoading(true);
+            setTermsError(false);
             try {
-                const [catRes, tagRes] = await Promise.all([
-                    fetch('/api/products/categories?limit=100', {
-                        headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-                    }),
-                    fetch('/api/products/tags?limit=100', {
-                        headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-                    }),
+                const loadTerms = async (kind: 'categories' | 'tags') => {
+                    const items: ProductTerm[] = [];
+                    let termPage = 1;
+                    let totalPages: number;
+                    do {
+                        const response = await fetch(`/api/products/${kind}?limit=100&page=${termPage}`, {
+                            headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': currentAccount.id },
+                            signal: controller.signal
+                        });
+                        if (!response.ok) throw new Error(`Failed to load ${kind}`);
+                        const data = await response.json();
+                        items.push(...(Array.isArray(data.items) ? data.items : []));
+                        totalPages = Number(data.totalPages) || 1;
+                        termPage++;
+                    } while (termPage <= totalPages);
+                    return items.sort((a, b) => a.name.localeCompare(b.name));
+                };
+                const [categoryItems, tagItems] = await Promise.all([
+                    loadTerms('categories'), loadTerms('tags')
                 ]);
-
-                if (catRes.ok) {
-                    const catData = await catRes.json();
-                    setCategories(Array.isArray(catData.items) ? catData.items : []);
-                }
-                if (tagRes.ok) {
-                    const tagData = await tagRes.json();
-                    setTags(Array.isArray(tagData.items) ? tagData.items : []);
+                if (!controller.signal.aborted) {
+                    setCategories(categoryItems);
+                    setTags(tagItems);
                 }
             } catch (err) {
-                Logger.warn('Failed to load categories/tags for product create', { err });
+                if (!controller.signal.aborted) {
+                    setTermsError(true);
+                    Logger.warn('Failed to load product categories/tags', { err });
+                }
+            } finally {
+                if (!controller.signal.aborted) setTermsLoading(false);
             }
         };
 
         void fetchTerms();
-    }, [showCreateModal, token, currentAccount?.id]);
+        return () => controller.abort();
+    }, [token, currentAccount?.id, termsRetry]);
 
     // Debounce search
     useEffect(() => {
@@ -208,6 +264,7 @@ export function InventoryPage() {
     }, [searchQuery, queryFromUrl]);
 
     const fetchProducts = useCallback(async () => {
+        const requestId = ++productRequest.current;
         if (!currentAccount || !token) return;
 
         setIsLoading(true);
@@ -222,6 +279,10 @@ export function InventoryPage() {
                 params.set('sortField', sortField);
                 params.set('sortDirection', sortDirection);
             }
+            if (statusFilter) params.set('status', statusFilter);
+            if (stockStatusFilter) params.set('stockStatus', stockStatusFilter);
+            if (categoryFilter) params.set('category', categoryFilter);
+            tagFilter.forEach(id => params.append('tag', id));
 
             const res = await fetch(`/api/products?${params}`, {
                 headers: {
@@ -232,15 +293,16 @@ export function InventoryPage() {
 
             if (res.ok) {
                 const data = await res.json();
+                if (requestId !== productRequest.current) return;
                 setProducts(data.products);
                 setTotalPages(data.totalPages);
             }
         } catch (err) {
             Logger.error('An error occurred', { error: err });
         } finally {
-            setIsLoading(false);
+            if (requestId === productRequest.current) setIsLoading(false);
         }
-    }, [currentAccount, token, page, limit, debouncedQuery, sortField, sortDirection]);
+    }, [currentAccount, token, page, limit, debouncedQuery, sortField, sortDirection, statusFilter, categoryFilter, tagFilter, stockStatusFilter]);
 
     useEffect(() => {
         setPage(1);
@@ -263,13 +325,12 @@ export function InventoryPage() {
             nextParams.delete('sortDirection');
         }
 
-        if (nextParams.toString() !== searchParams.toString()) {
-            setSearchParams(nextParams, { replace: true });
+        for (const [key, value] of [['status', statusFilter], ['category', categoryFilter], ['stockStatus', stockStatusFilter]]) {
+            if (value) nextParams.set(key, value);
+            else nextParams.delete(key);
         }
-    }, [debouncedQuery, sortField, sortDirection, searchParams, setSearchParams]);
-
-    useEffect(() => {
-        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('tag');
+        tagFilter.forEach(id => nextParams.append('tag', id));
         if (page > 1) {
             nextParams.set('page', String(page));
         } else {
@@ -279,7 +340,7 @@ export function InventoryPage() {
         if (nextParams.toString() !== searchParams.toString()) {
             setSearchParams(nextParams, { replace: true });
         }
-    }, [page, searchParams, setSearchParams]);
+    }, [debouncedQuery, sortField, sortDirection, statusFilter, categoryFilter, tagFilter, stockStatusFilter, page, searchParams, setSearchParams]);
 
     useEffect(() => {
         if (activeTab === 'catalog') {
@@ -375,13 +436,13 @@ export function InventoryPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-end border-b pb-4">
+            <div className="flex flex-wrap gap-4 justify-between items-end border-b pb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
                     <p className="text-sm text-gray-500">Manage products and inventory components</p>
                 </div>
 
-                <div className="flex gap-4">
+                <div className="flex flex-wrap gap-4">
                     <button
                         onClick={() => setShowCreateModal(true)}
                         className="flex items-center gap-2 pb-2 -mb-4 px-2 font-medium text-blue-600 hover:text-blue-800 transition-colors"
@@ -401,16 +462,22 @@ export function InventoryPage() {
                     >
                         <Box size={18} /> Components
                     </button>
+                    {canWriteOff && <button onClick={() => setActiveTab('write-offs')}
+                        className={`flex items-center gap-2 pb-2 -mb-4 px-2 font-medium transition-colors border-b-2 ${activeTab === 'write-offs' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-slate-400'}`}>
+                        <Package size={18} /> Stock Write-offs
+                    </button>}
 
                 </div>
             </div>
 
             {
-                activeTab === 'components' ? (
+                activeTab === 'write-offs' ? (
+                    <StockWriteOffsTab />
+                ) : activeTab === 'components' ? (
                     <InternalProductsList />
                 ) : (
                     <>
-                        <div className="flex justify-between items-center mb-4">
+                        <div className="flex flex-wrap gap-3 justify-between items-center mb-4">
                             <div className="flex items-center gap-2 text-sm text-gray-500">
                                 {sortField && (
                                     <>
@@ -434,6 +501,77 @@ export function InventoryPage() {
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                             </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-end gap-3 mb-4" aria-label="Product filters">
+                            <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
+                                Status
+                                <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500">
+                                    <option value="">All statuses</option>
+                                    <option value="publish">Published</option>
+                                    <option value="private">Private</option>
+                                    <option value="draft">Draft</option>
+                                    <option value="pending">Pending review</option>
+                                    <option value="future">Scheduled</option>
+                                </select>
+                            </label>
+                            <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
+                                Stock status
+                                <select value={stockStatusFilter} onChange={e => { setStockStatusFilter(e.target.value); setPage(1); }}
+                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500">
+                                    <option value="">All stock statuses</option>
+                                    <option value="instock">In stock</option>
+                                    <option value="outofstock">Out of stock</option>
+                                    <option value="onbackorder">On backorder</option>
+                                </select>
+                            </label>
+                            {([
+                                { label: 'Category', value: categoryFilter, setValue: setCategoryFilter, items: categories, all: 'All categories' }
+                            ]).map(filter => (
+                                <label key={filter.label} className="flex min-w-40 max-w-full flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
+                                    {filter.label}
+                                    <select value={filter.value} disabled={termsLoading || termsError}
+                                        onChange={e => { filter.setValue(e.target.value); setPage(1); }}
+                                        className="max-w-full sm:max-w-72 rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 disabled:opacity-60 focus:ring-2 focus:ring-blue-500">
+                                        <option value="">{termsLoading ? 'Loading…' : filter.all}</option>
+                                        {filter.value && !filter.items.some(item => String(item.id) === filter.value) && (
+                                            <option value={filter.value}>{filter.label} #{filter.value}</option>
+                                        )}
+                                        {filter.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                                    </select>
+                                </label>
+                            ))}
+                            <details className="relative text-sm text-gray-700 dark:text-slate-300">
+                                <summary className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
+                                    Tags ({tagFilter.length} selected){termsLoading ? ' — Loading…' : ''}
+                                </summary>
+                                <fieldset disabled={termsLoading || termsError || !token || !currentAccount?.id}
+                                    className="absolute z-20 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-gray-300 bg-white p-3 shadow-lg dark:border-slate-600 dark:bg-slate-800 disabled:opacity-60">
+                                    <legend className="sr-only">Filter by tags</legend>
+                                    {tags.map(tag => (
+                                        <label key={tag.id} className="flex items-center gap-2 py-1">
+                                            <input type="checkbox" checked={tagFilter.includes(String(tag.id))}
+                                                onChange={() => toggleTagFilter(String(tag.id))} />
+                                            {tag.name}
+                                        </label>
+                                    ))}
+                                    {!termsLoading && !termsError && tags.length === 0 && <p>No tags available</p>}
+                                </fieldset>
+                            </details>
+                            {tagFilter.map(id => {
+                                const name = tags.find(tag => String(tag.id) === id)?.name || `Tag #${id}`;
+                                return <button key={id} type="button" aria-label={`Remove tag ${name}`}
+                                    onClick={() => toggleTagFilter(id)}
+                                    className="rounded-full bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-slate-700 dark:text-blue-300">
+                                    {name} ×
+                                </button>;
+                            })}
+                            {hasFilters && <button onClick={clearFilters} className="px-2 py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline">Clear filters</button>}
+                            <p className="w-full text-xs text-gray-500 dark:text-slate-400">Products must match any selected tag and all other selected filters.</p>
+                            {termsError && <p role="alert" className="text-sm text-red-600 dark:text-red-400 py-2">
+                                Could not load categories and tags. <button onClick={() => setTermsRetry(value => value + 1)} className="underline">Retry</button>
+                            </p>}
                         </div>
 
                         <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
@@ -495,7 +633,7 @@ export function InventoryPage() {
                                             <EmptyState
                                                 icon={<Package size={48} />}
                                                 title="No products found"
-                                                description="Products will appear here after syncing your WooCommerce store."
+                                                description={hasFilters || debouncedQuery ? 'No products match your search and filters. Try changing or clearing them.' : 'Products will appear here after syncing your WooCommerce store.'}
                                                 action={{ label: 'Create Product', onClick: handleCreateProduct, icon: <Plus size={16} /> }}
                                             />
                                         </td></tr>
@@ -525,7 +663,7 @@ export function InventoryPage() {
                                                                     const totalStock = product.searchableVariants.reduce((sum, v) => sum + (v.stockQuantity || 0), 0);
                                                                     const breakdown = product.searchableVariants.map(v => v.stockQuantity || 0).join(', ');
                                                                     const variantTooltip = product.searchableVariants
-                                                                        .map(v => `${v.sku || `#${v.wooId}`}: ${v.stockQuantity ?? 0} (${v.stockStatus === 'instock' ? 'In Stock' : 'Out'})`)
+                                                                        .map(v => `${v.sku || `#${v.wooId}`}: ${v.stockQuantity ?? 0} (${v.stockStatus === 'instock' ? 'In Stock' : v.stockStatus === 'onbackorder' ? 'On Backorder' : 'Out'})`)
                                                                         .join('\n');
                                                                     return (
                                                                         <div className="flex flex-col" title={variantTooltip}>
@@ -558,8 +696,8 @@ export function InventoryPage() {
                                                                         </span>
                                                                     )}
                                                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize w-fit
-                                                                ${product.stock_status === 'instock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                                        {product.stock_status === 'instock' ? 'In Stock' : 'Out of Stock'}
+                                                                ${product.stock_status === 'instock' ? 'bg-green-100 text-green-800' : product.stock_status === 'onbackorder' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
+                                                                        {product.stock_status === 'instock' ? 'In Stock' : product.stock_status === 'onbackorder' ? 'On Backorder' : 'Out of Stock'}
                                                                     </span>
                                                                 </div>
                                                             )}

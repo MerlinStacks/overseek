@@ -137,7 +137,7 @@ export function preparationBlockReason(data: DeliveryReadiness | null): string |
         || !plugin.blockers.every(code => typeof code === 'string') || typeof plugin.wooVersion !== 'string'
         || !/^[a-f0-9]{64}$/.test(plugin.environmentFingerprint ?? '') || !['classic', 'blocks'].includes(plugin.presentation ?? '')
         || !plugin.state || !Number.isInteger(plugin.state.revision) || typeof plugin.state.active !== 'boolean'
-        || typeof plugin.state.mode !== 'string' || !['legacy', 'guarded'].includes(plugin.state.mode.toLowerCase())
+        || typeof plugin.state.mode !== 'string' || !['legacy', 'baseline', 'guarded'].includes(plugin.state.mode.toLowerCase())
         || !(plugin.state.epoch === null || typeof plugin.state.epoch === 'string')) {
         return 'Preparation unavailable: update or reconnect the companion plugin and obtain a valid Woo/presentation diagnostic before freezing receiving.';
     }

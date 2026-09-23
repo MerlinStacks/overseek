@@ -538,9 +538,10 @@ export class BOMConsumptionService {
         // Find product
         const product = await prisma.wooProduct.findFirst({
             where: { accountId, wooId: item.product_id },
-            select: { id: true, wooId: true, name: true }
+            select: { id: true, wooId: true, name: true, status: true }
         });
         if (!product) return [];
+        if (product.status === 'trash') throw new Error('Cannot consume a trashed product BOM');
 
         const variationId = item.variation_id || 0;
         const bom = await prisma.bOM.findUnique({
@@ -560,6 +561,9 @@ export class BOMConsumptionService {
         if (!bom || bom.items.length === 0) return [];
 
         for (const bomItem of bom.items) {
+            if ((bomItem.childProduct?.rawData as any)?.status === 'trash') {
+                throw new Error('Cannot consume a trashed BOM component');
+            }
             // Supplier catalogue rows contribute cost only and have no stock to consume.
             if (bomItem.supplierItemId && !bomItem.childProductId && !bomItem.internalProductId) continue;
             // Why wasteFactor: accounts for material loss during manufacturing (e.g. 0.10 = 10% waste)

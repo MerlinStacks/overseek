@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ configs: [] as any[], post: vi.fn() }));
+const mocks = vi.hoisted(() => ({ configs: [] as any[], post: vi.fn(), get: vi.fn() }));
 vi.mock('@woocommerce/woocommerce-rest-api', () => ({ default: class {
     constructor(config: any) { mocks.configs.push(config); }
     post = mocks.post;
+    get = mocks.get;
 } }));
 vi.mock('../utils/redis', () => ({ redisClient: {} }));
 vi.mock('../utils/prisma', () => ({ prisma: {} }));
@@ -14,6 +15,18 @@ const makeWoo = (accountId?: string) => new WooService({ url: 'https://store.exa
 beforeEach(() => { vi.clearAllMocks(); mocks.configs.length = 0; mocks.post.mockResolvedValue({ data: { ack: true } }); });
 afterEach(() => WooService.destroyAgents());
 describe('guarded receipt Woo transport', () => {
+    it.each([[10, 'products/10'], [11, 'products/10/variations/11']] as const)('fetches uncached physical owner %s through one bounded request', async (owner, path) => {
+        mocks.get.mockResolvedValue({ data: { id: owner, stock_quantity: 2 } });
+        await expect(makeWoo('a').getGuardedStockOwner(10, owner)).resolves.toEqual({ id: owner, stock_quantity: 2 });
+        expect(mocks.get).toHaveBeenCalledExactlyOnceWith(path);
+        expect(mocks.configs.at(-1)).toMatchObject({ version: 'wc/v3', axiosConfig: { timeout: 10000, maxRedirects: 0, maxContentLength: 1024 * 1024 } });
+    });
+    it('requires account identity and leaves failed stock observations to the durable worker', async () => {
+        await expect(makeWoo().getGuardedStockOwner(10, 10)).rejects.toThrow('Account context required');
+        mocks.get.mockRejectedValueOnce(new Error('observation unavailable'));
+        await expect(makeWoo('a').getGuardedStockOwner(10, 10)).rejects.toThrow('observation unavailable');
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
     it.each(['prepare', 'apply'] as const)('sends exact %s envelope with linked account auth and 16 KiB limit', async phase => {
         const woo = makeWoo('tenant-a'); await expect(woo.postGuardedReceipt(phase, operation)).resolves.toEqual({ ack: true });
         expect(mocks.post).toHaveBeenCalledExactlyOnceWith(`delivery-estimates/receipts/${phase}`, { schemaVersion: 1, operation });

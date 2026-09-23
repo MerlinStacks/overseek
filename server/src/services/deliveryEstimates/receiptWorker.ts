@@ -93,7 +93,10 @@ export async function dispatchGuardedReceipt(accountId: string) {
         })) return;
         operationAttempts++;
         let ack;
-        if (job.state === 'pending') {
+        // A prepared write-off may have applied remotely before an ACK was lost.
+        // Ask the journal first on every retry, before checking current stock.
+        const writeOff = job.sourceType === 'stock_write_off';
+        if (job.state === 'pending' || writeOff) {
             ack = parseReceiptAck(await woo.postGuardedReceipt('prepare', operation), operation);
             if (!ack) throw new Park('Invalid prepare acknowledgement.');
             if (ack.state === 'uncertain') throw new Park('Plugin reports uncertain stock application.', false, true);
@@ -102,6 +105,14 @@ export async function dispatchGuardedReceipt(accountId: string) {
             })) return;
         }
         if (ack?.state !== 'applied') {
+            if (writeOff) {
+                const observed = await woo.getGuardedStockOwner(operation.productWooId, operation.stockOwnerWooId) as { id?: unknown; manage_stock?: unknown; stock_quantity?: unknown; status?: unknown } | null;
+                if (!observed || observed.id !== operation.stockOwnerWooId || observed.manage_stock !== true || observed.status === 'trash' ||
+                    typeof observed.stock_quantity !== 'number' || !Number.isSafeInteger(observed.stock_quantity)) {
+                    throw new Park('Write-off stock owner or live quantity is unverified. Verify inventory and reconcile this operation.');
+                }
+                if (observed.stock_quantity + operation.delta < 0) throw new Park('Insufficient live Woo stock for this write-off. No apply was sent; correct inventory and reconcile this operation.');
+            }
             if (!canSend() || !await fenced(async () => {})) return;
             ack = parseReceiptAck(await woo.postGuardedReceipt('apply', operation), operation);
             if (!ack || ack.state === 'prepared') throw new Park('Invalid apply acknowledgement.');

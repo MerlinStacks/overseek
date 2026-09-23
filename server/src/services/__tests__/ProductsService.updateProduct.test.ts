@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProductsService } from '../products';
 import { prisma } from '../../utils/prisma';
+import { WooService } from '../woo';
 import { projectInbound } from '../deliveryEstimates/inbound';
+
+vi.mock('zod', async () => {
+    const actual = await vi.importActual<any>('zod');
+    return { ...actual, z: actual.z ?? actual.default };
+});
 
 // Mock prisma
 vi.mock('../../utils/prisma', () => ({
@@ -11,7 +17,7 @@ vi.mock('../../utils/prisma', () => ({
         deliverySyncAccount: { upsert: vi.fn() },
         deliveryInboundDirtyTarget: { upsert: vi.fn() },
         deliveryInputSync: { findMany: vi.fn() },
-        supplier: { findFirst: vi.fn() },
+        supplier: { findFirst: vi.fn(), findMany: vi.fn() },
         wooProduct: {
             findUnique: vi.fn(),
             findUniqueOrThrow: vi.fn(),
@@ -63,7 +69,9 @@ describe('ProductsService.updateProduct Performance', () => {
         vi.mocked(prisma.wooProduct.findUniqueOrThrow).mockResolvedValue({ supplierId: 'old', manageStock: false, rawData: { manage_stock: false } } as any);
         vi.mocked(prisma.wooProduct.findMany).mockResolvedValue([{ wooId: 10 }] as any);
         vi.mocked(prisma.deliveryInputSync.findMany).mockResolvedValue([]);
-        vi.mocked(prisma.productVariation.findMany).mockResolvedValue([]);
+        vi.mocked(prisma.productVariation.findMany).mockImplementation((async ({ where }: any) =>
+            (where.wooId?.in || []).map((wooId: number) => ({ wooId }))) as any);
+        vi.mocked(prisma.supplier.findMany).mockResolvedValue([{ id: 's' }] as any);
         vi.mocked(prisma.productVariation.upsert).mockResolvedValue({} as any);
         mockUpdateProductVariation.mockResolvedValue({});
         mockUpdateProduct.mockResolvedValue({});
@@ -162,8 +170,8 @@ describe('ProductsService.updateProduct Performance', () => {
     it.each([
         { before: 'parent', requested: true, state: 'pending', owner: 11 },
         { before: false, requested: true, state: 'pending', owner: 11 },
-        { before: true, requested: 'parent', state: 'unsupported', owner: null },
-        { before: true, requested: false, state: 'unsupported', owner: null },
+        { before: true, requested: 'parent', state: 'pending', owner: 10 },
+        { before: true, requested: false, state: 'pending', owner: 10 },
     ])('persists variation ownership $before -> $requested and rebuilds the correct target state', async ({ before, requested, state, owner }) => {
         let variation: any = { wooId: 11, productId: 'p', manageStock: before === true, rawData: { manage_stock: before, custom: 'preserved' }, stockQuantity: 17 };
         const parent = { id: 'p', wooId: 10, accountId: 'a', manageStock: true, rawData: { type: 'variable', manage_stock: true }, supplierId: null, supplier: null, boms: [] };
@@ -181,13 +189,13 @@ describe('ProductsService.updateProduct Performance', () => {
         expect(projection.receiptSafety).toBe('unverified');
         expect(vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(prisma.productVariation.upsert).mock.invocationCallOrder[0]);
     });
-    it('preserves omitted variation ownership, including inheritance, without reads or dirty work', async () => {
+    it('preserves omitted variation ownership, including inheritance, without dirty work', async () => {
         vi.mocked(prisma.wooProduct.findUnique).mockResolvedValue({ id: 'p', rawData: {} } as any);
         vi.mocked(prisma.wooProduct.update).mockResolvedValue({ id: 'p' } as any);
         await ProductsService.updateProduct('a', 10, { variations: [{ id: 11, price: '20' }] });
         const write = vi.mocked(prisma.productVariation.upsert).mock.calls[0][0];
         expect(write.update).not.toHaveProperty('manageStock'); expect(write.update).not.toHaveProperty('rawData');
-        expect(prisma.productVariation.findMany).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(prisma.productVariation.findMany).toHaveBeenCalledTimes(1); expect(prisma.$transaction).not.toHaveBeenCalled();
         expect(prisma.deliveryInboundDirtyTarget.upsert).not.toHaveBeenCalled();
         expect(mockUpdateProductVariation.mock.calls[0][2].manage_stock).toBeUndefined();
     });
@@ -197,7 +205,7 @@ describe('ProductsService.updateProduct Performance', () => {
         const rows = Array.from({ length: 10 }, (_, n) => ({ wooId: n + 11, manageStock: n >= 5, rawData: { manage_stock: n >= 5 } }));
         vi.mocked(prisma.productVariation.findMany).mockImplementation((async ({ where }: any) => rows.filter(row => where.wooId.in.includes(row.wooId))) as any);
         await ProductsService.updateProduct('a', 10, { variations: rows.map(row => ({ id: row.wooId, manageStock: true })) });
-        expect(prisma.productVariation.findMany).toHaveBeenCalledTimes(2);
+        expect(prisma.productVariation.findMany).toHaveBeenCalledTimes(3);
         expect(prisma.deliveryInboundDirtyTarget.upsert).toHaveBeenCalledTimes(1);
         expect(prisma.wooProduct.findMany).toHaveBeenCalledTimes(1);
         expect(mockUpdateProductVariation).toHaveBeenCalledTimes(10);
@@ -213,6 +221,67 @@ describe('ProductsService.updateProduct Performance', () => {
         });
         await expect(ProductsService.updateProduct('a', 10, { variations: [{ id: 11, manageStock: true }] })).rejects.toThrow('dirty failed');
         expect(committed).toEqual({ wooId: 11, manageStock: false, rawData: { manage_stock: 'parent' } });
+        expect(mockUpdateProductVariation).not.toHaveBeenCalled();
+    });
+
+    it.each(['s', null, '', undefined])('saves supplier override %s with omission preserving the stored value', async supplierId => {
+        vi.mocked(prisma.wooProduct.findUnique).mockResolvedValue({ id: 'p', rawData: {} } as any);
+        vi.mocked(prisma.wooProduct.update).mockResolvedValue({ id: 'p' } as any);
+        let stored: any = { wooId: 11, supplierId: 'previous', cogs: 7, binLocation: 'A' };
+        vi.mocked(prisma.productVariation.upsert).mockImplementation((async ({ update }: any) => {
+            stored = { ...stored, ...Object.fromEntries(Object.entries(update).filter(([, value]) => value !== undefined)) };
+            return stored;
+        }) as any);
+        await ProductsService.updateProduct('a', 10, { variations: [{ id: 11, supplierId, price: '20' }] });
+        expect(stored).toMatchObject({ supplierId: supplierId === undefined ? 'previous' : supplierId || null, cogs: 7, binLocation: 'A' });
+        expect(mockUpdateProductVariation.mock.calls[0][2]).not.toHaveProperty('supplierId');
+        if (supplierId) expect(prisma.supplier.findMany).toHaveBeenCalledWith({ where: { accountId: 'a', id: { in: ['s'] } }, select: { id: true } });
+    });
+
+    it.each([
+        { variation: { id: 11, supplierId: 'foreign' }, rows: [{ wooId: 11 }], error: 'supplier not found' },
+        { variation: { id: 99, supplierId: 's' }, rows: [{ wooId: 11 }], error: 'does not belong' },
+        { variation: { id: 0, supplierId: 's' }, rows: [], error: 'Invalid variation ID' },
+        { variation: { id: 11, supplierId: 42 }, rows: [{ wooId: 11 }], error: 'Invalid variation supplier ID' },
+    ])('rejects invalid variation before any side effects: $error', async ({ variation, rows, error }) => {
+        vi.mocked(prisma.wooProduct.findUnique).mockResolvedValue({ id: 'p', rawData: {} } as any);
+        vi.mocked(prisma.productVariation.findMany).mockResolvedValue(rows as any);
+        // Include a valid edit first to ensure validation covers the whole request.
+        await expect(ProductsService.updateProduct('a', 10, { name: 'Changed', variations: [{ id: 11 }, variation] })).rejects.toThrow(error);
+        expect(prisma.wooProduct.update).not.toHaveBeenCalled();
+        expect(prisma.productVariation.upsert).not.toHaveBeenCalled();
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(WooService.forAccount).not.toHaveBeenCalled();
+    });
+
+    it('returns the local override or null for inheritance, ignoring remote supplier metadata', async () => {
+        vi.mocked(prisma.wooProduct.findUnique).mockResolvedValue({ id: 'p', supplierId: 'parent', rawData: {} } as any);
+        vi.mocked(prisma.productVariation.findMany).mockResolvedValue([
+            { wooId: 11, supplierId: 's', rawData: { supplierId: 'remote' } },
+            { wooId: 12, supplierId: null, rawData: { supplierId: 'remote' } },
+        ] as any);
+        const result = await ProductsService.getProductByWooId('a', 10);
+        expect(result?.variations).toEqual([
+            expect.objectContaining({ id: 11, supplierId: 's' }),
+            expect.objectContaining({ id: 12, supplierId: null }),
+        ]);
+    });
+
+    it('saves a supplier-only override without Woo credentials or remote updates', async () => {
+        vi.mocked(prisma.wooProduct.findUnique).mockResolvedValue({ id: 'p', rawData: {} } as any);
+        vi.mocked(prisma.wooProduct.update).mockResolvedValue({ id: 'p' } as any);
+        await ProductsService.updateProduct('a', 10, { variations: [{ id: 11, supplierId: 's' }] });
+        expect(prisma.productVariation.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: expect.objectContaining({ supplierId: 's' }) }));
+        expect(WooService.forAccount).not.toHaveBeenCalled();
+        expect(mockUpdateProductVariation).not.toHaveBeenCalled();
+    });
+
+    it('propagates a failed local supplier save instead of swallowing it as a sync failure', async () => {
+        vi.mocked(prisma.wooProduct.findUnique).mockResolvedValue({ id: 'p', rawData: {} } as any);
+        vi.mocked(prisma.wooProduct.update).mockResolvedValue({ id: 'p' } as any);
+        vi.mocked(prisma.productVariation.upsert).mockRejectedValueOnce(new Error('Supplier write failed'));
+        await expect(ProductsService.updateProduct('a', 10, { variations: [{ id: 11, supplierId: 's', price: '20' }] })).rejects.toThrow('Supplier write failed');
+        expect(WooService.forAccount).not.toHaveBeenCalled();
         expect(mockUpdateProductVariation).not.toHaveBeenCalled();
     });
 });

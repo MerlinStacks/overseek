@@ -27,21 +27,25 @@ export { resolveTarget as resolveGuardedStockTarget };
 
 async function resolveTarget(tx: Prisma.TransactionClient, accountId: string, productId: string | null, variationWooId: number | null): Promise<Omit<Target, 'delta'>> {
     if (!productId) return fail('unlinked or supplier-only lines are unsupported');
-    await tx.$queryRaw`SELECT "id" FROM "WooProduct" WHERE "id" = ${productId} AND "accountId" = ${accountId} FOR UPDATE`;
+    const lockedProducts = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "WooProduct" WHERE "id" = ${productId} AND "accountId" = ${accountId} FOR UPDATE`;
+    if (!lockedProducts.length) return fail('product identity unavailable');
     const product = await tx.wooProduct.findFirst({ where: { id: productId, accountId }, include: {
         boms: { select: { id: true } },
     } });
     if (!product || !positiveId(product.wooId)) return fail('product identity unavailable');
     const raw = product.rawData as Record<string, unknown>;
+    if (product.status === 'trash' || raw?.status === 'trash') return fail('trashed products cannot receive stock movements');
     if (raw?.id !== product.wooId) return fail('unverified product identity');
     if (variationWooId === null) {
         if (!['simple', 'variable'].includes(String(raw.type)) || raw.manage_stock !== true || !product.manageStock) return fail('only directly stock-managed simple/variable owners are supported');
         return { productId, variationId: null, productWooId: product.wooId, variationWooId: null, stockOwnerWooId: product.wooId };
     }
     if (!positiveId(variationWooId) || variationWooId === product.wooId || raw.type !== 'variable') return fail('invalid variation parent');
-    await tx.$queryRaw`SELECT "id" FROM "ProductVariation" WHERE "productId" = ${productId} AND "wooId" = ${variationWooId} FOR UPDATE`;
+    const lockedVariations = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "ProductVariation" WHERE "productId" = ${productId} AND "wooId" = ${variationWooId} FOR UPDATE`;
+    if (!lockedVariations.length) return fail('variation identity unavailable');
     const variation = await tx.productVariation.findUnique({ where: { productId_wooId: { productId, wooId: variationWooId } } });
     const vr = variation?.rawData as Record<string, unknown> | null;
+    if (vr?.status === 'trash') return fail('trashed variations cannot receive stock movements');
     const inherited = !!vr && (vr.manage_stock === 'parent' || vr.manage_stock === false) && raw.manage_stock === true && product.manageStock;
     if (!variation || (!inherited && (!variation.manageStock || vr?.manage_stock !== true)) || vr?.id !== variationWooId ||
         (vr.parent_id !== undefined ? vr.parent_id !== product.wooId : !Array.isArray(raw.variations) || !raw.variations.includes(variationWooId))) {

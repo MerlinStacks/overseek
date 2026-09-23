@@ -35,6 +35,8 @@ describe.skipIf(!hasFreshnessTestDatabase)('freshness migration transactional so
         await db.exec(await readFile('prisma/migrations/20260922123000_delivery_freshness_targets/migration.sql', 'utf8'));
         expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows.length).toBe(14); // Version attestation still absent.
         await db.exec(await readFile('prisma/migrations/20260922133000_delivery_freshness_prerequisite/migration.sql', 'utf8'));
+        await db.exec(await readFile('prisma/migrations/20260923100000_variant_suppliers/migration.sql', 'utf8'));
+        await db.exec(await readFile('prisma/migrations/20260923110000_variant_supplier_freshness/migration.sql', 'utf8'));
         expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([]);
     }, 30_000);
     afterAll(async () => { await db?.close(); });
@@ -113,6 +115,51 @@ describe.skipIf(!hasFreshnessTestDatabase)('freshness migration transactional so
         await db.exec(`BEGIN; DELETE FROM "Account" WHERE id='a'; DELETE FROM "WooProduct" WHERE "accountId"='a';`);
         expect(await targets()).toEqual([]);
         await db.exec('ROLLBACK');
+    });
+    it('invalidates override assignment, replacement and clearing, but not identical assignments', async () => {
+        await db.exec(`INSERT INTO "Supplier" VALUES ('override', 'a', 'Override', 7, 9, NULL);
+            INSERT INTO "ProductVariation" (id,"productId","wooId") VALUES ('v','other',21);
+            TRUNCATE "DeliveryInboundDirtyTarget";`);
+        for (const supplier of ["'s'", "'override'", 'NULL']) {
+            await db.exec(`UPDATE "ProductVariation" SET "supplierId"=${supplier} WHERE id='v'`);
+            expect(await targets()).toEqual([{ accountId: 'a', wooId: 20 }]);
+            await db.exec(`TRUNCATE "DeliveryInboundDirtyTarget"; UPDATE "ProductVariation" SET "supplierId"=${supplier} WHERE id='v'`);
+            expect(await targets()).toEqual([]);
+        }
+        await db.exec(`BEGIN; UPDATE "ProductVariation" SET "supplierId"='s' WHERE id='v'; ROLLBACK;`);
+        expect(await targets()).toEqual([]);
+    });
+    it('fans supplier changes out to direct and variant parents, retaining eligibility and tenant scope', async () => {
+        await db.exec(`INSERT INTO "ProductVariation" (id,"productId","wooId","supplierId") VALUES
+            ('v1','other',21,'s'), ('v2','other',22,'s'), ('v3','untouched',31,'s'), ('v4','foreign',11,'s');
+            TRUNCATE "DeliveryInboundDirtyTarget";
+            UPDATE "Supplier" SET name='Renamed' WHERE id='s';`);
+        expect(await targets()).toEqual([]);
+        for (const field of ['leadTimeMin', 'leadTimeMax', 'leadTimeDefault']) {
+            await db.exec(`UPDATE "Supplier" SET "${field}"=8 WHERE id='s'`);
+            expect(await targets()).toEqual([{ accountId: 'a', wooId: 10 }, { accountId: 'a', wooId: 20 }]);
+            expect((await db.query('SELECT version FROM "DeliveryInboundDirtyTarget"')).rows).toEqual([{ version: 1 }, { version: 1 }]);
+            await db.exec('TRUNCATE "DeliveryInboundDirtyTarget"');
+        }
+        // Remove the deliberately foreign reference before exercising FK SET NULL.
+        await db.exec(`DELETE FROM "ProductVariation" WHERE id='v4'; TRUNCATE "DeliveryInboundDirtyTarget";`);
+        await db.exec(`BEGIN; DELETE FROM "Supplier" WHERE id='s';`);
+        expect(await targets()).toEqual([{ accountId: 'a', wooId: 10 }, { accountId: 'a', wooId: 20 }]);
+        expect((await db.query('SELECT "supplierId" FROM "ProductVariation"')).rows.every((v: any) => v.supplierId === null)).toBe(true);
+        await db.exec('ROLLBACK');
+        expect(await targets()).toEqual([]);
+        await db.exec(`DELETE FROM "Supplier" WHERE id='s'`);
+        expect(await targets()).toEqual([{ accountId: 'a', wooId: 10 }, { accountId: 'a', wooId: 20 }]);
+    });
+    it('includes variant-configured and previously enrolled parents with supplier-only overrides', async () => {
+        await db.exec(`INSERT INTO "Supplier" VALUES ('override','a','Override',3,5,NULL);
+            INSERT INTO "WooProduct" (id,"accountId","wooId") VALUES ('enrolled','a',40);
+            INSERT INTO "ProductVariation" (id,"productId","wooId","supplierId","productionMinDays") VALUES
+                ('configured','untouched',31,'override',0), ('enrolled-v','enrolled',41,'override',NULL);
+            INSERT INTO "DeliveryInputSync" (id,"accountId",scope,"entityId",payload) VALUES ('prior','a','inbound',40,'{}');
+            TRUNCATE "DeliveryInboundDirtyTarget";
+            UPDATE "Supplier" SET "leadTimeMax"=6 WHERE id='override';`);
+        expect(await targets()).toEqual([{ accountId: 'a', wooId: 30 }, { accountId: 'a', wooId: 40 }]);
     });
     it('parks disabled/unsupported deadlines durably, then restores original dates without changing payloads', async () => {
         const payload = { generatedAt: '2026-09-21T12:00:00Z', expiresAt: '2026-09-22T12:00:00Z', targets: [{ wooId: 10 }] };

@@ -3,6 +3,7 @@ import { FileText, Building2, Code, Eye, Sparkles, Loader2, AlertCircle } from '
 import { RichTextEditor } from '../common/RichTextEditor';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
+import { ProductionRangeFields, type ProductionRangeFieldsProps } from './ProductionRangeFields';
 
 
 interface GeneralInfoPanelProps {
@@ -10,6 +11,7 @@ interface GeneralInfoPanelProps {
     product: ProductData;
     suppliers?: SupplierOption[];
     onChange: (updates: Partial<ProductFormData>) => void;
+    production?: Omit<ProductionRangeFieldsProps, 'label'>;
 }
 
 interface ProductCategory {
@@ -39,7 +41,7 @@ interface ProductFormData {
  * General product info panel with name, SKU, supplier, and description.
  * Includes AI rewrite functionality for the description field.
  */
-export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }: GeneralInfoPanelProps) {
+export function GeneralInfoPanel({ formData, product, suppliers = [], onChange, production }: GeneralInfoPanelProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [viewMode, setViewMode] = useState<'visual' | 'code'>('visual');
@@ -148,6 +150,8 @@ export function GeneralInfoPanel({ formData, product, suppliers = [], onChange }
                             </div>
                         </div>
                     </div>
+
+                    {production && <ProductionRangeFields {...production} label="Product production range" />}
 
                     <div>
                         <div className="flex items-center justify-between mb-2">

@@ -7,6 +7,15 @@ they do not describe current activation, checkout wiring or provider support.
 
 ## Authoritative implementation progress
 
+- Product-editor UX update: product production ranges are in **General Details**;
+  variation overrides are in each expanded row of **Variations**. Both use the
+  page's **Save Changes** action (including keyboard/mobile saves). The separate
+  Delivery Production tab/button were removed. Production validation precedes
+  writes, drafts survive failed saves and scope changes, and production fields
+  remain on the local delivery-input API rather than ordinary Woo product payloads.
+  Verified with 502 client tests, 62 relevant API/service tests and a client build;
+  no new backend migration or companion-plugin change is required for this UI update.
+
 - Complete: account/product/variation configuration, calendars, production inheritance,
   explicit rate mapping, permission-aware settings/product UI, feature controls,
   durable coalesced settings/product/inbound sync and freshness renewal/invalidation.

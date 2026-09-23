@@ -65,7 +65,6 @@ const navItems = [
             { icon: ShoppingCart, label: 'Orders', path: '/orders' },
             { icon: TrendingDown, label: 'Abandoned Carts', path: '/abandoned-carts' },
             { icon: Package, label: 'Inventory', path: '/inventory' },
-            { icon: Truck, label: 'Delivery Estimates', path: '/delivery-estimates' },
             { icon: BookOpen, label: 'Wholesale Catalog', path: '/wholesale-catalog' },
             { icon: Calculator, label: 'Stock & Suppliers', path: '/inventory/supply-chain' },
             { icon: TrendingDown, label: 'Forecasts', path: '/inventory/forecasts' },
@@ -144,7 +143,6 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
     const isAiManagerEnabled = useAccountFeature('AI_MANAGER');
     const isFeedsEnabled = useAccountFeature('FEED_EXPORTS');
     const isShippingEnabled = useAccountFeature('SHIPPING_HUB');
-    const isDeliveryEnabled = useAccountFeature('DELIVERY_ESTIMATES');
     const isWholesaleCatalogEnabled = useAccountFeature('WHOLESALE_CATALOG');
     const { prefetch } = usePrefetch(); // Route prefetching for faster navigation
     const location = useLocation();
@@ -254,7 +252,6 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                     if (child.path === '/orders' || child.path === '/abandoned-carts') return hasPermission('view_orders');
                     if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                     if (child.path === '/wholesale-catalog') return isWholesaleCatalogEnabled && hasPermission('view_wholesale_catalog');
-                    if (child.path === '/delivery-estimates') return isDeliveryEnabled && hasPermission('view_shipping');
                     if (child.path === '/reports') return hasPermission('view_finance');
                     if (child.path === '/reviews') return hasPermission('view_marketing');
                     return true;
@@ -286,7 +283,6 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
                         if (child.path === '/orders' || child.path === '/abandoned-carts') return hasPermission('view_orders');
                         if (child.path === '/inventory' || child.path === '/inventory/supply-chain' || child.path === '/inventory/forecasts' || child.path === '/inventory/bom-sync') return hasPermission('view_products');
                         if (child.path === '/wholesale-catalog') return isWholesaleCatalogEnabled && hasPermission('view_wholesale_catalog');
-                        if (child.path === '/delivery-estimates') return isDeliveryEnabled && hasPermission('view_shipping');
                         if (child.path === '/reports') return hasPermission('view_finance');
                         if (child.path === '/reviews') return hasPermission('view_marketing');
                         if (child.path === '/emails' || child.path === '/flows' || child.path === '/broadcasts' || child.path === '/emails/audiences' || child.path === '/emails/settings' || child.path === '/emails/logs' || child.path === '/sms/logs') {
@@ -304,7 +300,7 @@ export const Sidebar = memo(function Sidebar({ isOpen = true, onClose, isMobile 
             }
             return item;
         });
-    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled, isFeedsEnabled, isShippingEnabled, isWholesaleCatalogEnabled, isDeliveryEnabled]);
+    }, [hasPermission, isAiManagerEnabled, isBotShieldEnabled, isEmailEnabled, isFeedsEnabled, isShippingEnabled, isWholesaleCatalogEnabled]);
 
     // State for expanded group
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);

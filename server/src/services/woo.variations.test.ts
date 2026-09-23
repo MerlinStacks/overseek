@@ -41,6 +41,24 @@ describe('WooService variation pagination', () => {
         WooService.destroyAgents();
     });
 
+    it('bypasses a stale single-product cache and refreshes it after a force fetch', async () => {
+        const stale = { id: 42, type: 'variable' };
+        const fresh = { id: 42, type: 'simple' };
+        redis.get.mockResolvedValue(JSON.stringify(stale));
+        const woo = new WooService({
+            url: 'https://store.example.com', consumerKey: 'ck_test', consumerSecret: 'cs_test', accountId: 'account-1'
+        });
+        const request = vi.fn().mockResolvedValue({ data: fresh });
+        (woo as any).requestWithRetry = request;
+        await expect(woo.getProduct(42)).resolves.toEqual(stale);
+        expect(request).not.toHaveBeenCalled();
+        redis.get.mockClear();
+        await expect(woo.getProduct(42, { bypassCache: true })).resolves.toEqual(fresh);
+        expect(redis.get).not.toHaveBeenCalled();
+        expect(request).toHaveBeenCalledExactlyOnceWith('get', 'products/42');
+        expect(redis.setex).toHaveBeenCalledWith(expect.any(String), 30, JSON.stringify(fresh));
+    });
+
     it('fetches and caches every variation page', async () => {
         const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: index + 1 }));
         const secondPage = Array.from({ length: 50 }, (_, index) => ({ id: index + 101 }));
@@ -69,6 +87,14 @@ describe('WooService variation pagination', () => {
         const cached = JSON.parse(redis.setex.mock.calls[0][2]);
         expect(cached.version).toBe(2);
         expect(cached.data).toHaveLength(150);
+    });
+    it('bypasses a valid but stale variation cache for strict stock calculations', async () => {
+        redis.get.mockResolvedValue(JSON.stringify({ version: 2, data: [{ id: 11, stock_quantity: 100 }] }));
+        const woo = new WooService({ url: 'https://store.example.com', consumerKey: 'ck_test', consumerSecret: 'cs_test', accountId: 'a' });
+        const request = vi.fn().mockResolvedValue({ data: [{ id: 11, stock_quantity: 2 }], total: 1, totalPages: 1 });
+        (woo as any).requestWithRetry = request;
+        expect(await woo.getProductVariations(10, { bypassCache: true })).toEqual([{ id: 11, stock_quantity: 2 }]);
+        expect(redis.get).not.toHaveBeenCalled(); expect(request).toHaveBeenCalledTimes(1);
     });
 
     it('rejects a legacy first-page-only cache entry', async () => {

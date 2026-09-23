@@ -4,6 +4,8 @@ import { requireAuthFastify } from '../../middleware/auth';
 import { bomVariationQuerySchema, bomSaveBodySchema } from './schemas';
 import { Logger } from '../../utils/logger';
 import { BOMInventorySyncService } from '../../services/BOMInventorySyncService';
+import { WooService } from '../../services/woo';
+import { nativeWooCogs } from '../../services/wooCogs';
 
 function sendBomError(reply: any, statusCode: number, error: string, code: string, details?: unknown) {
     if (details !== undefined) {
@@ -138,8 +140,11 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
         const { items, variationId } = parsedBody.data;
 
         try {
-            const parent = await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true } });
+            const parent = await prisma.wooProduct.findFirst({ where: { id: productId, accountId }, select: { id: true, wooId: true } });
             if (!parent) return sendBomError(reply, 404, 'Product not found', 'PRODUCT_NOT_FOUND');
+            if (variationId !== 0 && !await prisma.productVariation.findUnique({ where: { productId_wooId: { productId, wooId: variationId } } })) {
+                return sendBomError(reply, 404, 'Variation not found', 'VARIATION_NOT_FOUND');
+            }
 
             const childProductIds = [...new Set(items.map(i => i.childProductId).filter(Boolean) as string[])];
             const internalProductIds = [...new Set(items.map(i => i.internalProductId).filter(Boolean) as string[])];
@@ -217,6 +222,18 @@ const bomProductRoutes: FastifyPluginAsync = async (fastify) => {
                 await prisma.wooProduct.update({ where: { id: productId }, data: { cogs: hasBOMItems ? totalCogs : null } });
             } else {
                 await prisma.productVariation.updateMany({ where: { productId, wooId: Number(variationId) }, data: { cogs: hasBOMItems ? totalCogs : null } });
+            }
+            // Empty BOM means unknown cost, not an instruction to erase Woo's cost.
+            // Match product edits: persist locally first, then best-effort outbound sync.
+            if (hasBOMItems) {
+                try {
+                    const payload = nativeWooCogs(totalCogs, variationId !== 0);
+                    const woo = await WooService.forAccount(accountId);
+                    if (variationId === 0) await woo.updateProduct(parent.wooId, payload);
+                    else await woo.updateProductVariation(parent.wooId, variationId, payload);
+                } catch (error) {
+                    Logger.error('Failed to sync BOM COGS to WooCommerce', { error, accountId, productId, variationId });
+                }
             }
             return updated;
         } catch (error: any) {

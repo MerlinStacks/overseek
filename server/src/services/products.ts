@@ -8,19 +8,22 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { WooService, WooProductData } from './woo';
 import { ProductSearchService } from './productSearch';
+import type { ProductSearchFilters } from './productSearch';
 import { redisClient } from '../utils/redis';
 import { dirtyInboundProducts, lockDeliveryAccount } from './deliveryEstimates/intents';
 import { Prisma } from '@prisma/client';
+import { nativeWooCogs } from './wooCogs';
 
 const hasValue = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
 const toNumberOrUndefined = (value: unknown): number | undefined => (hasValue(value) ? Number(value) : undefined);
 const toNumberOrNull = (value: unknown): number | null | undefined => {
     if (value === undefined) return undefined;
-    if (value === null || value === '') return null;
+    if (value === null || (typeof value === 'string' && value.trim() === '')) return null;
     return Number(value);
 };
 
 type VariationStockManagement = boolean | 'parent';
+export class ProductValidationError extends Error {}
 function variationStockManagement(value: unknown): VariationStockManagement | undefined {
     if (value === undefined) return undefined;
     if (typeof value === 'boolean' || value === 'parent') return value;
@@ -31,6 +34,7 @@ function variationStockManagement(value: unknown): VariationStockManagement | un
 function saveVariation(db: Pick<typeof prisma, 'productVariation'>, productId: string, v: any,
     ownership: { manageStock: boolean; rawData: Prisma.InputJsonObject } | Record<string, never> = {}) {
     const fields = {
+        supplierId: v.supplierId === '' ? null : v.supplierId,
         cogs: toNumberOrNull(v.cogs), miscCosts: v.miscCosts || undefined, binLocation: v.binLocation,
         isGoldPriceApplied: v.isGoldPriceApplied, goldPriceType: v.goldPriceType,
         sku: v.sku, price: toNumberOrUndefined(v.price), salePrice: toNumberOrUndefined(v.salePrice), stockStatus: v.stockStatus,
@@ -92,6 +96,7 @@ export class ProductsService {
                 weight,
                 dimensions: { length, width, height },
                 cogs: lv.cogs != null ? lv.cogs.toString() : '',
+                supplierId: lv.supplierId ?? null,
                 miscCosts: lv.miscCosts || [],
                 binLocation: lv.binLocation || '',
                 isGoldPriceApplied: lv.isGoldPriceApplied || false,
@@ -131,8 +136,25 @@ export class ProductsService {
      */
     static async updateProduct(accountId: string, wooId: number, data: any) {
         const { variations, ...productData } = data;
+        // Validate all costs before any local writes or best-effort transport.
+        try {
+            nativeWooCogs(productData.cogs);
+            if (Array.isArray(variations)) for (const v of variations) nativeWooCogs(v?.cogs, true);
+        } catch (error) {
+            throw new ProductValidationError((error as Error).message);
+        }
+        const taxonomyFields = ['categories', 'tags'] as const;
+        const editsTaxonomy = taxonomyFields.some(field => productData[field] !== undefined);
+        for (const field of taxonomyFields) {
+            const terms = productData[field];
+            if (terms === undefined) continue;
+            if (!Array.isArray(terms) || terms.some(term => !term || !Number.isSafeInteger(term.id) || term.id <= 0)) {
+                throw new ProductValidationError(`Invalid ${field} assignment`);
+            }
+            productData[field] = [...new Set<number>(terms.map(term => term.id))].map(id => ({ id }));
+        }
         // Validate before local writes/network; do not coerce 'parent' to true.
-        if (Array.isArray(variations)) for (const variation of variations) variationStockManagement(variation.manageStock);
+        if (Array.isArray(variations)) for (const variation of variations) variationStockManagement(variation?.manageStock);
 
         const existing = await prisma.wooProduct.findUnique({
             where: { accountId_wooId: { accountId, wooId } }
@@ -140,6 +162,35 @@ export class ProductsService {
 
         if (!existing) {
             throw new Error(`Product with wooId ${wooId} not found`);
+        }
+
+        // Validate the entire request before parent writes or best-effort Woo sync.
+        // Woo variation IDs must belong to this local parent and account.
+        if (Array.isArray(variations) && variations.length) {
+            for (const v of variations) {
+                if (!v || !Number.isSafeInteger(v.id) || v.id <= 0) {
+                    throw new ProductValidationError('Invalid variation ID');
+                }
+                if (v.supplierId !== undefined && v.supplierId !== null && typeof v.supplierId !== 'string') {
+                    throw new ProductValidationError('Invalid variation supplier ID');
+                }
+            }
+            const rows = await prisma.productVariation.findMany({
+                where: { productId: existing.id, product: { accountId }, wooId: { in: variations.map(v => v.id) } },
+                select: { wooId: true }
+            });
+            const ownedIds = new Set(rows.map(row => row.wooId));
+            if (variations.some(v => !ownedIds.has(v.id))) {
+                throw new ProductValidationError('Variation does not belong to this product');
+            }
+            const supplierIds = [...new Set<string>(variations.map(v => v.supplierId).filter(Boolean))];
+            if (supplierIds.length) {
+                const suppliers = await prisma.supplier.findMany({ where: { accountId, id: { in: supplierIds } }, select: { id: true } });
+                const allowedIds = new Set(suppliers.map(supplier => supplier.id));
+                if (supplierIds.some(id => !allowedIds.has(id))) {
+                    throw new ProductValidationError('Variation supplier not found in this account');
+                }
+            }
         }
 
         // Merge description into rawData
@@ -184,7 +235,7 @@ export class ProductsService {
                     seoData: updatedSeoData
                 }
             });
-        const updated = productData.supplierId === undefined && productData.manageStock === undefined
+        let updated = productData.supplierId === undefined && productData.manageStock === undefined
             ? await saveParent(prisma)
             : await prisma.$transaction(async tx => {
             await lockDeliveryAccount(tx, accountId);
@@ -200,7 +251,10 @@ export class ProductsService {
         });
 
         // Sync ALL relevant product fields to WooCommerce
-        const wooUpdateData: Record<string, any> = {};
+        const wooUpdateData: Record<string, any> = { ...nativeWooCogs(productData.cogs) };
+        for (const field of taxonomyFields) {
+            if (productData[field] !== undefined) wooUpdateData[field] = productData[field];
+        }
 
         // Map OverSeek fields to WooCommerce API fields
         if (productData.name !== undefined) wooUpdateData.name = productData.name;
@@ -246,16 +300,36 @@ export class ProductsService {
 
             try {
                 const wooService = await WooService.forAccount(accountId);
-                await wooService.updateProduct(wooId, wooUpdateData);
+                const wooProduct = await wooService.updateProduct(wooId, wooUpdateData);
+                if (editsTaxonomy) {
+                    // Woo may restore its default category when categories is cleared.
+                    // Never substitute requested IDs for the canonical response objects.
+                    const canonicalRawData = { ...updatedRawData };
+                    for (const field of taxonomyFields) {
+                        if (productData[field] === undefined) continue;
+                        if (!Array.isArray(wooProduct?.[field])) {
+                            throw new Error(`WooCommerce response missing ${field}`);
+                        }
+                        canonicalRawData[field] = wooProduct[field];
+                    }
+                    updated = await prisma.wooProduct.update({
+                        where: { accountId_wooId: { accountId, wooId } },
+                        data: { rawData: canonicalRawData },
+                    });
+                }
                 Logger.info('Synced product to WooCommerce', { wooId, fields: Object.keys(wooUpdateData) });
             } catch (err: any) {
                 Logger.error('Failed to sync product to WooCommerce', { error: err.message, wooId, fields: Object.keys(wooUpdateData) });
+                if (editsTaxonomy) throw err;
             }
         }
 
         // Handle Variations Upsert & Sync
         if (variations && Array.isArray(variations)) {
-            const wooService = await WooService.forAccount(accountId);
+            // Local-only edits must not require Woo credentials or send blank dimensions.
+            const needsWooSync = (v: any) => ['sku', 'price', 'salePrice', 'stockStatus', 'manageStock', 'backorders', 'weight', 'dimensions']
+                .some(field => v[field] !== undefined) || Object.keys(nativeWooCogs(v.cogs, true)).length > 0;
+            let wooServicePromise: ReturnType<typeof WooService.forAccount> | undefined;
 
             // Why: process in batches of 5 instead of Promise.all to cap
             // concurrent HTTP connections. Hundred-variation products with
@@ -293,25 +367,29 @@ export class ProductsService {
                         return;
                     }
 
-                    try {
-                        // Ownership-bearing upserts already committed with their dirty
-                        // intent. Ordinary edits preserve ownership without extra reads.
-                        if (v.manageStock === undefined) await saveVariation(prisma, updated.id, v);
+                    // Keep database failures outside the best-effort transport catch:
+                    // an unsaved supplier override must never be reported as success.
+                    // Ownership-bearing upserts already committed with their dirty intent.
+                    if (v.manageStock === undefined) await saveVariation(prisma, updated.id, v);
+                    if (!needsWooSync(v)) return;
 
+                    try {
+                        const wooService = await (wooServicePromise ??= WooService.forAccount(accountId));
                         // Sync to WooCommerce
                         await wooService.updateProductVariation(wooId, v.id, {
+                            ...nativeWooCogs(v.cogs, true),
                             sku: v.sku,
                             regular_price: v.price,
                             sale_price: v.salePrice,
                             stock_status: v.stockStatus,
                             manage_stock: v.manageStock,
                             backorders: v.backorders,
-                            weight: v.weight || '',
-                            dimensions: {
+                            ...(v.weight !== undefined ? { weight: v.weight } : {}),
+                            ...(v.dimensions !== undefined ? { dimensions: {
                                 length: v.dimensions?.length || '',
                                 width: v.dimensions?.width || '',
                                 height: v.dimensions?.height || ''
-                            }
+                            } } : {})
                         });
 
                         // Clear any previous 404 tracking on success
@@ -392,7 +470,7 @@ export class ProductsService {
     }
 
     /**
-     * Search products in Elasticsearch (delegates to ProductSearchService)
+     * Search products (delegates ES/filtered database routing to ProductSearchService)
      */
     static async searchProducts(
         accountId: string,
@@ -400,8 +478,9 @@ export class ProductsService {
         page: number = 1,
         limit: number = 20,
         sortField: 'name' | 'price' | null = null,
-        sortDirection: 'asc' | 'desc' = 'asc'
+        sortDirection: 'asc' | 'desc' = 'asc',
+        filters: ProductSearchFilters = {}
     ) {
-        return ProductSearchService.searchProducts(accountId, query, page, limit, sortField, sortDirection);
+        return ProductSearchService.searchProducts(accountId, query, page, limit, sortField, sortDirection, filters);
     }
 }

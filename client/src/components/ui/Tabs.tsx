@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Tab {
     id: string;
@@ -15,6 +16,8 @@ interface TabsProps {
     mountInactiveTabs?: boolean;
     activeTab?: string;
     onTabChange?: (tabId: string) => void;
+    /** Render navigation elsewhere while keeping panel state owned by this component. */
+    navigationContainer?: HTMLElement | null;
 }
 
 export function Tabs({
@@ -23,7 +26,8 @@ export function Tabs({
     className = '',
     mountInactiveTabs = true,
     activeTab: controlledActiveTab,
-    onTabChange
+    onTabChange,
+    navigationContainer
 }: TabsProps) {
     const initialTab = defaultTab || tabs[0]?.id || '';
     const [uncontrolledActiveTab, setUncontrolledActiveTab] = useState(initialTab);
@@ -61,9 +65,7 @@ export function Tabs({
         onTabChange?.(tabId);
     };
 
-    return (
-        <div className={`space-y-6 ${className}`}>
-            {/* Tab Header */}
+    const navigation = (
             <div className="flex w-full items-center gap-1 p-1.5 bg-slate-100/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200/50 dark:border-slate-700/50 rounded-2xl overflow-x-auto no-scrollbar shadow-inner">
                 {tabs.map((tab) => (
                     <button
@@ -82,6 +84,11 @@ export function Tabs({
                     </button>
                 ))}
             </div>
+    );
+
+    return (
+        <div className={`${navigationContainer ? '' : 'space-y-6'} ${className}`}>
+            {navigationContainer ? createPortal(navigation, navigationContainer) : navigation}
 
             {/* Tab Content */}
             <div className="min-h-[400px]">

@@ -59,6 +59,65 @@ describe('Delivery launch contract', () => {
         await waitFor(() => expect(checks[0]).not.toBeChecked());
     });
 
+    it('keeps confirmations clickable while the companion plugin needs updating, but never queues cutover', async () => {
+        readiness = readinessFixture({ plugin: null, pendingInputs: 987,
+            blockers: ['plugin_control_unavailable_or_upgrade_required', 'inputs_pending', 'cutover_required'] });
+        render(<DeliveryLaunchPanel {...props} />); await loaded();
+        const group = screen.getByRole('group', { name: 'Prepare cutover / stock-owner certification' });
+        const checks = screen.getAllByRole('checkbox');
+        checks.forEach(input => expect(input).toBeEnabled());
+        // The whole label is a click target, not just the small native checkbox.
+        fireEvent.click(screen.getByText('I have paused inventory receiving.'));
+        fireEvent.click(checks[1]); fireEvent.click(checks[2]);
+        checks.forEach(input => expect(input).toBeChecked());
+        expect(group).toHaveTextContent('Cutover cannot be queued yet.');
+        expect(group).toHaveTextContent('update or reconnect the companion plugin');
+        expect(group).toHaveTextContent('Sync saved settings and production times');
+        const button = screen.getByRole('button', { name: 'Queue / resume cutover' });
+        expect(button).toBeDisabled();
+        expect(button.getAttribute('aria-describedby')).toBe(group.getAttribute('aria-describedby'));
+        fireEvent.click(button);
+        expect(posts()).toHaveLength(0);
+        fireEvent.click(checks[1]);
+        expect(checks[1]).not.toBeChecked();
+    });
+
+    it('keeps confirmations editable during a readiness refresh without enabling the queue button', async () => {
+        let finish!: (response: ReturnType<typeof ok>) => void;
+        fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        render(<DeliveryLaunchPanel {...props} />);
+        const checks = screen.getAllByRole('checkbox');
+        checks.forEach(input => expect(input).toBeEnabled());
+        confirmCutover();
+        expect(screen.getByRole('button', { name: 'Queue / resume cutover' })).toBeDisabled();
+        expect(screen.getByText(/You can review the confirmations while this finishes/)).toBeInTheDocument();
+        expect(posts()).toHaveLength(0);
+        await act(async () => finish(ok(readiness)));
+        await loaded();
+        checks.forEach(input => expect(input).toBeChecked());
+        expect(screen.getByRole('button', { name: 'Queue / resume cutover' })).toBeEnabled();
+        expect(posts()).toHaveLength(0);
+    });
+
+    it('allows confirmations with unsaved settings and locks them only while submitting an action', async () => {
+        const { rerender } = render(<DeliveryLaunchPanel {...props} dirty />); await loaded();
+        const checks = screen.getAllByRole('checkbox');
+        checks.forEach(input => expect(input).toBeEnabled());
+        confirmCutover();
+        expect(screen.getByRole('button', { name: 'Queue / resume cutover' })).toBeDisabled();
+        expect(screen.getByText('Load and save your delivery settings before queueing cutover.')).toBeInTheDocument();
+        expect(posts()).toHaveLength(0);
+        rerender(<DeliveryLaunchPanel {...props} />);
+        let finish!: (response: ReturnType<typeof ok>) => void;
+        fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        fireEvent.click(screen.getByRole('button', { name: 'Queue / resume cutover' }));
+        checks.forEach(input => expect(input).toBeDisabled());
+        await act(async () => finish(ok({ accepted: true, revision: '1' })));
+        await screen.findByText(/Cutover queued/);
+        await waitFor(() => checks.forEach(input => expect(input).toBeEnabled()));
+        expect(posts()).toHaveLength(1);
+    });
+
     it('uses certification for guarded accounts and activates only a fresh server-ready state', async () => {
         readiness = ready();
         const { rerender } = render(<DeliveryLaunchPanel {...props} />); await loaded();
@@ -152,6 +211,22 @@ describe('Delivery launch contract', () => {
         readiness = { ...readiness, actions: { ...readiness.actions, resumeCutover: '/api/delivery-estimates/cutover' } };
         fireEvent.click(refresh()); await loaded(); confirmCutover();
         fireEvent.click(screen.getByRole('button', { name: 'Queue / resume cutover' })); await screen.findByText(/Cutover queued/);
+        expect(posts()[0][0]).toBe('/api/delivery-estimates/cutover');
+    });
+
+    it('recognizes the real plugin baseline mode but resumes only with server authorization', async () => {
+        readiness = readinessFixture({ cutoverState: 'baseline', receivingFrozen: true,
+            work: { action: 'cutover', attempts: 8, lastError: 'Transport unavailable', nextAttemptAt: null } });
+        readiness.plugin!.state = { ...readiness.plugin!.state, mode: 'baseline', epoch: 'cutover-epoch' };
+        render(<DeliveryLaunchPanel {...props} />); await loaded(); confirmCutover();
+        const button = screen.getByRole('button', { name: 'Queue / resume cutover' });
+        expect(button).toBeDisabled();
+        expect(screen.queryByText(/obtain a valid Woo\/presentation diagnostic/)).not.toBeInTheDocument();
+        readiness = { ...readiness, actions: { ...readiness.actions, resumeCutover: '/api/delivery-estimates/cutover' } };
+        fireEvent.click(refresh()); await loaded();
+        expect(button).toBeEnabled();
+        fireEvent.click(button);
+        await screen.findByText(/Cutover queued/);
         expect(posts()[0][0]).toBe('/api/delivery-estimates/cutover');
     });
 

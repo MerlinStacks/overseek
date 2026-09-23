@@ -130,6 +130,17 @@ describe('BOMConsumptionService durability', () => {
         });
     });
 
+    it.each(['parent', 'component'])('does not plan consumption for a trashed %s', async target => {
+        if (target === 'parent') mocks.productFindFirst.mockResolvedValue({ id: 'parent', wooId: 10, status: 'trash' });
+        else {
+            mocks.bomFindUnique.mockReset();
+            mocks.bomFindUnique.mockResolvedValue({ items: [{ childProduct: { rawData: { status: 'trash' } } }] });
+        }
+        await expect((BOMConsumptionService as any).planLineItemDeductions('a', { product_id: 10, quantity: 1 })).rejects.toThrow('trashed');
+        expect(mocks.transaction).not.toHaveBeenCalled();
+        expect(mocks.wooUpdateProduct).not.toHaveBeenCalled();
+    });
+
     it('resumes Woo synchronization without decrementing stock again', async () => {
         const localMutation = vi.fn();
         mocks.transaction.mockImplementation(callback => callback({ wooProduct: { update: localMutation } }));

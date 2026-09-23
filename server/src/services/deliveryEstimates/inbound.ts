@@ -13,7 +13,7 @@ type Source = {
     id: string; accountId: string; wooId: number; supplierId: string | null; supplier: LeadSource | null;
     // boms contains only stock-derived BOMs, not cost-only SupplierItem/labour BOMs.
     manageStock: boolean; rawData: unknown; boms: { id: string }[];
-    variations: { wooId: number; productId: string; manageStock: boolean; rawData: unknown }[];
+    variations: { wooId: number; productId: string; supplierId: string | null; supplier: LeadSource | null; manageStock: boolean; rawData: unknown }[];
 };
 type Line = { productId: string | null; variationWooId: number | null; quantity: number; purchaseOrder: { accountId: string; status: string; expectedDate: Date | null } };
 const identity = (n: number) => Number.isSafeInteger(n) && n > 0;
@@ -50,7 +50,11 @@ export function projectInbound(wooId: number, product: Source | null, lines: Lin
         const inherited = variationRaw?.manage_stock === 'parent' || (!variation.manageStock && variationRaw?.manage_stock !== true && parentManaged);
         const unknown = !variationRaw || ![true, false, 'parent'].includes(variationRaw.manage_stock as boolean | string);
         const blocked = unsupported || unknown || (inherited && !parentManaged);
-        targets.set(variation.wooId, { wooId: variation.wooId, stockOwnerWooId: blocked ? null : inherited ? wooId : variation.wooId, state: blocked ? 'unsupported' : 'pending', supplierLead: blocked ? null : lead.lead, batches: [] });
+        // Supplier inheritance is independent of stock ownership. An override with
+        // no lead time stays unset; it must not fall back to the parent's supplier.
+        const variationLead = variation.supplierId == null ? lead : supplierLead(variation.supplier, product.accountId);
+        if (variationLead.invalid || (variation.supplierId != null && !variation.supplier)) return fail();
+        targets.set(variation.wooId, { wooId: variation.wooId, stockOwnerWooId: blocked ? null : inherited ? wooId : variation.wooId, state: blocked ? 'unsupported' : 'pending', supplierLead: blocked ? null : variationLead.lead, batches: [] });
     }
     // One source pool per effective owner. Targets reference identical pools; consumers
     // allocate once per owner, never sum copies carried by sibling variations.
@@ -88,7 +92,10 @@ export async function buildInbound(tx: Prisma.TransactionClient, accountId: stri
         id: true, accountId: true, wooId: true, supplierId: true, manageStock: true, rawData: true,
         supplier: { select: { accountId: true, leadTimeMin: true, leadTimeMax: true, leadTimeDefault: true } },
         boms: { where: { items: { some: stockDerivedBomItemWhere } }, take: 1, select: { id: true } },
-        variations: { take: MAX_INBOUND_TARGETS, orderBy: { wooId: 'asc' }, select: { wooId: true, productId: true, manageStock: true, rawData: true } },
+        variations: { take: MAX_INBOUND_TARGETS, orderBy: { wooId: 'asc' }, select: {
+            wooId: true, productId: true, supplierId: true, manageStock: true, rawData: true,
+            supplier: { select: { accountId: true, leadTimeMin: true, leadTimeMax: true, leadTimeDefault: true } },
+        } },
     } });
     const lines = product ? await tx.purchaseOrderItem.findMany({
         where: { productId: product.id, purchaseOrder: { accountId, status: 'ORDERED' } }, take: MAX_INBOUND_LINES + 1,

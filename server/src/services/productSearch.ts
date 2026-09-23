@@ -9,6 +9,15 @@
 import { esClient } from '../utils/elastic';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
+import type { Prisma } from '@prisma/client';
+import { activeProductWhere } from './productStatus';
+
+export interface ProductSearchFilters {
+    status?: 'publish' | 'private' | 'draft' | 'pending' | 'future';
+    stockStatus?: 'instock' | 'outofstock' | 'onbackorder';
+    category?: number;
+    tag?: number | number[];
+}
 
 export interface SearchResult {
     products: any[];
@@ -88,7 +97,7 @@ async function supplementWithVariantMatches(
     // Find by variant SKU
     const skuMatches = await prisma.productVariation.findMany({
         where: {
-            product: { accountId },
+            product: { accountId, ...activeProductWhere },
             sku: { contains: query, mode: 'insensitive' },
             productId: { notIn: existingProductIds }
         },
@@ -102,7 +111,7 @@ async function supplementWithVariantMatches(
     if (searchWords.length > 0 && existingProductIds.length < limit) {
         const candidateVariants = await prisma.productVariation.findMany({
             where: {
-                product: { accountId },
+                product: { accountId, ...activeProductWhere },
                 productId: { notIn: existingProductIds }
             },
             select: { productId: true, rawData: true },
@@ -138,7 +147,7 @@ async function supplementWithVariantMatches(
 
     // Fetch full product details
     const additionalProducts = await prisma.wooProduct.findMany({
-        where: { id: { in: allMatchedProductIds } },
+        where: { accountId, id: { in: allMatchedProductIds }, ...activeProductWhere },
         select: {
             id: true,
             wooId: true,
@@ -177,15 +186,15 @@ async function supplementWithVariantMatches(
 /**
  * Enriches products with BOM status from database
  */
-async function enrichWithBomStatus(products: any[]): Promise<any[]> {
+async function enrichWithBomStatus(accountId: string, products: any[]): Promise<any[]> {
     const productIds = products
         .map(h => h.id)
         .filter(id => typeof id === 'string' && id.length > 0);
 
-    if (productIds.length === 0) return products;
+    if (productIds.length === 0) return [];
 
     const productsInfo = await prisma.wooProduct.findMany({
-        where: { id: { in: productIds } },
+        where: { accountId, id: { in: productIds }, ...activeProductWhere },
         select: {
             id: true,
             cogs: true,
@@ -198,7 +207,7 @@ async function enrichWithBomStatus(products: any[]): Promise<any[]> {
 
     const productMap = new Map(productsInfo.map(p => [p.id, p]));
 
-    return products.map(p => {
+    return products.filter(p => productMap.has(p.id)).map(p => {
         const info = productMap.get(p.id);
         const hasBOM = info ? (info.boms.length > 0 && info.boms[0].items.length > 0) : false;
         return {
@@ -219,8 +228,14 @@ export class ProductSearchService {
         page: number = 1,
         limit: number = 20,
         sortField: 'name' | 'price' | null = null,
-        sortDirection: 'asc' | 'desc' = 'asc'
+        sortDirection: 'asc' | 'desc' = 'asc',
+        filters: ProductSearchFilters = {}
     ): Promise<SearchResult> {
+        // ES does not index category IDs or tags. Use synced DB fields for all filtered
+        // requests so filtering, counts and pagination agree; no reindex is needed.
+        if (filters.status !== undefined || filters.category !== undefined || filters.tag !== undefined || filters.stockStatus !== undefined) {
+            return this.searchProductsFromDB(accountId, query, page, limit, sortField, sortDirection, filters);
+        }
         const from = (page - 1) * limit;
         const normalizedQuery = query.trim();
         const wooIdQuery = /^\d+$/.test(normalizedQuery) && Number.isSafeInteger(Number(normalizedQuery))
@@ -282,7 +297,7 @@ export class ProductSearchService {
             }
 
             // Enrich with BOM status
-            let products = await enrichWithBomStatus(hits);
+            let products = await enrichWithBomStatus(accountId, hits);
 
             // Supplement with variant matches
             if (query) {
@@ -319,7 +334,7 @@ export class ProductSearchService {
     }
 
     /**
-     * Database fallback search when Elasticsearch is unavailable
+     * Database search for filters or when Elasticsearch is unavailable
      */
     static async searchProductsFromDB(
         accountId: string,
@@ -327,7 +342,8 @@ export class ProductSearchService {
         page: number,
         limit: number,
         sortField: 'name' | 'price' | null = null,
-        sortDirection: 'asc' | 'desc' = 'asc'
+        sortDirection: 'asc' | 'desc' = 'asc',
+        filters: ProductSearchFilters = {}
     ): Promise<SearchResult> {
         const skip = (page - 1) * limit;
         const normalizedQuery = query.trim();
@@ -341,7 +357,7 @@ export class ProductSearchService {
             try {
                 const matchingVariants = await prisma.productVariation.findMany({
                     where: {
-                        product: { accountId },
+                        product: { accountId, ...activeProductWhere },
                         OR: [
                             { sku: { contains: query, mode: 'insensitive' } },
                             ...(wooIdQuery !== null ? [{ wooId: wooIdQuery }] : [])
@@ -357,7 +373,26 @@ export class ProductSearchService {
         }
 
         // Build WHERE clause
-        const finalWhere: any = { accountId };
+        const finalWhere: Prisma.WooProductWhereInput = { accountId };
+        const filterConditions: Prisma.WooProductWhereInput[] = [activeProductWhere];
+        if (filters.status !== undefined) {
+            filterConditions.push({ rawData: { path: ['status'], equals: filters.status } });
+        }
+        if (filters.category !== undefined) {
+            filterConditions.push({ rawData: { path: ['categories'], array_contains: [{ id: filters.category }] } });
+        }
+        if (filters.tag !== undefined) {
+            const tagIds = Array.isArray(filters.tag) ? filters.tag : [filters.tag];
+            if (tagIds.length > 0) {
+                filterConditions.push({
+                    OR: [...new Set(tagIds)].map(id => ({ rawData: { path: ['tags'], array_contains: [{ id }] } }))
+                });
+            }
+        }
+        if (filters.stockStatus !== undefined) {
+            filterConditions.push({ stockStatus: filters.stockStatus });
+        }
+        if (filterConditions.length > 0) finalWhere.AND = filterConditions;
         if (query) {
             finalWhere.OR = [
                 ...(wooIdQuery !== null ? [{ wooId: wooIdQuery }] : []),

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const m = vi.hoisted(() => ({ product: vi.fn(), variations: vi.fn(), update: vi.fn(), localUpdate: vi.fn(), bom: vi.fn() }));
+const m = vi.hoisted(() => ({ product: vi.fn(), variations: vi.fn(), update: vi.fn(), localUpdate: vi.fn(), bom: vi.fn(), deactivate: vi.fn() }));
 vi.mock('../../utils/prisma', () => ({ prisma: {
     wooProduct: { findFirst: async () => ({ id: 'finished', wooId: 20, name: 'Finished', accountId: 'a', rawData: { type: 'simple' } }), findMany: async () => [{ id: 'component', stockQuantity: 999 }], update: m.localUpdate },
-    productVariation: { findMany: async () => [], updateMany: m.localUpdate }, bOM: { findUnique: m.bom },
+    productVariation: { findMany: async () => [], updateMany: m.localUpdate }, bOM: { findUnique: m.bom }, bOMItem: { updateMany: m.deactivate },
 } }));
 vi.mock('../woo', () => ({ WooService: { forAccount: async () => ({ getProduct: m.product, getProductVariations: m.variations, updateProduct: m.update }) } }));
 vi.mock('../StockValidationService', () => ({ StockValidationService: { logStockChange: vi.fn() } }));
@@ -24,6 +24,8 @@ describe('strict receipt cascade inventory sources', () => {
         expect(result.success).toBe(true); expect(result.newStock).toBe(8);
         expect(m.update).toHaveBeenCalledWith(20, expect.objectContaining({ stock_quantity: 8 }));
         expect(m.localUpdate).not.toHaveBeenCalled(); expect(beforeWrite).toHaveBeenCalled();
+        expect(m.product).toHaveBeenCalledWith(10, { bypassCache: true });
+        expect(m.product).toHaveBeenCalledWith(20, { bypassCache: true });
     });
     it('never substitutes queued local stock after a live component fetch failure', async () => {
         m.product.mockImplementation(async id => { if (id === 10) throw new Error('component GET failed'); return { stock_quantity: 0 }; });
@@ -36,10 +38,17 @@ describe('strict receipt cascade inventory sources', () => {
         const result = await BOMInventorySyncService.syncProductToWoo('a', 'finished', 0, { requireLiveStock: true });
         expect(result.newStock).toBe(4); // Eight parent units / two sibling requirements.
         expect(m.update).toHaveBeenCalledWith(20, expect.objectContaining({ stock_quantity: 4 }));
+        expect(m.variations).toHaveBeenCalledWith(10, { bypassCache: true });
     });
     it('does not acknowledge a derived write that returned different stock', async () => {
         m.update.mockResolvedValue({ stock_quantity: 0, manage_stock: true });
         const result = await BOMInventorySyncService.syncProductToWoo('a', 'finished', 0, { requireLiveStock: true });
         expect(result.success).toBe(false); expect(result.error).toContain('not acknowledged');
+    });
+    it('retains BOM edges on a strict write 404 so durable retry cannot silently lose work', async () => {
+        m.update.mockRejectedValueOnce({ response: { status: 404 }, message: 'Woo route missing' });
+        const failed = await BOMInventorySyncService.syncProductToWoo('a', 'finished', 0, { requireLiveStock: true });
+        expect(failed.success).toBe(false); expect(m.deactivate).not.toHaveBeenCalled();
+        expect((await BOMInventorySyncService.syncProductToWoo('a', 'finished', 0, { requireLiveStock: true })).success).toBe(true);
     });
 });

@@ -16,6 +16,7 @@ import { calculateTotalBomCost } from '../../utils/bomUtils';
 import { ProductVariant } from './variantTypes';
 import { VariantTableRow } from './VariantTableRow';
 import { VariantExpandedDetails } from './VariantExpandedDetails';
+import type { VariationProductionEditor } from './ProductionRangeFields';
 
 interface VariationsPanelProps {
     product: {
@@ -25,14 +26,17 @@ interface VariationsPanelProps {
         wooId: number;
     };
     variants: ProductVariant[];
+    suppliers?: Array<{ id: string; name: string }>;
+    parentSupplierId?: string | null;
     onUpdate?: (updatedVariants: ProductVariant[]) => void;
+    production?: VariationProductionEditor;
 }
 
 export interface VariationsPanelRef {
     saveAllBOMs: () => Promise<boolean>;
 }
 
-export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelProps>(function VariationsPanel({ product, variants, onUpdate }, ref) {
+export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelProps>(function VariationsPanel({ product, variants, suppliers = [], parentSupplierId, onUpdate, production }, ref) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -263,6 +267,17 @@ export const VariationsPanel = forwardRef<VariationsPanelRef, VariationsPanelPro
                                     {expandedId === v.id && (
                                         <VariantExpandedDetails
                                             variant={v}
+                                            suppliers={suppliers}
+                                            parentSupplierId={parentSupplierId}
+                                            production={production ? {
+                                                value: production.values[v.id],
+                                                inherited: production.parent,
+                                                onChange: range => production.onChange(v.id, range),
+                                                disabled: production.disabled,
+                                                loading: production.loading,
+                                                error: production.error,
+                                                onRetry: production.onRetry
+                                            } : undefined}
                                             productId={product.id}
                                             productWooId={product.wooId}
                                             bomPanelRef={(panelRef) => {

@@ -6,6 +6,8 @@
 import { FastifyPluginAsync } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
+import { persistWooProduct } from '../services/persistWooProduct';
+import { permanentlyDeleteWooProduct, trashWooProduct } from '../services/productDeletion';
 import { importOrderSnapshot } from '../services/deliveryEstimates/importOrderSnapshot';
 import { Logger } from '../utils/logger';
 import { parseWooDate } from '../utils/wooDates';
@@ -285,36 +287,14 @@ export async function processWebhookPayload(
 
     // Handle Product Events
     if (topic === 'product.deleted') {
-        try {
-            const wooId = body.id as number;
-            const local = await prisma.wooProduct.findUnique({ where: { accountId_wooId: { accountId, wooId } }, select: { id: true } });
-            if (local) await reconcileWholesaleProductsBestEffort(accountId, [local.id], { deleted: true });
-            await prisma.wooProduct.deleteMany({ where: { accountId, wooId } });
-            await IndexingService.deleteProduct(accountId, wooId);
-            Logger.info('Processed product.deleted webhook', { productId: wooId, accountId });
-        } catch (err: any) {
-            Logger.warn('[Webhook] Failed to delete product on product.deleted', {
-                accountId,
-                productId: body.id,
-                error: err.message
-            });
-        }
+        await permanentlyDeleteWooProduct(accountId, body.id as number);
     }
 
     if (topic === 'product.created' || topic === 'product.updated') {
         const isTrashed = (body as { status?: string }).status === 'trash';
 
         if (isTrashed) {
-            try {
-                const wooId = body.id as number;
-                const local = await prisma.wooProduct.findUnique({ where: { accountId_wooId: { accountId, wooId } }, select: { id: true } });
-                if (local) await reconcileWholesaleProductsBestEffort(accountId, [local.id], { deleted: true });
-                await prisma.wooProduct.deleteMany({ where: { accountId, wooId } });
-                await IndexingService.deleteProduct(accountId, wooId);
-                Logger.info('Processed trashed product webhook as delete', { productId: wooId, accountId });
-            } catch (err: any) {
-                Logger.warn('[Webhook] Failed to delete trashed product', { accountId, productId: body.id, error: err.message });
-            }
+            await trashWooProduct(accountId, body.id as number);
             return;
         }
 
@@ -322,7 +302,7 @@ export async function processWebhookPayload(
         // data drift — ES shows data that the DB doesn't know about until next sync.
         let persistedProduct: any = null;
         try {
-            persistedProduct = await prisma.wooProduct.upsert({
+            persistedProduct = await persistWooProduct(body.type, {
                 where: { accountId_wooId: { accountId, wooId: body.id as number } },
                 update: {
                     name: (body.name as string) || 'Unknown',
@@ -332,6 +312,7 @@ export async function processWebhookPayload(
                     dateCreated: parseWooDate(body.date_created_gmt || body.date_created),
                     stockStatus: (body.stock_status as string) || null,
                     stockQuantity: (body.stock_quantity as number) ?? null,
+                    manageStock: typeof body.manage_stock === 'boolean' ? body.manage_stock : undefined,
                     price: body.price === '' ? null : body.price as any,
                     images: Array.isArray(body.images) ? body.images as any : [],
                     permalink: (body.permalink as string) || null,
@@ -348,6 +329,7 @@ export async function processWebhookPayload(
                     dateCreated: parseWooDate(body.date_created_gmt || body.date_created),
                     stockStatus: (body.stock_status as string) || null,
                     stockQuantity: (body.stock_quantity as number) ?? null,
+                    manageStock: body.manage_stock === true,
                     price: body.price === '' ? null : body.price as any,
                     images: Array.isArray(body.images) ? body.images as any : [],
                     permalink: (body.permalink as string) || null,
@@ -357,6 +339,7 @@ export async function processWebhookPayload(
             });
         } catch (err: any) {
             Logger.warn('[Webhook] Failed to upsert product to DB', { accountId, productId: body.id, error: err.message });
+            throw err; // Let delivery retry; never index a snapshot that failed to commit.
         }
         if (persistedProduct) await reconcileWholesaleProductsBestEffort(accountId, [persistedProduct.id]);
 

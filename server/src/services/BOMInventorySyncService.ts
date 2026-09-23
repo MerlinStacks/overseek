@@ -158,6 +158,7 @@ export class BOMInventorySyncService {
             Logger.warn(`[BOMInventorySync] Product ${productId} not found`, { accountId });
             return null;
         }
+        if ((product.rawData as any)?.status === 'trash') return null;
 
         // Find the BOM for this product/variation (with retry for transient DNS errors)
         const bom = await withDbRetry(
@@ -176,7 +177,7 @@ export class BOMInventorySyncService {
                         },
                         include: {
                             childProduct: {
-                                select: { id: true, wooId: true, name: true, accountId: true }
+                                select: { id: true, wooId: true, name: true, accountId: true, status: true }
                             },
                             childVariation: {
                                 select: { wooId: true, sku: true, stockQuantity: true, productId: true }
@@ -211,7 +212,7 @@ export class BOMInventorySyncService {
         const receiptProductCache = new Map<number, Promise<any>>();
         const getLiveProduct = (wooId: number): Promise<any> => {
             if (!requireLiveStock) return wooService.getProduct(wooId);
-            if (!receiptProductCache.has(wooId)) receiptProductCache.set(wooId, wooService.getProduct(wooId));
+            if (!receiptProductCache.has(wooId)) receiptProductCache.set(wooId, wooService.getProduct(wooId, { bypassCache: true }));
             return receiptProductCache.get(wooId)!;
         };
 
@@ -223,7 +224,7 @@ export class BOMInventorySyncService {
         const getCachedVariations = async (parentWooId: number): Promise<any[] | null> => {
             if (variationCache.has(parentWooId)) return variationCache.get(parentWooId)!;
             try {
-                const variations = await wooService.getProductVariations(parentWooId);
+                const variations = requireLiveStock ? await wooService.getProductVariations(parentWooId, { bypassCache: true }) : await wooService.getProductVariations(parentWooId);
                 variationCache.set(parentWooId, variations);
                 return variations;
             } catch (error) {
@@ -377,7 +378,9 @@ export class BOMInventorySyncService {
                     childName = bomItem.childProduct.name;
 
                     // Check if this is a variant component
-                    if (bomItem.childVariationId && bomItem.childVariation) {
+                    if (bomItem.childProduct.status === 'trash') {
+                        childStock = 0;
+                    } else if (bomItem.childVariationId && bomItem.childVariation) {
                         if (requireLiveStock && bomItem.childVariation.productId !== bomItem.childProduct.id) throw new Error('BOM component variation parent mismatch');
                         childWooId = bomItem.childVariation.wooId;
                         childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + childWooId})`;
@@ -630,6 +633,7 @@ export class BOMInventorySyncService {
         bom: LocalBOM,
         variation: LocalStock | null = null
     ): EffectiveStockResult | null {
+        if ((product.rawData as any)?.status === 'trash') return null;
         const target = bom.variationId > 0 ? variation : product;
         const rawData = target?.rawData as any;
         const currentWooStock = target?.stockQuantity ?? rawData?.stock_quantity ?? null;
@@ -663,7 +667,9 @@ export class BOMInventorySyncService {
                 childName = bomItem.childProduct.name;
 
                 // Check if this is a variant component
-                if (bomItem.childVariationId && bomItem.childVariation) {
+                if ((bomItem.childProduct.rawData as any)?.status === 'trash') {
+                    childStock = 0;
+                } else if (bomItem.childVariationId && bomItem.childVariation) {
                     childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + bomItem.childVariation.wooId})`;
                     childStock = bomItem.childVariation.stockQuantity ?? 0;
                 } else {
@@ -889,7 +895,9 @@ export class BOMInventorySyncService {
             const status = getWooErrorStatus(err);
             const is404 = status === 404 || err.message?.includes('404');
 
-            if (is404) {
+            // Durable cascades must retain the graph on transport failure. If a
+            // 404 deactivates the edges, the next retry silently sees no work.
+            if (is404 && !options?.requireLiveStock) {
                 Logger.warn(`[BOMInventorySync] Product ${productId} (wooId ${calculation.wooId}) no longer exists in WooCommerce — deactivating BOM items`, {
                     accountId,
                     productId,

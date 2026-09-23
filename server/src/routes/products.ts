@@ -3,9 +3,11 @@
  */
 
 import { FastifyPluginAsync } from 'fastify';
-import { ProductsService } from '../services/products';
+import { ProductsService, ProductValidationError } from '../services/products';
 import { requireAuthFastify } from '../middleware/auth';
 import { WooService } from '../services/woo';
+import { persistWooProduct } from '../services/persistWooProduct';
+import { isWooProductNotFound, permanentlyDeleteWooProduct, trashWooProduct } from '../services/productDeletion';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { parseWooDate } from '../utils/wooDates';
@@ -26,7 +28,15 @@ const searchQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(100).default(20),
     q: z.string().optional().default(''),
     sortField: z.enum(['name', 'price']).nullable().optional().default(null),
-    sortDirection: z.enum(['asc', 'desc']).optional().default('asc')
+    sortDirection: z.enum(['asc', 'desc']).optional().default('asc'),
+    status: z.enum(['publish', 'private', 'draft', 'pending', 'future']).optional(),
+    stockStatus: z.enum(['instock', 'outofstock', 'onbackorder']).optional(),
+    category: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+    tag: z.preprocess(
+        value => value === undefined ? undefined : Array.isArray(value) ? value : [value],
+        z.array(z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER))
+            .min(1).transform(ids => [...new Set(ids)].sort((a, b) => a - b)).optional()
+    )
 });
 
 const productIdParamSchema = z.object({
@@ -75,7 +85,13 @@ function withVideoMeta(rawData: unknown, videoUrl: string | null | undefined, th
     return raw;
 }
 
+const taxonomyAssignmentSchema = z.array(z.object({
+    id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+})).transform(terms => [...new Set(terms.map(term => term.id))].map(id => ({ id })));
+
 const updateProductBodySchema = z.object({
+    categories: taxonomyAssignmentSchema.optional(),
+    tags: taxonomyAssignmentSchema.optional(),
     binLocation: z.string().optional(),
     name: z.string().optional(),
     stockStatus: z.string().optional(),
@@ -92,11 +108,16 @@ const updateProductBodySchema = z.object({
     height: z.union([z.string(), z.number()]).optional(),
     description: z.string().optional(),
     short_description: z.string().optional(),
-    cogs: z.union([z.string(), z.number()]).transform(val => val === '' ? undefined : Number(val)).optional(),
+    cogs: z.union([z.string(), z.number()])
+        .transform(val => typeof val === 'string' && val.trim() === '' ? undefined : Number(val))
+        .pipe(z.number().finite().nonnegative().optional()).optional(),
     supplierId: z.string().optional(),
     images: z.array(z.any()).optional(),
     focusKeyword: z.string().optional(),
-    variations: z.array(z.any()).optional()
+    variations: z.array(z.object({
+        id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        supplierId: z.string().nullable().optional(),
+    }).passthrough()).optional()
 });
 
 const rewriteDescriptionBodySchema = z.object({
@@ -137,19 +158,22 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/', async (request, reply) => {
         try {
             const accountId = request.accountId!;
-            const { page, limit, q, sortField, sortDirection } = searchQuerySchema.parse(request.query);
+            const { page, limit, q, sortField, sortDirection, status, category, tag, stockStatus } = searchQuerySchema.parse(request.query);
 
             // Cache product search results for 60 seconds
             // Key includes query params to avoid returning wrong results
-            const cacheKey = `products:list:${accountId}:${page}:${limit}:${q || 'all'}:${sortField || 'default'}:${sortDirection}`;
+            const cacheKey = `products:list:${accountId}:${page}:${limit}:${q || 'all'}:${sortField || 'default'}:${sortDirection}:${status || 'all'}:${category ?? 'all'}:${tag?.join(',') ?? 'all'}:${stockStatus ?? 'all'}`;
             const result = await cacheAside(
                 cacheKey,
-                () => ProductsService.searchProducts(accountId, q, page, limit, sortField, sortDirection),
+                () => ProductsService.searchProducts(accountId, q, page, limit, sortField, sortDirection, { status, category, tag, stockStatus }),
                 { ttl: CacheTTL.SHORT * 2, namespace: 'products' } // 60s cache
             );
 
             return result;
         } catch (error: any) {
+            if (error instanceof z.ZodError) {
+                return reply.code(400).send({ error: 'Invalid product search parameters', details: error.issues });
+            }
             Logger.error('Error', { error });
             return reply.code(500).send({ error: 'Failed to fetch products' });
         }
@@ -369,15 +393,26 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             const { id: wooId } = productIdParamSchema.parse(request.params);
 
             const woo = await WooService.forAccount(accountId);
-            const p = await woo.getProduct(wooId);
+            let p;
+            try {
+                p = await woo.getProduct(wooId, { bypassCache: true });
+            } catch (error) {
+                if (!isWooProductNotFound(error)) throw error;
+                await permanentlyDeleteWooProduct(accountId, wooId);
+                return reply.code(404).send({ error: 'Product permanently deleted or not found in WooCommerce; local product reconciled' });
+            }
 
             if (!p) return reply.code(404).send({ error: 'Product not found in WooCommerce' });
+            if (p.status === 'trash') {
+                await trashWooProduct(accountId, wooId);
+                return reply.code(404).send({ error: 'Product is in WooCommerce trash; local data preserved' });
+            }
 
             // For variable products (including ATUM's custom types), fetch full variation data
             // Check for variations existence, not just type name, to support plugins like ATUM Product Levels
             let variationsData: any[] = [];
             const hasVariations = p.variations?.length > 0 || p.type?.includes('variable');
-            if (hasVariations && p.variations?.length > 0) {
+            if (p.type !== 'simple' && hasVariations && p.variations?.length > 0) {
                 variationsData = await woo.getProductVariations(wooId);
                 Logger.info(`Fetched ${variationsData.length} variations for product ${wooId} (type: ${p.type})`);
             }
@@ -387,7 +422,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             // array is still fetched above for upserting ProductVariation rows below.
             const rawDataClean = { ...p };
 
-            await prisma.wooProduct.upsert({
+            const upsertedProduct = await persistWooProduct(p.type, {
                 where: { accountId_wooId: { accountId, wooId: p.id } },
                 update: {
                     name: p.name,
@@ -429,10 +464,6 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     images: p.images || [],
                     rawData: rawDataClean as any
                 }
-            });
-
-            const upsertedProduct = await prisma.wooProduct.findUnique({
-                where: { accountId_wooId: { accountId, wooId: p.id } }
             });
 
             // Upsert variations so manageStock / stockQuantity are persisted
@@ -522,16 +553,18 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const { id: wooId } = productIdParamSchema.parse(request.params);
-            const { binLocation, name, stockStatus, manageStock, backorders, isGoldPriceApplied, goldPriceType, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images, focusKeyword, variations } = updateProductBodySchema.parse(request.body);
+            const { binLocation, name, stockStatus, manageStock, backorders, isGoldPriceApplied, goldPriceType, sku, price, salePrice, weight, length, width, height, description, short_description, cogs, supplierId, images, focusKeyword, variations, categories, tags } = updateProductBodySchema.parse(request.body);
 
             let product = await ProductsService.updateProduct(accountId, wooId, {
                 binLocation, name, stockStatus, manageStock, backorders, isGoldPriceApplied, goldPriceType,
                 sku, price, salePrice, weight, length, width, height, description, short_description,
-                cogs, supplierId, images, variations
+                cogs, supplierId, images, variations, categories, tags
             });
 
             // Log the update to audit trail for Edit History
             const changedFields: Record<string, any> = {};
+            if (categories !== undefined) changedFields.categories = categories;
+            if (tags !== undefined) changedFields.tags = tags;
             if (binLocation !== undefined) changedFields.binLocation = binLocation;
             if (name !== undefined) changedFields.name = name;
             if (stockStatus !== undefined) changedFields.stockStatus = stockStatus;
@@ -605,6 +638,12 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
 
             return product;
         } catch (error: any) {
+            if (error instanceof ProductValidationError) {
+                return reply.code(400).send({ error: error.message });
+            }
+            if (error instanceof z.ZodError) {
+                return reply.code(400).send({ error: 'Invalid product data', details: error.issues });
+            }
             Logger.error('Error', { error });
             return reply.code(500).send({ error: 'Failed to update product' });
         }
@@ -672,6 +711,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             // Block updates only for products with BOMs that have child product components
+            if (product.status === 'trash') return reply.code(409).send({ error: 'Cannot update stock for a trashed product' });
             const hasBOMWithChildProducts = product.boms.some(bom => bom.items.length > 0);
             if (hasBOMWithChildProducts) {
                 return reply.code(400).send({
@@ -744,12 +784,14 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 // Find the product and variation
                 const product = await prisma.wooProduct.findUnique({
                     where: { accountId_wooId: { accountId, wooId } },
-                    select: { id: true }
+                    select: { id: true, status: true }
                 });
 
                 if (!product) {
                     return reply.code(404).send({ error: 'Product not found' });
                 }
+
+                if (product.status === 'trash') return reply.code(409).send({ error: 'Cannot update stock for a trashed product' });
 
                 const variation = await prisma.productVariation.findUnique({
                     where: { productId_wooId: { productId: product.id, wooId: variantWooId } }

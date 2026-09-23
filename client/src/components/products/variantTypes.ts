@@ -4,12 +4,15 @@
  * Type definitions for product variations.
  */
 
+/** Variant editor fields; production drafts are held separately by Woo ID. */
 export interface ProductVariant {
     id: number;
     sku: string;
     price: string;
     salePrice?: string;
     cogs?: string;
+    /** Null inherits the parent product supplier. */
+    supplierId?: string | null;
     binLocation?: string;
     stockStatus?: string;
     stockQuantity?: number;

@@ -51,6 +51,38 @@ describe('inbound full replacement safety contract', () => {
         expect(result.targets).toHaveLength(1001);
         expect(result.targets[1000]).toMatchObject({ stockOwnerWooId: 10, state: 'pending', batches: [{ dueDate: '2026-09-22', quantity: 2 }, { dueDate: '2026-09-23', quantity: 2 }] });
     });
+    it('resolves overrides independently of shared stock pools and actual PO supply', () => {
+        const supplier = { accountId: 'a', leadTimeMin: 7, leadTimeMax: 10, leadTimeDefault: null };
+        const variable = product({ rawData: { type: 'variable', manage_stock: true }, variations: [
+            { wooId: 11, productId: 'p', supplierId: null, supplier: null, manageStock: false, rawData: { manage_stock: 'parent' } },
+            { wooId: 12, productId: 'p', supplierId: 'override', supplier, manageStock: false, rawData: { manage_stock: 'parent' } },
+            { wooId: 13, productId: 'p', supplierId: 'override', supplier, manageStock: true, rawData: { manage_stock: true } },
+        ] });
+        const lines = [line(), line({ variationWooId: 12, quantity: 5 }), line({ variationWooId: 13, quantity: 9 })];
+        const result = projectInbound(10, variable, lines, now);
+        expect(result.targets.slice(1).map(t => [t.stockOwnerWooId, t.supplierLead, t.batches])).toEqual([
+            [10, { min: 2, max: 4 }, [{ dueDate: '2026-09-22', quantity: 7 }]],
+            [10, { min: 7, max: 10 }, [{ dueDate: '2026-09-22', quantity: 7 }]],
+            [13, { min: 7, max: 10 }, [{ dueDate: '2026-09-22', quantity: 9 }]],
+        ]);
+        expect(result.targets[1].batches).toBe(result.targets[2].batches);
+        const withoutParent = projectInbound(10, { ...variable, supplierId: null, supplier: null }, lines, now);
+        expect(withoutParent.targets.slice(1).map(t => t.supplierLead)).toEqual([null, { min: 7, max: 10 }, { min: 7, max: 10 }]);
+        const cleared = projectInbound(10, { ...variable, variations: variable.variations.map(v => ({ ...v, supplierId: null, supplier: null })) }, lines, now);
+        expect(cleared.targets.slice(1).map(t => t.supplierLead)).toEqual(Array(3).fill({ min: 2, max: 4 }));
+        expect(cleared.targets.map(t => t.batches)).toEqual(result.targets.map(t => t.batches));
+    });
+    it('does not inherit parent lead times from an assigned supplier with no lead, and rejects invalid overrides', () => {
+        const source = (supplier: any) => product({ rawData: { type: 'variable' }, variations: [
+            { wooId: 11, productId: 'p', supplierId: 'override', supplier, manageStock: true, rawData: { manage_stock: true } },
+        ] });
+        const empty = { accountId: 'a', leadTimeMin: null, leadTimeMax: null, leadTimeDefault: null };
+        expect(projectInbound(10, source(empty), [line({ variationWooId: 11 })], now).targets[1]).toMatchObject({ supplierLead: null, batches: [{ dueDate: '2026-09-22', quantity: 2 }] });
+        expect(projectInbound(10, source({ ...empty, leadTimeDefault: 6 }), [], now).targets[1].supplierLead).toEqual({ min: 6, max: 6 });
+        for (const supplier of [null, { ...empty, accountId: 'other' }, { ...empty, leadTimeMin: 5, leadTimeMax: 2 }]) {
+            expect(projectInbound(10, source(supplier), [], now).targets).toEqual([{ wooId: 10, stockOwnerWooId: null, state: 'integrity_error', supplierLead: null, batches: [] }]);
+        }
+    });
     it('clears removed batches, targets and deleted products without retaining derived data', () => {
         expect(projectInbound(10, product({ supplierId: null, supplier: null }), [], now).targets[0]).toMatchObject({ state: 'pending', supplierLead: null, batches: [] });
         expect(projectInbound(10, null, [], now).targets).toEqual([]);
@@ -65,7 +97,7 @@ describe('inbound full replacement safety contract', () => {
     it('bounds DB source reads and scopes direct PO lines to tenant-owned ORDERED orders', async () => {
         const tx = { receiptAccount: { findUnique: vi.fn().mockResolvedValue(null) }, wooProduct: { findFirst: vi.fn().mockResolvedValue(product()) }, purchaseOrderItem: { findMany: vi.fn().mockResolvedValue([]) } };
         await buildInbound(tx as any, 'a', 10);
-        expect(tx.wooProduct.findFirst.mock.calls[0][0]).toMatchObject({ where: { accountId: 'a', wooId: 10 }, select: { variations: { take: 1001 }, boms: { take: 1 } } });
+        expect(tx.wooProduct.findFirst.mock.calls[0][0]).toMatchObject({ where: { accountId: 'a', wooId: 10 }, select: { variations: { take: 1001, select: { supplierId: true, supplier: { select: { accountId: true, leadTimeMin: true, leadTimeMax: true, leadTimeDefault: true } } } }, boms: { take: 1 } } });
         expect(tx.wooProduct.findFirst.mock.calls[0][0].select.boms.where.items.some.OR).toEqual([
             { childProductId: { not: null } }, { childVariationId: { not: null } }, { internalProductId: { not: null } },
         ]);

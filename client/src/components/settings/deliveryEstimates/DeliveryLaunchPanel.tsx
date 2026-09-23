@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useDeliveryLaunch } from '../../../hooks/useDeliveryLaunch';
 import { canActivate, isCutoverRecovery, preparationBlockReason, launchGuidance, type Attestation, type LegacyAttestation } from './launchApi';
 import { ReceiptRecovery } from './ReceiptRecovery';
@@ -20,6 +20,7 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
     const [inView, setInView] = useState(true);
     const element = useRef<HTMLElement>(null);
     const [confirmations, setConfirmations] = useState([false, false, false]);
+    const preparationHelpId = useId();
     const [busy, setBusy] = useState(false);
     const inFlight = useRef(false);
     const retryRequests = useRef(new Map<string, Attestation>());
@@ -40,6 +41,15 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
     const prepareReason = preparationBlockReason(status);
     const preparationBlocked = busy || launch.loading || !!prepareReason
         || (!recoveringCutover && (!featureEnabled || status?.blockers.includes('feature_disabled') || draftBlocked));
+    const preparationHelp = busy ? 'Submitting your request. Wait for the response before changing confirmations.'
+        : launch.loading ? 'Checking readiness. You can review the confirmations while this finishes.'
+            : !canRead ? 'Readiness checks require view_shipping permission. Ask your account role manager to grant it before preparing cutover.'
+                : prepareReason
+                    ?? (!recoveringCutover && (!featureEnabled || status?.blockers.includes('feature_disabled'))
+                        ? 'Delivery Estimates must be enabled before starting initial setup. Existing inventory recovery remains available.'
+                        : !recoveringCutover && draftBlocked
+                            ? 'Load and save your delivery settings before queueing cutover.'
+                            : !confirmations.every(Boolean) ? 'Complete all three confirmations once the work is actually done.' : null);
     const queue = async (action: 'cutover' | 'certification' | 'activate' | 'disable') => {
         if (!canEdit || inFlight.current) return;
         if ((action === 'cutover' || action === 'certification') && (preparationBlocked || !canInventory || !confirmations.every(Boolean))) return;
@@ -93,15 +103,20 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
                 <p>Readiness is not proof of merchant-specific WBS compatibility. Unmapped rates and unsupported products remain unavailable.</p>
             </>}
             {draftBlocked && <p>Before initial setup or activation, save delivery settings first and wait for the save to finish. Disable, frozen-cutover recovery and receipt recovery remain available.</p>}
-            {canEdit && canInventory && prepareReason && <p role="status">{prepareReason}</p>}
             {recoveringCutover && <p>Private cutover recovery can resume with the feature off, once diagnostics and server work state permit it. This does not activate storefront estimates.</p>}
-            {canEdit && canInventory && <fieldset disabled={preparationBlocked} className="space-y-2">
+            {canEdit && canInventory && <fieldset disabled={busy} aria-describedby={preparationHelpId} className="space-y-2">
                 <legend className="font-semibold">Prepare cutover / stock-owner certification</legend>
                 <p>Coordinate the receiving pause with your team. Ask your deployment operator to drain old process-local receipt work and restart every pre-upgrade API/worker process. Confirm only when completed.</p>
-                {['I have paused inventory receiving.', 'All legacy receipt jobs and pre-upgrade process-local receipt work have drained.', 'All pre-upgrade API and worker processes have been restarted.'].map((label, i) => <label className="block" key={label}>
-                    <input type="checkbox" checked={confirmations[i]} onChange={e => setConfirmations(previous => previous.map((value, index) => index === i ? e.target.checked : value))} /> {label}
+                <p className="text-slate-600 dark:text-slate-400">These checkboxes only record your confirmations. They do not pause receiving, restart workers or bypass readiness checks.</p>
+                {['I have paused inventory receiving.', 'All legacy receipt jobs and pre-upgrade process-local receipt work have drained.', 'All pre-upgrade API and worker processes have been restarted.'].map((label, i) => <label className={`flex min-h-10 items-center gap-2 ${busy ? 'cursor-wait opacity-60' : 'cursor-pointer'}`} key={label}>
+                    <input type="checkbox" className="h-4 w-4 shrink-0 accent-indigo-600" checked={confirmations[i]} onChange={e => setConfirmations(previous => previous.map((value, index) => index === i ? e.target.checked : value))} /> {label}
                 </label>)}
-                <button type="button" disabled={preparationBlocked || !confirmations.every(Boolean)} onClick={() => void queue(status?.cutoverState === 'guarded' ? 'certification' : 'cutover')}>
+                <div id={preparationHelpId} role="status" aria-live="polite" className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900">
+                    {preparationBlocked && <p className="font-semibold">Cutover cannot be queued yet.</p>}
+                    <p>{preparationHelp ?? 'Confirmations complete. Queue cutover when you are ready.'}</p>
+                    {(!status?.plugin || status?.blockers.includes('plugin_control_unavailable_or_upgrade_required')) && !launch.loading && <p className="mt-1">If you have already updated the companion plugin, use “Sync saved settings and production times” below, then “Refresh readiness and receipts”.</p>}
+                </div>
+                <button type="button" aria-describedby={preparationHelpId} disabled={preparationBlocked || !confirmations.every(Boolean)} onClick={() => void queue(status?.cutoverState === 'guarded' ? 'certification' : 'cutover')}>
                     {status?.cutoverState === 'guarded' ? 'Queue stock-owner certification' : 'Queue / resume cutover'}
                 </button>
                 <p>This freezes receiving while the durable worker certifies stock owners. Receiving resumes after the guarded handshake; inbound proofs rebuild afterwards. Output stays gated during certification. Previously requested activation is revalidated after fresh proofs are ready; disabled accounts remain inactive.</p>

@@ -1,7 +1,7 @@
 /**
  * Product Edit Page
  *
- * Page for editing product details, inventory, pricing, SEO, and sales history.
+ * Page for editing product details, inventory, pricing, SEO, and stock movements.
  * State management delegated to useProductEdit hook.
  */
 
@@ -26,7 +26,7 @@ import { GoldPricePanel } from '../components/products/GoldPricePanel';
 import { Tabs } from '../components/ui/Tabs';
 import { ImageGallery } from '../components/products/ImageGallery';
 import { HistoryTimeline } from '../components/shared/HistoryTimeline';
-import { ProductSalesHistory } from '../components/products/ProductSalesHistory';
+import { ProductStockMovements } from '../components/products/ProductStockMovements';
 import { PresenceAvatars } from '../components/common/PresenceAvatars';
 import { useProductEdit } from '../hooks/useProductEdit';
 import type { ProductData, ProductVariantData } from '../hooks/useProductEdit';
@@ -38,7 +38,6 @@ import { FeedWritesPanel, type FeedWritesPanelRef } from '../components/products
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { usePermissions } from '../hooks/usePermissions';
 import { WholesaleProductPanel, type WholesaleProductPanelRef } from '../components/wholesale/WholesaleProductPanel';
-import { DeliveryProductionEditor } from '../components/products/DeliveryProductionEditor';
 
 type SupplierOption = { id: string; name: string };
 type GalleryImage = { id: string | number; src: string; alt?: string };
@@ -83,6 +82,7 @@ export function ProductEditPage() {
 
     return (
         <ProductEditPageContent
+            key={`${hookData.currentAccount?.id}:${id}`}
             user={user}
             searchParams={searchParams}
             setSearchParams={setSearchParams}
@@ -108,6 +108,7 @@ function ProductEditPageContent({
     isSaving,
     isSyncing,
     hasUnsavedChanges,
+    production,
     saveState,
     saveMessage,
     lastSavedAt,
@@ -117,6 +118,7 @@ function ProductEditPageContent({
     variants,
     suppliers,
     productViews,
+    isRefreshingViews,
     mainImageFailed,
     seoResult,
     activeUsers,
@@ -137,42 +139,21 @@ function ProductEditPageContent({
     const activeTabParam = searchParams.get('tab');
     const hasFeedExports = useAccountFeature('FEED_EXPORTS');
     const hasWholesaleCatalog = useAccountFeature('WHOLESALE_CATALOG');
-    const hasDeliveryEstimates = useAccountFeature('DELIVERY_ESTIMATES');
     const { hasPermission } = usePermissions();
     const canViewWholesale = hasWholesaleCatalog && hasPermission('view_wholesale_catalog');
     const feedWritesPanelRef = useRef<FeedWritesPanelRef>(null);
     const wholesaleProductPanelRef = useRef<WholesaleProductPanelRef>(null);
     const [hasUnsavedFeedWrites, setHasUnsavedFeedWrites] = useState(false);
     const [hasUnsavedWholesaleChanges, setHasUnsavedWholesaleChanges] = useState(false);
-    const [isSavingFeedWrites, setIsSavingFeedWrites] = useState(false);
-    const [isSavingWholesale, setIsSavingWholesale] = useState(false);
     const hasAnyUnsavedChanges = hasUnsavedChanges || hasUnsavedFeedWrites || hasUnsavedWholesaleChanges;
 
     const handleSaveAll = useCallback(async () => {
-        if (isSaving || isSyncing || isSavingFeedWrites || isSavingWholesale) return;
-
-        const productSaved = await handleSave();
-        if (!productSaved) return;
-
-        if (wholesaleProductPanelRef.current) {
-            setIsSavingWholesale(true);
-            try {
-                const wholesaleSaved = await wholesaleProductPanelRef.current.save();
-                if (!wholesaleSaved) return;
-            } finally {
-                setIsSavingWholesale(false);
-            }
-        }
-
-        if (!feedWritesPanelRef.current) return;
-
-        setIsSavingFeedWrites(true);
-        try {
-            await feedWritesPanelRef.current.save();
-        } finally {
-            setIsSavingFeedWrites(false);
-        }
-    }, [handleSave, isSaving, isSavingFeedWrites, isSavingWholesale, isSyncing]);
+        if (isSaving || isSyncing) return;
+        await handleSave([
+            { name: 'wholesale pricing', save: async () => wholesaleProductPanelRef.current?.save() },
+            { name: 'feed writes', save: async () => feedWritesPanelRef.current?.save() },
+        ]);
+    }, [handleSave, isSaving, isSyncing]);
 
     const previewImage = (formData.images as Array<{ src?: string }> | undefined)?.[0]?.src || product.mainImage;
     const statusTone = saveState === 'error'
@@ -199,8 +180,8 @@ function ProductEditPageContent({
     const lastSyncLabel = lastSyncedAt
         ? `Synced ${formatDistanceToNow(lastSyncedAt, { addSuffix: true })}`
         : null;
-    const saveDisabled = isSaving || isSyncing || isSavingFeedWrites || isSavingWholesale;
-    const isSavingAnything = isSaving || isSavingFeedWrites || isSavingWholesale;
+    const saveDisabled = isSaving || isSyncing;
+    const isSavingAnything = isSaving;
     const statusMessage = hasUnsavedWholesaleChanges
         ? 'You have unsaved wholesale pricing changes.'
         : hasUnsavedFeedWrites
@@ -226,6 +207,7 @@ function ProductEditPageContent({
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         <div className="lg:col-span-2 space-y-6">
                             <GeneralInfoPanel
+                                production={production.general && { ...production.general, disabled: production.general.disabled || saveDisabled }}
                                 formData={formData}
                                 onChange={updateFormData}
                                 product={product}
@@ -260,7 +242,14 @@ function ProductEditPageContent({
                                     productId={product.wooId}
                                 />
                             </div>
-                            <WooCommerceInfoPanel categories={product.categories || []} tags={product.tags || []} />
+                            <fieldset disabled={saveDisabled}>
+                                <WooCommerceInfoPanel
+                                    categories={formData.categories}
+                                    tags={formData.tags}
+                                    onCategoriesChange={categories => updateFormData({ categories })}
+                                    onTagsChange={tags => updateFormData({ tags })}
+                                />
+                            </fieldset>
                         </div>
                     </div>
                 </div>
@@ -321,9 +310,12 @@ function ProductEditPageContent({
             content: (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <VariationsPanel
+                        production={production.variations && { ...production.variations, disabled: production.variations.disabled || saveDisabled }}
                         ref={variationsPanelRef}
                         product={{ ...product, variations: ((product.variations || []).map((variant: number | ProductVariantData) => typeof variant === 'number' ? variant : variant.id)) }}
                         variants={variants as unknown as VariantType[]}
+                        suppliers={suppliers as SupplierOption[]}
+                        parentSupplierId={formData.supplierId}
                         onUpdate={(updatedVariants) => setVariants(updatedVariants as unknown[])}
                     />
                 </div>
@@ -370,23 +362,14 @@ function ProductEditPageContent({
         },
         {
             id: 'sales',
-            label: 'Sales History',
+            label: 'Stock Movement',
             icon: <ShoppingCart size={16} />,
             content: (
                 <div className="max-w-5xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <ProductSalesHistory productWooId={product.wooId} />
+                    <ProductStockMovements productId={product.id} />
                 </div>
             )
         },
-        ...(hasDeliveryEstimates && hasPermission('view_products') ? [{
-            id: 'delivery-production',
-            label: 'Delivery Production',
-            icon: <Clock size={16} />,
-            content: <DeliveryProductionEditor productId={product.id} variationNames={Object.fromEntries(
-                (variants as ProductVariantData[]).map(variant => [variant.id, variant.attributes?.map(attribute => attribute.option).join(' / ') || ''])
-            )} />,
-            keepMounted: true
-        }] : []),
         ...(hasFeedExports ? [{
             id: 'feed-writes',
             label: 'Feed Writes',
@@ -421,7 +404,7 @@ function ProductEditPageContent({
 
     const tabIds = tabs.map(tab => tab.id);
     // Preserve old Inventory & Shipping links after merging that tab into Pricing & Inventory.
-    const requestedTab = activeTabParam === 'logistics' ? 'pricing' : activeTabParam;
+    const requestedTab = activeTabParam === 'logistics' ? 'pricing' : activeTabParam === 'delivery-production' ? 'details' : activeTabParam;
     const activeTab = tabIds.includes(requestedTab || '') ? (requestedTab as string) : tabIds[0];
 
     useEffect(() => {
@@ -450,6 +433,8 @@ function ProductEditPageContent({
         next.set('tab', tabId);
         setSearchParams(next, { replace: true });
     };
+
+    const [tabNavigationContainer, setTabNavigationContainer] = useState<HTMLDivElement | null>(null);
 
     return (
         <div className="bg-gray-50/50 pb-20">
@@ -483,16 +468,25 @@ function ProductEditPageContent({
                                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
                                     <span className="font-mono bg-gray-100/80 px-2 py-0.5 rounded-sm text-xs text-gray-600">ID: {product.wooId}</span>
                                     {formData.sku && <span className="flex items-center gap-1"><Tag size={12} /> {formData.sku}</span>}
-                                    {productViews && (
-                                        <span className="flex items-center gap-1 text-purple-600" title={`${productViews.views30d} views in 30 days`}>
+                                        <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400" title={productViews ? `${productViews.views30d} views in 30 days` : 'Product views unavailable'}>
                                             <Eye size={12} />
-                                            <span className="font-medium">{productViews.views7d}</span>
+                                            <span className="font-medium">{productViews?.views7d ?? '—'}</span>
                                             <span className="text-gray-400">7d</span>
                                             <span className="text-gray-300">|</span>
-                                            <span className="font-medium">{productViews.views30d}</span>
+                                            <span className="font-medium">{productViews?.views30d ?? '—'}</span>
                                             <span className="text-gray-400">30d</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => void fetchViews(true)}
+                                                disabled={saveDisabled || isRefreshingViews}
+                                                aria-label="Refresh product views"
+                                                aria-busy={isRefreshingViews}
+                                                title={isRefreshingViews ? 'Refreshing product views…' : 'Refresh product views'}
+                                                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-purple-400"
+                                            >
+                                                <RefreshCw size={12} aria-hidden="true" className={isRefreshingViews ? 'animate-spin' : undefined} />
+                                            </button>
                                         </span>
-                                    )}
                                     <span aria-hidden="true">&bull;</span>
                                     <a href={getSafeHref(product.permalink)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors">
                                         View on Store <ExternalLink size={12} />
@@ -511,7 +505,7 @@ function ProductEditPageContent({
                             <div className="h-8 w-px bg-gray-300 mx-2 hidden sm:block"></div>
                             <button
                                 onClick={handleSync}
-                                disabled={isSyncing || isLoading}
+                                disabled={saveDisabled || isLoading}
                                 className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-gray-300/80 bg-white/50 px-4 text-sm font-medium text-gray-700 backdrop-blur-xs transition-colors hover:bg-white disabled:opacity-50"
                             >
                                 {isSyncing ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
@@ -520,6 +514,7 @@ function ProductEditPageContent({
                             {hasDraft && (
                                 <button
                                     onClick={discardDraft}
+                                    disabled={saveDisabled}
                                     className="flex h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 backdrop-blur-xs transition-colors hover:bg-red-100"
                                     title="Discard restored draft and reset to saved version"
                                 >
@@ -527,15 +522,6 @@ function ProductEditPageContent({
                                     <span className="hidden sm:inline">Discard Draft</span>
                                 </button>
                             )}
-                            <button
-                                onClick={fetchViews}
-                                disabled={saveDisabled}
-                                className="hidden h-10 min-w-28 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-gray-300/80 bg-white/50 px-4 text-sm font-medium text-gray-700 backdrop-blur-xs transition-colors hover:bg-white disabled:opacity-50 sm:flex"
-                                title="Refresh product views"
-                            >
-                                <Eye size={16} />
-                                Views
-                            </button>
                             <button
                                 onClick={() => void handleSaveAll()}
                                 disabled={saveDisabled}
@@ -547,14 +533,17 @@ function ProductEditPageContent({
                         </div>
                     </div>
                 </div>
+                <div ref={setTabNavigationContainer} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4" />
             </div>
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+                {production.warning && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">{production.warning}</p>}
                 <Tabs
                     tabs={tabs}
                     mountInactiveTabs={false}
                     activeTab={activeTab}
                     onTabChange={handleTabChange}
+                    navigationContainer={tabNavigationContainer}
                 />
             </div>
 
@@ -571,7 +560,7 @@ function ProductEditPageContent({
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleSync}
-                            disabled={isSyncing || isLoading}
+                            disabled={saveDisabled || isLoading}
                             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50"
                         >
                             {isSyncing ? 'Syncing...' : 'Sync'}
@@ -609,9 +598,11 @@ function ProductEditSkeleton() {
                         </div>
                     </div>
                 </div>
+                <div className="mx-auto max-w-7xl px-4 pb-4 sm:px-6 lg:px-8">
+                    <div className="h-12 animate-pulse rounded-2xl bg-gray-200" />
+                </div>
             </div>
             <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-                <div className="h-12 animate-pulse rounded-2xl bg-gray-200" />
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                     <div className="lg:col-span-2 space-y-6">
                         {[1, 2, 3].map(item => (

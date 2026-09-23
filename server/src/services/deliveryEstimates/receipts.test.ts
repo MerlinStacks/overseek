@@ -23,6 +23,7 @@ beforeEach(() => {
             $queryRaw: async (parts: TemplateStringsArray, ...args: any[]) => {
                 const sql = parts.join('?');
                 if (sql.includes('SELECT "receiptTransportMode"')) return [{ receiptTransportMode: staged.mode }];
+                if (sql.includes('FOR UPDATE') && (sql.includes('"WooProduct"') || sql.includes('"ProductVariation"'))) return [{ id: 'locked' }];
                 if (sql.includes('UPDATE "WooProduct"') || sql.includes('UPDATE "ProductVariation"')) {
                     staged.stock += sql.includes(' - ') ? -args[0] : args[0];
                     return [{ stock: staged.stock, stock_quantity: staged.stock }];
@@ -53,6 +54,18 @@ beforeEach(() => {
 function settle() { for (const op of db.ops) { op.state = 'applied'; op.cascadeState = 'done'; } }
 
 describe('guarded transactional receipt intent', () => {
+    it.each([null, 11])('rejects new stock movements for trashed parents (variation=%s)', async variationId => {
+        db.products[0].status = 'trash';
+        db.items[0].variationWooId = variationId;
+        if (variationId) {
+            db.products[0].rawData = { ...db.products[0].rawData, type: 'variable', variations: [variationId] };
+            db.variations = [{ id: 'v', productId: 'p', wooId: variationId, manageStock: true, rawData: { id: variationId, manage_stock: true }, bomItemsAsChild: [] }];
+        }
+        await expect(service.receiveStock('a', 'po')).rejects.toThrow('trashed products');
+        expect(db.stock).toBe(5);
+        expect(db.status).toBe('ORDERED');
+        expect(db.ops).toEqual([]);
+    });
     it('freezes both legacy and guarded receiving while cutover is transitioning', async () => {
         for (const mode of ['LEGACY', 'GUARDED']) {
             db.mode = mode; db.frozen = true;

@@ -67,6 +67,7 @@ model RefreshToken {
 }
 
 model Account {
+  stockWriteOffs StockWriteOff[]
   deliveryEstimateSettings DeliveryEstimateSettings?
   deliveryInputSyncs DeliveryInputSync[]
   deliveryInboundDirtyTargets DeliveryInboundDirtyTarget[]
@@ -824,6 +825,8 @@ model ProductVariation {
   rawData     Json? // Store full Woo response
 
   product     WooProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplierId  String? // Null inherits the parent product supplier
+  supplier    Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   
   bomItemsAsChild BOMItem[]
 
@@ -831,6 +834,7 @@ model ProductVariation {
   updatedAt DateTime @updatedAt
 
   @@unique([productId, wooId])
+  @@index([supplierId])
   @@index([productId, stockStatus])           // Variant inventory queries
   @@index([productId, updatedAt])              // Full-sync reconciliation
 }
@@ -1078,6 +1082,7 @@ model Supplier {
 
   items    SupplierItem[]
   products WooProduct[]
+  variations ProductVariation[]
   internalProducts InternalProduct[]
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -1106,6 +1111,53 @@ model SupplierItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Immutable finalized inventory loss document, independent of purchase orders.
+model StockWriteOff {
+  id String @id @default(cuid())
+  accountId String
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reference String
+  status String @default("DRAFT")
+  reason String
+  notes String?
+  createdBy String
+  finalizedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  finalizedAt DateTime?
+  totalCost Decimal @default(0) @db.Decimal(24, 4)
+  items StockWriteOffItem[]
+  @@unique([accountId, reference])
+  @@index([accountId, status, finalizedAt])
+}
+
+// Snapshot identities deliberately have no catalogue FK: deleting a product must
+// never erase or change financial history. Internal cascade work survives restarts.
+model StockWriteOffItem {
+  id String @id @default(cuid())
+  writeOffId String
+  writeOff StockWriteOff @relation(fields: [writeOffId], references: [id], onDelete: Cascade)
+  productId String?
+  variationId Int?
+  internalProductId String?
+  name String
+  sku String?
+  type String
+  quantity Int
+  unitCostOverride Decimal? @db.Decimal(16, 4)
+  unitCost Decimal @db.Decimal(16, 4)
+  totalCost Decimal @db.Decimal(24, 4)
+  stockBefore Int?
+  stockAfter Int?
+  operationId String?
+  cascadeState String @default("none")
+  cascadeAttempts Int @default(0)
+  cascadeNextAttemptAt DateTime @default(now())
+  cascadeError String?
+  @@index([writeOffId])
+  @@index([cascadeState, cascadeNextAttemptAt])
 }
 
 /// Internal-only products that are not synced to WooCommerce.
