@@ -7,6 +7,7 @@
 declare(strict_types=1);
 
 defined( 'ABSPATH' ) || exit;
+require_once __DIR__ . '/class-overseek-delivery-input-exception.php';
 
 class OverSeek_Delivery_Inbound_Validation {
 	/** Exact UTC validity window; tolerate at most five minutes of sender clock skew. */
@@ -19,7 +20,8 @@ class OverSeek_Delivery_Inbound_Validation {
 		if ( $verified ) {
 			$proof = $payload->receiptProof;
 			$this->keys( $proof, [ 'version', 'epoch', 'owners' ] );
-			$this->valid( 1 === $proof->version && is_string( $proof->epoch ) && 1 === preg_match( '/\A[A-Za-z0-9_-]{1,64}\z/', $proof->epoch ) && is_array( $proof->owners ) && count( $proof->owners ) > 0 && count( $proof->owners ) <= 1001 );
+			$this->valid( 1 === $proof->version && is_string( $proof->epoch ) && 1 === preg_match( '/\A[A-Za-z0-9_-]{1,64}\z/', $proof->epoch ) && is_array( $proof->owners ) && count( $proof->owners ) > 0 );
+			$this->valid( count( $proof->owners ) <= 1001, 'payload_limits_exceeded' );
 			foreach ( $proof->owners as $owner ) {
 				$this->keys( $owner, [ 'stockOwnerWooId', 'sequence', 'operationId' ] );
 				$this->integer( $owner->stockOwnerWooId, 1, 9007199254740991 );
@@ -31,14 +33,18 @@ class OverSeek_Delivery_Inbound_Validation {
 		$generated = $this->instant( $payload->generatedAt );
 		$expires = $this->instant( $payload->expiresAt );
 		$now = new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) );
-		$this->valid( $expires == $generated->modify( '+24 hours' ) && $expires > $now && $generated <= $now->modify( '+5 minutes' ) );
-		$this->valid( is_array( $payload->targets ) && count( $payload->targets ) <= 1001 );
+		$this->valid( $expires == $generated->modify( '+24 hours' ), 'inbound_ttl_invalid' );
+		$this->valid( $expires > $now, 'inbound_expired' );
+		$this->valid( $generated <= $now->modify( '+5 minutes' ), 'inbound_generated_in_future' );
+		$this->valid( is_array( $payload->targets ) );
+		$this->valid( count( $payload->targets ) <= 1001, 'payload_limits_exceeded' );
 		// Removed products must still be clearable without any Woo lookup.
 		if ( [] === $payload->targets ) {
 			return;
 		}
 		$parent = wc_get_product( $parent_id );
-		$this->valid( $parent instanceof WC_Product && ! ( $parent instanceof WC_Product_Variation ) && $parent->get_id() === $parent_id && 'trash' !== $parent->get_status() );
+		$this->valid( $parent instanceof WC_Product && $parent->get_id() === $parent_id && 'trash' !== $parent->get_status(), 'product_missing' );
+		$this->valid( ! ( $parent instanceof WC_Product_Variation ), 'product_type_unsupported' );
 		$seen = [];
 		$total = 0;
 		$pools = [];
@@ -50,32 +56,38 @@ class OverSeek_Delivery_Inbound_Validation {
 			$seen[ $target->wooId ] = true;
 			$this->valid( in_array( $target->state, [ 'pending', 'unsupported', 'integrity_error' ], true ) );
 			$local = $target->wooId === $parent_id ? $parent : wc_get_product( $target->wooId );
-			$this->valid( $local instanceof WC_Product && $local->get_id() === $target->wooId && 'trash' !== $local->get_status() );
-			$this->valid( $target->wooId === $parent_id || ( $parent->is_type( 'variable' ) && $local instanceof WC_Product_Variation && $local->is_type( 'variation' ) && $local->get_parent_id() === $parent_id ) );
+			$this->valid( $local instanceof WC_Product && $local->get_id() === $target->wooId && 'trash' !== $local->get_status(), $target->wooId === $parent_id ? 'product_missing' : 'variation_missing' );
+			$this->valid( $target->wooId === $parent_id || ( $local instanceof WC_Product_Variation && $local->is_type( 'variation' ) ), 'variation_missing' );
+			$this->valid( $target->wooId === $parent_id || ( $parent->is_type( 'variable' ) && $local->get_parent_id() === $parent_id ), 'variation_parent_mismatch' );
 			if ( null !== $target->stockOwnerWooId ) {
 				$this->integer( $target->stockOwnerWooId, 1, 9007199254740991 );
-				$this->valid( in_array( $target->stockOwnerWooId, [ $target->wooId, $parent_id ], true ) && $local->get_stock_managed_by_id() === $target->stockOwnerWooId );
+				$this->valid( in_array( $target->stockOwnerWooId, [ $target->wooId, $parent_id ], true ) && $local->get_stock_managed_by_id() === $target->stockOwnerWooId, 'stock_owner_mismatch' );
 				$this->valid( ! $verified || 'pending' !== $target->state || isset( $owners[ $target->stockOwnerWooId ] ) );
 				if ( 'pending' === $target->state ) { $target_owners[ $target->stockOwnerWooId ] = true; }
 			} else {
 				$this->valid( 'pending' !== $target->state );
 			}
-			$this->valid( 'pending' !== $target->state || $local->is_type( [ 'simple', 'variation' ] ) );
+			$this->valid( 'pending' !== $target->state || $local->is_type( [ 'simple', 'variation' ] ), 'product_type_unsupported' );
 			if ( null !== $target->supplierLead ) {
-				$this->keys( $target->supplierLead, [ 'min', 'max' ] );
-				$this->integer( $target->supplierLead->min, 0, 3650 );
-				$this->integer( $target->supplierLead->max, 0, 3650 );
-				$this->valid( $target->supplierLead->min <= $target->supplierLead->max );
+				try {
+					$this->keys( $target->supplierLead, [ 'min', 'max' ] );
+					$this->integer( $target->supplierLead->min, 0, 3650 );
+					$this->integer( $target->supplierLead->max, 0, 3650 );
+					$this->valid( $target->supplierLead->min <= $target->supplierLead->max );
+				} catch ( OverSeek_Delivery_Input_Exception $error ) {
+					throw new OverSeek_Delivery_Input_Exception( 'supplier_lead_invalid' );
+				}
 			}
 			$this->valid( is_array( $target->batches ) );
 			$pool = $target->stockOwnerWooId;
-			$pool_value = json_encode( [ $target->batches, $target->supplierLead ] );
+			$pool_value = json_encode( $target->batches );
 			if ( null === $pool || ! isset( $pools[ $pool ] ) ) { $total += count( $target->batches ); }
 			if ( null !== $pool ) {
-				$this->valid( ! isset( $pools[ $pool ] ) || $pools[ $pool ] === $pool_value );
+				$this->valid( ! isset( $pools[ $pool ] ) || $pools[ $pool ] === $pool_value, 'owner_pool_batches_mismatch' );
 				$pools[ $pool ] = $pool_value;
 			}
-			$this->valid( $total <= 1000 && ( 'pending' === $target->state || [] === $target->batches ) );
+			$this->valid( $total <= 1000, 'payload_limits_exceeded' );
+			$this->valid( 'pending' === $target->state || [] === $target->batches );
 			$dates = [];
 			foreach ( $target->batches as $batch ) {
 				$this->keys( $batch, [ 'dueDate', 'quantity' ] );
@@ -111,9 +123,9 @@ class OverSeek_Delivery_Inbound_Validation {
 		$value = (int) $value;
 	}
 
-	private function valid( bool $valid ): void {
+	private function valid( bool $valid, string $reason = 'schema_invalid' ): void {
 		if ( ! $valid ) {
-			throw new InvalidArgumentException( 'Invalid delivery input.' );
+			throw new OverSeek_Delivery_Input_Exception( $reason );
 		}
 	}
 }

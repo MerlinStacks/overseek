@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 const mocks = vi.hoisted(() => ({ page: vi.fn(), product: vi.fn(), lock: vi.fn(), groups: vi.fn(), latest: vi.fn(),
     controlFind: vi.fn(), controlUpsert: vi.fn(), controlUpdate: vi.fn(), controlScan: vi.fn(), controlMany: vi.fn(),
     inputFind: vi.fn(), inputUpsert: vi.fn(), inputScan: vi.fn(), transaction: vi.fn(), warn: vi.fn() }));
@@ -30,7 +31,7 @@ import { prisma } from '../../utils/prisma';
 let state: { control: any; rows: Map<string, any>; products: any[] };
 const product = (id: number, days: number | null = 2) => ({ id: `p${String(id).padStart(6, '0')}`, wooId: id, accountId: 'a', productionMinDays: days, productionMaxDays: days, variations: [] });
 function update(target: any, data: any) {
-    for (const [key, value] of Object.entries(data)) target[key] = value && typeof value === 'object' && 'increment' in value ? target[key] + (typeof target[key] === 'bigint' ? BigInt(value.increment as number) : value.increment) : value;
+    for (const [key, value] of Object.entries(data)) target[key] = value === Prisma.DbNull ? null : value && typeof value === 'object' && 'increment' in value ? target[key] + (typeof target[key] === 'bigint' ? BigInt(value.increment as number) : value.increment) : value;
     return structuredClone(target);
 }
 function key(where: any) { return `${where.scope}:${where.entityId}`; }

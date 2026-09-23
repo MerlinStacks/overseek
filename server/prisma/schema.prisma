@@ -993,6 +993,7 @@ model DeliveryInputSync {
   leaseExpiresAt DateTime?
   lastError String?
   lastAcknowledgedAt DateTime?
+  lastDiagnostic Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -1000,6 +1001,7 @@ model DeliveryInputSync {
   @@index([accountId])
   @@index([accountId, status, nextAttemptAt])
   @@index([accountId, scope, id])
+  @@index([accountId, status, id], map: "DeliveryInputSync_attention_idx")
   @@index([accountId, status, priority, nextAttemptAt], map: "DeliveryInputSync_dispatch_account_idx")
   @@index([status, priority, nextAttemptAt])
   @@index([scope, status, inboundRenewAt, id], map: "DeliveryInputSync_inbound_renew_idx")
@@ -1007,6 +1009,8 @@ model DeliveryInputSync {
 
 model DeliverySyncAccount {
   accountId String @id
+  lastDiagnostic Json?
+  capabilityDetails Json?
   inboundCapabilityStatus String @default("unknown")
   inboundRequested Boolean @default(false)
   inboundFullRequested Boolean @default(false)

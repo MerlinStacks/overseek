@@ -28,7 +28,7 @@ function fixture(t) {
 
 test('valid image installs both files; identical restart leaves them untouched', t => {
     const f = fixture(t);
-    assert.deepEqual(f.run(), { version: '2.23.0', sha256: RELEASE.zip, updated: names });
+    assert.deepEqual(f.run(), { version: '2.23.1', sha256: RELEASE.zip, updated: names });
     const before = names.map(name => fs.statSync(path.join(f.plugins, name)));
     assert.deepEqual(f.run().updated, []);
     names.forEach((name, i) => {

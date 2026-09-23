@@ -1,4 +1,30 @@
-# Delivery 2.23.0 companion-plugin release runbook
+# Delivery companion-plugin release runbook
+
+## Current patch: 2.23.1
+
+**2.23.1 is native-verified and published as the LOCAL downloadable artifact;
+not production deployed.** The tracked ZIP and manifest under
+`server/uploads/plugins/` and the installer `RELEASE` pins now identify **2.23.1**,
+**96 files**, **254,315 bytes**:
+
+- ZIP SHA-256: `365bc2369e44352a721dffd3b36d00d53888bf030ecb8222e00a456dd0622781`
+- Manifest SHA-256: `60ab038ffbcc7aae478616a3abc6fd877866006c791d14bf5e1dde6ab6dc03b3`
+
+See [2.23.1 release/publication commands](companion-2.23.1-release.md) and
+[installed-ZIP native evidence](delivery-2.23.1-installed-zip-validation.md).
+Use those exact verified bytes for the current release; the 2.23.0 commands,
+hashes, counts and validation below are retained as historical launch evidence.
+
+For this patch, update OverSeek first, apply all pending earlier migrations plus
+`20260923140000_delivery_input_diagnostics` before starting the updated server,
+and generate the Prisma client. Then update the companion to 2.23.1 and use
+**Retry** on the specific affected inputs in delivery sync attention after
+resolving their cause. Previously synced inputs stay untouched. Expired inbound
+inputs rebuild from current sources with a new revision. Already-active delivery
+estimates require readiness revalidation for the changed plugin-version
+fingerprint before reactivation; this patch does not force-activate them.
+
+## Historical 2.23.0 launch record
 
 **Launch 2.23.0 package: implementation ready for CONTROLLED ROLLOUT, not production
 deployed.** The launch ZIP has passed its own fresh native installation and full

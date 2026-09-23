@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeliveryInputSync } from '@prisma/client';
 const mocks = vi.hoisted(() => ({ recover: vi.fn(), schedule: vi.fn(), dirtyQueue: vi.fn(), raw: vi.fn(), dirty: vi.fn(), update: vi.fn(), find: vi.fn(), scan: vi.fn(), caps: vi.fn(), post: vi.fn(), woo: vi.fn(), account: vi.fn(), accountUpdate: vi.fn(), accountFirst: vi.fn(), accountScan: vi.fn(), build: vi.fn(), launchWrite: vi.fn() }));
 vi.mock('../../utils/prisma', () => {
-    const db = { $queryRaw: (sql: TemplateStringsArray, ...args: unknown[]) => {
+    const db = { $executeRaw: vi.fn().mockResolvedValue(1), $queryRaw: (sql: TemplateStringsArray, ...args: unknown[]) => {
         if (sql.join('').includes('SELECT GREATEST')) return mocks.schedule(sql, ...args);
         if (sql.join('').includes('SELECT i.*')) return mocks.raw(sql, ...args);
         return Promise.resolve([]);
@@ -79,14 +79,17 @@ describe('durable delivery worker', () => {
         await dispatchDeliveryInput(job);
         expect(mocks.post).toHaveBeenCalledTimes(1);
     });
-    it('retries the exact stale inbound payload without renewing build freshness or receipt safety', async () => {
+    it('rebuilds expired inbound from source before any HTTP without relabeling freshness', async () => {
         installAccountState({ inboundCapabilityStatus: 'supported', inboundRequested: false, inboundGeneration: 1, inboundVersion: 1 });
         const payload = { wooId: 10, generatedAt: '2026-01-01T00:00:00.000Z', expiresAt: '2026-01-02T00:00:00.000Z', receiptSafety: 'unverified', targets: [] };
         const inbound = { ...job, scope: 'inbound', entityId: 10, payload };
         mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ ...ack, scope: 'inbound', entityId: 10 });
         await dispatchDeliveryInput(inbound);
         await dispatchDeliveryInput({ ...inbound, attempts: 1 });
-        expect(mocks.post.mock.calls.map(([envelope]) => envelope.payload)).toEqual([payload, payload]);
+        expect(mocks.post).not.toHaveBeenCalled();
+        expect(mocks.caps).not.toHaveBeenCalled();
+        expect(mocks.dirtyQueue).toHaveBeenCalledWith(expect.anything(), 'a', [10]);
+        expect(payload.expiresAt).toBe('2026-01-02T00:00:00.000Z');
     });
     it('does not dispatch an outdated generation while rebuilding', async () => {
         installAccountState({ inboundRequested: true, inboundGeneration: 2 });

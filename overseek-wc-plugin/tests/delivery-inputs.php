@@ -22,7 +22,12 @@ function same($actual, $expected): void {
 }
 function status($value, int $status): void {
     same($value instanceof WP_Error, true);
-    same($value->data, ['status' => $status]);
+    if (in_array($value->code, ['overseek_delivery_input_invalid', 'overseek_delivery_input_too_large'], true)) {
+        same(array_keys($value->data), ['status', 'reason']);
+        same(in_array($value->data['reason'], ['schema_invalid', 'inbound_expired', 'inbound_generated_in_future', 'inbound_ttl_invalid', 'product_missing', 'product_type_unsupported', 'variation_missing', 'variation_parent_mismatch', 'stock_owner_mismatch', 'owner_pool_batches_mismatch', 'production_range_invalid', 'supplier_lead_invalid', 'payload_limits_exceeded'], true), true);
+        same($value->message, $value->code === 'overseek_delivery_input_too_large' ? 'Delivery input exceeds the size limit.' : 'Invalid delivery input.');
+        same($value->data['status'], $status);
+    } else { same($value->data, ['status' => $status]); }
     same(str_contains(json_encode($value), 'SECRET'), false);
 }
 function current_user_can(string $cap): bool { return in_array($cap, $GLOBALS['caps'], true); }
@@ -195,7 +200,10 @@ $GLOBALS['linked'] = '';
 status(send($input), 403);
 $GLOBALS['linked'] = 'account-A';
 same($GLOBALS['wpdb']->installs, 0);
-status($api->ingest(new WP_REST_Request(str_repeat(' ', 512 * 1024 + 1))), 413);
+$oversized = $api->ingest(new WP_REST_Request(str_repeat(' ', 512 * 1024 + 1)));
+status($oversized, 413);
+same($oversized->code, 'overseek_delivery_input_too_large');
+same($oversized->data['reason'], 'payload_limits_exceeded');
 foreach (['{', '[]', '{}', 'null', '{"schemaVersion":1,"payload":NaN}'] as $json) { status($api->ingest(new WP_REST_Request($json)), 400); }
 
 foreach ([['schemaVersion', 2], ['scope', 'inbound'], ['entityId', 1], ['revision', 0], ['revision', -1], ['revision', 1.2], ['revision', '1'], ['revision', true], ['revision', 9007199254740992], ['extra', 'SECRET']] as [$key, $value]) {

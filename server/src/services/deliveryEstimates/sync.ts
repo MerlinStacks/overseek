@@ -6,11 +6,13 @@ import { WooService } from '../woo';
 import { dirtyInboundProducts, lockDeliveryAccount, recoverStrandedInbound } from './intents';
 import { enqueueDeliveryResync, drainDeliveryResyncs } from './resync';
 import { drainInboundBuilds } from './inboundResync';
+import { diagnosticMessages, inboundExpired, inboundNeedsRebuild, localInputDiagnostic, remoteInputDiagnostic, requiresVariantSupplierLeads, InputDiagnostic } from './inputDiagnostic';
+import { captureInputSuppression } from './inputSuppression';
 
 export const DELIVERY_LEASE_MS = 120_000;
 const MAX_ATTEMPTS = 8;
 const CAPABILITY_CACHE_MS = 60 * 60 * 1000;
-const syncCapabilities = z.object({ schemaVersion: z.number().int().positive(), capabilities: z.object({ configurationSync: z.boolean(), inboundInputs: z.boolean().optional(), inboundReceiptSafety: z.boolean().optional() }) });
+const syncCapabilities = z.object({ schemaVersion: z.number().int().positive(), capabilities: z.object({ configurationSync: z.boolean(), inboundInputs: z.boolean().optional(), inboundReceiptSafety: z.boolean().optional(), variantSupplierLeads: z.boolean().optional() }) });
 
 export async function deliverySyncStatus(accountId: string) {
     return prisma.$transaction(async tx => {
@@ -68,7 +70,7 @@ async function sourceCurrent(tx: Prisma.TransactionClient, candidate: DeliveryIn
 }
 
 class SyncFailure extends Error {
-    constructor(public status: string, message: string, public accountWide = false) { super(message); }
+    constructor(public status: string, public reason: keyof typeof diagnosticMessages, public accountWide = false) { super(diagnosticMessages[reason]); }
 }
 
 /** Both exact replays and newly applied revisions must acknowledge the exact envelope.
@@ -84,6 +86,17 @@ export function validDeliveryAck(value: unknown, job: DeliveryInputSync): boolea
 
 export async function dispatchDeliveryInput(candidate: DeliveryInputSync) {
     const now = new Date();
+    // Expired snapshots never reach discovery or input HTTP, including legacy rows
+    // without renewal metadata and manual retries of old failures.
+    if (inboundNeedsRebuild(candidate, now)) {
+        await prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, candidate.accountId);
+            if (await tx.deliveryInputSync.findFirst({ where: { id: candidate.id, desiredRevision: candidate.desiredRevision, status: 'pending' }, select: { id: true } })) {
+                await dirtyInboundProducts(tx, candidate.accountId, [candidate.entityId]);
+            }
+        });
+        return;
+    }
     const token = randomUUID();
     // One transport owner per account (also the capability probe single-flight owner).
     const control = await prisma.deliverySyncAccount.findUnique({ where: { accountId: candidate.accountId } });
@@ -103,6 +116,7 @@ export async function dispatchDeliveryInput(candidate: DeliveryInputSync) {
     const owner = { id: candidate.id, leaseToken: token };
     const accountLease = { account: { deliverySyncAccount: { is: { leaseToken: token } } } };
     const sent = { ...owner, ...accountLease, desiredRevision: candidate.desiredRevision };
+    let phase: InputDiagnostic['phase'] = 'capabilities';
     try {
         const claimed = await prisma.deliveryInputSync.updateMany({
             where: { id: candidate.id, desiredRevision: candidate.desiredRevision, status: 'pending', nextAttemptAt: { lte: now }, OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }] },
@@ -112,30 +126,43 @@ export async function dispatchDeliveryInput(candidate: DeliveryInputSync) {
         // A save between scan and claim invalidates the claim; saves after claim stay pending.
         const woo = await WooService.forAccount(candidate.accountId).catch(error => {
             if (error instanceof Error && error.message === 'Account missing WooCommerce credentials') {
-                throw new SyncFailure('blocked', 'Delivery authorization unavailable.', true);
+                throw new SyncFailure('blocked', 'authorization_unavailable', true);
             }
             throw error;
         });
         // Credential loading must not consume the transport's lease budget.
         if (Date.now() - now.getTime() > DELIVERY_LEASE_MS - 30_000) throw new Error('Lease budget exhausted');
         let inboundCapability = control.inboundCapabilityStatus;
-        if (control.capabilityStatus !== 'supported' || !control.capabilityExpiresAt || control.capabilityExpiresAt <= now || (candidate.scope === 'inbound' && inboundCapability !== 'supported')) {
+        let capabilityDetails = control.capabilityDetails as { variantSupplierLeads?: boolean } | null;
+        if (control.capabilityStatus !== 'supported' || !control.capabilityExpiresAt || control.capabilityExpiresAt <= now || (candidate.scope === 'inbound' && (inboundCapability !== 'supported' || !capabilityDetails))) {
             const caps = syncCapabilities.safeParse(await woo.getDeliveryDiscovery('capabilities'));
-            if (!caps.success) throw new SyncFailure('blocked', 'Invalid delivery capabilities.', true);
+            if (!caps.success) throw new SyncFailure('blocked', 'capabilities_invalid', true);
             if (caps.data.schemaVersion !== 1 || !caps.data.capabilities.configurationSync) {
-                throw new SyncFailure('plugin_update_required', 'Update the Overseek WooCommerce plugin.', true);
+                throw new SyncFailure('plugin_update_required', 'configuration_capability_required', true);
             }
             inboundCapability = control.inboundCapabilityStatus === 'plugin_update_required' ? 'plugin_update_required' : caps.data.capabilities.inboundInputs === true ? 'supported' : 'plugin_update_required';
+            capabilityDetails = { variantSupplierLeads: caps.data.capabilities.variantSupplierLeads === true };
             const cached = await prisma.$transaction(async tx => {
                 await lockDeliveryAccount(tx, candidate.accountId);
                 const result = await tx.deliverySyncAccount.updateMany({ where: accountVersion,
-                    data: { capabilityStatus: 'supported', inboundCapabilityStatus: inboundCapability, capabilityExpiresAt: new Date(Date.now() + CAPABILITY_CACHE_MS), lastError: null } });
-                if (result.count && inboundCapability === 'plugin_update_required') await tx.deliveryInputSync.updateMany({ where: { accountId: candidate.accountId, scope: 'inbound', status: { not: 'synced' } }, data: { status: 'plugin_update_required', lastError: 'Update the plugin for inbound inputs.' } });
+                    data: { capabilityStatus: 'supported', inboundCapabilityStatus: inboundCapability, capabilityDetails: { ...caps.data.capabilities, variantSupplierLeads: capabilityDetails!.variantSupplierLeads === true }, capabilityExpiresAt: new Date(Date.now() + CAPABILITY_CACHE_MS), lastError: null,
+                        lastDiagnostic: inboundCapability === 'plugin_update_required' ? localInputDiagnostic('inbound_capability_required', 'capabilities', null, true) : Prisma.DbNull } });
+                if (result.count && inboundCapability === 'plugin_update_required') {
+                    await tx.deliveryInputSync.updateMany({ where: { accountId: candidate.accountId, scope: 'inbound', status: { not: 'synced' } }, data: { status: 'plugin_update_required', lastError: 'Update the plugin for inbound inputs.' } });
+                    await captureInputSuppression(tx, candidate.accountId, localInputDiagnostic('inbound_capability_required', 'capabilities', null, true), 'inbound');
+                }
                 return result;
             });
             if (!cached.count) return;
         }
-        if (candidate.scope === 'inbound' && inboundCapability !== 'supported') return;
+        if (candidate.scope === 'inbound' && inboundCapability !== 'supported') {
+            await prisma.deliveryInputSync.updateMany({ where: sent, data: { lastDiagnostic: localInputDiagnostic('inbound_capability_required', 'capabilities', candidate.desiredRevision, true) } });
+            return;
+        }
+        if (candidate.scope === 'inbound' && requiresVariantSupplierLeads(candidate.payload) && capabilityDetails?.variantSupplierLeads !== true) {
+            throw new SyncFailure('plugin_update_required', 'variant_supplier_leads_required');
+        }
+        phase = 'inputs';
         // Avoid sending a superseded enabled payload if a disable arrived during discovery.
         const current = await prisma.$transaction(async tx => {
             await lockDeliveryAccount(tx, candidate.accountId);
@@ -144,25 +171,32 @@ export async function dispatchDeliveryInput(candidate: DeliveryInputSync) {
                 await sourceCurrent(tx, candidate);
         });
         if (!current) return;
+        if (inboundExpired(candidate.scope, candidate.payload)) {
+            await prisma.$transaction(async tx => {
+                await lockDeliveryAccount(tx, candidate.accountId);
+                if (await tx.deliveryInputSync.findFirst({ where: sent, select: { id: true } })) await dirtyInboundProducts(tx, candidate.accountId, [candidate.entityId]);
+            });
+            return;
+        }
         if (Date.now() - now.getTime() > DELIVERY_LEASE_MS - 15_000) throw new Error('Lease budget exhausted');
         const envelope = { schemaVersion: 1 as const, scope: candidate.scope, entityId: candidate.entityId, revision: Number(candidate.desiredRevision), payload: candidate.payload };
-        if (Buffer.byteLength(JSON.stringify(envelope), 'utf8') > 512 * 1024) throw new SyncFailure('blocked', 'Delivery envelope exceeds size bound.');
+        if (Buffer.byteLength(JSON.stringify(envelope), 'utf8') > 512 * 1024) throw new SyncFailure('blocked', 'payload_limits_exceeded');
         const ack = await woo.postDeliveryInputs(envelope);
-        if (!validDeliveryAck(ack, candidate)) throw new SyncFailure('blocked', 'Invalid delivery acknowledgement.');
+        if (!validDeliveryAck(ack, candidate)) throw new SyncFailure('blocked', 'acknowledgement_invalid');
         // Record only the revision actually sent, then conditionally mark its desired state synced.
         await prisma.$transaction(async tx => {
             await lockDeliveryAccount(tx, candidate.accountId);
             await tx.deliveryInputSync.updateMany({ where: { ...owner, ...accountLease, ackRevision: { lt: candidate.desiredRevision } }, data: { ackRevision: candidate.desiredRevision, lastAcknowledgedAt: new Date() } });
             if (await tx.deliverySyncAccount.findFirst({ where: accountVersion, select: { accountId: true } }) && await sourceCurrent(tx, candidate)) {
-                await tx.deliveryInputSync.updateMany({ where: sent, data: { status: 'synced', lastError: null, attempts: 0, proofRebuilds: 0 } });
+                await tx.deliveryInputSync.updateMany({ where: sent, data: { status: 'synced', lastError: null, lastDiagnostic: Prisma.DbNull, attempts: 0, proofRebuilds: 0 } });
             }
         });
     } catch (error) {
-        const proofConflict = (error as { response?: { data?: { code?: string } } }).response?.data?.code === 'overseek_delivery_stale_proof';
+        const proofConflict = (error as { response?: { data?: { code?: string } } })?.response?.data?.code === 'overseek_delivery_stale_proof';
         if (candidate.scope === 'inbound' && proofConflict && candidate.proofRebuilds < 3) {
             await prisma.$transaction(async tx => {
                 await lockDeliveryAccount(tx, candidate.accountId);
-                const changed = await tx.deliveryInputSync.updateMany({ where: sent, data: { proofRebuilds: { increment: 1 }, status: 'pending', lastError: 'Receipt changed; bounded proof rebuild queued.' } });
+                const changed = await tx.deliveryInputSync.updateMany({ where: sent, data: { proofRebuilds: { increment: 1 }, status: 'pending', lastError: 'Receipt changed; bounded proof rebuild queued.', lastDiagnostic: remoteInputDiagnostic(error, phase, candidate.desiredRevision, false) } });
                 if (changed.count) await dirtyInboundProducts(tx, candidate.accountId, [candidate.entityId]);
             });
             return;
@@ -172,21 +206,36 @@ export async function dispatchDeliveryInput(candidate: DeliveryInputSync) {
         const status = error instanceof SyncFailure ? error.status : code === 404 ? 'plugin_update_required' :
             code && code >= 400 && code < 500 && ![408, 429].includes(code) ? 'blocked' : attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
         const lastError = error instanceof SyncFailure ? error.message : status === 'plugin_update_required' ? 'Update the Overseek WooCommerce plugin.' : status === 'blocked' ? 'Delivery authorization, schema or revision rejected.' : 'Delivery transport unavailable.';
+        const remoteCode = (error as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
+        // A missing product (or record-specific proof/schema error) is not a missing route.
+        const recordCode = typeof remoteCode === 'string' && ['overseek_delivery_input_invalid', 'overseek_delivery_input_too_large', 'overseek_delivery_revision_conflict', 'overseek_delivery_stale_proof'].includes(remoteCode);
+        const remoteDiagnostic = remoteInputDiagnostic(error, phase, candidate.desiredRevision, false);
+        const accountWide = error instanceof SyncFailure ? error.accountWide : remoteDiagnostic.reason === 'authorization_unavailable' || (!recordCode && [401, 403, 404].includes(code ?? 0));
+        const diagnostic = error instanceof SyncFailure ? localInputDiagnostic(error.reason, phase, candidate.desiredRevision, accountWide) : remoteInputDiagnostic(error, phase, candidate.desiredRevision, accountWide);
+        const failureStatus = recordCode && code && code >= 400 && code < 500 ? 'blocked' : status;
         // Persist account suppression once. Writers take the same lock, so later saves inherit it.
-        if (candidate.scope === 'inbound' && code === 404 && !(error instanceof SyncFailure && error.accountWide)) {
+        if (accountWide && candidate.scope === 'inbound' && phase === 'inputs' && code === 404 && !(error instanceof SyncFailure && error.accountWide)) {
             await prisma.$transaction(async tx => {
                 await lockDeliveryAccount(tx, candidate.accountId);
-                const parked = await tx.deliverySyncAccount.updateMany({ where: accountVersion, data: { inboundCapabilityStatus: 'plugin_update_required' } });
-                if (parked.count) await tx.deliveryInputSync.updateMany({ where: { accountId: candidate.accountId, scope: 'inbound', status: { not: 'synced' } }, data: { status: 'plugin_update_required', lastError } });
+                if (!await tx.deliveryInputSync.findFirst({ where: sent, select: { id: true } })) return;
+                const parked = await tx.deliverySyncAccount.updateMany({ where: accountVersion, data: { inboundCapabilityStatus: 'plugin_update_required', lastDiagnostic: { ...diagnostic, attemptedRevision: null } } });
+                if (parked.count) {
+                    await tx.deliveryInputSync.updateMany({ where: { accountId: candidate.accountId, scope: 'inbound', status: { not: 'synced' } }, data: { status: 'plugin_update_required', lastError } });
+                    await captureInputSuppression(tx, candidate.accountId, diagnostic, 'inbound');
+                }
             });
-        } else if ((error instanceof SyncFailure && error.accountWide) || [401, 403, 404].includes(code ?? 0)) {
+        } else if (accountWide) {
             await prisma.$transaction(async tx => {
                 await lockDeliveryAccount(tx, candidate.accountId);
-                const parked = await tx.deliverySyncAccount.updateMany({ where: accountVersion, data: { capabilityStatus: status, capabilityExpiresAt: null, lastError } });
-                if (parked.count) await tx.deliveryInputSync.updateMany({ where: { accountId: candidate.accountId, status: { not: 'synced' } }, data: { status, lastError } });
+                if (!await tx.deliveryInputSync.findFirst({ where: sent, select: { id: true } })) return;
+                const parked = await tx.deliverySyncAccount.updateMany({ where: accountVersion, data: { capabilityStatus: status, capabilityExpiresAt: null, lastError, lastDiagnostic: { ...diagnostic, attemptedRevision: null } } });
+                if (parked.count) {
+                    await tx.deliveryInputSync.updateMany({ where: { accountId: candidate.accountId, status: { not: 'synced' } }, data: { status, lastError } });
+                    await captureInputSuppression(tx, candidate.accountId, diagnostic);
+                }
             });
         }
-        await prisma.deliveryInputSync.updateMany({ where: sent, data: { status, attempts, lastError, nextAttemptAt: new Date(Date.now() + Math.min(3_600_000, 30_000 * 2 ** Math.min(attempts - 1, 7))) } });
+        await prisma.deliveryInputSync.updateMany({ where: sent, data: { status: failureStatus, attempts, lastError, lastDiagnostic: diagnostic, nextAttemptAt: new Date(Date.now() + Math.min(3_600_000, 30_000 * 2 ** Math.min(attempts - 1, 7))) } });
     } finally {
         await prisma.$transaction(async tx => {
             await lockDeliveryAccount(tx, candidate.accountId);
@@ -238,9 +287,11 @@ export async function recoverStrandedDeliveryInputs() {
         SELECT c."accountId" FROM "DeliverySyncAccount" c
         WHERE NOT c."inboundFullRequested" AND NOT c."inboundFailed"
           AND c."capabilityStatus" IN ('unknown', 'supported') AND c."inboundCapabilityStatus" <> 'plugin_update_required'
-          AND NOT EXISTS (SELECT 1 FROM "AccountFeature" f WHERE f."accountId" = c."accountId" AND f."featureKey" = 'DELIVERY_ESTIMATES' AND NOT f."isEnabled")
           AND EXISTS (SELECT 1 FROM "DeliveryInputSync" i WHERE i."accountId" = c."accountId" AND i.scope = 'inbound'
-            AND i.status = 'pending' AND i."inboundGeneration" <> c."inboundGeneration"
+            AND i.status = 'pending' AND (i."inboundGeneration" <> c."inboundGeneration" OR i.payload->>'expiresAt' <= to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+              OR (i."lastDiagnostic"->>'source' = 'remote' AND i."lastDiagnostic"->>'phase' = 'inputs'
+                AND i."lastDiagnostic"->>'disposition' = 'record_rejection' AND i."lastDiagnostic"->>'reason' = 'inbound_expired'
+                AND i."lastDiagnostic"->>'attemptedRevision' = i."desiredRevision"::text))
             AND NOT EXISTS (SELECT 1 FROM "DeliveryInboundDirtyTarget" d WHERE d."accountId" = i."accountId" AND d."wooId" = i."entityId"))
         ORDER BY c."inboundLastBuildAt", c."accountId" LIMIT 4`;
     for (const { accountId } of accounts) await prisma.$transaction(async tx => {

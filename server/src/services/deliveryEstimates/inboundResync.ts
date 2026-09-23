@@ -93,7 +93,7 @@ export async function drainInboundBuilds(limit = 4) {
     await wakeInboundTargets();
     const failed: string[] = [];
     for (let budget = Math.min(4, Math.max(1, limit)); budget > 0;) {
-        const accounts = await prisma.deliverySyncAccount.findMany({ where: { inboundRequested: true, inboundFailed: false, capabilityStatus: { in: ['unknown', 'supported'] }, inboundCapabilityStatus: { not: 'plugin_update_required' }, account: { features: { none: { featureKey: 'DELIVERY_ESTIMATES', isEnabled: false } } }, inboundNextAttemptAt: { lte: new Date() }, ...(failed.length ? { accountId: { notIn: failed } } : {}) }, orderBy: [{ inboundLastBuildAt: 'asc' }, { accountId: 'asc' }], take: budget, select: { accountId: true, inboundVersion: true, inboundAttempts: true } });
+        const accounts = await prisma.deliverySyncAccount.findMany({ where: { inboundRequested: true, inboundFailed: false, capabilityStatus: { in: ['unknown', 'supported'] }, inboundCapabilityStatus: { not: 'plugin_update_required' }, OR: [{ account: { features: { none: { featureKey: 'DELIVERY_ESTIMATES', isEnabled: false } } } }, { account: { deliveryInboundDirtyTargets: { some: {} } } }], inboundNextAttemptAt: { lte: new Date() }, ...(failed.length ? { accountId: { notIn: failed } } : {}) }, orderBy: [{ inboundLastBuildAt: 'asc' }, { accountId: 'asc' }], take: budget, select: { accountId: true, inboundVersion: true, inboundAttempts: true } });
         if (!accounts.length) break;
         budget -= accounts.length;
         const results = await Promise.allSettled(accounts.map(account => buildInboundBatch(account.accountId, account)));

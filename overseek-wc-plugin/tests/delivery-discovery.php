@@ -76,7 +76,7 @@ foreach ($GLOBALS['routes'] as $route) {
 }
 same($api->get_capabilities()->data, [
     'schemaVersion' => 1,
-    'capabilities' => ['shippingMethods' => true, 'calculationEngine' => true, 'configurationSync' => true, 'inboundInputs' => true, 'guardedReceipts' => true, 'receiptFinalization' => true, 'inboundReceiptSafety' => true, 'storefront' => true],
+    'capabilities' => ['variantSupplierLeads' => true, 'shippingMethods' => true, 'calculationEngine' => true, 'configurationSync' => true, 'inboundInputs' => true, 'guardedReceipts' => true, 'receiptFinalization' => true, 'inboundReceiptSafety' => true, 'storefront' => true],
     'pluginVersion' => 'test-version',
 ]);
 error_is($api->get_shipping_methods(), 'overseek_delivery_woocommerce_unavailable', 503);

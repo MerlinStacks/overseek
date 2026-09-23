@@ -98,7 +98,7 @@ test('verified publication preserves exact bytes, version/exclusions and support
     const report = publishVerified({ ...f, expectedSha256 });
     assert.deepEqual(fs.readFileSync(f.target), bytes);
     assert.deepEqual(JSON.parse(fs.readFileSync(f.sidecar)), report);
-    assert.equal(report.version, '2.23.0');
+    assert.equal(report.version, '2.23.1');
     assert.deepEqual(report.excluded, ['tests/']);
     assert.deepEqual(report.files, sourceReport(f.projectRoot).files);
     fs.unlinkSync(f.sidecar);

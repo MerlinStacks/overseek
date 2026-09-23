@@ -94,6 +94,7 @@ class OverSeek_Delivery_Discovery_API {
 		return new WP_REST_Response( [
 			'schemaVersion' => 1,
 			'capabilities'  => [
+				'variantSupplierLeads' => true,
 				'shippingMethods'   => true,
 				'calculationEngine' => true,
 				'configurationSync' => true,

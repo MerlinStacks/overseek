@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({ membership: vi.fn(), feature: vi.fn(), permiss
 const launch = vi.hoisted(() => ({ readiness: vi.fn(), activation: vi.fn(), cutover: vi.fn(), receipts: vi.fn(), observe: vi.fn(), reconcile: vi.fn() }));
 const legacy = vi.hoisted(() => ({ list: vi.fn(), observe: vi.fn(), reconcile: vi.fn() }));
 const inventory = vi.hoisted(() => ({ cycles: vi.fn(), cascade: vi.fn(), reversal: vi.fn() }));
+const inputs = vi.hoisted(() => ({ list: vi.fn(), retry: vi.fn() }));
+vi.mock('../services/deliveryEstimates/inputRecovery', async original => ({ ...await original<typeof import('../services/deliveryEstimates/inputRecovery')>(), listDeliveryInputs: inputs.list, retryDeliveryInput: inputs.retry }));
 vi.mock('../services/deliveryEstimates/receiptCascade', () => ({ retryReceiptCascade: inventory.cascade }));
 vi.mock('../services/deliveryEstimates/legacyRecovery', async original => ({ ...await original<typeof import('../services/deliveryEstimates/legacyRecovery')>(), listLegacyReceipts: legacy.list, observeLegacyReceipt: legacy.observe, requestLegacyResolution: legacy.reconcile, requestLegacyPoReversalReview: inventory.reversal }));
 vi.mock('../services/deliveryEstimates/launch', async original => ({ ...await original<typeof import('../services/deliveryEstimates/launch')>(), deliveryLocalStatus: async () => ({ syncStatus: 'plugin_update_required', storefrontActivated: false }), deliveryReadiness: launch.readiness, requestActivation: launch.activation, requestCutover: launch.cutover }));
@@ -46,6 +48,29 @@ describe('delivery API authorization and contract', () => {
         return instance;
     }
     const headers = { authorization: 'Bearer token', 'x-account-id': 'a' };
+    it.each(['GET', 'POST'] as const)('allows feature-off input recovery %s with membership, permission and no-store', async method => {
+        mocks.feature.mockResolvedValue({ isEnabled: false });
+        inputs.list.mockResolvedValue({ schemaVersion: 1, items: [], nextCursor: null });
+        inputs.retry.mockResolvedValue({ accepted: true, disposition: 'queued', inputId: 'selected' });
+        const server = await app();
+        const url = '/api/delivery-estimates/sync/inputs' + (method === 'POST' ? '/selected/retry' : '');
+        const response = await server.inject({ method, url, headers });
+        expect(response.statusCode).toBe(method === 'GET' ? 200 : 202);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(mocks.permission).toHaveBeenCalledWith('u', 'a', method === 'GET' ? 'view_shipping' : 'manage_shipping_settings');
+        if (method === 'GET') expect(inputs.list).toHaveBeenCalledWith('a', { status: 'attention', limit: 25 });
+        else expect(inputs.retry).toHaveBeenCalledWith('a', 'selected');
+        mocks.permission.mockResolvedValue(false);
+        expect((await server.inject({ method, url, headers })).statusCode).toBe(403);
+        mocks.permission.mockResolvedValue(true); mocks.membership.mockResolvedValue(null);
+        expect((await server.inject({ method, url, headers })).statusCode).toBe(403);
+        expect((await server.inject({ method, url })).statusCode).toBe(401);
+    });
+    it.each(['limit=0', 'limit=101', 'limit=1.5', 'limit=no', 'scope=all', 'status=synced', 'force=true'])('rejects invalid input filters %s', async query => {
+        const response = await (await app()).inject({ url: '/api/delivery-estimates/sync/inputs?' + query, headers });
+        expect(response.statusCode).toBe(400);
+        expect(inputs.list).not.toHaveBeenCalled();
+    });
     it('keeps cascade retry, skipped-cycle audit and historical reversal review permission checked even with feature off', async () => {
         mocks.feature.mockResolvedValue({ isEnabled: false });
         inventory.cascade.mockResolvedValue({ accepted: true, operationId: 'op', cascadeState: 'pending' });

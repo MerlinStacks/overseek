@@ -20,7 +20,10 @@ same(send($replay)->data['applied'], false);
 $json = str_replace('"quantity":1000000', '"quantity":1e6', json_encode($inbound));
 same($api->ingest(new WP_REST_Request($json))->data['applied'], false);
 same($api->ingest(new WP_REST_Request(str_pad(json_encode($inbound), 512 * 1024, ' ')))->status, 200);
-status($api->ingest(new WP_REST_Request(str_pad(json_encode($inbound), 512 * 1024 + 1, ' '))), 413);
+$oversized = $api->ingest(new WP_REST_Request(str_pad(json_encode($inbound), 512 * 1024 + 1, ' ')));
+status($oversized, 413);
+same($oversized->code, 'overseek_delivery_input_too_large');
+same($oversized->data['reason'], 'payload_limits_exceeded');
 foreach (['verified', 'ready', null, true] as $safety) { $bad = $inbound; $bad['payload']['receiptSafety'] = $safety; invalid($bad); }
 foreach (['ready', 'verified', '', null] as $state) { $bad = $inbound; $bad['payload']['targets'][0]['state'] = $state; invalid($bad); }
 foreach (['2026-02-29', '2028-02-30', '2026-04-31', '2026-1-01', '0000-01-01', '2028-02-29T00:00:00Z', 123] as $date) {

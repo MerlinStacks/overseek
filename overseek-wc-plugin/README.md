@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.23.0**.
+Current version: **2.23.1**.
 
 > **Important:** This plugin is **not standalone** - it connects your WooCommerce store to your self-hosted OverSeek server. You must set up the server first.
 
@@ -120,7 +120,25 @@ PHP 8.4.23 and MySQL 8.4.8; this does not certify every theme/provider/version.
 Plugin updates invalidate activation fingerprints: recheck readiness before reactivation.
 See the repository's `docs/delivery-release-runbook.md` for the controlled launch sequence.
 
+### Upgrading to 2.23.1
+
+Update OverSeek with all pending earlier migrations and
+`20260923140000_delivery_input_diagnostics` applied before starting the updated
+server, and generate its Prisma client. Then update the companion plugin to 2.23.1.
+In delivery sync attention, use **Retry** for the specific blocked inputs after
+resolving their reported cause. Previously synced inputs are left untouched;
+expired inbound inputs are rebuilt from current sources with a new revision.
+The update does not force-activate delivery estimates. If delivery estimates were
+already active, the changed plugin-version fingerprint requires readiness
+revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
+candidate validation gate and upgrade sequence.
+
 ## Changelog
+
+### 2.23.1 - 2026-09-23
+- **Fixed:** Shared stock-owner variants support distinct supplier leads through `variantSupplierLeads`.
+- **Improved:** Typed delivery input rejection reasons support targeted diagnostics and retry.
+- **Activation:** Does not force-activate delivery estimates; plugin-version changes require readiness revalidation.
 
 ### 2.23.0 - 2026-09-22
 - **Added:** Configurable delivery estimates, product block/shortcode, classic and Blocks rate presentation, and saved checkout promises.

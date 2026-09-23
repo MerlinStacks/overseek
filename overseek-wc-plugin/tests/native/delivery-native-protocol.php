@@ -24,7 +24,9 @@ function overseek_native_protocol(OverSeek_Native_Fixture $f): void {
  $f->check($adapter->calculate($cart,[$rate])['status']==='available','Verified managed native estimate available');
  $siblings=array_map(static fn($id)=>['product_id'=>$d['parent'],'variation_id'=>$id,'quantity'=>2,'data'=>wc_get_product($id)],$d['children']);
  $f->check(wc_get_product($d['children'][0])->managing_stock()==='parent','Fixture uses native inherited managing_stock sentinel');
- $f->check($adapter->calculate($siblings,[$rate])['status']==='available','Both parent-managed siblings receive valid pooled estimate');
+  $f->check($adapter->calculate($siblings,[$rate])['status']==='available','Both parent-managed siblings receive valid pooled estimate');
+  require_once __DIR__.'/delivery-native-variant-leads.php';
+  overseek_native_variant_leads($f,$rate);
  foreach([[$d['simple'],null,$cart,[$d['simple']]],[$d['parent'],$d['children'][0],$siblings,$d['children']]] as [$owner,$variation,$lines,$targets]) {
   $writes=0;$count=static function($sql,$id)use(&$writes,$owner){if((int)$id===$owner)++$writes;return $sql;};add_filter('woocommerce_update_product_stock_query',$count,10,2);
   try {

@@ -6,6 +6,7 @@ import { DeliveryEstimateService, DeliveryResourceNotFound } from '../services/d
 import { productInputSchema, settingsSchema } from '../services/deliveryEstimates/validation';
 import { DeliveryDiscoveryError, discoverShippingMethods } from '../services/deliveryEstimates/discovery';
 import { deliverySyncStatus, requestDeliverySync } from '../services/deliveryEstimates/sync';
+import { inputListQuery, listDeliveryInputs, retryDeliveryInput } from '../services/deliveryEstimates/inputRecovery';
 import { activationSchema, cutoverSchema, deliveryLocalStatus, deliveryReadiness, requestActivation, requestCutover } from '../services/deliveryEstimates/launch';
 import { listReceiptCycles, listReceipts, observeReceipt, reconciliationSchema, requestReconciliation } from '../services/deliveryEstimates/reconciliation';
 import { retryReceiptCascade } from '../services/deliveryEstimates/receiptCascade';
@@ -18,7 +19,7 @@ export default async function deliveryEstimateRoutes(fastify: FastifyInstance) {
         reply.header('Cache-Control', 'no-store');
         if (!request.accountId) return reply.code(400).send({ error: 'Account context required' });
         if (!request.user?.id) return reply.code(401).send({ error: 'Authentication required' });
-        const syncPath = request.routeOptions.url?.endsWith('/delivery-estimates/sync') || request.routeOptions.url === '/sync';
+        const syncPath = /\/sync(?:\/inputs(?:\/[^/]+\/retry)?)?$/.test(request.routeOptions.url ?? '');
         const path = request.routeOptions.url ?? '';
         const recoveryPath = /\/(activation|readiness|receipts(?:\/.*)?)$/.test(path);
         if (!syncPath && !recoveryPath && !await isAccountFeatureEnabled(request.accountId, 'DELIVERY_ESTIMATES')) {
@@ -89,6 +90,13 @@ export default async function deliveryEstimateRoutes(fastify: FastifyInstance) {
         return reply.code(202).send(await requestReconciliation(request.accountId!, request.params.operationId, request.user!.id, parsed.data));
     });
     fastify.get('/sync', async request => deliverySyncStatus(request.accountId!));
+    fastify.get('/sync/inputs', async (request, reply) => {
+        const parsed = inputListQuery.safeParse(request.query);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid delivery input query' });
+        return listDeliveryInputs(request.accountId!, parsed.data);
+    });
+    fastify.post<{ Params: { id: string } }>('/sync/inputs/:id/retry', async (request, reply) =>
+        reply.code(202).send(await retryDeliveryInput(request.accountId!, request.params.id)));
     fastify.post('/sync', async request => requestDeliverySync(request.accountId!));
     fastify.get('/settings', async request => ({
         settings: await DeliveryEstimateService.getSettings(request.accountId!), status: await deliveryLocalStatus(request.accountId!),

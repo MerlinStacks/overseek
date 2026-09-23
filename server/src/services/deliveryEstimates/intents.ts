@@ -18,6 +18,9 @@ export async function recordIntent(tx: Prisma.TransactionClient, accountId: stri
     const inboundParked = scope === 'inbound' && control.inboundCapabilityStatus === 'plugin_update_required';
     const status = parked ? control.capabilityStatus : inboundParked ? 'plugin_update_required' : 'pending';
     const lastError = parked ? control.lastError : inboundParked ? 'Update the plugin for inbound inputs.' : null;
+    // A new payload has no historical rejection. Distinguish this explicit clear
+    // from older NULL rows eligible for the account-only diagnostic fallback.
+    const lastDiagnostic = (parked || inboundParked) && control.lastDiagnostic ? { diagnostic: null } : Prisma.DbNull;
     const resyncGeneration = control.resyncGeneration;
     // Schedule from the immutable generation, never from an ACK or transport retry.
     const inboundRenewAt = scope === 'inbound' && Array.isArray(payload.targets) && payload.targets.length
@@ -25,8 +28,8 @@ export async function recordIntent(tx: Prisma.TransactionClient, accountId: stri
     // Never clear an active lease: the previous revision may still be on the wire.
     await tx.deliveryInputSync.upsert({
         where: { accountId_scope_entityId: { accountId, scope, entityId } },
-        create: { accountId, scope, entityId, payload, priority, status, lastError, resyncGeneration, inboundRenewAt },
-        update: { payload, priority, desiredRevision: { increment: 1 }, status, attempts: 0, nextAttemptAt: new Date(), lastError, resyncGeneration, inboundRenewAt },
+        create: { accountId, scope, entityId, payload, priority, status, lastError, ...(lastDiagnostic === Prisma.DbNull ? {} : { lastDiagnostic }), resyncGeneration, inboundRenewAt },
+        update: { payload, priority, desiredRevision: { increment: 1 }, status, attempts: 0, nextAttemptAt: new Date(), lastError, lastDiagnostic, resyncGeneration, inboundRenewAt },
     });
 }
 
@@ -54,7 +57,11 @@ export async function recoverStrandedInbound(tx: Prisma.TransactionClient, accou
         SELECT i."entityId" AS "wooId" FROM "DeliveryInputSync" i
         JOIN "DeliverySyncAccount" c ON c."accountId" = i."accountId"
         WHERE i."accountId" = ${accountId} AND i.scope = 'inbound' AND i.status = 'pending'
-          AND i."inboundGeneration" <> c."inboundGeneration" AND NOT c."inboundFullRequested" AND NOT c."inboundFailed"
+          AND (i."inboundGeneration" <> c."inboundGeneration" OR i.payload->>'expiresAt' <= to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            OR (i."lastDiagnostic"->>'source' = 'remote' AND i."lastDiagnostic"->>'phase' = 'inputs'
+              AND i."lastDiagnostic"->>'disposition' = 'record_rejection' AND i."lastDiagnostic"->>'reason' = 'inbound_expired'
+              AND i."lastDiagnostic"->>'attemptedRevision' = i."desiredRevision"::text))
+          AND NOT c."inboundFullRequested" AND NOT c."inboundFailed"
           AND NOT EXISTS (SELECT 1 FROM "DeliveryInboundDirtyTarget" d WHERE d."accountId" = i."accountId" AND d."wooId" = i."entityId")
         ORDER BY i.id LIMIT ${STRANDED_INBOUND_BATCH_SIZE}`;
     if (!rows.length) return 0;

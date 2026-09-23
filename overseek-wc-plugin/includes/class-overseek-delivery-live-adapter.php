@@ -119,8 +119,13 @@ final class OverSeek_Delivery_Live_Adapter {
 					$live[ $key ] = [ 'owner' => $owner, 'proof' => $blob['proof'], 'snapshot' => $snapshot, 'target' => $target ];
 					$owners[ $key ] = $snapshot + [ 'projection_status' => 'ready', 'supplier_lead' => $target['supplierLead'], 'inbound' => array_map( static fn( $b ) => [ 'date' => $b['dueDate'], 'quantity' => $b['quantity'], 'eligible' => true ], $target['batches'] ) ];
 				} else {
-					self::check( $live[ $key ]['target']['batches'] === $target['batches'] && $live[ $key ]['target']['supplierLead'] === $target['supplierLead'], 'owner_pool_conflict' );
+					self::check( $live[ $key ]['target']['batches'] === $target['batches'], 'owner_pool_conflict' );
 				}
+				// Only physical targets in this calculation contribute; stock/batches stay pooled once.
+				$fallback = $settings['fallbackSupplierLeadTimeDays'] ?? 30;
+				$lead = $target['supplierLead'] ?? self::range( [ 'min' => $fallback, 'max' => $fallback ] );
+				$previous = $owners[ $key ]['supplier_lead'] ?? $lead;
+				$owners[ $key ]['supplier_lead'] = [ 'min' => max( $previous['min'], $lead['min'] ), 'max' => max( $previous['max'], $lead['max'] ) ];
 				$status = $owners[ $key ]['stock_status'];
 			} else {
 				self::check( 'in_stock' === $status, 'unsupported_unmanaged_backorder' );
@@ -137,7 +142,7 @@ final class OverSeek_Delivery_Live_Adapter {
 			'now' => $now->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d\TH:i:s\Z' ),
 			'cutoff' => $settings['cutoffTime'] ?? null, 'work_weekdays' => $settings['productionWeekdays'] ?? null,
 			'transit_weekdays' => $settings['transitWeekdays'] ?? null, 'closures' => $settings['closures'] ?? null,
-			'fallback_lead' => [ 'min' => $settings['fallbackSupplierLeadTimeDays'] ?? null, 'max' => $settings['fallbackSupplierLeadTimeDays'] ?? null ],
+			'fallback_lead' => [ 'min' => $settings['fallbackSupplierLeadTimeDays'] ?? 30, 'max' => $settings['fallbackSupplierLeadTimeDays'] ?? 30 ],
 			'items' => $items, 'stock_owners' => $owners, 'methods' => $methods,
 		] );
 		foreach ( $live as $entry ) {
@@ -253,8 +258,8 @@ final class OverSeek_Delivery_Live_Adapter {
 			$pool = $row['stockOwnerWooId'];
 			if ( null === $pool || ! isset( $pools[ $pool ] ) ) { $batches += count( $row['batches'] ); }
 			if ( null !== $pool ) {
-				self::check( ! isset( $pools[ $pool ] ) || $pools[ $pool ] === [ $row['batches'], $row['supplierLead'] ], 'owner_pool_conflict' );
-				$pools[ $pool ] = [ $row['batches'], $row['supplierLead'] ];
+				self::check( ! isset( $pools[ $pool ] ) || $pools[ $pool ] === $row['batches'], 'owner_pool_conflict' );
+				$pools[ $pool ] = $row['batches'];
 			}
 			self::check( $batches <= 1000, 'invalid_inbound' );
 			foreach ( $row['batches'] as $batch ) {

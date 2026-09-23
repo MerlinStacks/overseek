@@ -30,7 +30,7 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native deliv
             ? { schemaVersion: 1, revision: command.revision, state: { active: command.action === 'activate', mode: 'guarded', epoch: 'epoch' } }
             : { schemaVersion: 1, protocolVersion: 1, blockers: [], wooVersion: '10.6.2', presentation: 'classic', environmentFingerprint: 'a'.repeat(64), state: { revision: 1, active: false, mode: 'guarded', epoch: 'epoch' } });
         m.input.mockImplementation(async (e: any) => ({ schemaVersion: 1, scope: e.scope, entityId: e.entityId, revision: e.revision, storedRevision: e.revision, applied: true, storefrontActivated: false }));
-        await m.client.deliverySyncAccount.create({ data: { accountId: 'a', capabilityStatus: 'supported', inboundCapabilityStatus: 'supported', capabilityExpiresAt: new Date(Date.now() + 3600000) } });
+        await m.client.deliverySyncAccount.create({ data: { accountId: 'a', capabilityStatus: 'supported', inboundCapabilityStatus: 'supported', capabilityDetails: { variantSupplierLeads: true }, capabilityExpiresAt: new Date(Date.now() + 3600000) } });
     }, 30000);
     afterEach(async () => { await fixture?.close(); m.client = null; });
 
@@ -94,7 +94,7 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native deliv
     });
 
     it('runs readiness against the complete migration chain and atomically rolls back/commits explicit feature disable', async () => {
-        expect(fixture.migrations).toHaveLength(17);
+        expect(fixture.migrations).toHaveLength(18);
         expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([]);
         await db.exec(`UPDATE "Account" SET "receiptTransportMode"='GUARDED' WHERE id='a';
             INSERT INTO "WooProduct" (id,"accountId","wooId","productionMinDays","productionMaxDays","rawData") VALUES ('p','a',10,0,2,'{"type":"simple"}');`);

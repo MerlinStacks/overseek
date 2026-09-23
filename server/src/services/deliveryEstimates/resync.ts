@@ -21,10 +21,12 @@ export async function enqueueDeliveryResync(accountId: string) {
             await tx.deliverySyncAccount.update({ where: { accountId }, data: {
                 ...(control.buildFailed ? resetBuildFailure() : {}),
                 ...(control.inboundFailed ? { inboundFailed: false, inboundAttempts: 0, inboundLastError: null, inboundNextAttemptAt: new Date(), inboundVersion: { increment: 1 } } : {}),
-                capabilityStatus: 'unknown', capabilityExpiresAt: null, inboundCapabilityStatus: 'unknown',
+                capabilityStatus: 'unknown', capabilityExpiresAt: null, inboundCapabilityStatus: 'unknown', capabilityDetails: Prisma.DbNull, lastDiagnostic: Prisma.DbNull,
                 lastError: null, hasWork: true, nextAttemptAt: new Date(),
             } });
             await tx.deliveryInputSync.updateMany({ where: { accountId, status: { in: ['blocked', 'failed', 'plugin_update_required'] } },
+                // Keep exact-revision evidence until the bounded builder/dispatch
+                // consumes remote expiry, even when the local clock says fresh.
                 data: { status: 'pending', attempts: 0, proofRebuilds: 0, lastError: null, nextAttemptAt: new Date() } });
             await recoverStrandedInbound(tx, accountId, { ...control, inboundFailed: false });
             return 'retrying' as const;
@@ -37,7 +39,7 @@ export async function enqueueDeliveryResync(accountId: string) {
         await dirtyInbound(tx, accountId);
         await tx.deliverySyncAccount.update({ where: { accountId }, data: {
             resyncRequested: true, resyncGeneration: { increment: 1 }, resyncPhase: 'products', resyncCursor: null,
-            capabilityStatus: 'unknown', capabilityExpiresAt: null, lastError: null, hasWork: true, nextAttemptAt: new Date(),
+            capabilityStatus: 'unknown', capabilityExpiresAt: null, capabilityDetails: Prisma.DbNull, lastDiagnostic: Prisma.DbNull, lastError: null, hasWork: true, nextAttemptAt: new Date(),
             ...resetBuildFailure(),
         } });
         // Settings are current immediately; transport remains gated until the build finishes.
@@ -88,7 +90,7 @@ export async function buildDeliveryResyncBatch(accountId: string, scanned?: { re
             for (const row of rows) {
                 const product = await tx.wooProduct.findFirst({ where: { accountId, wooId: row.entityId }, select: { id: true } });
                 if (product) await recordProductIntent(tx, accountId, await DeliveryEstimateService.getProduct(accountId, product.id, tx));
-                else await recordIntent(tx, accountId, 'product', row.entityId, row.payload as Prisma.InputJsonObject);
+                else await recordIntent(tx, accountId, 'product', row.entityId, { wooId: row.entityId, productionMinDays: null, productionMaxDays: null, variations: [] });
             }
             await tx.deliverySyncAccount.update({ where: { accountId }, data: {
                 lastBuildAt: new Date(),

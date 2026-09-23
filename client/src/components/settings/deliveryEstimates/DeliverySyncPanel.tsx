@@ -1,4 +1,5 @@
 import { useDeliveryEstimateSync, type DeliverySyncStatus } from '../../../hooks/useDeliveryEstimateSync';
+import { DeliverySyncInputs } from './DeliverySyncInputs';
 
 const descriptions: Record<DeliverySyncStatus['configurationSync'], string> = {
     not_requested: 'Not requested — queue an initial sync of saved inputs.',
@@ -63,5 +64,6 @@ export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, sa
             {canEdit && <button type="button" disabled={busy || dirty || saving || backgroundPending} onClick={() => { if (!dirty && !saving && !backgroundPending) void queue(); }} className="rounded-md bg-indigo-600 px-3 py-2 text-white disabled:opacity-50">Sync saved settings and production times</button>}
             <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-2 disabled:opacity-50">Refresh sync status</button>
         </div>
+        <DeliverySyncInputs key={accountId} accountId={accountId} token={token} canEdit={canEdit} disabled={busy || dirty || saving} onRetry={refresh} />
     </section>;
 }

@@ -5,9 +5,9 @@ const { createHash } = require('node:crypto');
 // Release pins bind both the tested ZIP and its source-verified manifest. Update
 // together only after verified publication of a new release; no ZIP parser needed.
 const RELEASE = Object.freeze({
-    version: '2.23.0',
-    zip: 'b193d955ff0920a266b93d35df0678fddf98b58c2eeac1bced1d87045cfa9070',
-    manifest: '0c1b4d338ce2678818cbb9b3c750bf1c777e8de61f85ab2222d8da2a7aef1a47',
+    version: '2.23.1',
+    zip: '365bc2369e44352a721dffd3b36d00d53888bf030ecb8222e00a456dd0622781',
+    manifest: '60ab038ffbcc7aae478616a3abc6fd877866006c791d14bf5e1dde6ab6dc03b3',
 });
 const ZIP = 'overseek-wc-plugin.zip';
 const MANIFEST = 'overseek-wc-plugin.manifest.json';

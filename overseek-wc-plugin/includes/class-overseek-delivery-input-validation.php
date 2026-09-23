@@ -7,12 +7,13 @@
 declare(strict_types=1);
 
 defined( 'ABSPATH' ) || exit;
+require_once __DIR__ . '/class-overseek-delivery-input-exception.php';
 
 class OverSeek_Delivery_Input_Validation {
 
 	/** Decode objects distinctly from arrays and return canonical validated input. */
 	public function validate( string $body ): array {
-		$this->require_valid( strlen( $body ) <= 512 * 1024 );
+		$this->require_valid( strlen( $body ) <= 512 * 1024, 'payload_limits_exceeded' );
 		$value = json_decode( $body, false, 32, JSON_THROW_ON_ERROR );
 		$this->object_keys( $value, [ 'schemaVersion', 'scope', 'entityId', 'revision', 'payload' ] );
 		$this->integer( $value->schemaVersion, 1, 1 );
@@ -44,9 +45,9 @@ class OverSeek_Delivery_Input_Validation {
 		$this->require_valid( [] === array_diff( $required, $keys ) && [] === array_diff( $keys, array_merge( $required, $optional ) ) );
 	}
 
-	private function require_valid( bool $valid ): void {
+	private function require_valid( bool $valid, string $reason = 'schema_invalid' ): void {
 		if ( ! $valid ) {
-			throw new InvalidArgumentException( 'Invalid delivery input.' );
+			throw new OverSeek_Delivery_Input_Exception( $reason );
 		}
 	}
 
@@ -64,16 +65,21 @@ class OverSeek_Delivery_Input_Validation {
 	}
 
 	private function collection( $value, int $max, int $min = 0 ): void {
-		$this->require_valid( is_array( $value ) && count( $value ) >= $min && count( $value ) <= $max );
+		$this->require_valid( is_array( $value ) );
+		$this->require_valid( count( $value ) >= $min && count( $value ) <= $max, 'payload_limits_exceeded' );
 	}
 
 	private function range( object $value, string $min = 'productionMinDays', string $max = 'productionMaxDays', bool $nullable = true ): void {
 		if ( $nullable && null === $value->$min && null === $value->$max ) {
 			return;
 		}
-		$this->integer( $value->$min, 0, 3650 );
-		$this->integer( $value->$max, 0, 3650 );
-		$this->require_valid( $value->$min <= $value->$max );
+		try {
+			$this->integer( $value->$min, 0, 3650 );
+			$this->integer( $value->$max, 0, 3650 );
+			$this->require_valid( $value->$min <= $value->$max );
+		} catch ( OverSeek_Delivery_Input_Exception $error ) {
+			throw new OverSeek_Delivery_Input_Exception( 'productionMinDays' === $min ? 'production_range_invalid' : 'schema_invalid' );
+		}
 	}
 
 	private function identity( object $value ): string {
@@ -159,8 +165,9 @@ class OverSeek_Delivery_Input_Validation {
 			return;
 		}
 		$product = wc_get_product( $entity_id );
-		$this->require_valid( $product instanceof WC_Product && $product->get_id() === $entity_id && $product->is_type( [ 'simple', 'variable', 'grouped', 'external' ] ) && 'trash' !== $product->get_status() );
-		$this->require_valid( [] === $payload->variations || $product->is_type( 'variable' ) );
+		$this->require_valid( $product instanceof WC_Product && $product->get_id() === $entity_id && 'trash' !== $product->get_status(), 'product_missing' );
+		$this->require_valid( $product->is_type( [ 'simple', 'variable', 'grouped', 'external' ] ), 'product_type_unsupported' );
+		$this->require_valid( [] === $payload->variations || $product->is_type( 'variable' ), 'product_type_unsupported' );
 		$seen = [];
 		foreach ( $payload->variations as $variation ) {
 			$this->object_keys( $variation, [ 'wooId', 'productionMinDays', 'productionMaxDays' ] );
@@ -169,7 +176,8 @@ class OverSeek_Delivery_Input_Validation {
 			$seen[ $variation->wooId ] = true;
 			$this->range( $variation );
 			$local = wc_get_product( $variation->wooId );
-			$this->require_valid( $local instanceof WC_Product_Variation && $local->get_id() === $variation->wooId && $local->is_type( 'variation' ) && $local->get_parent_id() === $entity_id && 'trash' !== $local->get_status() );
+			$this->require_valid( $local instanceof WC_Product_Variation && $local->get_id() === $variation->wooId && $local->is_type( 'variation' ) && 'trash' !== $local->get_status(), 'variation_missing' );
+			$this->require_valid( $local->get_parent_id() === $entity_id, 'variation_parent_mismatch' );
 		}
 	}
 

@@ -42,7 +42,7 @@ same( '', $rates['other:9']->get_delivery_time(), 'unmapped callback stays blank
 $calls = $wpdb->product_reads;
 for ( $i = 0; $i < 20; ++$i ) { same( '', $rates['other:9']->get_delivery_time(), 'unmapped option cache hit' ); }
 same( $calls, $wpdb->product_reads, 'unmapped callbacks do not recalculate' );
-foreach ( [ 'quantity', 'address', 'coupon', 'rate_cost', 'rate_metadata', 'production_revision', 'inbound_revision', 'live_stock', 'object_stock', 'held' ] as $change ) {
+foreach ( [ 'quantity', 'address', 'coupon', 'rate_cost', 'rate_metadata', 'production_revision', 'inbound_revision', 'supplier_lead_revision', 'live_stock', 'object_stock', 'held' ] as $change ) {
 	$before = $wpdb->product_reads;
 	switch ( $change ) {
 		case 'quantity': $woo->cart->lines['item']['quantity'] = 2; break;
@@ -52,6 +52,7 @@ foreach ( [ 'quantity', 'address', 'coupon', 'rate_cost', 'rate_metadata', 'prod
 		case 'rate_metadata': $rates['flat_rate:1']->metadata = [ 'rule' => 'changed' ]; break;
 		case 'production_revision': ++$wpdb->rows['product:10']['revision']; break;
 		case 'inbound_revision': ++$wpdb->rows['inbound:10']['revision']; break;
+		case 'supplier_lead_revision': $wpdb->rows['inbound:10']['payload']['targets'][0]['supplierLead'] = ['min' => 7, 'max' => 10]; ++$wpdb->rows['inbound:10']['revision']; break;
 		case 'live_stock': $wpdb->stock['_stock'] = '19'; break;
 		case 'object_stock': $catalogue[10]->stock = 19; break;
 		case 'held': $held = [ 0 => 1 ]; break;

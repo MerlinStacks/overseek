@@ -37,12 +37,12 @@ class OverSeek_Delivery_Input_API {
 		}
 		$body = $request->get_body();
 		if ( strlen( $body ) > 512 * 1024 ) {
-			return new WP_Error( 'overseek_delivery_input_too_large', 'Delivery input exceeds the size limit.', [ 'status' => 413 ] );
+			return new WP_Error( 'overseek_delivery_input_too_large', 'Delivery input exceeds the size limit.', [ 'status' => 413, 'reason' => 'payload_limits_exceeded' ] );
 		}
 		try {
 			$input = ( new OverSeek_Delivery_Input_Validation() )->validate( $body );
 		} catch ( Throwable $error ) {
-			return new WP_Error( 'overseek_delivery_input_invalid', 'Invalid delivery input.', [ 'status' => 400 ] );
+			return new WP_Error( 'overseek_delivery_input_invalid', 'Invalid delivery input.', [ 'status' => 400, 'reason' => $error instanceof OverSeek_Delivery_Input_Exception ? $error->reason() : 'schema_invalid' ] );
 		}
 		$applied = ( new OverSeek_Delivery_Input_Storage() )->store( $request->get_header( 'x-overseek-account-id' ), $input );
 		if ( $applied instanceof WP_Error ) {

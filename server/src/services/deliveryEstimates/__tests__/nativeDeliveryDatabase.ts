@@ -43,7 +43,7 @@ export async function openNativeDeliveryDatabase(beforeMigration?: (db: any, mig
             INSERT INTO "Account" (id) VALUES ('a'), ('other');
         `);
         const migrations = (await readdir('prisma/migrations')).filter(name => /^2026092[123]/.test(name)).sort();
-        if (migrations.length !== 17) throw new Error(`Review delivery migration chain: expected 17 files, found ${migrations.length}`);
+        if (migrations.length !== 18) throw new Error(`Review delivery migration chain: expected 18 files, found ${migrations.length}`);
         for (const migration of migrations) {
             await beforeMigration?.(db, migration);
             await db.exec(await readFile(`prisma/migrations/${migration}/migration.sql`, 'utf8'));
