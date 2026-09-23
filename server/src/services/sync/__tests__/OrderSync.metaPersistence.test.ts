@@ -5,6 +5,7 @@ import { WooService } from '../../woo';
 import { EventBus } from '../../events';
 import { esClient } from '../../../utils/elastic';
 import { materializeContact } from '../../ContactMaterialization';
+import { snapshotFixture, snapshotMetadata } from '../../deliveryEstimates/__tests__/snapshotFixture';
 
 vi.mock('../../ContactMaterialization', async importOriginal => ({
     ...await importOriginal<typeof import('../../ContactMaterialization')>(),
@@ -21,6 +22,8 @@ vi.mock('../../../utils/prisma', () => ({
             count: vi.fn(),
             findMany: vi.fn(),
             upsert: vi.fn(),
+            updateMany: vi.fn(),
+            findUnique: vi.fn(),
             deleteMany: vi.fn(),
         },
         wooCustomer: {
@@ -105,6 +108,45 @@ describe('OrderSync meta persistence', () => {
         (prisma.wooCustomer.findMany as any).mockResolvedValue([]);
         (prisma.$queryRaw as any).mockResolvedValue([]);
         (esClient.bulk as any).mockResolvedValue({ errors: false, items: [] });
+    });
+
+    it('imports first valid snapshot with CAS, keeps it across changed/invalid/deleted metadata and emits stored promise', async () => {
+        let stored: any = null;
+        const snapshot = snapshotFixture();
+        (prisma.syncState.findUnique as any).mockResolvedValue({ lastSyncedAt: new Date('2026-09-01') });
+        (prisma.wooOrder.findMany as any).mockResolvedValue([{ wooId: 42, status: 'pending' }]);
+        (prisma.wooOrder.upsert as any).mockImplementation(async ({ create }: any) => ({ ...create, deliveryEstimateSnapshot: stored }));
+        (prisma.wooOrder.updateMany as any).mockImplementation(async ({ where, data }: any) => {
+            expect(where.accountId).toBe(accountId);
+            expect(where.wooId).toBe(42);
+            expect(where.deliveryEstimateSnapshot).toHaveProperty('equals');
+            if (stored !== null) return { count: 0 };
+            stored = data.deliveryEstimateSnapshot;
+            return { count: 1 };
+        });
+        (prisma.wooOrder.findUnique as any).mockImplementation(async () => ({ deliveryEstimateSnapshot: stored }));
+        const values = [{ invalid: true }, snapshot, { ...snapshot, capturedAt: '2026-09-23T10:00:00Z' }, null, undefined];
+        for (const value of values) {
+            mockWoo.getOrders = vi.fn().mockResolvedValue({ data: [{ id: 42, number: '42', status: 'processing', currency: 'AUD', total: '25', customer_id: 0, billing: { email: 'test@example.com' }, date_created_gmt: '2026-09-22T00:00:00Z', meta_data: value === undefined ? [] : snapshotMetadata(value) }], totalPages: 1, total: 1 });
+            await (new OrderSync() as any).sync(mockWoo, accountId, true);
+        }
+        expect(stored).toEqual(snapshot);
+        expect(prisma.wooOrder.updateMany).toHaveBeenCalledTimes(1);
+        const events = (EventBus.emit as any).mock.calls.filter(([name]: any[]) => name === 'order.status_changed');
+        expect(events[0][1].order.deliveryEstimateSnapshot).toBeNull();
+        for (const event of events.slice(1)) expect(event[1].order.deliveryEstimateSnapshot).toEqual(snapshot);
+        for (const [args] of (prisma.wooOrder.upsert as any).mock.calls) expect(args.update).not.toHaveProperty('deliveryEstimateSnapshot');
+    });
+
+    it('publishes winning concurrent snapshot after a lost CAS', async () => {
+        const winner = snapshotFixture();
+        (prisma.wooOrder.findMany as any).mockResolvedValue([{ wooId: 42, status: 'pending' }]);
+        (prisma.wooOrder.upsert as any).mockResolvedValue({ deliveryEstimateSnapshot: null });
+        (prisma.wooOrder.updateMany as any).mockResolvedValue({ count: 0 });
+        (prisma.wooOrder.findUnique as any).mockResolvedValue({ deliveryEstimateSnapshot: winner });
+        mockWoo.getOrders = vi.fn().mockResolvedValue({ data: [{ id: 42, number: '42', status: 'processing', currency: 'AUD', total: '25', meta_data: snapshotMetadata({ ...winner, capturedAt: '2026-09-23T10:00:00Z' }) }], totalPages: 1, total: 1 });
+        await (new OrderSync() as any).sync(mockWoo, accountId, true);
+        expect(EventBus.emit).toHaveBeenCalledWith('order.status_changed', expect.objectContaining({ order: expect.objectContaining({ deliveryEstimateSnapshot: winner }) }));
     });
 
     it('preserves line breaks and emojis in line item meta_data rawData', async () => {

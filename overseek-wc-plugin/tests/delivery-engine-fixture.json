@@ -1,0 +1,34 @@
+{
+  "enabled": true,
+  "context_status": "ready",
+  "timezone": "Europe/London",
+  "now": "2026-09-21T10:00:00Z",
+  "cutoff": "14:00",
+  "work_weekdays": [1, 2, 3, 4, 5],
+  "transit_weekdays": [1, 2, 3, 4, 5],
+  "closures": [],
+  "items": [{
+    "virtual": false,
+    "needs_shipping": true,
+    "supported": true,
+    "purchasable": true,
+    "stock_status": "in_stock",
+    "quantity": 1,
+    "production": {"min": 0, "max": 1},
+    "managed_stock": true,
+    "stock_owner": "product:100"
+  }],
+  "stock_owners": {
+    "product:100": {
+      "stock_status": "in_stock",
+      "quantity": 10,
+      "backorders_allowed": true,
+      "projection_status": "ready",
+      "inbound": []
+    }
+  },
+  "methods": [
+    {"id": "flat_rate:7", "eligible": true, "type": "delivery", "transit": {"min": 0, "max": 1}},
+    {"id": "local_pickup:8", "eligible": true, "type": "pickup"}
+  ]
+}

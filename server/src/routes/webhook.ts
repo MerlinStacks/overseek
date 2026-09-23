@@ -6,6 +6,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
+import { importOrderSnapshot } from '../services/deliveryEstimates/importOrderSnapshot';
 import { Logger } from '../utils/logger';
 import { parseWooDate } from '../utils/wooDates';
 import { IndexingService } from '../services/search/IndexingService';
@@ -132,6 +133,7 @@ export async function processWebhookPayload(
 
     if (topic === 'order.created' || topic === 'order.updated') {
         let previousStatus: string | null = null;
+        let deliveryEstimateSnapshot: unknown = null;
 
         const orderStatus = normalizeOrderStatus((body as any).status);
         if (isExcludedOrderStatus(orderStatus)) {
@@ -156,7 +158,7 @@ export async function processWebhookPayload(
                     where: { accountId_wooId: { accountId, wooId: Number(order.id) } },
                     select: { wooId: true, status: true, wooCustomerId: true, billingEmail: true }
                 });
-                await tx.wooOrder.upsert({
+                const persisted = await tx.wooOrder.upsert({
                     where: { accountId_wooId: { accountId, wooId: order.id } },
                     update: {
                         status: normalizedStatus,
@@ -183,6 +185,7 @@ export async function processWebhookPayload(
                         rawData: order
                     }
                 });
+                deliveryEstimateSnapshot = await importOrderSnapshot(tx, accountId, Number(order.id), order.meta_data, persisted?.deliveryEstimateSnapshot);
                 const contact = await materializeContact(tx, accountId, {
                     source: 'ORDER', sourceKey: `order:${order.id}`, wooCustomerId, email: billingEmail,
                     firstName: order.billing?.first_name, lastName: order.billing?.last_name
@@ -200,6 +203,7 @@ export async function processWebhookPayload(
             throw error;
         }
 
+        body = { ...body, deliveryEstimateSnapshot };
         try {
             await IndexingService.indexOrder(accountId, body);
         } catch (err: any) {

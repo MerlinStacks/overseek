@@ -138,6 +138,7 @@ export function MarketingPage() {
                     </div>
                 )}
                 <MarketingEmailDesigner
+                    previewOrderMode="none"
                     initialDesign={editingItem?.designJson}
                     initialSubject={editingItem?.subject}
                     onSave={handleSaveEmail}

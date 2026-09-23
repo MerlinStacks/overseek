@@ -9,11 +9,22 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../../utils/prisma';
 import { requireAuthFastify } from '../../middleware/auth';
 import { Logger } from '../../utils/logger';
+import { lockDeliveryAccount } from '../../services/deliveryEstimates/intents';
 
 const parseOptionalInt = (value: unknown): number | null => {
     if (value === undefined || value === null || value === '') return null;
     const parsed = Number.parseInt(String(value), 10);
     return Number.isNaN(parsed) ? null : parsed;
+};
+
+// Do not turn malformed/fractional lead inputs into an apparently valid projection.
+class InvalidSupplierLead extends Error {}
+const parseLeadDays = (value: unknown): number | null => {
+    if (value === undefined || value === null || value === '') return null;
+    if (!['string', 'number'].includes(typeof value) || String(value).trim() === '') throw new InvalidSupplierLead();
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 3650) throw new InvalidSupplierLead();
+    return parsed;
 };
 
 export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
@@ -51,14 +62,15 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
                     email,
                     phone,
                     currency: currency || 'USD',
-                    leadTimeDefault: parseOptionalInt(leadTimeDefault),
-                    leadTimeMin: parseOptionalInt(leadTimeMin),
-                    leadTimeMax: parseOptionalInt(leadTimeMax),
+                    leadTimeDefault: parseLeadDays(leadTimeDefault),
+                    leadTimeMin: parseLeadDays(leadTimeMin),
+                    leadTimeMax: parseLeadDays(leadTimeMax),
                     paymentTerms
                 }
             });
             return supplier;
         } catch (error) {
+            if (error instanceof InvalidSupplierLead) return reply.code(400).send({ error: 'Supplier lead days must be integers from 0 to 3650.' });
             return reply.code(500).send({ error: 'Failed to create supplier' });
         }
     });
@@ -76,22 +88,26 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
             if (!existing) return reply.code(404).send({ error: 'Supplier not found' });
 
             const { name, contactName, email, phone, currency, leadTimeDefault, leadTimeMin, leadTimeMax, paymentTerms } = request.body as any;
-            const supplier = await prisma.supplier.update({
-                where: { id },
-                data: {
-                    name,
-                    contactName,
-                    email,
-                    phone,
-                    currency: currency || 'USD',
-                    leadTimeDefault: parseOptionalInt(leadTimeDefault),
-                    leadTimeMin: parseOptionalInt(leadTimeMin),
-                    leadTimeMax: parseOptionalInt(leadTimeMax),
-                    paymentTerms
-                }
+            const supplier = await prisma.$transaction(async tx => {
+                await lockDeliveryAccount(tx, accountId);
+                return tx.supplier.update({
+                    where: { id, accountId },
+                    data: {
+                        name,
+                        contactName,
+                        email,
+                        phone,
+                        currency: currency || 'USD',
+                        leadTimeDefault: leadTimeDefault === undefined ? undefined : parseLeadDays(leadTimeDefault),
+                        leadTimeMin: leadTimeMin === undefined ? undefined : parseLeadDays(leadTimeMin),
+                        leadTimeMax: leadTimeMax === undefined ? undefined : parseLeadDays(leadTimeMax),
+                        paymentTerms
+                    }
+                });
             });
             return supplier;
         } catch (error) {
+            if (error instanceof InvalidSupplierLead) return reply.code(400).send({ error: 'Supplier lead days must be integers from 0 to 3650.' });
             Logger.error('Error updating supplier', { error });
             return reply.code(500).send({ error: 'Failed to update supplier' });
         }
@@ -109,7 +125,10 @@ export const supplierRoutes: FastifyPluginAsync = async (fastify) => {
             });
             if (!existing) return reply.code(404).send({ error: 'Supplier not found' });
 
-            await prisma.supplier.delete({ where: { id } });
+            await prisma.$transaction(async tx => {
+                await lockDeliveryAccount(tx, accountId);
+                await tx.supplier.delete({ where: { id, accountId } });
+            });
             return { success: true };
         } catch (error) {
             Logger.error('Error deleting supplier', { error });

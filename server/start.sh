@@ -80,9 +80,12 @@ fi
 
 echo "[Startup] Database ready."
 
+# The image owns the immutable source; uploads may be an old persistent volume.
+# Invalid/missing production packages stop startup before the API can serve them.
+node "$(dirname "$0")/scripts/install_plugin_download.js"
+
 # Start the application with capped heap.
 # Respect preconfigured NODE_OPTIONS from Compose/env; default to 6GB.
 echo "[Startup] Starting Node.js application..."
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=6144}"
 exec npm start
-

@@ -1,4 +1,5 @@
 import { sanitizeEmailHtml } from '../utils/emailHtml';
+import type { DeliveryEstimateEmailOptions } from '@overseek/core';
 
 export type EmailDeviceVisibility = 'all' | 'desktop' | 'mobile';
 export type EmailStackMode = 'stack' | 'reverse' | 'none';
@@ -83,6 +84,7 @@ export type EmailBlock =
     | CartLinkBlock
     | OrderSummaryBlock
     | OrderTrackingBlock
+    | DeliveryEstimateBlock
     | AddressBlock
     | CouponBlock
     | ReviewBlock
@@ -90,6 +92,23 @@ export type EmailBlock =
     | SocialBlock
     | FooterBlock
     | RawHtmlBlock;
+
+export interface DeliveryEstimateBlock extends BaseBlock {
+    type: 'deliveryEstimate';
+    props: { heading: string; showDispatch: boolean };
+}
+
+export function getDeliveryEstimateBlockOptions(props: DeliveryEstimateBlock['props'], theme: EmailDesignTheme): DeliveryEstimateEmailOptions {
+    return {
+        heading: props.heading,
+        showDispatch: props.showDispatch,
+        textColor: theme.textColor,
+        mutedColor: theme.mutedTextColor,
+        backgroundColor: theme.contentBackgroundColor,
+        accentColor: theme.primaryColor,
+        fontFamily: theme.fontFamily,
+    };
+}
 
 interface BaseBlock {
     id: string;
@@ -729,6 +748,14 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
     const visibilityClass = getVisibilityClass(block.visibility);
     const blockClass = `${visibilityClass}${block.responsive ? `${visibilityClass ? ' ' : ''}os-responsive-block` : ''}`;
 
+    if (block.type === 'deliveryEstimate') {
+        const params = Object.entries(getDeliveryEstimateBlockOptions(block.props, theme))
+            .map(([key, value]) => `${key}:${encodeURIComponent(String(value))}`).join(' ');
+        const token = `{{delivery_estimate ${params}}}`;
+        // No padded card or heading outside the token: missing snapshots render nothing.
+        return blockClass ? `<div class="${blockClass}">${token}</div>` : token;
+    }
+
     if (block.type === 'siteLogo') {
         const props = block.props;
         const logoSrc = toAbsoluteUrl(props.src || '', { allowData: true, allowCid: true });
@@ -1009,6 +1036,7 @@ export function getEmailDesignV2BlockLabel(block: EmailBlock): string {
         cartLink: 'Cart Link',
         orderSummary: 'Order Summary',
         orderTracking: 'Order Tracking',
+        deliveryEstimate: 'Delivery Estimate',
         address: 'Address',
         coupon: 'Coupon',
         review: 'Review',

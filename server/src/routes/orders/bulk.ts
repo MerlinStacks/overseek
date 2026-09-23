@@ -12,11 +12,12 @@ import { EventBus, EVENTS } from '../../services/events';
 
 const PAID_EVENT_STATUSES = ['processing', 'on-hold'];
 
-function buildOrderEventPayload(updatedOrder: any, previousOrder: { wooId: number; rawData: unknown } | undefined, status: string) {
+function buildOrderEventPayload(updatedOrder: any, previousOrder: { wooId: number; rawData: unknown; deliveryEstimateSnapshot: unknown } | undefined, status: string) {
     const rawData = previousOrder?.rawData && typeof previousOrder.rawData === 'object' ? previousOrder.rawData : {};
     return {
         ...rawData,
         ...updatedOrder,
+        deliveryEstimateSnapshot: previousOrder?.deliveryEstimateSnapshot ?? null,
         id: updatedOrder?.id ?? previousOrder?.wooId,
         status
     };
@@ -62,7 +63,7 @@ const bulkRoutes: FastifyPluginAsync = async (fastify) => {
                     accountId,
                     wooId: { in: body.orderIds }
                 },
-                select: { wooId: true, status: true, rawData: true }
+                select: { wooId: true, status: true, rawData: true, deliveryEstimateSnapshot: true }
             });
             const previousOrderByWooId = new Map(previousOrders.map(order => [order.wooId, order]));
 

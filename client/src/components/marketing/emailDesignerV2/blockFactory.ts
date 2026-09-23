@@ -1,7 +1,7 @@
 import { Box, Code2, Download, ImageIcon, Link2, List, MapPin, Menu, MessageSquareQuote, Minus, PackagePlus, PanelTop, RectangleHorizontal, ReceiptText, ShoppingCart, Share2, Smartphone, Ticket, Truck, Type } from 'lucide-react';
 import { createEmailDesignId, type EmailBlock } from '../../../lib/emailDesignerV2';
 
-export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'newProducts' | 'cartItems' | 'cartLink' | 'orderSummary' | 'orderTracking' | 'address' | 'coupon' | 'review' | 'invoiceDownload';
+export type PaletteKey = 'siteLogo' | 'text' | 'list' | 'button' | 'image' | 'divider' | 'menu' | 'social' | 'rawHtml' | 'footer' | 'product' | 'newProducts' | 'cartItems' | 'cartLink' | 'orderSummary' | 'orderTracking' | 'deliveryEstimate' | 'address' | 'coupon' | 'review' | 'invoiceDownload';
 
 export interface PaletteItem {
     key: PaletteKey;
@@ -27,6 +27,7 @@ export const paletteItems: PaletteItem[] = [
     { key: 'cartLink', label: 'Cart Link', group: 'WooCommerce', icon: Link2 },
     { key: 'orderSummary', label: 'Order Summary', group: 'WooCommerce', icon: ReceiptText },
     { key: 'orderTracking', label: 'Order Tracking', group: 'WooCommerce', icon: Truck },
+    { key: 'deliveryEstimate', label: 'Delivery Estimate', group: 'WooCommerce', icon: Truck },
     { key: 'address', label: 'Customer Address', group: 'WooCommerce', icon: MapPin },
     { key: 'coupon', label: 'Coupon', group: 'WooCommerce', icon: Ticket },
     { key: 'review', label: 'Review', group: 'WooCommerce', icon: MessageSquareQuote },
@@ -84,6 +85,7 @@ export const createBlock = (type: EmailBlock['type']): EmailBlock => {
     if (type === 'cartItems') return { id, type, props: { heading: 'Your cart', showTotal: true, align: 'left' } };
     if (type === 'cartLink') return { id, type, props: { label: 'Return to your cart', href: '{{cart.recoveryUrl}}', body: 'Your items are saved and ready when you are.', align: 'center' } };
     if (type === 'orderSummary') return { id, type, props: { heading: 'Order summary', showTotals: true, itemsFormat: 'table' } };
+    if (type === 'deliveryEstimate') return { id, type, props: { heading: '', showDispatch: true } };
     if (type === 'orderTracking') return { id, type, props: { heading: 'Track your order', body: 'Your order is on its way. Use the button below to track it with Australia Post.', buttonLabel: 'Track with AusPost', showTrackingNumber: true, align: 'center' } };
     if (type === 'address') return { id, type, props: { title: 'Shipping address', source: 'shipping' } };
     if (type === 'coupon') return { id, type, props: { headline: 'Your exclusive offer', code: '{{coupon.code}}', description: '{{coupon.description}}' } };

@@ -18,6 +18,7 @@ interface Role {
 const AVAILABLE_PERMISSIONS = [
     { key: 'view_products', label: 'View Products' },
     { key: 'edit_products', label: 'Edit Products' },
+    { key: 'manage_inventory', label: 'Manage Inventory (Delivery Cutover & Receipt Reconciliation)' },
     { key: 'view_cogs', label: 'View COGS (Cost of Goods)' },
     { key: 'view_orders', label: 'View Orders' },
     { key: 'edit_orders', label: 'Edit Orders (General)' },

@@ -106,7 +106,7 @@ export const MessageBubble = memo(function MessageBubble({
             const text = match[2];
             if (seenUrls.has(url)) continue;
 
-            const ext = url.split('.').pop()?.toLowerCase() || '';
+            const ext = url.split(/[?#]/)[0].split('.').pop()?.toLowerCase() || '';
 
             if (['pdf'].includes(ext)) {
                 seenUrls.add(url);
@@ -117,6 +117,10 @@ export const MessageBubble = memo(function MessageBubble({
             } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
                 seenUrls.add(url);
                 attachmentsList.push({ type: 'image', url, filename: text || url.split('/').pop() || 'image' });
+            } else if (['svg', 'eps', 'txt', 'csv', 'zip'].includes(ext) || url.startsWith('/uploads/attachments/')) {
+                // Vector artwork is downloadable, not embedded as active document content.
+                seenUrls.add(url);
+                attachmentsList.push({ type: 'file', url, filename: text || url.split('/').pop() || 'file' });
             }
         }
 
@@ -130,14 +134,15 @@ export const MessageBubble = memo(function MessageBubble({
             const urlExt = url.split('.').pop()?.toLowerCase().split(/[?#]/)[0] || '';
             const textExt = text.split('.').pop()?.toLowerCase() || '';
 
-            const validExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip'];
+            const validExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip', 'svg', 'eps'];
             const ext = validExtensions.includes(urlExt) ? urlExt : (validExtensions.includes(textExt) ? textExt : '');
 
             const isAttachmentPath = url.includes('/uploads/attachments/') ||
                 url.includes('/attachment/') ||
                 url.includes('/files/');
             const hasFileExtensionInText = validExtensions.some(e => text.toLowerCase().endsWith('.' + e));
-            const isAttachment = ext && (isAttachmentPath || hasFileExtensionInText);
+            // Stored attachments must remain accessible even for unrecognized file types.
+            const isAttachment = isAttachmentPath || (ext && hasFileExtensionInText);
 
             if (isAttachment) {
                 seenUrls.add(url);
@@ -156,7 +161,7 @@ export const MessageBubble = memo(function MessageBubble({
         }
 
         // Extract email attachment references like "<55340 - Jules Denslow.pdf>"
-        const emailAttachmentRegex = /<([^>]+\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|webp))>/gi;
+        const emailAttachmentRegex = /<([^>]+\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|webp|svg|eps))>/gi;
         while ((match = emailAttachmentRegex.exec(content)) !== null) {
             const filename = match[1].trim();
             const ext = match[2].toLowerCase();
@@ -195,7 +200,7 @@ export const MessageBubble = memo(function MessageBubble({
         // Remove markdown attachment links: [filename](/uploads/...) or [filename.pdf](url)
         cleanContent = cleanContent.replace(/\[([^\]]+)\]\((\/uploads\/[^)]+)\)/gi, '');
         // Also remove markdown links that look like attachments (by extension in link text)
-        cleanContent = cleanContent.replace(/\[([^\]]+\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|webp|txt|csv|zip))\]\([^)]+\)/gi, '');
+        cleanContent = cleanContent.replace(/\[([^\]]+\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|webp|txt|csv|zip|svg|eps))\]\([^)]+\)/gi, '');
 
         // Remove "Attachments: " or "Attachments:\n" plain text prefix (handles both formats)
         cleanContent = cleanContent.replace(/Attachments:\s*/gi, '');

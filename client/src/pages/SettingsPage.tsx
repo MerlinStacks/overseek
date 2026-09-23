@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAccount } from '../context/AccountContext';
 import { useAccountFeature } from '../hooks/useAccountFeature';
+import { usePermissions } from '../hooks/usePermissions';
+import { DeliveryEstimatesSettingsPage } from './DeliveryEstimatesSettingsPage';
 import { SyncSettings } from '../components/sync/SyncSettings';
 import { ChatSettings } from '../components/chat/ChatSettings';
 import { AISettings } from '../components/settings/AISettings';
@@ -27,9 +29,9 @@ import {
 } from 'lucide-react';
 import { SettingsPageSkeleton } from '../components/ui/PageSkeletons';
 
-type TabId = 'general' | 'appearance' | 'team' | 'roles' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications' | 'webhooks' | 'ads' | 'cannedResponses' | 'conversions';
+type TabId = 'deliveryEstimates' | 'general' | 'appearance' | 'team' | 'roles' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications' | 'webhooks' | 'ads' | 'cannedResponses' | 'conversions';
 
-const VALID_TABS: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses', 'conversions'];
+const VALID_TABS: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses', 'conversions', 'deliveryEstimates'];
 
 interface TabDef {
     id: TabId;
@@ -75,6 +77,8 @@ export function SettingsPage() {
     const isAdTrackingEnabled = useAccountFeature('AD_TRACKING');
     const isAIEnabled = useAccountFeature('AI_WRITER');
     const isEmailEnabled = useAccountFeature('EMAIL');
+    const { hasPermission } = usePermissions();
+    const canViewDelivery = hasPermission('view_shipping') || hasPermission('manage_shipping_settings') || hasPermission('manage_inventory');
     const [activeTab, setActiveTab] = useTabFromUrl();
 
     // Grouped categories for sidebar navigation
@@ -93,6 +97,7 @@ export function SettingsPage() {
             tabs: [
                 { id: 'orderTags', label: 'Order Tags', icon: Tags },
                 { id: 'inventory', label: 'Inventory', icon: Package },
+                { id: 'deliveryEstimates', label: 'Delivery Estimates', icon: Package, hidden: !canViewDelivery },
                 { id: 'goldPrice', label: 'Gold Price', icon: Coins, hidden: !isGoldPriceEnabled },
             ]
         },
@@ -117,7 +122,7 @@ export function SettingsPage() {
                 { id: 'notifications', label: 'Notifications', icon: Bell },
             ]
         }
-    ], [isAIEnabled, isGoldPriceEnabled, isAdTrackingEnabled, isEmailEnabled]);
+    ], [isAIEnabled, isGoldPriceEnabled, isAdTrackingEnabled, isEmailEnabled, canViewDelivery]);
 
     // Flat list for mobile tabs
     const allTabs = useMemo(
@@ -128,7 +133,7 @@ export function SettingsPage() {
     // Keep URL tab valid when feature flags hide a previously-selected tab.
     useEffect(() => {
         const hasActiveTab = allTabs.some((tab) => tab.id === activeTab);
-        if (!hasActiveTab && allTabs[0]) {
+        if (!hasActiveTab && allTabs[0] && activeTab !== 'deliveryEstimates') {
             setActiveTab(allTabs[0].id);
         }
     }, [activeTab, allTabs, setActiveTab]);
@@ -136,6 +141,7 @@ export function SettingsPage() {
     const renderContent = () => {
         const contentByTab: Record<TabId, React.ReactNode> = {
             general: <GeneralSettings />,
+            deliveryEstimates: <DeliveryEstimatesSettingsPage />,
             appearance: (
                 <SettingsCard title="Branding & Appearance" description="Manage shared branding for your dashboard, emails, and wholesale catalogs.">
                     <AppearanceSettings />

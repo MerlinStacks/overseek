@@ -6,7 +6,7 @@
  */
 
 import { normalizeOrderStatus } from '../constants/orderStatus';
-import { getInvoiceItemMeta } from '@overseek/core';
+import { getInvoiceItemMeta, resolveDeliveryEstimateEmailTokens } from '@overseek/core';
 import { extractOrderTracking, TrackingItem } from '../utils/orderTracking';
 import { prisma } from '../utils/prisma';
 
@@ -68,7 +68,7 @@ type DynamicProduct = {
  * Called before sending marketing emails with order context.
  */
 export function resolveMergeTags(html: string, context: MergeTagContext): string {
-    let result = html;
+    let result = resolveDeliveryEstimateEmailTokens(html, context.order);
 
     const replaceMergeTag = (tag: string, value: string): void => {
         const tagName = getMergeTagName(tag);

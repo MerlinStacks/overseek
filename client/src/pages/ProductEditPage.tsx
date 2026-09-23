@@ -38,6 +38,7 @@ import { FeedWritesPanel, type FeedWritesPanelRef } from '../components/products
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { usePermissions } from '../hooks/usePermissions';
 import { WholesaleProductPanel, type WholesaleProductPanelRef } from '../components/wholesale/WholesaleProductPanel';
+import { DeliveryProductionEditor } from '../components/products/DeliveryProductionEditor';
 
 type SupplierOption = { id: string; name: string };
 type GalleryImage = { id: string | number; src: string; alt?: string };
@@ -136,6 +137,7 @@ function ProductEditPageContent({
     const activeTabParam = searchParams.get('tab');
     const hasFeedExports = useAccountFeature('FEED_EXPORTS');
     const hasWholesaleCatalog = useAccountFeature('WHOLESALE_CATALOG');
+    const hasDeliveryEstimates = useAccountFeature('DELIVERY_ESTIMATES');
     const { hasPermission } = usePermissions();
     const canViewWholesale = hasWholesaleCatalog && hasPermission('view_wholesale_catalog');
     const feedWritesPanelRef = useRef<FeedWritesPanelRef>(null);
@@ -376,6 +378,15 @@ function ProductEditPageContent({
                 </div>
             )
         },
+        ...(hasDeliveryEstimates && hasPermission('view_products') ? [{
+            id: 'delivery-production',
+            label: 'Delivery Production',
+            icon: <Clock size={16} />,
+            content: <DeliveryProductionEditor productId={product.id} variationNames={Object.fromEntries(
+                (variants as ProductVariantData[]).map(variant => [variant.id, variant.attributes?.map(attribute => attribute.option).join(' / ') || ''])
+            )} />,
+            keepMounted: true
+        }] : []),
         ...(hasFeedExports ? [{
             id: 'feed-writes',
             label: 'Feed Writes',

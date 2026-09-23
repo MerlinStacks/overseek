@@ -1,0 +1,6 @@
+.os-delivery-placeholder { display: block; max-width: 100%; font-family: inherit; }
+.os-delivery-placeholder:empty { display: none; }
+.os-delivery-placeholder .os-delivery-default { display: block; font: inherit; font-size: .85em; line-height: 1.4; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+    .os-delivery-placeholder .os-delivery-estimate { font-size: min(1em, 14px) !important; }
+}

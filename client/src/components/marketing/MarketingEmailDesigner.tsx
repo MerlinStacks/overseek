@@ -6,6 +6,7 @@ interface Props {
     initialDesign?: unknown;
     initialSubject?: string;
     initialPreviewText?: string;
+    previewOrderMode?: 'latest' | 'none';
     onSave: (html: string, design: unknown, meta?: { subject: string; previewText: string; autosave?: boolean }) => void | Promise<void>;
     onCancel: () => void;
 }

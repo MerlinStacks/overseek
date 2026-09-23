@@ -1,0 +1,13 @@
+{
+  "apiVersion": 3,
+  "name": "overseek/delivery-estimate",
+  "title": "Overseek Delivery Estimate",
+  "category": "woocommerce",
+  "icon": "calendar-alt",
+  "description": "Show configured delivery or collection estimates in a product template.",
+  "textdomain": "overseek-wc",
+  "attributes": { "productId": { "type": "integer" } },
+  "usesContext": ["postId", "postType", "woocommerce/productId"],
+  "supports": { "html": false, "customClassName": false },
+  "editorScript": "overseek-delivery-editor"
+}

@@ -23,6 +23,8 @@ vi.mock('../context/AccountContext', () => ({
 vi.mock('../hooks/useAccountFeature', () => ({
     useAccountFeature: (featureKey: string) => Boolean(featureFlags[featureKey]),
 }));
+vi.mock('../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => true }) }));
+vi.mock('./DeliveryEstimatesSettingsPage', () => ({ DeliveryEstimatesSettingsPage: () => <div>Delivery Estimates Content</div> }));
 
 vi.mock('../components/sync/SyncStatus', () => ({ SyncStatus: () => <div>Sync Status Content</div> }));
 vi.mock('./BOMSyncPage', () => ({ BOMSyncPage: () => <div>BOM Inventory Content</div> }));
@@ -70,6 +72,22 @@ function renderSettings(initialEntry = '/settings') {
 }
 
 describe('SettingsPage tab behavior', () => {
+    it('exposes delivery settings using the URL tab convention', async () => {
+        featureFlags.DELIVERY_ESTIMATES = true;
+        renderSettings('/settings?tab=deliveryEstimates');
+        expect(await screen.findByText('Delivery Estimates Content')).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: 'Delivery Estimates' })).toHaveLength(2);
+        expect(screen.getByTestId('location-search')).toHaveTextContent('tab=deliveryEstimates');
+    });
+
+    it('keeps disabled delivery settings discoverable for disable and recovery', async () => {
+        featureFlags.DELIVERY_ESTIMATES = false;
+        renderSettings('/settings?tab=deliveryEstimates');
+        expect(await screen.findByText('Delivery Estimates Content')).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: 'Delivery Estimates' })).toHaveLength(2);
+        expect(screen.getByTestId('location-search')).toHaveTextContent('tab=deliveryEstimates');
+    });
+
     it('mounts the sync overview once and does not load BOM details until selected', async () => {
         renderSettings('/settings?tab=sync');
         expect(await screen.findAllByText('Sync Status Content')).toHaveLength(1);

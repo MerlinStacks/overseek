@@ -6,13 +6,14 @@ import { IndexingService } from '../services/search/IndexingService';
 import { EventBus } from '../services/events';
 import { materializeContact } from '../services/ContactMaterialization';
 import { queueContactProjection } from '../services/ContactProjection';
+import { snapshotFixture, snapshotMetadata } from '../services/deliveryEstimates/__tests__/snapshotFixture';
 
 vi.mock('../services/ContactMaterialization', () => ({ materializeContact: vi.fn() }));
 vi.mock('../services/ContactProjection', () => ({ queueContactProjection: vi.fn() }));
 
 const { tx, state } = vi.hoisted(() => ({
     tx: { $queryRaw: vi.fn(), $executeRaw: vi.fn(), wooOrder: {
-        findUnique: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn()
+        findUnique: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn()
     } },
     state: { inTransaction: false }
 }));
@@ -62,8 +63,29 @@ describe('order webhook customer totals', () => {
         expect(tx.$executeRaw).toHaveBeenCalledWith(expect.anything(), 'a', [2], [], ['contact'], 'a');
         expect(materializeContact).toHaveBeenCalledWith(tx, 'a', expect.objectContaining({ source: 'ORDER', wooCustomerId: 2, email: 'new@example.com' }));
         expect(queueContactProjection).toHaveBeenCalledWith(tx, 'a', ['contact']);
-        expect(IndexingService.indexOrder).toHaveBeenCalledWith('a', order);
-        expect(EventBus.emit).toHaveBeenCalledWith('created', { accountId: 'a', order });
+        expect(IndexingService.indexOrder).toHaveBeenCalledWith('a', { ...order, deliveryEstimateSnapshot: null });
+        expect(EventBus.emit).toHaveBeenCalledWith('created', { accountId: 'a', order: { ...order, deliveryEstimateSnapshot: null } });
+    });
+
+    it('webhook imports snapshot once and emits persisted promise after metadata changes', async () => {
+        let stored: unknown = null;
+        const snapshot = snapshotFixture();
+        tx.wooOrder.upsert.mockImplementation(async () => ({ deliveryEstimateSnapshot: stored }));
+        tx.wooOrder.updateMany.mockImplementation(async ({ where, data }) => {
+            expect(state.inTransaction).toBe(true);
+            expect(where).toEqual(expect.objectContaining({ accountId: 'a', wooId: 12 }));
+            stored = data.deliveryEstimateSnapshot;
+            return { count: 1 };
+        });
+        tx.wooOrder.findUnique.mockImplementation(async () => ({ status: 'processing', deliveryEstimateSnapshot: stored }));
+        for (const value of [snapshot, { ...snapshot, capturedAt: '2026-09-23T10:00:00Z' }, null]) {
+            await processWebhookPayload('a', 'order.updated', { ...order, meta_data: snapshotMetadata(value) });
+        }
+        expect(tx.wooOrder.updateMany).toHaveBeenCalledTimes(1);
+        expect(stored).toEqual(snapshot);
+        for (const [event, payload] of vi.mocked(EventBus.emit).mock.calls) {
+            if (event === 'completed') expect((payload as any).order.deliveryEstimateSnapshot).toEqual(snapshot);
+        }
     });
 
     it.each([

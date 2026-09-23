@@ -17,6 +17,9 @@ import { Logger } from '../utils/logger';
 import { WooService } from './woo';
 import { BOMInventorySyncService } from './BOMInventorySyncService';
 import { redisClient } from '../utils/redis';
+import { randomUUID } from 'node:crypto';
+import { lockDeliveryAccount } from './deliveryEstimates/intents';
+import { ensureLegacyBomWork, guardedBomMode, queueBomStockMovement } from './deliveryEstimates/bomStockTransport';
 
 interface OrderLineItem {
     product_id: number;
@@ -26,6 +29,7 @@ interface OrderLineItem {
 }
 
 interface ComponentDeduction {
+    guarded?: boolean;
     componentType: 'WooProduct' | 'ProductVariation' | 'InternalProduct';
     componentId: string;
     componentName: string;
@@ -114,15 +118,16 @@ export class BOMConsumptionService {
         const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${order.id}`;
         const alreadyConsumed = await redisClient.get(consumedKey);
         if (alreadyConsumed) {
-            Logger.debug(`[BOMConsumption] Order ${order.id} already consumed (Redis), skipping`, { accountId });
-            return { consumed, errors, skipped: true };
+            // Cancellation can race the consumption worker's final Redis write.
+            // A stale hint must not hide a durable REVERSED ledger on reactivation.
+            Logger.debug(`[BOMConsumption] Verifying Redis consumption hint against the ledger`, { accountId, orderId: order.id });
         }
 
         // Layer 2: DB dedup fallback — Redis key may have expired after 24h.
         // The ledger is the authoritative source of truth for past consumption.
         const orderId = typeof order.id === 'number' ? order.id : parseInt(order.id, 10);
         const ledgerEntry = await prisma.bOMDeductionLedger.findFirst({
-            where: { accountId, orderId, status: { in: ['COMPLETED', 'EXECUTED'] } }
+            where: { accountId, orderId, status: { in: ['COMPLETED', 'EXECUTED', 'QUEUED_GUARDED'] } }
         });
         if (ledgerEntry) {
             // EXECUTED means the local decrement and ledger row committed together,
@@ -198,6 +203,7 @@ export class BOMConsumptionService {
             await this.syncExecutedLedgerEntries(accountId, orderId);
 
             for (const deduction of executedDeductions) {
+                if (deduction.guarded) continue; // Its durable native-ACK cascade owns propagation.
                 if (deduction.componentType === 'ProductVariation') {
                     modifiedComponents.push({ productId: deduction.componentId, variationId: deduction.wooId });
                 } else if (deduction.componentType === 'WooProduct') {
@@ -262,6 +268,34 @@ export class BOMConsumptionService {
         const errors: string[] = [];
         const orderId = typeof order.id === 'number' ? order.id : parseInt(order.id, 10);
 
+        const guarded = await prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, accountId);
+            if (!await guardedBomMode(tx, accountId)) return null;
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`bom-order:${accountId}:${orderId}`}, 0))`;
+            const entries = await tx.bOMDeductionLedger.findMany({ where: { accountId, orderId, status: { in: ['COMPLETED', 'QUEUED_GUARDED', 'EXECUTED'] } } });
+            if (entries.some(entry => entry.status === 'EXECUTED' && entry.componentType !== 'InternalProduct' && !entry.guardedOperationId)) throw new Error('Legacy BOM consumption needs operator review before its reversal.');
+            const internalProducts = new Set<string>();
+            for (const entry of entries) {
+                let operationId: string | null = null;
+                if (entry.componentType === 'InternalProduct') {
+                    await tx.internalProduct.update({ where: { id: entry.componentId }, data: { stockQuantity: { increment: entry.quantityDeducted } } });
+                    internalProducts.add(entry.componentId);
+                } else {
+                    const queued = await queueBomStockMovement(tx, accountId, { ledgerId: entry.id, orderId, productId: entry.componentId,
+                        variationWooId: entry.componentType === 'ProductVariation' ? entry.wooId : null, quantity: entry.quantityDeducted,
+                        reversal: true, originalOperationId: entry.guardedOperationId });
+                    operationId = queued.operationId;
+                }
+                await tx.bOMDeductionLedger.update({ where: { id: entry.id }, data: { status: 'REVERSED', rolledBackAt: new Date(), guardedReversalOperationId: operationId } });
+            }
+            return { reversed: entries.length, errors: [] as string[], internalProducts: [...internalProducts] };
+        });
+        if (guarded) {
+            await redisClient.del(`${this.CONSUMED_KEY_PREFIX}${accountId}:${orderId}`);
+            for (const productId of guarded.internalProducts) await this.cascadeSyncAffectedProducts(accountId, productId, undefined, 'internalProduct');
+            return { reversed: guarded.reversed, errors: guarded.errors };
+        }
+
         // Find completed deductions for this order
         const entries = await prisma.bOMDeductionLedger.findMany({
             where: { accountId, orderId, status: 'COMPLETED' }
@@ -295,14 +329,29 @@ export class BOMConsumptionService {
                 newStock: e.newStock
             }));
 
-            // Reverse the deductions (adds stock back)
-            await this.rollbackDeductions(accountId, deductions);
+            // Track legacy absolute reversals BEFORE any local/remote effects, so a
+            // concurrent cutover cannot mistake them for drained work.
+            const work = await prisma.$transaction(async tx => {
+                await lockDeliveryAccount(tx, accountId);
+                if (await guardedBomMode(tx, accountId)) return { jobs: [], changedMode: true };
+                const jobs = [];
+                for (const entry of entries) if (entry.componentType !== 'InternalProduct') jobs.push(await ensureLegacyBomWork(tx, accountId, entry, true));
+                return { jobs, changedMode: false };
+            });
+            if (work.changedMode) return await this.reverseOrderConsumption(accountId, order);
+            if (work.jobs.some(j => !j.created && j.job.state !== 'drained')) throw new Error('Legacy BOM reversal requires operator review; do not replay its stock changes.');
+            if (work.jobs.some(j => !j.created)) throw new Error('Legacy BOM reversal already reviewed; refresh its ledger state.');
+            await this.rollbackDeductions(accountId, deductions, async () => {
+                const control = await prisma.receiptAccount.findUnique({ where: { accountId } });
+                if (control?.receivingFrozen) throw new Error('Legacy BOM reversal paused for operator review.');
+            });
 
             // Mark ledger entries as reversed
             await prisma.bOMDeductionLedger.updateMany({
                 where: { accountId, orderId, status: 'COMPLETED' },
                 data: { status: 'REVERSED', rolledBackAt: new Date() }
             });
+            for (const job of work.jobs) await prisma.receiptLegacyWork.updateMany({ where: { id: job.job.id, accountId, state: 'pending', account: { receivingFrozen: false } }, data: { state: 'drained', resolvedAt: new Date() } });
 
             // Clear the consumed key so the order doesn't look "consumed" if re-processed
             const consumedKey = `${this.CONSUMED_KEY_PREFIX}${accountId}:${orderId}`;
@@ -366,7 +415,7 @@ export class BOMConsumptionService {
      * Revert stock deductions (Compensating Transaction).
      * Adds the deducted quantity back to the current stock.
      */
-    static async rollbackDeductions(accountId: string, deductions: ComponentDeduction[]) {
+    static async rollbackDeductions(accountId: string, deductions: ComponentDeduction[], beforeWrite?: () => Promise<void>) {
         if (deductions.length === 0) return;
 
         Logger.info(`[BOMConsumption] Rolling back ${deductions.length} deductions`, { accountId });
@@ -374,6 +423,7 @@ export class BOMConsumptionService {
 
         for (const deduction of deductions) {
             try {
+                await beforeWrite?.();
                 // Add quantity back
                 const rollbackQty = deduction.quantityDeducted;
 
@@ -393,11 +443,11 @@ export class BOMConsumptionService {
                     // (e.g. network timeout), Woo still has the old pre-deduction stock. Using
                     // `freshWooStock + rollbackQty` would inflate stock beyond the true value.
                     // The local DB always reflects the correct state after the atomic increment.
-                    await withRetry(() => wooService.updateProductVariation(
+                    await withRetry(async () => { await beforeWrite?.(); return wooService.updateProductVariation(
                         deduction.parentWooId!,
                         deduction.wooId!,
                         { stock_quantity: localVar.stockQuantity ?? 0, manage_stock: true }
-                    ));
+                    ); });
                 } else if (deduction.componentType === 'WooProduct') {
                     // Update Local — increment first so local DB is the source of truth
                     const localProd = await prisma.wooProduct.update({
@@ -406,14 +456,15 @@ export class BOMConsumptionService {
                         select: { stockQuantity: true }
                     });
                     // Why local DB as authority: same rationale as the ProductVariation path above.
-                    await withRetry(() => wooService.updateProduct(
+                    await withRetry(async () => { await beforeWrite?.(); return wooService.updateProduct(
                         deduction.wooId!,
                         { stock_quantity: localProd.stockQuantity ?? 0, manage_stock: true }
-                    ));
+                    ); });
                 }
 
                 Logger.info(`[BOMConsumption] Rolled back deduction for ${deduction.componentName}`, { accountId });
             } catch (error: any) {
+                if (beforeWrite) throw error;
                 Logger.error(`[BOMConsumption] Failed to rollback deduction for ${deduction.componentName}`, { error: error.message });
                 // Continue rolling back others even if one fails
             }
@@ -572,9 +623,11 @@ export class BOMConsumptionService {
         deductions: ComponentDeduction[]
     ): Promise<ComponentDeduction[]> {
         return prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, accountId);
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`bom-order:${accountId}:${orderId}`}, 0))`;
+            const guarded = await guardedBomMode(tx, accountId);
             const existing = await tx.bOMDeductionLedger.findFirst({
-                where: { accountId, orderId, status: { in: ['EXECUTED', 'COMPLETED'] } },
+                where: { accountId, orderId, status: { in: ['EXECUTED', 'COMPLETED', 'QUEUED_GUARDED'] } },
                 select: { id: true }
             });
             if (existing) return [];
@@ -584,8 +637,14 @@ export class BOMConsumptionService {
             for (const deduction of deductions) {
                 const qty = deduction.quantityDeducted;
                 let newStock: number;
+                const ledgerId = randomUUID();
+                let guardedOperationId: string | null = null;
 
-                if (deduction.componentType === 'InternalProduct') {
+                if (guarded && deduction.componentType !== 'InternalProduct') {
+                    const queued = await queueBomStockMovement(tx, accountId, { ledgerId, orderId, productId: deduction.componentId,
+                        variationWooId: deduction.componentType === 'ProductVariation' ? deduction.wooId ?? null : null, quantity: qty });
+                    newStock = queued.stock; guardedOperationId = queued.operationId;
+                } else if (deduction.componentType === 'InternalProduct') {
                     const updated = await tx.internalProduct.update({
                         where: { id: deduction.componentId },
                         data: { stockQuantity: { decrement: qty } },
@@ -610,11 +669,13 @@ export class BOMConsumptionService {
 
                 const executed = {
                     ...deduction,
+                    ...(guardedOperationId ? { guarded: true } : {}),
                     previousStock: newStock + qty,
                     newStock
                 };
                 await tx.bOMDeductionLedger.create({
                     data: {
+                        id: ledgerId,
                         accountId,
                         orderId,
                         componentType: executed.componentType,
@@ -625,7 +686,8 @@ export class BOMConsumptionService {
                         quantityDeducted: executed.quantityDeducted,
                         previousStock: executed.previousStock,
                         newStock: executed.newStock,
-                        status: 'EXECUTED'
+                        guardedOperationId,
+                        status: guardedOperationId ? 'QUEUED_GUARDED' : 'EXECUTED'
                     }
                 });
                 executedDeductions.push(executed);
@@ -637,16 +699,39 @@ export class BOMConsumptionService {
 
     private static async syncExecutedLedgerEntries(accountId: string, orderId: number): Promise<void> {
         const entries = await prisma.bOMDeductionLedger.findMany({
-            where: { accountId, orderId, status: 'EXECUTED' }
+            where: { accountId, orderId, status: { in: ['EXECUTED', 'QUEUED_GUARDED'] } }
         });
         if (entries.length === 0) return;
 
-        const wooService = await WooService.forAccount(accountId);
+        let wooService: WooService | undefined;
         for (const entry of entries) {
+            if (entry.guardedOperationId) {
+                const op = await prisma.receiptOperation.findFirst({ where: { accountId, operationId: entry.guardedOperationId } });
+                if (!op) throw new Error('Guarded BOM stock intent is missing; inventory review required.');
+                if (['applied', 'reconciled'].includes(op.state) && op.cascadeState === 'done') {
+                    await prisma.bOMDeductionLedger.updateMany({ where: { id: entry.id, accountId, status: 'QUEUED_GUARDED' }, data: { status: 'COMPLETED' } });
+                }
+                continue; // Never use the absolute legacy writer for a guarded owner.
+            }
             if (entry.componentType === 'InternalProduct') {
-                await prisma.bOMDeductionLedger.update({ where: { id: entry.id }, data: { status: 'COMPLETED' } });
+                await prisma.bOMDeductionLedger.updateMany({ where: { id: entry.id, accountId, status: 'EXECUTED' }, data: { status: 'COMPLETED' } });
                 continue;
             }
+            const tracked = await prisma.$transaction(async tx => {
+                await lockDeliveryAccount(tx, accountId);
+                const work = await ensureLegacyBomWork(tx, accountId, entry, false);
+                return { ...work, guarded: await guardedBomMode(tx, accountId) };
+            });
+            if (!tracked.created && tracked.job.state === 'drained') {
+                await prisma.bOMDeductionLedger.updateMany({ where: { id: entry.id, accountId, status: 'EXECUTED' }, data: { status: 'COMPLETED' } });
+                continue;
+            }
+            if (tracked.guarded || tracked.job.state !== 'pending') throw new Error('Legacy BOM stock synchronization requires operator review; do not replay an unjournaled delta.');
+            const checkLegacy = async () => {
+                const control = await prisma.receiptAccount.findUnique({ where: { accountId } });
+                if (control?.receivingFrozen || control?.cutoverState === 'guarded') throw new Error('Legacy BOM stock synchronization paused for cutover review.');
+            };
+            wooService ??= await WooService.forAccount(accountId);
             if (entry.componentType === 'ProductVariation') {
                 const current = await prisma.productVariation.findUnique({
                     where: { productId_wooId: { productId: entry.componentId, wooId: entry.wooId! } },
@@ -654,7 +739,7 @@ export class BOMConsumptionService {
                 });
                 if (!current) throw new Error(`Missing variation ${entry.wooId} while resuming BOM deduction`);
                 const stock = allowsBackorders(current.rawData) ? (current.stockQuantity ?? 0) : Math.max(0, current.stockQuantity ?? 0);
-                await withRetry(() => wooService.updateProductVariation(entry.parentWooId!, entry.wooId!, { stock_quantity: stock, manage_stock: true }));
+                await withRetry(async () => { await checkLegacy(); return wooService!.updateProductVariation(entry.parentWooId!, entry.wooId!, { stock_quantity: stock, manage_stock: true }); });
             } else {
                 const current = await prisma.wooProduct.findUnique({
                     where: { id: entry.componentId },
@@ -662,9 +747,10 @@ export class BOMConsumptionService {
                 });
                 if (!current) throw new Error(`Missing product ${entry.componentId} while resuming BOM deduction`);
                 const stock = allowsBackorders(current.rawData) ? (current.stockQuantity ?? 0) : Math.max(0, current.stockQuantity ?? 0);
-                await withRetry(() => wooService.updateProduct(entry.wooId!, { stock_quantity: stock, manage_stock: true }));
+                await withRetry(async () => { await checkLegacy(); return wooService!.updateProduct(entry.wooId!, { stock_quantity: stock, manage_stock: true }); });
             }
             await prisma.bOMDeductionLedger.update({ where: { id: entry.id }, data: { status: 'COMPLETED' } });
+            await prisma.receiptLegacyWork.updateMany({ where: { id: tracked.job.id, accountId, state: 'pending', account: { receivingFrozen: false } }, data: { state: 'drained', resolvedAt: new Date() } });
         }
     }
 
@@ -781,10 +867,12 @@ export class BOMConsumptionService {
         componentProductId: string,
         _componentVariationId?: number,
         componentType: 'wooProduct' | 'internalProduct' = 'wooProduct',
-        visited: Set<string> = new Set()
+        visited: Set<string> = new Set(),
+        options: { strict?: boolean; beforeWrite?: (productId: string, variationId: number) => Promise<void> } = {}
     ): Promise<void> {
         const visitKey = `${componentType}:${componentProductId}`;
         if (visited.has(visitKey)) return;
+        if (options.strict) return this.cascadeReceiptInventory(accountId, componentProductId, componentType, options.beforeWrite);
         visited.add(visitKey);
         // Why no variation filter: we must cascade to ALL parent BOMs that reference
         // this component, not just those using a specific variation. A stock change
@@ -820,11 +908,7 @@ export class BOMConsumptionService {
         // Sync each affected BOM product
         for (const item of accountBoms) {
             try {
-                await BOMInventorySyncService.syncProductToWoo(
-                    accountId,
-                    item.bom.productId,
-                    item.bom.variationId
-                );
+                await BOMInventorySyncService.syncProductToWoo(accountId, item.bom.productId, item.bom.variationId);
                 await this.cascadeSyncAffectedProducts(
                     accountId,
                     item.bom.productId,
@@ -840,6 +924,46 @@ export class BOMConsumptionService {
                     error: err.message
                 });
             }
+        }
+    }
+
+    /** Receipt outbox uses the existing inventory calculator in dependency order.
+     * Discover before writing so shared ancestors run once AFTER all changed children;
+     * cycles fail visibly rather than being silently pruned by a visited set.
+     */
+    private static async cascadeReceiptInventory(accountId: string, componentId: string, componentType: 'wooProduct' | 'internalProduct', beforeWrite?: (productId: string, variationId: number) => Promise<void>) {
+        type Node = { id: string; type: 'wooProduct' | 'internalProduct'; variation: number; source: boolean; parents: Set<string>; incoming: number };
+        const root = `source:${componentType}:${componentId}`;
+        const nodes = new Map<string, Node>([[root, { id: componentId, type: componentType, variation: 0, source: true, parents: new Set(), incoming: 0 }]]);
+        const pending = [root];
+        for (let cursor = 0; cursor < pending.length; cursor++) {
+            const key = pending[cursor]; const node = nodes.get(key)!;
+            const items = await prisma.bOMItem.findMany({ where: { isActive: true,
+                ...(node.type === 'internalProduct' ? { internalProductId: node.id } : { childProductId: node.id }),
+                ...(!node.source ? { childVariationId: node.variation > 0 ? node.variation : null } : {}),
+                bom: { product: { accountId } },
+            }, include: { bom: { select: { productId: true, variationId: true } } } });
+            for (const item of items) {
+                const targetKey = `wooProduct:${item.bom.productId}:${item.bom.variationId}`;
+                if (!nodes.has(targetKey)) {
+                    nodes.set(targetKey, { id: item.bom.productId, type: 'wooProduct', variation: item.bom.variationId, source: false, parents: new Set(), incoming: 0 });
+                    pending.push(targetKey);
+                }
+                if (!node.parents.has(targetKey)) { node.parents.add(targetKey); nodes.get(targetKey)!.incoming++; }
+            }
+        }
+        const order = [...nodes.keys()].filter(key => nodes.get(key)!.incoming === 0);
+        for (let cursor = 0; cursor < order.length; cursor++) {
+            for (const parent of nodes.get(order[cursor])!.parents) if (--nodes.get(parent)!.incoming === 0) order.push(parent);
+        }
+        if (order.length !== nodes.size) throw new Error('BOM cascade dependency cycle; correct the BOM graph and retry cascade.');
+        for (const key of order) {
+            const node = nodes.get(key)!;
+            if (node.source) continue;
+            const result = await BOMInventorySyncService.syncProductToWoo(accountId, node.id, node.variation, {
+                requireLiveStock: true, beforeWrite: () => beforeWrite?.(node.id, node.variation) ?? Promise.resolve(),
+            });
+            if (!result.success) throw new Error(`BOM cascade ${node.id}:${node.variation}: ${result.error || 'inventory sync rejected'}`);
         }
     }
 }

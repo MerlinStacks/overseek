@@ -33,6 +33,7 @@ const KNOWN_FEATURES = [
     'EMAIL',
     'EMAIL_DESIGNER_V2',
     'SHIPPING_HUB',
+    'DELIVERY_ESTIMATES',
     'FEED_EXPORTS',
     'BOT_SHIELD',
     'WHOLESALE_CATALOG',
@@ -50,6 +51,7 @@ const FEATURE_LABELS: Record<string, string> = {
     EMAIL: 'Email',
     EMAIL_DESIGNER_V2: 'Email Designer V2',
     SHIPPING_HUB: 'Shipping Hub',
+    DELIVERY_ESTIMATES: 'Delivery Estimates',
     FEED_EXPORTS: 'Feeds',
     BOT_SHIELD: 'Bot Shield',
     WHOLESALE_CATALOG: 'Wholesale Catalog',
@@ -65,6 +67,8 @@ export function AdminAccountsPage() {
     const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
     const [confirmName, setConfirmName] = useState('');
     const [deleting, setDeleting] = useState(false);
+    const [pendingFeature, setPendingFeature] = useState<string | null>(null);
+    const [featureError, setFeatureError] = useState('');
 
     const fetchAccounts = useCallback(() => {
         fetch('/api/admin/accounts', {
@@ -151,6 +155,9 @@ export function AdminAccountsPage() {
     };
 
     const toggleFeature = async (accountId: string, featureKey: string, currentValue: boolean) => {
+        if (pendingFeature) return;
+        setPendingFeature(`${accountId}:${featureKey}`);
+        setFeatureError('');
         try {
             const res = await fetch(`/api/admin/accounts/${accountId}/toggle-feature`, {
                 method: 'POST',
@@ -170,18 +177,24 @@ export function AdminAccountsPage() {
                     const newFeatures = [...acc.features];
 
                     if (existingFeatureIndex >= 0) {
-                        newFeatures[existingFeatureIndex].isEnabled = !currentValue;
+                        newFeatures[existingFeatureIndex] = { ...newFeatures[existingFeatureIndex], isEnabled: !currentValue };
                     } else {
                         newFeatures.push({ id: 'temp', featureKey, isEnabled: !currentValue });
                     }
                     return { ...acc, features: newFeatures };
                 }));
                 if (currentAccount && currentAccount.id === accountId) {
-                    refreshAccounts();
+                    await refreshAccounts();
                 }
+            } else {
+                const data = await res.json().catch(() => null);
+                setFeatureError(data?.error || 'Unable to update account feature. Please retry.');
             }
         } catch (e) {
             Logger.error('An error occurred', { error: e });
+            setFeatureError('Unable to update account feature. Please retry.');
+        } finally {
+            setPendingFeature(null);
         }
     };
 
@@ -220,6 +233,7 @@ export function AdminAccountsPage() {
     return (
         <div className="space-y-6">
             <h1 className="text-2xl font-bold text-slate-800">Manage Accounts</h1>
+            {featureError && <p role="alert" className="text-red-600">{featureError}</p>}
 
             <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
                 <table className="w-full text-left text-sm">
@@ -241,10 +255,12 @@ export function AdminAccountsPage() {
                                 <td className="p-4">
                                     <div className="flex gap-1 flex-wrap">
                                         {KNOWN_FEATURES.map(key => {
-                                            const isEnabled = account.features.find(f => f.featureKey === key)?.isEnabled;
+                                            const isEnabled = account.features.find(f => f.featureKey === key)?.isEnabled ?? (key === 'DELIVERY_ESTIMATES');
                                             return (
                                                 <button
                                                     key={key}
+                                                    aria-pressed={!!isEnabled}
+                                                    disabled={pendingFeature !== null}
                                                     onClick={() => toggleFeature(account.id, key, !!isEnabled)}
                                                     className={cn(
                                                         "px-2 py-1 rounded-sm text-xs transition-colors border",

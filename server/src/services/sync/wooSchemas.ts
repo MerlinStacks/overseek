@@ -81,7 +81,7 @@ export const WooProductVariationSchema = z.object({
     sale_price: z.string().optional(),
     stock_status: z.string().optional(),
     stock_quantity: z.number().nullable().optional(),
-    manage_stock: z.boolean().optional(),
+    manage_stock: z.union([z.boolean(), z.literal('parent')]).optional(),
     weight: z.string().optional(),
     dimensions: WooDimensionsSchema.optional(),
     image: WooImageSchema.optional(),

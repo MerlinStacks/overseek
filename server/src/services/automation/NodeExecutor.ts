@@ -263,12 +263,9 @@ export class NodeExecutor {
             wooCustomerId: enrollment.wooCustomerId,
             email: enrollment.email,
             contextData: baseContextData,
+            exactEmailOrder: true,
         });
-        const orderContext = contextData.order || contextData.rawOrder || contextData.rawData || (
-            contextData.line_items || contextData.lineItems || contextData.items || contextData.wooId || contextData.orderId
-                ? contextData
-                : undefined
-        );
+        const orderContext = contextData.order;
         const customerContext = await this.buildCustomerMergeContext(enrollment, contextData, orderContext);
 
         const context = {

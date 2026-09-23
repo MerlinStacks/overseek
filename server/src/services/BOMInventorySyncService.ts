@@ -140,7 +140,8 @@ export class BOMInventorySyncService {
     static async calculateEffectiveStock(
         accountId: string,
         productId: string,
-        variationId: number = 0
+        variationId: number = 0,
+        requireLiveStock = false
     ): Promise<EffectiveStockResult | null> {
         const wooService = await WooService.forAccount(accountId);
 
@@ -175,13 +176,13 @@ export class BOMInventorySyncService {
                         },
                         include: {
                             childProduct: {
-                                select: { id: true, wooId: true, name: true }
+                                select: { id: true, wooId: true, name: true, accountId: true }
                             },
                             childVariation: {
-                                select: { wooId: true, sku: true, stockQuantity: true }
+                                select: { wooId: true, sku: true, stockQuantity: true, productId: true }
                             },
                             internalProduct: {
-                                select: { id: true, name: true, stockQuantity: true }
+                                select: { id: true, name: true, stockQuantity: true, accountId: true }
                             }
                         }
                     }
@@ -207,6 +208,12 @@ export class BOMInventorySyncService {
         // Avoids re-fetching /products/{parentId}/variations for every BOM item
         // that shares the same parent product.
         const variationCache = new Map<number, any[] | null>();
+        const receiptProductCache = new Map<number, Promise<any>>();
+        const getLiveProduct = (wooId: number): Promise<any> => {
+            if (!requireLiveStock) return wooService.getProduct(wooId);
+            if (!receiptProductCache.has(wooId)) receiptProductCache.set(wooId, wooService.getProduct(wooId));
+            return receiptProductCache.get(wooId)!;
+        };
 
         /**
          * Helper: fetch variations with per-call caching.
@@ -219,7 +226,8 @@ export class BOMInventorySyncService {
                 const variations = await wooService.getProductVariations(parentWooId);
                 variationCache.set(parentWooId, variations);
                 return variations;
-            } catch {
+            } catch (error) {
+                if (requireLiveStock) throw error;
                 variationCache.set(parentWooId, null);
                 return null;
             }
@@ -256,10 +264,11 @@ export class BOMInventorySyncService {
                 }
             } else {
                 // For main products, fetch the product directly
-                const wooProduct = await wooService.getProduct(product.wooId);
+                const wooProduct = await getLiveProduct(product.wooId);
                 currentWooStock = wooProduct.stock_quantity ?? null;
             }
         } catch (err: any) {
+            if (requireLiveStock) throw err;
             if (variationId === 0 && isMissingWooProduct(err)) {
                 Logger.warn(`[BOMInventorySync] Product no longer exists in WooCommerce - deactivating BOM items`, {
                     accountId,
@@ -354,6 +363,7 @@ export class BOMInventorySyncService {
             try {
                 // Handle internal product components (priority check)
                 if (bomItem.internalProductId && bomItem.internalProduct) {
+                    if (requireLiveStock && bomItem.internalProduct.accountId !== accountId) throw new Error('Cross-account internal BOM component');
                     childStock = bomItem.internalProduct.stockQuantity;
                     childName = `[Internal] ${bomItem.internalProduct.name}`;
                     childProductId = bomItem.internalProductId;
@@ -361,12 +371,14 @@ export class BOMInventorySyncService {
                 }
                 // Handle WooCommerce product components
                 else if (bomItem.childProduct) {
+                    if (requireLiveStock && bomItem.childProduct.accountId !== accountId) throw new Error('Cross-account Woo BOM component');
                     childProductId = bomItem.childProduct.id;
                     childWooId = bomItem.childProduct.wooId;
                     childName = bomItem.childProduct.name;
 
                     // Check if this is a variant component
                     if (bomItem.childVariationId && bomItem.childVariation) {
+                        if (requireLiveStock && bomItem.childVariation.productId !== bomItem.childProduct.id) throw new Error('BOM component variation parent mismatch');
                         childWooId = bomItem.childVariation.wooId;
                         childName = `${childName} (Variant ${bomItem.childVariation.sku || '#' + childWooId})`;
 
@@ -377,7 +389,18 @@ export class BOMInventorySyncService {
 
                         if (variations) {
                             const targetVariation = variations.find((v: any) => v.id === childWooId);
+                            if (requireLiveStock && !targetVariation) throw new Error(`BOM component variation ${childWooId} is missing in Woo`);
                             childStock = targetVariation?.stock_quantity ?? bomItem.childVariation.stockQuantity ?? 0;
+                            if (requireLiveStock) {
+                                if (targetVariation.manage_stock !== true) {
+                                    const parent = await getLiveProduct(parentWooId);
+                                    if (parent.manage_stock !== true) throw new Error(`BOM component ${parentWooId}/${childWooId} has no native managed owner`);
+                                    childStock = parent.stock_quantity;
+                                    // Strict receipt cascades pool inherited siblings by physical owner.
+                                    childWooId = parentWooId;
+                                } else childStock = targetVariation.stock_quantity;
+                                if (typeof childStock !== 'number' || !Number.isFinite(childStock)) throw new Error('Live BOM component stock unavailable');
+                            }
 
                             if (!targetVariation) {
                                 // Variation deleted in WooCommerce — deactivate BOM item to stop recurring errors
@@ -398,7 +421,7 @@ export class BOMInventorySyncService {
                             } else {
                                 // Update local DB with live stock so UI calculations match
                                 const liveStock = targetVariation.stock_quantity;
-                                if (liveStock !== null && liveStock !== undefined && liveStock !== bomItem.childVariation.stockQuantity) {
+                                if (!requireLiveStock && liveStock !== null && liveStock !== undefined && liveStock !== bomItem.childVariation.stockQuantity) {
                                     await prisma.productVariation.updateMany({
                                         where: {
                                             wooId: childWooId,
@@ -418,7 +441,8 @@ export class BOMInventorySyncService {
                     } else {
                         // Standard product component
                         try {
-                            const childWooProduct = await wooService.getProduct(childWooId);
+                            const childWooProduct = await getLiveProduct(childWooId);
+                            if (requireLiveStock && (childWooProduct.manage_stock !== true || typeof childWooProduct.stock_quantity !== 'number' || !Number.isFinite(childWooProduct.stock_quantity))) throw new Error(`Live managed BOM component stock unavailable: ${childWooId}`);
                             childStock = childWooProduct.stock_quantity ?? 0;
 
                             // Update local DB with live stock so UI calculations match.
@@ -426,13 +450,14 @@ export class BOMInventorySyncService {
                             const liveStock = childWooProduct.stock_quantity;
                             const localStock = localProductStockMap.get(bomItem.childProduct.id) ?? null;
 
-                            if (liveStock !== null && liveStock !== undefined && liveStock !== localStock) {
+                            if (!requireLiveStock && liveStock !== null && liveStock !== undefined && liveStock !== localStock) {
                                 await prisma.wooProduct.update({
                                     where: { id: bomItem.childProduct.id },
                                     data: { stockQuantity: liveStock }
                                 });
                             }
                         } catch (fetchErr: any) {
+                            if (requireLiveStock) throw fetchErr;
                             // Detect 404 — product was deleted in WooCommerce
                             const status = fetchErr?.response?.status ?? fetchErr?.status;
                             if (status === 404) {
@@ -482,6 +507,7 @@ export class BOMInventorySyncService {
                 }
 
             } catch (err) {
+                if (requireLiveStock) throw err;
                 Logger.error(`[BOMInventorySync] Failed to process component in BOM`, {
                     accountId,
                     childProductId: childProductId || bomItem.childProductId || bomItem.internalProductId,
@@ -706,9 +732,12 @@ export class BOMInventorySyncService {
     static async syncProductToWoo(
         accountId: string,
         productId: string,
-        variationId: number = 0
+        variationId: number = 0,
+        options?: { requireLiveStock?: boolean; beforeWrite?: () => Promise<void> }
     ): Promise<SyncResult> {
-        const calculation = await this.calculateEffectiveStock(accountId, productId, variationId);
+        const calculation = options?.requireLiveStock
+            ? await this.calculateEffectiveStock(accountId, productId, variationId, true)
+            : await this.calculateEffectiveStock(accountId, productId, variationId);
 
         if (!calculation) {
             return {
@@ -721,6 +750,7 @@ export class BOMInventorySyncService {
             };
         }
 
+        await options?.beforeWrite?.();
         if (!calculation.needsSync) {
             Logger.info(`[BOMInventorySync] Product ${productId} already in sync (stock: ${calculation.effectiveStock})`, { accountId });
 
@@ -746,6 +776,7 @@ export class BOMInventorySyncService {
                     productId, variationId, stock: calculation.currentWooStock
                 });
             } catch (dbErr) {
+                if (options?.requireLiveStock) throw dbErr;
                 Logger.warn(`[BOMInventorySync] Failed to update local DB stock`, { error: dbErr });
             }
 
@@ -782,11 +813,13 @@ export class BOMInventorySyncService {
                 const allowBackorders = allowsBackorders(variationRecord?.rawData);
 
                 // Update variation stock via WooCommerce variations API
-                await wooService.updateProductVariation(parentProduct.wooId, variationId, {
+                await options?.beforeWrite?.();
+                const acknowledged = await wooService.updateProductVariation(parentProduct.wooId, variationId, {
                     stock_quantity: calculation.effectiveStock,
                     manage_stock: true,
                     stock_status: getStockStatusForQuantity(calculation.effectiveStock, allowBackorders)
                 });
+                if (options?.requireLiveStock && (acknowledged?.stock_quantity !== calculation.effectiveStock || acknowledged?.manage_stock !== true)) throw new Error('BOM variation stock write was not acknowledged');
             } else {
                 // Guard: do not set manage_stock on variable parent products
                 const productRecord = await prisma.wooProduct.findFirst({
@@ -812,11 +845,13 @@ export class BOMInventorySyncService {
                 }
 
                 // Update main product stock
-                await wooService.updateProduct(calculation.wooId, {
+                await options?.beforeWrite?.();
+                const acknowledged = await wooService.updateProduct(calculation.wooId, {
                     stock_quantity: calculation.effectiveStock,
                     manage_stock: true,
                     stock_status: getStockStatusForQuantity(calculation.effectiveStock, allowBackorders)
                 });
+                if (options?.requireLiveStock && (acknowledged?.stock_quantity !== calculation.effectiveStock || acknowledged?.manage_stock !== true)) throw new Error('BOM product stock write was not acknowledged');
             }
 
             // Log the stock change for audit trail

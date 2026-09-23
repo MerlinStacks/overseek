@@ -75,6 +75,34 @@ npm run dev
 
 Please run `npm run lint` before submitting PRs to ensure your code follows our ESLint 9 Flat Config standards.
 
+### WordPress release packaging
+
+Use the existing `server/scripts/build_plugin.js` packager; do not ZIP the source
+directory directly. It includes runtime classes, blocks, assets, templates,
+translations, the customer README and root MIT license, while excluding test/native
+fixtures, developer docs, tooling, dependencies, secrets and temporary files.
+The current `vendor/` tree is development-only coding-standard tooling.
+
+```sh
+node --test server/scripts/tests/plugin-package.test.js
+node server/scripts/build_plugin.js --output-dir /tmp/opencode/overseek-release/candidate-2.23.0 --lint
+```
+
+Verify the output parent first. Requires Node, ZIP (PowerShell on Windows), Python 3
+and PHP for `--lint`. The default output remains `server/uploads/plugins` for
+existing callers; that ZIP is tracked, so use the explicit candidate directory for
+local validation. `--check` retains the lightweight Docker build check; a full
+package additionally verifies version consistency, exact ZIP entries, CRC and
+per-file SHA-256, and writes a sidecar manifest. Never ship that sidecar as plugin code.
+See [delivery release runbook](docs/delivery-release-runbook.md) for the final rebuild,
+all 13 migrations, controlled activation, limitations and rollback procedure.
+
+Tracking regressions remain developer-only:
+`php server/scripts/tests/plugin-tracking-retries.php` and
+`php server/scripts/tests/plugin-pageview-requests.php`. Also verify classic/Blocks
+checkout in isolation with the OverSeek endpoint unavailable and restored, including
+cron delivery without duplicate purchases.
+
 ## Styleguides
 
 ### Code Style

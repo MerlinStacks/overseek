@@ -4,25 +4,48 @@ on:
   pull_request:
     paths:
       - 'overseek-wc-plugin/**'
+      - 'packages/overseek-core/**'
+      - 'server/scripts/*plugin*.js'
+      - 'server/scripts/tests/plugin-package.test.js'
+      - 'server/scripts/tests/plugin-download.test.js'
+      - 'server/uploads/plugins/overseek-wc-plugin*'
+      - 'server/Dockerfile'
+      - 'server/start.sh'
+      - '.dockerignore'
+      - '.gitignore'
       - '.github/workflows/wordpress-plugin-tests.yml'
   push:
     branches: [main]
     paths:
       - 'overseek-wc-plugin/**'
+      - 'packages/overseek-core/**'
+      - 'server/scripts/*plugin*.js'
+      - 'server/scripts/tests/plugin-package.test.js'
+      - 'server/scripts/tests/plugin-download.test.js'
+      - 'server/uploads/plugins/overseek-wc-plugin*'
+      - 'server/Dockerfile'
+      - 'server/start.sh'
+      - '.dockerignore'
+      - '.gitignore'
       - '.github/workflows/wordpress-plugin-tests.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke-test:
-    name: WordPress ${{ matrix.wordpress }} / WooCommerce 11.1
+    name: WordPress ${{ matrix.wordpress }} / WooCommerce 11.1.1 / WBS 6.18.0
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        wordpress: ['7.0', '7.1']
+        wordpress: ['7.0', '7.1.1']
 
     services:
       mysql:
@@ -32,6 +55,7 @@ jobs:
           MYSQL_USER: wordpress
           MYSQL_PASSWORD: wordpress
           MYSQL_ROOT_PASSWORD: root
+          MYSQL_ROOT_HOST: '%'
         ports:
           - 3306:3306
         options: >-
@@ -46,25 +70,71 @@ jobs:
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
+          php-version: '8.4'
+          extensions: mysqli
+          ini-values: sendmail_path=/bin/true
           tools: wp-cli
           coverage: none
 
       - name: Lint plugin PHP
         run: git ls-files 'overseek-wc-plugin/**.php' | xargs -n1 php -l
 
+      - name: Set up Node for storefront behaviour tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.1'
+
+      - name: Test local delivery calculations and discovery contract
+        run: |
+          php overseek-wc-plugin/tests/delivery-engine.php
+          php overseek-wc-plugin/tests/delivery-discovery.php
+          php overseek-wc-plugin/tests/delivery-inputs.php
+          php overseek-wc-plugin/tests/delivery-inbound-inputs.php
+          php overseek-wc-plugin/tests/delivery-live-adapter.php
+          php overseek-wc-plugin/tests/delivery-order-snapshot.php
+          php overseek-wc-plugin/tests/delivery-receipts.php
+          php overseek-wc-plugin/tests/delivery-launch-receipts.php
+          php overseek-wc-plugin/tests/delivery-legacy-recovery.php
+          php overseek-wc-plugin/tests/delivery-control-disable.php
+          php overseek-wc-plugin/tests/delivery-managed-stock.php
+          php overseek-wc-plugin/tests/delivery-checkout-capture.php
+          php overseek-wc-plugin/tests/delivery-wbs-mapping.php
+          php overseek-wc-plugin/tests/delivery-option-discovery.php
+          php overseek-wc-plugin/tests/delivery-render-cache.php
+          php overseek-wc-plugin/tests/delivery-storefront.php
+          node overseek-wc-plugin/tests/delivery-storefront-js.cjs
+          for mode in default first-native old-version missing-version missing-getter store-api other-api ajax; do
+            php overseek-wc-plugin/tests/delivery-cart-display.php "$mode"
+          done
+          for version in 9.6.2 9.7.0 9.9.0 10.9.0 11.0.0 11.1.0 11.2.0 12.0.0; do
+            php overseek-wc-plugin/tests/delivery-storefront-quotes.php "$version"
+          done
+
       - name: Install WordPress
         run: |
           mkdir wordpress
           wp core download --path=wordpress --version=${{ matrix.wordpress }} --force
           wp config create --path=wordpress --dbname=wordpress_tests --dbuser=wordpress --dbpass=wordpress --dbhost=127.0.0.1 --skip-check
-          wp core install --path=wordpress --url=http://localhost --title=OverSeek --admin_user=admin --admin_password=password --admin_email=admin@example.com --skip-email
+          wp core install --path=wordpress --url=http://overseek-ci.invalid --title=OverSeek --admin_user=admin --admin_password=password --admin_email=admin@example.invalid --skip-email
 
-      - name: Install WooCommerce 11.1 and OverSeek
+      - name: Install exact WooCommerce and WBS, then packaged OverSeek
         run: |
-          wp plugin install https://downloads.wordpress.org/plugin/woocommerce.11.1.0.zip --path=wordpress --activate
-          ln -s "$GITHUB_WORKSPACE/overseek-wc-plugin" wordpress/wp-content/plugins/overseek-wc-plugin
-          wp plugin activate overseek-wc-plugin --path=wordpress
+          wp plugin install https://downloads.wordpress.org/plugin/woocommerce.11.1.1.zip --path=wordpress --activate
+          wp plugin install https://downloads.wordpress.org/plugin/weight-based-shipping-for-woocommerce.6.18.0.zip --path=wordpress --activate
+          # Git does not retain the currently empty runtime translation directory.
+          mkdir -p overseek-wc-plugin/languages
+          node --test server/scripts/tests/plugin-package.test.js server/scripts/tests/plugin-download.test.js
+          bash -n server/start.sh
+          node server/scripts/build_plugin.js --output-dir "$RUNNER_TEMP/plugin-package" --lint
+          wp plugin install "$RUNNER_TEMP/plugin-package/overseek-wc-plugin.zip" --path=wordpress --activate
+          test "$(wp plugin get woocommerce --path=wordpress --field=version)" = '11.1.1'
+          test "$(wp plugin get weight-based-shipping-for-woocommerce --path=wordpress --field=version)" = '6.18.0'
+
+      - name: Isolate disposable WordPress after all downloads
+        run: |
+          wp config set WP_ENVIRONMENT_TYPE local --path=wordpress
+          wp config set DISABLE_WP_CRON true --raw --path=wordpress
+          wp config set WP_HTTP_BLOCK_EXTERNAL true --raw --path=wordpress
 
       - name: Verify plugin boot and REST routes
         run: |
@@ -73,7 +143,7 @@ jobs:
               throw new RuntimeException("WooCommerce or OverSeek did not load.");
             }
             $routes = rest_get_server()->get_routes();
-            foreach (["/overseek/v1/settings", "/overseek/v1/health", "/overseek/v1/reviews"] as $route) {
+            foreach (["/overseek/v1/settings", "/overseek/v1/health", "/overseek/v1/reviews", "/overseek/v1/delivery-estimates/capabilities", "/overseek/v1/delivery-estimates/shipping-methods", "/overseek/v1/delivery-estimates/inputs", "/overseek/v1/delivery-estimates/receipts/prepare", "/overseek/v1/delivery-estimates/receipts/apply"] as $route) {
               if (!isset($routes[$route])) {
                 throw new RuntimeException("Missing REST route: " . $route);
               }
@@ -91,4 +161,43 @@ jobs:
                 throw new RuntimeException("Missing cart recovery hook: " . $hook);
               }
             }
+            if (!shortcode_exists("overseek_delivery_estimate") || !WP_Block_Type_Registry::get_instance()->is_registered("overseek/delivery-estimate")) {
+              throw new RuntimeException("Missing dormant delivery placements.");
+            }
+            if (OverSeek_Delivery_Storefront_Gate::is_active() || do_shortcode("[overseek_delivery_estimate product_id=1]") !== "") {
+              throw new RuntimeException("Delivery storefront gate must remain inactive.");
+            }
+            if (false === has_action("woocommerce_after_shipping_rate") || false === has_filter("woocommerce_shipping_rate_delivery_time")) {
+              throw new RuntimeException("Missing dormant delivery cart hooks.");
+            }
           '
+
+      - name: Verify guarded receipts against native Woo stock and MySQL
+        env:
+          OVERSEEK_RUN_DISPOSABLE_DB_TESTS: '1'
+        run: |
+          # Only the disposable CI service: permits its test user to install a failure-injection trigger.
+          wp db query "SET GLOBAL log_bin_trust_function_creators = 1" --path=wordpress --dbuser=root --dbpass=root
+          wp eval-file overseek-wc-plugin/tests/delivery-receipts-integration.php --path=wordpress --use-include
+
+      - name: Native launch, managed-rate checkout and snapshot aggregate
+        env:
+          OVERSEEK_RUN_DISPOSABLE_DB_TESTS: '1'
+          OVERSEEK_NATIVE_ARTIFACT_DIR: ${{ runner.temp }}/delivery-native
+        run: |
+          mkdir -p "$OVERSEEK_NATIVE_ARTIFACT_DIR"
+          wp eval-file "$GITHUB_WORKSPACE/overseek-wc-plugin/tests/delivery-native-integration.php" --path=wordpress --use-include 2>&1 | tee "$OVERSEEK_NATIVE_ARTIFACT_DIR/aggregate.log"
+          reports=("$OVERSEEK_NATIVE_ARTIFACT_DIR"/overseek-native-*)
+          test "${#reports[@]}" -eq 1
+          node --experimental-strip-types overseek-wc-plugin/tests/delivery-native-artifacts.mjs "${reports[0]}" 2>&1 | tee "$OVERSEEK_NATIVE_ARTIFACT_DIR/shared-core.log"
+
+      - name: Upload native reports and package manifest (including failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: delivery-wordpress-${{ matrix.wordpress }}
+          path: |
+            ${{ runner.temp }}/delivery-native/
+            ${{ runner.temp }}/plugin-package/overseek-wc-plugin.manifest.json
+          if-no-files-found: warn
+          retention-days: 14

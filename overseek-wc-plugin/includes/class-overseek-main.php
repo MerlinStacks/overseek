@@ -91,10 +91,32 @@ class OverSeek_Main
 		}
 
 		// Initialize API.
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-control.php';
+		OverSeek_Delivery_Control::register_invalidation();
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-discovery-api.php';
+		add_filter( 'woocommerce_package_rates', [ 'OverSeek_Delivery_Discovery_API', 'capture_admin_rates' ], PHP_INT_MAX, 1 );
 		add_action('rest_api_init', function (): void {
 			$this->load_api_dependencies();
 			$api = new OverSeek_API();
 			$api->register_routes();
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-discovery-api.php';
+			$delivery_api = new OverSeek_Delivery_Discovery_API();
+			$delivery_api->register_routes();
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-input-validation.php';
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-input-storage.php';
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-input-api.php';
+			( new OverSeek_Delivery_Input_API() )->register_routes();
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-receipt-validation.php';
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-receipt-storage.php';
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-receipt-write-observer.php';
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-receipt-api.php';
+			( new OverSeek_Receipt_API() )->register_routes();
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-receipt-reconciliation.php';
+			( new OverSeek_Receipt_Reconciliation() )->register_routes();
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-legacy-receipt-reconciliation.php';
+			( new OverSeek_Legacy_Receipt_Reconciliation() )->register_routes();
+			require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-control.php';
+			( new OverSeek_Delivery_Control() )->register_routes();
 		});
 		// Register the artwork bridge after other plugins and replace CK Order
 		// Workflow's colliding route so outbound events always reach OverSeek.
@@ -120,6 +142,15 @@ class OverSeek_Main
 		$this->register_reviews();
 		$this->register_preference_center();
 		$this->register_google_product_review_feed();
+
+		// Placements can be prepared before cutover. The shared gate requires an
+		// explicit, current readiness-checked activation before loading calculations.
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-product.php';
+		OverSeek_Delivery_Product::register();
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-cart-display.php';
+		new OverSeek_Delivery_Cart_Display();
+		require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-delivery-checkout-capture.php';
+		OverSeek_Delivery_Checkout_Capture::register();
 
 		// Initialize Server-Side Tracking (runs on WooCommerce hooks).
 		if ($is_configured && $tracking_enabled) {

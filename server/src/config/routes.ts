@@ -33,6 +33,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     const shippingRoutes = (await import('../routes/shipping')).default;
     const shippingPrintAgentRoutes = (await import('../routes/shippingPrintAgent')).default;
     const wholesaleCatalogRoutes = (await import('../routes/wholesaleCatalog')).default;
+    const deliveryEstimateRoutes = (await import('../routes/deliveryEstimates')).default;
     const wholesaleCatalogViewRoutes = (await import('../routes/wholesaleCatalogView')).default;
 
     await fastify.register(healthRoutes, { prefix: '/health' });
@@ -60,6 +61,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(shippingRoutes, { prefix: '/api/shipping' });
     await fastify.register(shippingPrintAgentRoutes, { prefix: '/api/shipping/print-agent' });
     await fastify.register(wholesaleCatalogRoutes, { prefix: '/api/wholesale-catalog' });
+    await fastify.register(deliveryEstimateRoutes, { prefix: '/api/delivery-estimates' });
     // Deliberately separate from the authenticated wholesale management plugin.
     await fastify.register(wholesaleCatalogViewRoutes, { prefix: '/api/catalog-view' });
 

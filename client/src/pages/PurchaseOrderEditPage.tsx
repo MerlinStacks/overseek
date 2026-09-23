@@ -12,6 +12,7 @@ import { Toast, ToastType } from '../components/ui/Toast';
 import { usePODraftPersistence } from '../hooks/usePODraftPersistence';
 import { emitCrossTabEvent, subscribeToCrossTabEvents } from '../utils/productCrossTabEvents';
 import { getSafeHref } from '../utils/url';
+import { usePermissions } from '../hooks/usePermissions';
 
 const PURCHASE_ORDERS_PATH = '/inventory/supply-chain';
 
@@ -57,6 +58,7 @@ export function PurchaseOrderEditPage() {
     const isNew = !id || id === 'new';
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const { hasPermission } = usePermissions();
 
     const [isLoading, setIsLoading] = useState(false);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -457,6 +459,10 @@ export function PurchaseOrderEditPage() {
             </div>
 
             {/* Status Stepper */}
+            {!isNew && id && (hasPermission('manage_inventory') || hasPermission('view_shipping')) && <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950 p-4 text-sm text-amber-950 dark:text-amber-100">
+                <p>If ordinary unreceive is refused for a historical received PO, review its guarded receipt cycles and use the observation-backed legacy reversal workflow. Do not resend stock changes.</p>
+                <a className="font-medium underline" href={`/settings?tab=deliveryEstimates&purchaseOrderId=${encodeURIComponent(id)}#purchase-order-recovery`}>Open receipt provenance and historical reversal recovery</a>
+            </div>}
             {!isNew && (
                 <POStatusStepper
                     status={status}

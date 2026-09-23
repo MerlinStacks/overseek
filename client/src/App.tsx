@@ -29,6 +29,7 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 // Lazy-loaded core pages (moved from static imports for bundle optimization)
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const DeliveryEstimatesSettingsPage = lazy(() => import('./pages/DeliveryEstimatesSettingsPage').then(m => ({ default: m.DeliveryEstimatesSettingsPage })));
 
 // ... (inside App function)
 
@@ -347,6 +348,7 @@ function App() {
                                                 <Route path={ROUTE_PATHS.team} element={<AccountGuard><TeamPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.wizard} element={<SetupWizard />} />
                                                 <Route path={ROUTE_PATHS.settings} element={<AccountGuard><SettingsPage /></AccountGuard>} />
+                                                <Route path="/delivery-estimates" element={<AccountGuard><DeliveryEstimatesSettingsPage /></AccountGuard>} />
                                                 <Route path={ROUTE_PATHS.profile} element={<AccountGuard><UserProfilePage /></AccountGuard>} />
 
                                                 <Route path={ROUTE_PATHS.invoicesDesign} element={<AccountGuard><InvoiceDesigner /></AccountGuard>} />

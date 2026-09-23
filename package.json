@@ -42,6 +42,9 @@
     "lint-staged": "^15.5.2"
   },
   "overrides": {
+    "ts-api-utils": {
+      "typescript": "5.9.3"
+    },
     "@hono/node-server": "^1.19.14",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

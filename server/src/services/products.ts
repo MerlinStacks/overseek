@@ -9,6 +9,8 @@ import { Logger } from '../utils/logger';
 import { WooService, WooProductData } from './woo';
 import { ProductSearchService } from './productSearch';
 import { redisClient } from '../utils/redis';
+import { dirtyInboundProducts, lockDeliveryAccount } from './deliveryEstimates/intents';
+import { Prisma } from '@prisma/client';
 
 const hasValue = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
 const toNumberOrUndefined = (value: unknown): number | undefined => (hasValue(value) ? Number(value) : undefined);
@@ -17,6 +19,29 @@ const toNumberOrNull = (value: unknown): number | null | undefined => {
     if (value === null || value === '') return null;
     return Number(value);
 };
+
+type VariationStockManagement = boolean | 'parent';
+function variationStockManagement(value: unknown): VariationStockManagement | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value === 'boolean' || value === 'parent') return value;
+    throw new Error('Variation manageStock must be a boolean or parent');
+}
+
+/** Missing ownership fields deliberately do not write manageStock/rawData. */
+function saveVariation(db: Pick<typeof prisma, 'productVariation'>, productId: string, v: any,
+    ownership: { manageStock: boolean; rawData: Prisma.InputJsonObject } | Record<string, never> = {}) {
+    const fields = {
+        cogs: toNumberOrNull(v.cogs), miscCosts: v.miscCosts || undefined, binLocation: v.binLocation,
+        isGoldPriceApplied: v.isGoldPriceApplied, goldPriceType: v.goldPriceType,
+        sku: v.sku, price: toNumberOrUndefined(v.price), salePrice: toNumberOrUndefined(v.salePrice), stockStatus: v.stockStatus,
+        weight: toNumberOrUndefined(v.weight), length: toNumberOrUndefined(v.dimensions?.length),
+        width: toNumberOrUndefined(v.dimensions?.width), height: toNumberOrUndefined(v.dimensions?.height),
+        ...ownership,
+    };
+    return db.productVariation.upsert({ where: { productId_wooId: { productId, wooId: v.id } }, update: fields,
+        create: { ...fields, productId, wooId: v.id, isGoldPriceApplied: v.isGoldPriceApplied || false, goldPriceType: v.goldPriceType || null },
+    });
+}
 
 export class ProductsService {
     /**
@@ -106,6 +131,8 @@ export class ProductsService {
      */
     static async updateProduct(accountId: string, wooId: number, data: any) {
         const { variations, ...productData } = data;
+        // Validate before local writes/network; do not coerce 'parent' to true.
+        if (Array.isArray(variations)) for (const variation of variations) variationStockManagement(variation.manageStock);
 
         const existing = await prisma.wooProduct.findUnique({
             where: { accountId_wooId: { accountId, wooId } }
@@ -134,8 +161,8 @@ export class ProductsService {
         };
 
         // Update Parent Product
-        const updated = await prisma.wooProduct.update({
-            where: { accountId_wooId: { accountId, wooId } },
+        const saveParent = (db: Pick<typeof prisma, 'wooProduct'>) => db.wooProduct.update({
+                where: { accountId_wooId: { accountId, wooId } },
                 data: {
                     binLocation: productData.binLocation,
                     name: productData.name,
@@ -155,7 +182,21 @@ export class ProductsService {
                     images: productData.images || undefined,
                     rawData: updatedRawData,
                     seoData: updatedSeoData
+                }
+            });
+        const updated = productData.supplierId === undefined && productData.manageStock === undefined
+            ? await saveParent(prisma)
+            : await prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, accountId);
+            if (productData.supplierId && !await tx.supplier.findFirst({ where: { id: productData.supplierId, accountId }, select: { id: true } })) {
+                throw new Error('Supplier not found');
             }
+            const current = await tx.wooProduct.findUniqueOrThrow({ where: { accountId_wooId: { accountId, wooId } }, select: { supplierId: true, manageStock: true, rawData: true } });
+            const supplierChanged = productData.supplierId !== undefined && (productData.supplierId || null) !== current.supplierId;
+            const stockOwnerChanged = productData.manageStock !== undefined && (productData.manageStock !== current.manageStock || productData.manageStock !== (current.rawData as any)?.manage_stock);
+            const saved = await saveParent(tx);
+            if (supplierChanged || stockOwnerChanged) await dirtyInboundProducts(tx, accountId, [wooId]);
+            return saved;
         });
 
         // Sync ALL relevant product fields to WooCommerce
@@ -198,7 +239,7 @@ export class ProductsService {
             // Partial updates without manage_stock/stock_quantity can cause
             // WooCommerce to reset stock management. The next ProductSync
             // would then pull stale stock back into the DB.
-            wooUpdateData.manage_stock = existing.manageStock;
+            wooUpdateData.manage_stock = productData.manageStock !== undefined ? productData.manageStock : existing.manageStock;
             if (existing.stockQuantity !== null) {
                 wooUpdateData.stock_quantity = existing.stockQuantity;
             }
@@ -222,49 +263,40 @@ export class ProductsService {
             const BATCH_SIZE = 5;
             for (let i = 0; i < variations.length; i += BATCH_SIZE) {
                 const batch = variations.slice(i, i + BATCH_SIZE);
+                const ownershipEdits = batch.filter(v => Number.isSafeInteger(v.id) && v.id > 0 && v.manageStock !== undefined);
+                if (ownershipEdits.length) {
+                    await prisma.$transaction(async tx => {
+                        await lockDeliveryAccount(tx, accountId);
+                        // One bounded lookup for the batch, never one read per variation.
+                        const rows = await tx.productVariation.findMany({ where: { productId: updated.id, product: { accountId }, wooId: { in: ownershipEdits.map(v => v.id) } }, select: { wooId: true, manageStock: true, rawData: true } });
+                        const current = new Map(rows.map(row => [row.wooId, row]));
+                        let dirty = false;
+                        for (const v of ownershipEdits) {
+                            const value = variationStockManagement(v.manageStock)!;
+                            const before = current.get(v.id);
+                            const raw = before?.rawData && typeof before.rawData === 'object' && !Array.isArray(before.rawData) ? before.rawData as Prisma.InputJsonObject : {};
+                            // Woo's variation REST schema permits boolean/string. The
+                            // local Boolean means independent management; raw preserves
+                            // the 'parent' inheritance marker. False also inherits when
+                            // the actual parent manages stock (resolved by the builder).
+                            const ownership = { manageStock: value === true, rawData: { ...raw, manage_stock: value } };
+                            dirty ||= !before || before.manageStock !== ownership.manageStock || raw.manage_stock !== value;
+                            await saveVariation(tx, updated.id, v, ownership);
+                            current.set(v.id, { wooId: v.id, ...ownership } as typeof rows[number]);
+                        }
+                        if (dirty) await dirtyInboundProducts(tx, accountId, [wooId]);
+                    });
+                }
                 await Promise.all(batch.map(async (v) => {
-                    if (!v.id || typeof v.id !== 'number' || v.id <= 0) {
+                    if (!Number.isSafeInteger(v.id) || v.id <= 0) {
                         Logger.warn(`Skipping variation with invalid ID`, { variationData: v, productWooId: wooId });
                         return;
                     }
 
                     try {
-                        // Update local DB
-                        await prisma.productVariation.upsert({
-                            where: { productId_wooId: { productId: updated.id, wooId: v.id } },
-                            update: {
-                                cogs: toNumberOrNull(v.cogs),
-                                miscCosts: v.miscCosts || undefined,
-                                binLocation: v.binLocation,
-                                isGoldPriceApplied: v.isGoldPriceApplied,
-                                goldPriceType: v.goldPriceType,
-                                sku: v.sku,
-                                price: toNumberOrUndefined(v.price),
-                                salePrice: toNumberOrUndefined(v.salePrice),
-                                stockStatus: v.stockStatus,
-                                weight: toNumberOrUndefined(v.weight),
-                                length: toNumberOrUndefined(v.dimensions?.length),
-                                width: toNumberOrUndefined(v.dimensions?.width),
-                                height: toNumberOrUndefined(v.dimensions?.height)
-                            },
-                            create: {
-                                productId: updated.id,
-                                wooId: v.id,
-                                cogs: toNumberOrNull(v.cogs),
-                                miscCosts: v.miscCosts || undefined,
-                                binLocation: v.binLocation,
-                                isGoldPriceApplied: v.isGoldPriceApplied || false,
-                                goldPriceType: v.goldPriceType || null,
-                                sku: v.sku,
-                                price: toNumberOrUndefined(v.price),
-                                salePrice: toNumberOrUndefined(v.salePrice),
-                                stockStatus: v.stockStatus,
-                                weight: toNumberOrUndefined(v.weight),
-                                length: toNumberOrUndefined(v.dimensions?.length),
-                                width: toNumberOrUndefined(v.dimensions?.width),
-                                height: toNumberOrUndefined(v.dimensions?.height)
-                            }
-                        });
+                        // Ownership-bearing upserts already committed with their dirty
+                        // intent. Ordinary edits preserve ownership without extra reads.
+                        if (v.manageStock === undefined) await saveVariation(prisma, updated.id, v);
 
                         // Sync to WooCommerce
                         await wooService.updateProductVariation(wooId, v.id, {

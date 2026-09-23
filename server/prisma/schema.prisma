@@ -67,6 +67,15 @@ model RefreshToken {
 }
 
 model Account {
+  deliveryEstimateSettings DeliveryEstimateSettings?
+  deliveryInputSyncs DeliveryInputSync[]
+  deliveryInboundDirtyTargets DeliveryInboundDirtyTarget[]
+  deliverySyncAccount DeliverySyncAccount?
+  receiptTransportMode ReceiptTransportMode @default(LEGACY)
+  receiptControl ReceiptAccount?
+  receiptOwners ReceiptOwner[]
+  receiptCycles ReceiptCycle[]
+  receiptOperations ReceiptOperation[]
   id     String  @id @default(uuid())
   name   String
   domain String? // e.g. "mystore.com"
@@ -685,6 +694,7 @@ model WooOrder {
   billingEmail    String?  // Extracted from rawData.billing.email
   billingCountry  String?  // Extracted from rawData.billing.country
   wooCustomerId   Int?     // Extracted from rawData.customer_id
+  deliveryEstimateSnapshot Json? // Immutable first valid existing-order promise
 
   // Store the full raw object for future-proofing
   rawData Json
@@ -749,6 +759,8 @@ model WooProduct {
 
   // Customer-facing production turnaround, independent of supplier lead times.
   baseTurnaroundDays Int?
+  productionMinDays Int?
+  productionMaxDays Int?
 
   // Local stock management (can override WooCommerce)
   stockQuantity Int?              // Local stock on hand (null = use WooCommerce rawData)
@@ -771,12 +783,15 @@ model WooProduct {
 
   @@unique([accountId, wooId])
   @@index([accountId, sku])                   // SKU search/lookup
+  @@index([accountId, id])                    // Delivery resync keyset pagination
   @@index([accountId, stockStatus])           // Stock filter (out of stock view)
   @@index([accountId, status, catalogVisibility, dateCreated(sort: Desc)])
   @@index([accountId, updatedAt(sort: Desc)]) // Recent products list
 }
 
 model ProductVariation {
+  productionMinDays Int?
+  productionMaxDays Int?
   id        String @id @default(uuid())
   productId String // Link to internal WooProduct
   wooId     Int    // ID of the variation in WooCommerce
@@ -823,6 +838,230 @@ model ProductVariation {
 // --------------------------------------
 // Inventory & Manufacturing (Suppliers, BOM)
 // --------------------------------------
+
+enum ReceiptTransportMode {
+  LEGACY
+  GUARDED
+}
+
+model ReceiptAccount {
+  accountId String @id
+  cascadeLeaseToken String?
+  cascadeLeaseExpiresAt DateTime?
+  cascadeLastServedAt DateTime @default(now())
+  legacyWork ReceiptLegacyWork[]
+  cutoverEpoch String?
+  cutoverState String @default("legacy")
+  receivingFrozen Boolean @default(false)
+  workersRestartedBy String?
+  workersRestartedAt DateTime?
+  controlRevision BigInt @default(0)
+  controlAckRevision BigInt @default(0)
+  desiredActive Boolean @default(false)
+  revalidationRequested Boolean @default(false)
+  active Boolean @default(false)
+  controlAction String?
+  controlCursor String?
+  controlPayload Json?
+  controlAttempts Int @default(0)
+  controlNextAttemptAt DateTime @default(now())
+  controlLeaseToken String?
+  controlLeaseExpiresAt DateTime?
+  controlError String?
+  pluginReadiness Json?
+  capability String @default("unknown")
+  capabilityExpiresAt DateTime?
+  capabilityAttempts Int @default(0)
+  capabilityNextAttemptAt DateTime @default(now())
+  leaseToken String?
+  leaseExpiresAt DateTime?
+  lastServedAt DateTime @default(now())
+  lastError String?
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  @@index([capability, capabilityNextAttemptAt, lastServedAt], map: "ReceiptAccount_capability_due_idx")
+  @@index([controlAction, controlNextAttemptAt], map: "ReceiptAccount_control_due_idx")
+}
+
+model ReceiptLegacyWork {
+  id String @id @default(cuid())
+  accountId String
+  purchaseOrderId String
+  sourceType String @default("purchase_order")
+  sourceId String?
+  state String @default("pending")
+  targets Json?
+  reconciliation Json?
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError String?
+  resolvedAt DateTime?
+  createdAt DateTime @default(now())
+  account ReceiptAccount @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+  @@index([accountId, state])
+  @@index([state, nextAttemptAt])
+}
+
+model ReceiptOwner {
+  accountId String
+  certifiedEpoch String?
+  stockOwnerWooId Int
+  lastSequence BigInt @default(0)
+  appliedSequence BigInt @default(0)
+  leaseToken String?
+  leaseExpiresAt DateTime?
+  parked Boolean @default(false)
+  cascadePending Boolean @default(false)
+  nextAttemptAt DateTime @default(now())
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  operations ReceiptOperation[]
+  @@id([accountId, stockOwnerWooId])
+  @@index([parked, nextAttemptAt])
+}
+
+// Deliberately no PO/product FK: deleting or editing source records must not erase provenance.
+model ReceiptCycle {
+  id String @id @default(cuid())
+  accountId String
+  purchaseOrderId String
+  active Boolean @default(true)
+  skippedLines Json?
+  createdAt DateTime @default(now())
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  operations ReceiptOperation[]
+  @@index([accountId, purchaseOrderId, active])
+}
+
+model ReceiptOperation {
+  operationId String @id @default(uuid())
+  accountId String
+  cycleId String
+  purchaseOrderId String
+  sourceType String @default("purchase_order")
+  sourceId String?
+  productId String
+  variationId String?
+  productWooId Int
+  variationWooId Int?
+  stockOwnerWooId Int
+  sequence BigInt
+  delta Int
+  state String @default("pending")
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError String?
+  stockQuantity Float?
+  appliedAt DateTime?
+  reconciliation Json?
+  cascadeState String @default("done")
+  cascadeAttempts Int @default(0)
+  cascadeNextAttemptAt DateTime @default(now())
+  cascadeError String?
+  cascadeCompletedAt DateTime?
+  createdAt DateTime @default(now())
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  owner ReceiptOwner @relation(fields: [accountId, stockOwnerWooId], references: [accountId, stockOwnerWooId], onDelete: Cascade)
+  cycle ReceiptCycle @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  @@unique([accountId, stockOwnerWooId, sequence])
+  @@index([state, nextAttemptAt])
+  @@index([accountId, state])
+  @@index([cascadeState, cascadeNextAttemptAt])
+  @@index([accountId, purchaseOrderId])
+  @@index([cycleId])
+}
+
+model DeliveryInputSync {
+  id String @id @default(cuid())
+  proofRebuilds Int @default(0)
+  accountId String
+  scope String
+  entityId Int
+  desiredRevision BigInt @default(1)
+  ackRevision BigInt @default(0)
+  payload Json
+  status String @default("pending")
+  priority Int @default(1)
+  resyncGeneration Int @default(0)
+  inboundGeneration Int @default(0)
+  attempts Int @default(0)
+  inboundRenewAt DateTime?
+  nextAttemptAt DateTime @default(now())
+  leaseToken String?
+  leaseExpiresAt DateTime?
+  lastError String?
+  lastAcknowledgedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  @@unique([accountId, scope, entityId])
+  @@index([accountId])
+  @@index([accountId, status, nextAttemptAt])
+  @@index([accountId, scope, id])
+  @@index([accountId, status, priority, nextAttemptAt], map: "DeliveryInputSync_dispatch_account_idx")
+  @@index([status, priority, nextAttemptAt])
+  @@index([scope, status, inboundRenewAt, id], map: "DeliveryInputSync_inbound_renew_idx")
+}
+
+model DeliverySyncAccount {
+  accountId String @id
+  inboundCapabilityStatus String @default("unknown")
+  inboundRequested Boolean @default(false)
+  inboundFullRequested Boolean @default(false)
+  inboundGeneration Int @default(0)
+  inboundBuildGeneration Int @default(0)
+  inboundPhase String @default("products")
+  inboundCursor String?
+  inboundAttempts Int @default(0)
+  inboundFailed Boolean @default(false)
+  inboundNextAttemptAt DateTime @default(now())
+  inboundLastBuildAt DateTime @default(now())
+  inboundVersion Int @default(0)
+  inboundLastError String?
+  capabilityStatus String @default("unknown")
+  capabilityExpiresAt DateTime?
+  lastError String?
+  leaseToken String?
+  leaseExpiresAt DateTime?
+  hasWork Boolean @default(true)
+  nextAttemptAt DateTime @default(now())
+  lastServedAt DateTime @default(now())
+  resyncRequested Boolean @default(false)
+  resyncGeneration Int @default(0)
+  resyncPhase String @default("products")
+  resyncCursor String?
+  lastBuildAt DateTime @default(now())
+  buildAttempts Int @default(0)
+  buildNextAttemptAt DateTime @default(now())
+  buildFailed Boolean @default(false)
+  buildLastError String?
+  buildVersion Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  @@index([hasWork, capabilityStatus, nextAttemptAt, lastServedAt], map: "DeliverySyncAccount_dispatch_idx")
+  @@index([resyncRequested, lastBuildAt])
+  @@index([resyncRequested, buildFailed, buildNextAttemptAt, lastBuildAt], map: "DeliverySyncAccount_build_due_idx")
+  @@index([inboundRequested, inboundFailed, inboundNextAttemptAt, inboundLastBuildAt], map: "DeliverySyncAccount_inbound_due_idx")
+}
+
+model DeliveryInboundDirtyTarget {
+  accountId String
+  wooId Int
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  @@id([accountId, wooId])
+  @@index([accountId, createdAt, wooId])
+}
+
+model DeliveryEstimateSettings {
+  id        String   @id @default(cuid())
+  accountId String   @unique
+  settings  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
 
 model Supplier {
   id              String  @id @default(uuid())
@@ -961,9 +1200,11 @@ model BOMDeductionLedger {
   quantityDeducted Float
   previousStock  Float
   newStock       Float
-  status         String   @default("EXECUTED") // EXECUTED | ROLLED_BACK
+  status         String   @default("EXECUTED") // EXECUTED | QUEUED_GUARDED | COMPLETED | REVERSED | ROLLED_BACK
   createdAt      DateTime @default(now())
   rolledBackAt   DateTime?
+  guardedOperationId String?
+  guardedReversalOperationId String?
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -1022,6 +1263,7 @@ model PurchaseOrderItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@index([productId, purchaseOrderId])
 }
 
 model AdAccount {

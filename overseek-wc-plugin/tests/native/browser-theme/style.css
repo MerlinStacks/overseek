@@ -1,0 +1,18 @@
+/*
+Theme Name: OverSeek Native Browser Fixture
+Version: 1.0.0
+Description: Minimal disposable integration theme, not a merchant-theme certification.
+*/
+* { box-sizing: border-box; }
+body { margin: 0; color: #1c2733; background: #f3f6f8; font: 16px/1.5 Arial, sans-serif; overflow-wrap: anywhere; }
+main { max-width: 900px; margin: 24px auto; padding: 20px; background: white; border: 1px solid #dce3e8; border-radius: 8px; }
+h1 { font-size: 25px; line-height: 1.25; }
+label { display: inline-block; margin-right: 8px; }
+input, select, button { font: inherit; max-width: 100%; }
+input.qty { width: 85px; }
+button { padding: 9px 14px; }
+.placement { margin-top: 20px; border-top: 1px solid #dce3e8; padding-top: 12px; }
+.fixture-label { font-size: 13px; color: #526574; margin-bottom: 8px; }
+.variations { width: 100%; }
+.variations th { text-align: left; }
+@media (max-width: 500px) { main { margin: 10px; padding: 14px; } }

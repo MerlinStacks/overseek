@@ -63,6 +63,9 @@ export function renderTemplate(template: string, context: any, options?: { prese
 
     return template.replace(/\{\{(.*?)\}\}/g, (match, expression) => {
         const { path, fallback } = parseTemplateExpression(expression);
+        // Snapshot tokens belong exclusively to the shared validated resolver.
+        // Event fields with matching names must not bypass validation here.
+        if (/^(?:order\.estimated(?:(?:Delivery|Dispatch|Collection)(?:Start|End)?|Fulfilment)|delivery_estimate(?:\s.*)?)$/.test(path)) return match;
         const keys = path.split('.');
         let value = context;
 

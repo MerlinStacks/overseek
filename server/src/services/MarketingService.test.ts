@@ -159,6 +159,19 @@ describe('MarketingService Optimization', () => {
         expect(mocks.prisma.wooCustomer.findMany).toHaveBeenCalledTimes(2); // Should be 2 because 2nd batch < batchSize, so loop breaks.
     });
 
+    it.each(['test', 'send'])('campaign %s leaves delivery snapshot content blank without an order', async mode => {
+        mocks.prisma.marketingCampaign.findFirst.mockResolvedValue({
+            id: 'campaign', accountId: 'a', subject: 'Update {{order.estimatedFulfilment}}',
+            content: '<p>Hello</p>{{delivery_estimate heading:Delivery}}{{order.estimatedDelivery}}'
+        });
+        mocks.prisma.wooCustomer.count.mockResolvedValue(1);
+        mocks.prisma.wooCustomer.findMany.mockResolvedValue([{ id: 'customer', email: 'customer@example.com' }]);
+        if (mode === 'test') await marketingService.sendTestEmail('campaign', 'a', 'test@example.com');
+        else await marketingService.sendCampaign('campaign', 'a');
+        expect(mocks.emailService.sendEmail.mock.calls[0][3]).toBe('Update ');
+        expect(mocks.emailService.sendEmail.mock.calls[0][4]).toBe('<p>Hello</p>');
+    });
+
     it('should use SegmentService iterator when segmentId is present', async () => {
         const accountId = 'acc-1';
         const campaignId = 'camp-2';

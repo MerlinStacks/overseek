@@ -171,6 +171,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             // Return the raw data which contains all the nice Woo fields
             return {
                 ...order.rawData as object,
+                deliveryEstimateSnapshot: order.deliveryEstimateSnapshot ?? null,
                 tracking_items: trackingItems,
                 tracking_number: trackingItems[0]?.trackingNumber ?? null,
                 tracking_url: trackingItems[0]?.trackingUrl ?? null,

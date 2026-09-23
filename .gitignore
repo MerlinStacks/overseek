@@ -111,3 +111,12 @@ client/eslint-report.json
 client/eslint-latest.json
 client/eslint-errors.json
 client/eslint-client.json
+
+# User uploads stay private; retain only the verified application plugin download.
+**/uploads/
+!/server/uploads/
+/server/uploads/*
+!/server/uploads/plugins/
+/server/uploads/plugins/*
+!/server/uploads/plugins/overseek-wc-plugin.zip
+!/server/uploads/plugins/overseek-wc-plugin.manifest.json

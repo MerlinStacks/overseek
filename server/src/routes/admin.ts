@@ -348,6 +348,27 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const { accountId } = request.params;
             const { featureKey, isEnabled } = request.body;
+            if (featureKey === 'DELIVERY_ESTIMATES') {
+                if (typeof isEnabled !== 'boolean') return reply.code(400).send({ error: 'isEnabled must be a boolean' });
+                const { lockDeliveryAccount, recordSettingsIntent } = await import('../services/deliveryEstimates/intents');
+                const { queueDeliveryDisable } = await import('../services/deliveryEstimates/controlIntents');
+                const { ZodError } = await import('zod');
+                return await prisma.$transaction(async tx => {
+                    await lockDeliveryAccount(tx, accountId);
+                    const feature = await tx.accountFeature.upsert({
+                        where: { accountId_featureKey: { accountId, featureKey } },
+                        update: { isEnabled }, create: { accountId, featureKey, isEnabled },
+                    });
+                    if (!isEnabled) await queueDeliveryDisable(tx, accountId);
+                    try { await recordSettingsIntent(tx, accountId); }
+                    catch (error) {
+                        // Invalid parked drafts cannot veto an independent safety disable.
+                        // A database failure still aborts the entire Account-locked transaction.
+                        if (isEnabled || !(error instanceof ZodError)) throw error;
+                    }
+                    return feature;
+                });
+            }
             const feature = await prisma.accountFeature.upsert({
                 where: { accountId_featureKey: { accountId, featureKey } },
                 update: { isEnabled },

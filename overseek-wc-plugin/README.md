@@ -2,6 +2,8 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
+Current version: **2.23.0**.
+
 > **Important:** This plugin is **not standalone** - it connects your WooCommerce store to your self-hosted OverSeek server. You must set up the server first.
 
 ## Requirements
@@ -105,24 +107,25 @@ The plugin registers the following endpoints under `wp-json/overseek/v1/`:
 - Clear any page caches
 - Check for JavaScript errors in browser console
 
-## Development
+## Delivery estimates
 
-For local development, configure the plugin to point to your local OverSeek server:
-
-```
-API URL: http://localhost:3000
-```
-
-Run the isolated tracking retry regression tests from the repository root:
-
-```sh
-php server/scripts/tests/plugin-tracking-retries.php
-php server/scripts/tests/plugin-pageview-requests.php
-```
-
-These tests stub WordPress/WooCommerce APIs. Before deployment, also verify classic and Blocks checkout on staging with the OverSeek endpoint unavailable, then restore connectivity and confirm cron delivers retries without duplicate purchases.
+Delivery estimates require account/product configuration, verified inventory inputs,
+explicit shipping-method mappings and readiness-checked activation in OverSeek.
+Classic delivery presentation requires WooCommerce 9.7+; Blocks requires 9.9+.
+Reviewed quote-cache versions are 9.7–9.9, 10.0–10.9 and 11.0–11.1.
+Separate Blocks pickup-location presentation is blocked. Finished BOM delivery
+estimates and custom inventory stores are excluded. Unknown/unmapped rates remain blank.
+Native validation used WordPress 7.1.1, WooCommerce 11.1.1, WBS/WBSNG 6.18.0,
+PHP 8.4.23 and MySQL 8.4.8; this does not certify every theme/provider/version.
+Plugin updates invalidate activation fingerprints: recheck readiness before reactivation.
+See the repository's `docs/delivery-release-runbook.md` for the controlled launch sequence.
 
 ## Changelog
+
+### 2.23.0 - 2026-09-22
+- **Added:** Configurable delivery estimates, product block/shortcode, classic and Blocks rate presentation, and saved checkout promises.
+- **Added:** Guarded inventory receipts, proof-backed inputs, explicit cutover/activation/disable and audited recovery.
+- **Packaging:** Runtime-only distribution with MIT license; native fixtures and developer tooling excluded.
 
 ### 2.15.0 - 2026-04-29
 - **Added:** `[overseek_preference_center]` shortcode for embedding the customer email preference center on any WordPress page.

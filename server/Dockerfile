@@ -115,6 +115,13 @@ RUN DATABASE_URL=${DATABASE_URL} cd server && npx prisma generate
 # Copy start script
 COPY server/start.sh ./server/
 
+# Preserve the verified bytes outside the uploads volume, then refresh only the
+# download pair on startup. No customer uploads enter this image.
+COPY server/uploads/plugins/overseek-wc-plugin.zip /opt/overseek/plugin-download/overseek-wc-plugin.zip
+COPY server/uploads/plugins/overseek-wc-plugin.manifest.json /opt/overseek/plugin-download/overseek-wc-plugin.manifest.json
+COPY server/scripts/install_plugin_download.js ./server/scripts/install_plugin_download.js
+ENV OVERSEEK_REQUIRE_PLUGIN_DOWNLOAD=1
+
 WORKDIR /app/server
 
 # Ensure start script is executable

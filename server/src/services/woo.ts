@@ -490,6 +490,54 @@ export class WooService {
         });
     }
 
+    /** On-demand discovery: no retries, redirects, credential probes or configuration writes. */
+    async getDeliveryDiscovery(resource: 'capabilities' | 'shipping-methods'): Promise<unknown> {
+        if (new URL(this.url).protocol !== 'https:') throw new Error('Delivery discovery requires HTTPS for private header credentials');
+        return this.deliveryRequest(resource);
+    }
+
+    async postDeliveryInputs(input: { schemaVersion: 1; scope: string; entityId: number; revision: number; payload: unknown }): Promise<unknown> {
+        return this.deliveryRequest('inputs', input);
+    }
+
+    async postGuardedReceipt(phase: 'prepare' | 'apply', operation: import('./deliveryEstimates/receiptProtocol').ReceiptWireOperation): Promise<unknown> {
+        const { receiptOperationSchema } = await import('./deliveryEstimates/receiptProtocol');
+        const envelope = { schemaVersion: 1, operation: receiptOperationSchema.parse(operation) };
+        if (Buffer.byteLength(JSON.stringify(envelope), 'utf8') > 16 * 1024) throw new Error('Receipt envelope exceeds size bound');
+        return this.deliveryRequest(`receipts/${phase}`, envelope, 16 * 1024);
+    }
+
+    async deliveryControl(input?: object, timeoutMs = 10_000): Promise<unknown> { return this.deliveryRequest('control', input, 64 * 1024, timeoutMs); }
+
+    async legacyReceipt(action: 'observe' | 'reconcile', input: object): Promise<unknown> {
+        return this.deliveryRequest(`receipts/legacy/${action}`, input, 1024 * 1024);
+    }
+
+    async reconcileReceipt(action: 'observe' | 'reconcile', input: object): Promise<unknown> {
+        return this.deliveryRequest(`receipts/${action}`, input, 16 * 1024);
+    }
+
+    private async deliveryRequest(resource: string, input?: object, maxBodyLength = 1024 * 1024, timeoutMs = 10_000): Promise<unknown> {
+        if (!this.accountId) throw new Error('Account context required');
+        const api = new WooCommerceRestApi({
+            url: this.url,
+            consumerKey: this.consumerKey,
+            consumerSecret: this.consumerSecret,
+            version: 'overseek/v1' as any,
+            queryStringAuth: !['capabilities', 'shipping-methods'].includes(resource),
+            axiosConfig: {
+                ...this.axiosConfig,
+                headers: { 'X-Overseek-Account-Id': this.accountId },
+                timeout: Math.max(1, Math.min(10_000, Math.trunc(timeoutMs))),
+                signal: AbortSignal.timeout(Math.max(1, Math.min(10_000, Math.trunc(timeoutMs)))),
+                maxRedirects: 0,
+                maxContentLength: 1024 * 1024,
+                maxBodyLength,
+            },
+        });
+        return (await (input ? api.post(`delivery-estimates/${resource}`, input) : api.get(`delivery-estimates/${resource}`))).data;
+    }
+
     private getWpApi(version: 'wp/v2' | 'overseek/v1'): WooCommerceRestApi {
         let wpApi = this.wpApis.get(version);
         if (wpApi) return wpApi;

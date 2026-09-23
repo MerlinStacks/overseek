@@ -22,6 +22,9 @@ import {
 } from '../../lib/emailDesignerV2';
 import { createAccountFooterHtml, createBlock, createPaletteBlock, paletteItems, type PaletteKey } from './emailDesignerV2/blockFactory';
 import { EmailDropCanvas } from './emailDesignerV2/EmailDropCanvas';
+import { PreviewOrderContext } from './emailDesignerV2/PreviewOrderContext';
+import { getPreviewTestOrderId, loadEmailPreviewData, useScopedEmailPreview, type PreviewOrderSelection } from './emailDesignerV2/previewData';
+import { resolveDeliveryEstimateEmailTokens } from '@overseek/core';
 import { PaletteGrid } from './emailDesignerV2/PaletteGrid';
 import { ProductPicker } from './emailDesignerV2/ProductPicker';
 import { productToBlockProps } from './emailDesignerV2/productBlockProps';
@@ -31,6 +34,7 @@ interface Props {
     initialDesign?: unknown;
     initialSubject?: string;
     initialPreviewText?: string;
+    previewOrderMode?: 'latest' | 'none';
     onSave: (html: string, design: unknown, meta?: { subject: string; previewText: string; autosave?: boolean }) => void | Promise<void>;
     onCancel: () => void;
 }
@@ -126,7 +130,7 @@ const REVIEW_VISIBILITY_FIELDS = [
     { key: 'showCta', label: 'CTA Button' },
 ] as const;
 
-interface PreviewMergeContext {
+interface PreviewMergeContext extends PreviewOrderSelection {
     storeUrl: string;
     customerFirstName: string;
     customerLastName: string;
@@ -174,7 +178,8 @@ interface PreviewProduct {
     url: string;
 }
 
-function applyPreviewMergeTags(html: string, context: PreviewMergeContext): string {
+export function applyPreviewMergeTags(html: string, context: PreviewMergeContext): string {
+    html = resolveDeliveryEstimateEmailTokens(html, context.order);
     const replacements: Array<[RegExp, string]> = [
         [/\{\{store_url\}\}/g, context.storeUrl],
         [/\{\{preferences_url\}\}/g, `${context.storeUrl.replace(/\/$/, '')}/my-account/edit-account`],
@@ -282,7 +287,7 @@ function sanitizeBidiText(value: string): string {
     return value.replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '');
 }
 
-function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContext {
+export function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContext {
     return {
         storeUrl,
         customerFirstName: 'Alex',
@@ -290,7 +295,7 @@ function createFallbackPreviewMergeContext(storeUrl: string): PreviewMergeContex
         customerEmail: 'alex@example.com',
         customerPhone: '+61 400 000 000',
         orderNumber: '1001',
-        orderDate: new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' }),
+        orderDate: '',
         orderStatus: 'processing',
         orderSubtotal: '$89.00',
         orderShippingTotal: '$10.00',
@@ -525,7 +530,7 @@ function isEmailSafeImageUrl(value: string): boolean {
     return /^(https?:|data:|cid:)/i.test(candidate);
 }
 
-export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initialPreviewText = '', onSave, onCancel }: Props) {
+export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initialPreviewText = '', previewOrderMode = 'latest', onSave, onCancel }: Props) {
     const { token, user } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
     const [design, setDesign] = useState<EmailDesignV2Envelope>(() => {
@@ -557,11 +562,11 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [recentRecipients, setRecentRecipients] = useState<string[]>([]);
     const [missingEmailAccount, setMissingEmailAccount] = useState(false);
     const [invoiceLogoUrl, setInvoiceLogoUrl] = useState('');
-    const [previewMergeContext, setPreviewMergeContext] = useState<PreviewMergeContext | null>(null);
+    const [previewMergeContext, setPreviewMergeContext] = useScopedEmailPreview<PreviewMergeContext>(currentAccount?.id, previewOrderMode, token);
 
     const html = useMemo(() => compileEmailDesignV2(design), [design]);
     const mergedPreviewHtml = useMemo(() => (
-        previewMergeContext ? applyPreviewMergeTags(html, previewMergeContext) : html
+        previewMergeContext ? applyPreviewMergeTags(html, previewMergeContext) : resolveDeliveryEstimateEmailTokens(html, null)
     ), [html, previewMergeContext]);
     const iframePreviewHtml = useMemo(() => {
         const baseHref = typeof window !== 'undefined' ? window.location.origin : '';
@@ -601,58 +606,31 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
 
         const controller = new AbortController();
 
-        const fetchPreviewData = async () => {
-            try {
-                let previewProducts: PreviewProduct[] = [];
-                const productsResponse = await fetch('/api/products?limit=6', {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'X-Account-ID': currentAccount.id,
-                    },
-                    signal: controller.signal,
+        let previewProducts: PreviewProduct[] = [];
+        void loadEmailPreviewData({
+            accountId: currentAccount.id,
+            token,
+            mode: previewOrderMode,
+            signal: controller.signal,
+            onProducts: (products) => {
+                previewProducts = products.map((product) => {
+                    const rawData = (product.rawData && typeof product.rawData === 'object' ? product.rawData : {}) as Record<string, unknown>;
+                    const images = Array.isArray(product.images) ? product.images as Array<Record<string, unknown>> : [];
+                    const price = product.price !== undefined && product.price !== null && product.price !== ''
+                        ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: String(rawData.currency || 'AUD') }).format(Number(product.price))
+                        : '';
+                    return {
+                        name: String(product.name || rawData.name || 'New product'),
+                        price: Number.isFinite(Number(product.price)) ? price : String(product.price || rawData.price || ''),
+                        image: String(product.mainImage || images[0]?.src || ''),
+                        description: String(rawData.short_description || rawData.description || '').replace(/<[^>]*>/g, '').trim(),
+                        url: String(product.permalink || rawData.permalink || rawData.url || fallbackContext.storeUrl),
+                    };
                 });
-                if (productsResponse.ok) {
-                    const payload = await productsResponse.json() as { products?: Array<Record<string, unknown>> };
-                    previewProducts = (payload.products || []).map((product) => {
-                        const rawData = (product.rawData && typeof product.rawData === 'object' ? product.rawData : {}) as Record<string, unknown>;
-                        const images = Array.isArray(product.images) ? product.images as Array<Record<string, unknown>> : [];
-                        const price = product.price !== undefined && product.price !== null && product.price !== ''
-                            ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: String(rawData.currency || 'AUD') }).format(Number(product.price))
-                            : '';
-                        return {
-                            name: String(product.name || rawData.name || 'New product'),
-                            price: Number.isFinite(Number(product.price)) ? price : String(product.price || rawData.price || ''),
-                            image: String(product.mainImage || images[0]?.src || ''),
-                            description: String(rawData.short_description || rawData.description || '').replace(/<[^>]*>/g, '').trim(),
-                            url: String(product.permalink || rawData.permalink || rawData.url || fallbackContext.storeUrl),
-                        };
-                    });
-                    if (previewProducts.length) setPreviewMergeContext({ ...fallbackContext, newProducts: previewProducts });
-                }
-
-                const listResponse = await fetch('/api/orders?limit=1', {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'X-Account-ID': currentAccount.id,
-                    },
-                    signal: controller.signal,
-                });
-
-                if (!listResponse.ok) return;
-                const listPayload = await listResponse.json() as { orders?: Array<{ id?: string; wooId?: number }> };
-                const newest = listPayload.orders?.[0];
-                if (!newest?.id) return;
-
-                const detailResponse = await fetch(`/api/orders/${newest.id}`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'X-Account-ID': currentAccount.id,
-                    },
-                    signal: controller.signal,
-                });
-                if (!detailResponse.ok) return;
-
-                const order = await detailResponse.json() as Record<string, unknown>;
+                if (!controller.signal.aborted && previewProducts.length) setPreviewMergeContext({ ...fallbackContext, newProducts: previewProducts });
+            },
+            onOrder: (order, internalOrderId) => {
+                if (controller.signal.aborted) return;
                 const billing = (order.billing as Record<string, unknown> | undefined) || {};
                 const shipping = (order.shipping as Record<string, unknown> | undefined) || {};
                 const lineItems = Array.isArray(order.line_items) ? order.line_items as Array<Record<string, unknown>> : [];
@@ -696,7 +674,10 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 const previewTrackingNumber = tracking.trackingNumber || fallbackContext.orderTrackingNumber;
                 const previewAuspostTrackingUrl = tracking.auspostTrackingUrl || buildAusPostPreviewTrackingUrl(previewTrackingNumber) || fallbackContext.orderAuspostTrackingUrl;
 
+                if (controller.signal.aborted) return;
                 setPreviewMergeContext({
+                    order,
+                    orderId: internalOrderId,
                     storeUrl,
                     customerFirstName: firstName,
                     customerLastName: lastName,
@@ -735,17 +716,15 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     cartItemsTable: renderPreviewOrderItemsTable(lineItems, fmtMoney),
                     newProducts: previewProducts,
                 });
-            } catch {
-                // Preview data is best-effort and should not block editing.
-            }
-        };
-
-        fetchPreviewData();
+            },
+        }).catch(() => {
+            // Preview data is best-effort and should not block editing.
+        });
 
         return () => {
             controller.abort();
         };
-    }, [token, currentAccount]);
+    }, [token, currentAccount, previewOrderMode, setPreviewMergeContext]);
 
     const autosaveTimerRef = useRef<number | null>(null);
     const latestDesignRef = useRef(design);
@@ -1233,7 +1212,14 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                     Authorization: `Bearer ${token}`,
                     'x-account-id': currentAccount.id,
                 },
-                body: JSON.stringify({ to: recipient, subject: design.document.meta.title || 'Email Builder Test', content: html }),
+                body: JSON.stringify({
+                    to: recipient,
+                    orderId: getPreviewTestOrderId(previewOrderMode, previewMergeContext),
+                    subject: previewOrderMode === 'none'
+                        ? resolveDeliveryEstimateEmailTokens(design.document.meta.title || 'Email Builder Test', null)
+                        : design.document.meta.title || 'Email Builder Test',
+                    content: previewOrderMode === 'none' ? resolveDeliveryEstimateEmailTokens(html, null) : html,
+                }),
             });
             if (!response.ok) {
                 const payload = await response.json();
@@ -1688,7 +1674,9 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                                     setSelectedBlockId(null);
                                 }}
                             >
-                                <EmailDropCanvas theme={design.document.theme} previewWidth={previewWidth} isMobilePreview={isMobilePreview} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onOpenSectionSettings={() => setLeftSidebarMode('sectionSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                                <PreviewOrderContext.Provider value={previewMergeContext?.order ?? null}>
+                                    <EmailDropCanvas theme={design.document.theme} previewWidth={previewWidth} isMobilePreview={isMobilePreview} sections={design.document.sections} selectedSectionId={selectedSectionId} selectedBlockId={selectedBlockId} onSelectSection={(id) => { setSelectedSectionId(id); setSelectedBlockId(null); }} onSelectBlock={setSelectedBlockId} onUpdateBlock={updateBlockById} onDuplicateBlock={duplicateBlock} onDeleteBlock={deleteBlockById} onDeleteSection={deleteSectionById} onOpenSettings={() => setLeftSidebarMode('blockSettings')} onOpenSectionSettings={() => setLeftSidebarMode('sectionSettings')} onDropOnSection={handleDropOnSection} onDropStructure={handleDropStructure} />
+                                </PreviewOrderContext.Provider>
                             </ErrorBoundary>
                         ) : (
                             <div className="mx-auto w-full rounded-3xl border border-slate-300 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
@@ -2081,6 +2069,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'orderSummary' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><SelectField label="Format" value={block.props.itemsFormat || 'table'} options={ORDER_ITEMS_FORMATS} onChange={(value) => patchProps({ itemsFormat: value as OrderItemsFormat })} /><ToggleField label="Show total" checked={block.props.showTotals} onChange={(checked) => patchProps({ showTotals: checked })} /></>}
             {block.type === 'cartItems' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><ToggleField label="Show cart total" checked={block.props.showTotal} onChange={(checked) => patchProps({ showTotal: checked })} /><SelectField label="Alignment" value={block.props.align || 'left'} options={['left', 'center', 'right']} onChange={(value) => patchProps({ align: value as 'left' | 'center' | 'right' })} /></>}
             {block.type === 'cartLink' && <><TextArea label="Body" value={block.props.body || ''} onChange={(value) => patchProps({ body: value })} /><Field label="Button label" value={block.props.label} onChange={(value) => patchProps({ label: value })} /><Field label="Button URL" value={block.props.href} onChange={(value) => patchProps({ href: value })} /><SelectField label="Alignment" value={block.props.align || 'center'} options={['left', 'center', 'right']} onChange={(value) => patchProps({ align: value as 'left' | 'center' | 'right' })} /></>}
+            {block.type === 'deliveryEstimate' && <><Field label="Heading (blank = automatic)" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><ToggleField label="Show dispatch estimate" checked={block.props.showDispatch} onChange={(checked) => patchProps({ showDispatch: checked })} /><p className="text-xs text-slate-500 dark:text-slate-400">Uses the saved estimate on the preview order. Automatic heading: Estimated delivery or Estimated collection. Hidden in emails without a saved estimate.</p></>}
             {block.type === 'orderTracking' && <><Field label="Heading" value={block.props.heading} onChange={(value) => patchProps({ heading: value })} /><TextArea label="Body" value={block.props.body} onChange={(value) => patchProps({ body: value })} /><Field label="Button label" value={block.props.buttonLabel} onChange={(value) => patchProps({ buttonLabel: value })} /><ToggleField label="Show tracking number" checked={block.props.showTrackingNumber !== false} onChange={(checked) => patchProps({ showTrackingNumber: checked })} /><SelectField label="Alignment" value={block.props.align || 'center'} options={['left', 'center', 'right']} onChange={(value) => patchProps({ align: value as 'left' | 'center' | 'right' })} /></>}
             {block.type === 'address' && <><Field label="Title" value={block.props.title} onChange={(value) => patchProps({ title: value })} /><SelectField label="Source" value={block.props.source} options={['billing', 'shipping']} onChange={(value) => patchProps({ source: value })} /></>}
             {block.type === 'coupon' && <><Field label="Headline" value={block.props.headline} onChange={(value) => patchProps({ headline: value })} /><Field label="Code" value={block.props.code} onChange={(value) => patchProps({ code: value })} /><Field label="Description" value={block.props.description} onChange={(value) => patchProps({ description: value })} /></>}

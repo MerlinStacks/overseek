@@ -16,6 +16,13 @@ logs
 **/logs
 uploads
 **/uploads
+# Only the immutable plugin download pair may enter the context, never user uploads.
+!server/uploads
+server/uploads/**
+!server/uploads/plugins
+server/uploads/plugins/**
+!server/uploads/plugins/overseek-wc-plugin.zip
+!server/uploads/plugins/overseek-wc-plugin.manifest.json
 coverage
 **/coverage
 

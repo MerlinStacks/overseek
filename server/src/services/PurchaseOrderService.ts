@@ -2,6 +2,9 @@ import { prisma } from '../utils/prisma';
 import { WooService } from './woo';
 import { Logger } from '../utils/logger';
 import { BOMConsumptionService } from './BOMConsumptionService';
+import { dirtyInboundProductIds, lockDeliveryAccount } from './deliveryEstimates/intents';
+import { purchaseOrderDate } from './deliveryEstimates/sourceDate';
+import { guardedReceiptMode, guardReceiptStatusEdit, recordGuardedReceipt } from './deliveryEstimates/receipts';
 
 const VALID_PO_STATUSES = new Set(['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED']);
 
@@ -15,8 +18,10 @@ const WOO_BASE_DELAY_MS = 2000;
  * Why: WooCommerce may throttle with 429 or return transient 5xx errors.
  * Uses exponential backoff: 2s → 4s → 8s.
  */
-async function wooRetry(fn: () => Promise<void>, label: string): Promise<void> {
+async function wooRetry(fn: () => Promise<void>, label: string, accountId: string): Promise<void> {
     for (let attempt = 1; attempt <= WOO_MAX_RETRIES; attempt++) {
+        // Recheck inside the retry loop: a paused review must also fence delayed retries.
+        if ((await prisma.receiptAccount.findUnique({ where: { accountId } }))?.receivingFrozen) throw new Error('Legacy receiving frozen; stock retry requires operator review.');
         try {
             await fn();
             return;
@@ -41,7 +46,7 @@ export class PurchaseOrderService {
     private async validateOwnershipForPOInputs(
         accountId: string,
         supplierId?: string,
-        items?: Array<{ productId?: string; supplierItemId?: string }>
+        items?: Array<{ productId?: string; supplierItemId?: string; variationWooId?: number | null }>
     ): Promise<void> {
         if (supplierId) {
             const supplier = await prisma.supplier.findFirst({
@@ -75,6 +80,17 @@ export class PurchaseOrderService {
 
         if (invalidItem) {
             throw new Error('One or more PO items are invalid for this account');
+        }
+        const mapped = items.filter(item => item.variationWooId != null);
+        if (mapped.some(item => !item.productId || !Number.isSafeInteger(item.variationWooId) || item.variationWooId! <= 0)) {
+            throw new Error('Variation requires a valid linked parent product');
+        }
+        if (mapped.length) {
+            const variations = await prisma.productVariation.findMany({ where: {
+                product: { accountId }, OR: mapped.map(item => ({ productId: item.productId!, wooId: item.variationWooId! })),
+            }, select: { productId: true, wooId: true } });
+            const owned = new Set(variations.map(v => `${v.productId}:${v.wooId}`));
+            if (mapped.some(item => !owned.has(`${item.productId}:${item.variationWooId}`))) throw new Error('Variation not found for linked parent product');
         }
     }
 
@@ -157,21 +173,26 @@ export class PurchaseOrderService {
             };
         });
 
-        return prisma.purchaseOrder.create({
-            data: {
-                accountId,
-                supplierId: data.supplierId,
-                status: data.status || 'DRAFT',
-                notes: data.notes,
-                orderDate: data.orderDate ? new Date(data.orderDate) : null,
-                expectedDate: data.expectedDate ? new Date(data.expectedDate) : null,
-                trackingNumber: data.trackingNumber || null,
-                trackingLink: data.trackingLink || null,
-                totalAmount,
-                items: {
-                    create: itemsToCreate
+        return prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, accountId);
+            await guardReceiptStatusEdit(tx, accountId, data.status);
+            await dirtyInboundProductIds(tx, accountId, data.items.map(item => item.productId));
+            return tx.purchaseOrder.create({
+                data: {
+                    accountId,
+                    supplierId: data.supplierId,
+                    status: data.status || 'DRAFT',
+                    notes: data.notes,
+                    orderDate: data.orderDate ? new Date(data.orderDate) : null,
+                    expectedDate: purchaseOrderDate(data.expectedDate),
+                    trackingNumber: data.trackingNumber || null,
+                    trackingLink: data.trackingLink || null,
+                    totalAmount,
+                    items: {
+                        create: itemsToCreate
+                    }
                 }
-            }
+            });
         });
     }
 
@@ -223,7 +244,7 @@ export class PurchaseOrderService {
         if (data.supplierId !== undefined) updateData.supplierId = data.supplierId;
         if (data.notes !== undefined) updateData.notes = data.notes;
         if (data.orderDate !== undefined) updateData.orderDate = data.orderDate ? new Date(data.orderDate) : null;
-        if (data.expectedDate !== undefined) updateData.expectedDate = data.expectedDate ? new Date(data.expectedDate) : null;
+        if (data.expectedDate !== undefined) updateData.expectedDate = purchaseOrderDate(data.expectedDate);
         if (data.trackingNumber !== undefined) updateData.trackingNumber = data.trackingNumber || null;
         if (data.trackingLink !== undefined) updateData.trackingLink = data.trackingLink || null;
 
@@ -250,12 +271,15 @@ export class PurchaseOrderService {
             // Transaction to delete old items and create new ones
             // Bug fix: scope to accountId to prevent cross-account writes
             return prisma.$transaction(async (tx) => {
+                await lockDeliveryAccount(tx, accountId);
+                await guardReceiptStatusEdit(tx, accountId, data.status, poId);
                 // Verify ownership before mutating
                 const owned = await tx.purchaseOrder.findFirst({
                     where: { id: poId, accountId },
-                    select: { id: true }
+                    select: { id: true, items: { select: { productId: true } } }
                 });
                 if (!owned) throw new Error('Purchase Order not found or access denied');
+                await dirtyInboundProductIds(tx, accountId, [...owned.items.map(item => item.productId), ...data.items!.map(item => item.productId)]);
 
                 // Delete existing items
                 await tx.purchaseOrderItem.deleteMany({
@@ -276,9 +300,14 @@ export class PurchaseOrderService {
         }
 
         // No items update, just update fields
-        return prisma.purchaseOrder.updateMany({
-            where: { id: poId, accountId },
-            data: updateData
+        return prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, accountId);
+            await guardReceiptStatusEdit(tx, accountId, data.status, poId);
+            if (data.status !== undefined || data.expectedDate !== undefined) {
+                const owned = await tx.purchaseOrder.findFirst({ where: { id: poId, accountId }, select: { items: { select: { productId: true } } } });
+                if (owned) await dirtyInboundProductIds(tx, accountId, owned.items.map(item => item.productId));
+            }
+            return tx.purchaseOrder.updateMany({ where: { id: poId, accountId }, data: updateData });
         });
     }
 
@@ -288,21 +317,25 @@ export class PurchaseOrderService {
      * supplier acknowledgements — deleting them would leave orphan state.
      */
     async deletePurchaseOrder(accountId: string, poId: string): Promise<void> {
-        const existing = await prisma.purchaseOrder.findFirst({
-            where: { id: poId, accountId },
-            select: { status: true }
+        await prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, accountId);
+            const existing = await tx.purchaseOrder.findFirst({
+                where: { id: poId, accountId },
+                select: { status: true, items: { select: { productId: true } } }
+            });
+
+            if (!existing) {
+                throw new Error('Purchase Order not found');
+            }
+
+            if (existing.status !== 'DRAFT') {
+                throw new Error('Only DRAFT Purchase Orders can be deleted');
+            }
+
+            // Why: PurchaseOrderItem has onDelete: Cascade — Prisma deletes items automatically
+            await dirtyInboundProductIds(tx, accountId, existing.items.map(item => item.productId));
+            await tx.purchaseOrder.delete({ where: { id: poId } });
         });
-
-        if (!existing) {
-            throw new Error('Purchase Order not found');
-        }
-
-        if (existing.status !== 'DRAFT') {
-            throw new Error('Only DRAFT Purchase Orders can be deleted');
-        }
-
-        // Why: PurchaseOrderItem has onDelete: Cascade — Prisma deletes items automatically
-        await prisma.purchaseOrder.delete({ where: { id: poId } });
     }
 
     /**
@@ -338,6 +371,8 @@ export class PurchaseOrderService {
      */
     async receiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[]; updatedProductIds: string[] }> {
         const transactionResult = await prisma.$transaction(async tx => {
+            // Shared order: Account -> PO advisory lock -> stock rows -> dirty intent.
+            await lockDeliveryAccount(tx, accountId);
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`purchase-order:${accountId}:${poId}`}, 0))`;
 
             const po = await tx.purchaseOrder.findFirst({
@@ -369,6 +404,7 @@ export class PurchaseOrderService {
             });
 
             if (!po) throw new Error('Purchase Order not found');
+            if (await guardedReceiptMode(tx, accountId)) return recordGuardedReceipt(tx, accountId, po, false);
             if (po.status === 'RECEIVED') {
                 return {
                     skipped: true as const,
@@ -477,9 +513,13 @@ export class PurchaseOrderService {
             }
 
             await tx.purchaseOrder.update({ where: { id: poId }, data: { status: 'RECEIVED' } });
-            return { skipped: false as const, updated, errors, updatedProductIds, syncTargets };
+            await dirtyInboundProductIds(tx, accountId, po.items.map(item => item.productId));
+            await tx.receiptAccount.upsert({ where: { accountId }, create: { accountId }, update: {} });
+            const legacyWork = syncTargets.length ? await tx.receiptLegacyWork.create({ data: { accountId, purchaseOrderId: poId, targets: syncTargets } }) : null;
+            return { skipped: false as const, updated, errors, updatedProductIds, syncTargets, legacyWorkId: legacyWork?.id };
         });
 
+        if ('guarded' in transactionResult) return { updated: transactionResult.updated, errors: transactionResult.errors, updatedProductIds: transactionResult.updatedProductIds };
         if (transactionResult.skipped) {
             Logger.warn('receiveStock called on already-RECEIVED PO, skipping', { poId });
             return transactionResult;
@@ -500,11 +540,11 @@ export class PurchaseOrderService {
                     ? wooRetry(() => woo.updateProductVariation(target.productWooId, target.variationWooId!, {
                         manage_stock: true,
                         stock_quantity: target.stock
-                    }), `receive variation ${target.variationWooId} on product ${target.productWooId}`)
+                    }), `receive variation ${target.variationWooId} on product ${target.productWooId}`, accountId)
                     : wooRetry(() => woo.updateProduct(target.productWooId, {
                         manage_stock: true,
                         stock_quantity: target.stock
-                    }), `receive product ${target.productWooId}`));
+                    }), `receive product ${target.productWooId}`, accountId));
             }
         }
 
@@ -521,12 +561,15 @@ export class PurchaseOrderService {
                 (async () => {
                     // Sync stock to WooCommerce sequentially to avoid rate limits
                     for (const task of bgTasks) {
+                        if ((await prisma.receiptAccount.findUnique({ where: { accountId: bgAccountId } }))?.receivingFrozen) throw new Error('Legacy receiving frozen for operator review; stock work not replayed.');
                         await task();
                     }
                     Logger.info('WooCommerce stock sync completed for PO receive', {
                         poId: bgPoId, syncedItems: bgTasks.length
                     });
-
+                    // A tracked legacy job is drained only after stock and dependent BOM work.
+                    let cascadeSucceeded = true;
+                    if ((await prisma.receiptAccount.findUnique({ where: { accountId: bgAccountId } }))?.receivingFrozen) throw new Error('Legacy dependent work frozen for operator review.');
                     // Cascade BOM sync
                     for (const productId of bgProductIds) {
                         try {
@@ -535,8 +578,10 @@ export class PurchaseOrderService {
                             Logger.warn('Cascade BOM sync failed for component', {
                                 productId, error: (syncErr as Error).message
                             });
+                            cascadeSucceeded = false;
                         }
                     }
+                    if (wooService && cascadeSucceeded && transactionResult.legacyWorkId) await prisma.receiptLegacyWork.updateMany({ where: { id: transactionResult.legacyWorkId, state: 'pending', account: { receivingFrozen: false } }, data: { state: 'drained', resolvedAt: new Date() } });
                 })().catch(err => {
                     Logger.error('Background WooCommerce sync failed', { poId: bgPoId, error: err });
                 });
@@ -552,6 +597,7 @@ export class PurchaseOrderService {
      */
     async unreceiveStock(accountId: string, poId: string): Promise<{ updated: number; errors: string[]; updatedProductIds: string[] }> {
         const transactionResult = await prisma.$transaction(async tx => {
+            await lockDeliveryAccount(tx, accountId);
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`purchase-order:${accountId}:${poId}`}, 0))`;
 
             const po = await tx.purchaseOrder.findFirst({
@@ -581,6 +627,10 @@ export class PurchaseOrderService {
                     }
                 }
             });
+            if (await guardedReceiptMode(tx, accountId)) {
+                if (!po) throw new Error('Purchase Order not found');
+                return { ...await recordGuardedReceipt(tx, accountId, po, true), status: po.status };
+            }
             if (po?.status !== 'RECEIVED') {
                 return {
                     skipped: true as const,
@@ -679,9 +729,13 @@ export class PurchaseOrderService {
             }
 
             await tx.purchaseOrder.update({ where: { id: poId }, data: { status: 'ORDERED' } });
-            return { skipped: false as const, status: po.status, updated, errors, updatedProductIds, syncTargets };
+            await dirtyInboundProductIds(tx, accountId, po.items.map(item => item.productId));
+            await tx.receiptAccount.upsert({ where: { accountId }, create: { accountId }, update: {} });
+            const legacyWork = syncTargets.length ? await tx.receiptLegacyWork.create({ data: { accountId, purchaseOrderId: poId, targets: syncTargets } }) : null;
+            return { skipped: false as const, status: po.status, updated, errors, updatedProductIds, syncTargets, legacyWorkId: legacyWork?.id };
         });
 
+        if ('guarded' in transactionResult) return { updated: transactionResult.updated, errors: transactionResult.errors, updatedProductIds: transactionResult.updatedProductIds };
         if (transactionResult.skipped) {
             Logger.warn('unreceiveStock called on non-RECEIVED PO, skipping', { poId, status: transactionResult.status });
             return transactionResult;
@@ -701,10 +755,10 @@ export class PurchaseOrderService {
                 wooSyncTasks.push(() => target.variationWooId != null
                     ? wooRetry(() => woo.updateProductVariation(target.productWooId, target.variationWooId!, {
                         stock_quantity: target.stock
-                    }), `unreceive variation ${target.variationWooId} on product ${target.productWooId}`)
+                    }), `unreceive variation ${target.variationWooId} on product ${target.productWooId}`, accountId)
                     : wooRetry(() => woo.updateProduct(target.productWooId, {
                         stock_quantity: target.stock
-                    }), `unreceive product ${target.productWooId}`));
+                    }), `unreceive product ${target.productWooId}`, accountId));
             }
         }
 
@@ -718,12 +772,14 @@ export class PurchaseOrderService {
             setImmediate(() => {
                 (async () => {
                     for (const task of bgTasks) {
+                        if ((await prisma.receiptAccount.findUnique({ where: { accountId: bgAccountId } }))?.receivingFrozen) throw new Error('Legacy receiving frozen for operator review; stock work not replayed.');
                         await task();
                     }
                     Logger.info('WooCommerce stock sync completed for PO unreceive', {
                         poId: bgPoId, syncedItems: bgTasks.length
                     });
-
+                    let cascadeSucceeded = true;
+                    if ((await prisma.receiptAccount.findUnique({ where: { accountId: bgAccountId } }))?.receivingFrozen) throw new Error('Legacy dependent work frozen for operator review.');
                     for (const productId of bgProductIds) {
                         try {
                             await BOMConsumptionService.cascadeSyncAffectedProducts(bgAccountId, productId);
@@ -731,8 +787,10 @@ export class PurchaseOrderService {
                             Logger.warn('Cascade BOM sync failed during unreceive', {
                                 productId, error: (syncErr as Error).message
                             });
+                            cascadeSucceeded = false;
                         }
                     }
+                    if (wooService && cascadeSucceeded && transactionResult.legacyWorkId) await prisma.receiptLegacyWork.updateMany({ where: { id: transactionResult.legacyWorkId, state: 'pending', account: { receivingFrozen: false } }, data: { state: 'drained', resolvedAt: new Date() } });
                 })().catch(err => {
                     Logger.error('Background WooCommerce unreceive sync failed', { poId: bgPoId, error: err });
                 });

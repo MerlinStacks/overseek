@@ -3,6 +3,7 @@ import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { requireAuthFastify } from '../../middleware/auth';
 import { PurchaseOrderService } from '../../services/PurchaseOrderService';
+import { GuardedReceiptError } from '../../services/deliveryEstimates/receipts';
 import { IndexingService } from '../../services/search/IndexingService';
 import { invalidateCache } from '../../utils/cache';
 
@@ -79,7 +80,9 @@ const purchaseOrderRoutes: FastifyPluginAsync = async (fastify) => {
             const msg = error?.message || '';
             if (msg === 'Supplier not found') return reply.code(404).send({ error: msg });
             if (msg === 'One or more PO items are invalid for this account') return reply.code(400).send({ error: msg });
-            if (msg === 'Invalid Purchase Order status') return reply.code(400).send({ error: msg });
+            if (msg === 'Invalid Purchase Order status' || msg === 'Invalid Purchase Order expected date') return reply.code(400).send({ error: msg });
+            if (msg === 'Variation requires a valid linked parent product' || msg === 'Variation not found for linked parent product') return reply.code(400).send({ error: msg });
+            if (error instanceof GuardedReceiptError) return reply.code(409).send({ error: error.message });
             Logger.error('Error creating PO', { error });
             return reply.code(500).send({ error: 'Failed to create PO' });
         }
@@ -127,7 +130,9 @@ const purchaseOrderRoutes: FastifyPluginAsync = async (fastify) => {
             const msg = error?.message || '';
             if (msg === 'Supplier not found') return reply.code(404).send({ error: msg });
             if (msg === 'One or more PO items are invalid for this account') return reply.code(400).send({ error: msg });
-            if (msg === 'Invalid Purchase Order status') return reply.code(400).send({ error: msg });
+            if (msg === 'Invalid Purchase Order status' || msg === 'Invalid Purchase Order expected date') return reply.code(400).send({ error: msg });
+            if (msg === 'Variation requires a valid linked parent product' || msg === 'Variation not found for linked parent product') return reply.code(400).send({ error: msg });
+            if (error instanceof GuardedReceiptError) return reply.code(409).send({ error: error.message });
             Logger.error('Error updating PO', { error, poId: id });
             return reply.code(500).send({ error: 'Failed to update PO' });
         }

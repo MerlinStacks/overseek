@@ -87,6 +87,7 @@ export function BroadcastsPage() {
                     </div>
                 )}
                 <MarketingEmailDesigner
+                    previewOrderMode="none"
                     initialDesign={editingItem?.designJson}
                     initialSubject={editingItem?.subject}
                     onSave={handleSaveEmail}

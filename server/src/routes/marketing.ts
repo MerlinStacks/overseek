@@ -425,12 +425,18 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Test Email (standalone, for flow builder)
-    fastify.post<{ Body: { to: string; subject: string; content: string; previewText?: string; category?: 'MARKETING' | 'TRANSACTIONAL' } }>('/test-email', async (request, reply) => {
+    fastify.post<{ Body: { to: string; subject: string; content: string; previewText?: string; category?: 'MARKETING' | 'TRANSACTIONAL'; orderId?: string | null } }>('/test-email', async (request, reply) => {
         try {
-            const { to, subject, content, previewText, category } = request.body;
+            const { to, subject, content, previewText, category, orderId } = request.body;
 
             if (!to || !subject || !content) {
                 return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
+            }
+            if (orderId !== undefined && orderId !== null && (
+                typeof orderId !== 'string' || !orderId.length || orderId.length > 128
+                || orderId.trim() !== orderId || /[\u0000-\u001f\u007f]/.test(orderId)
+            )) {
+                return reply.code(400).send({ error: 'orderId must be null or a nonempty internal order ID of at most 128 characters' });
             }
 
             const accountId = request.accountId || getAccountId(request);
@@ -439,11 +445,16 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { id: accountId },
                 select: { wooUrl: true, domain: true, currency: true }
             });
-            const latestOrder = await prisma.wooOrder.findFirst({
-                where: { accountId },
-                orderBy: { dateCreated: 'desc' },
-                select: { id: true, number: true, status: true, currency: true, total: true, dateCreated: true, rawData: true }
+            // Pin explicit preview selections. Only legacy callers that omit the
+            // field may sample the latest order; null intentionally has no order.
+            const sampleOrder = orderId === null ? null : await prisma.wooOrder.findFirst({
+                where: orderId === undefined ? { accountId } : { accountId, id: orderId },
+                ...(orderId === undefined ? { orderBy: { dateCreated: 'desc' as const } } : {}),
+                select: { id: true, number: true, status: true, currency: true, total: true, dateCreated: true, rawData: true, deliveryEstimateSnapshot: true }
             });
+            if (typeof orderId === 'string' && !sampleOrder) {
+                return reply.code(404).send({ error: 'Order not found' });
+            }
 
             if (!emailAccount) {
                 return reply.code(400).send({ error: 'No sending-capable email account is configured. Please set up a sending account in Settings.' });
@@ -457,7 +468,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const normalizedStoreUrl = storeUrl.startsWith('http://') || storeUrl.startsWith('https://')
                 ? storeUrl
                 : (storeUrl ? `https://${storeUrl}` : '');
-            const orderRaw = (latestOrder?.rawData && typeof latestOrder.rawData === 'object' ? latestOrder.rawData : {}) as Record<string, any>;
+            const orderRaw = (sampleOrder?.rawData && typeof sampleOrder.rawData === 'object' ? sampleOrder.rawData : {}) as Record<string, any>;
             const billing = orderRaw.billing || {};
             const firstLineItem = Array.isArray(orderRaw.line_items) ? orderRaw.line_items[0] : undefined;
             const testContext = {
@@ -467,14 +478,15 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                     email: billing.email || to,
                     phone: billing.phone || ''
                 },
-                order: latestOrder ? {
+                order: sampleOrder ? {
                     ...orderRaw,
-                    id: latestOrder.id,
-                    orderNumber: latestOrder.number,
-                    status: latestOrder.status,
-                    currency: latestOrder.currency,
-                    total: latestOrder.total,
-                    dateCreated: latestOrder.dateCreated,
+                    deliveryEstimateSnapshot: sampleOrder.deliveryEstimateSnapshot ?? null,
+                    id: sampleOrder.id,
+                    orderNumber: sampleOrder.number,
+                    status: sampleOrder.status,
+                    currency: sampleOrder.currency,
+                    total: sampleOrder.total,
+                    dateCreated: sampleOrder.dateCreated,
                     lineItems: orderRaw.line_items || orderRaw.lineItems || orderRaw.items || []
                 } : undefined,
                 product: firstLineItem ? {

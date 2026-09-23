@@ -77,6 +77,7 @@ export function ConversationList({
     const { hasDraft } = useDrafts();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
 
     // Bulk Selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -102,20 +103,22 @@ export function ConversationList({
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<Conversation[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [searchError, setSearchError] = useState(false);
     const isSearchMode = searchQuery.trim().length >= 2;
     const activeSearchController = useRef<AbortController | null>(null);
     const searchRequestIdRef = useRef(0);
+    const searchScopeRef = useRef<string | null>(null);
 
     // Fetch available labels
     useEffect(() => {
-        if (!token || !currentAccount) return;
+        if (!token || !accountId) return;
         const controller = new AbortController();
         setAllLabels([]);
         setSelectedLabelId(null);
         fetch('/api/labels', {
             headers: {
                 'Authorization': `Bearer ${token}`,
-                'x-account-id': currentAccount.id
+                'x-account-id': accountId
             },
             signal: controller.signal,
         })
@@ -125,7 +128,7 @@ export function ConversationList({
                 if (!controller.signal.aborted) Logger.error('Failed to fetch labels', { error: e });
             });
         return () => controller.abort();
-    }, [token, currentAccount]);
+    }, [token, accountId]);
 
     // Remove only conversations known to have disappeared, not every selection on identity refresh.
     useEffect(() => {
@@ -159,22 +162,26 @@ export function ConversationList({
 
     // Debounced search
     useEffect(() => {
-        if (!isSearchMode || !token || !currentAccount) {
+        const requestId = ++searchRequestIdRef.current;
+        setSearchError(false);
+        if (!isSearchMode || !token || !accountId) {
             activeSearchController.current?.abort();
-            searchRequestIdRef.current += 1;
+            searchScopeRef.current = null;
             setSearchResults([]);
             setIsSearching(false);
             return;
         }
 
-        setSearchResults([]);
+        // Revalidate the same search without unmounting the list or losing its scroll position.
+        // A different query/account/filter must not keep showing the previous scope's matches.
+        const scope = JSON.stringify([accountId, searchQuery, showResolved, filter, currentUserId, selectedLabelId]);
+        if (searchScopeRef.current !== scope) setSearchResults([]);
+        searchScopeRef.current = scope;
+        setIsSearching(true);
+        const controller = new AbortController();
+        activeSearchController.current = controller;
 
         const timeout = setTimeout(async () => {
-            setIsSearching(true);
-            const requestId = ++searchRequestIdRef.current;
-            activeSearchController.current?.abort();
-            const controller = new AbortController();
-            activeSearchController.current = controller;
             try {
                 const params = new URLSearchParams({ q: searchQuery });
                 params.set('status', showResolved ? 'ALL' : 'OPEN');
@@ -184,28 +191,28 @@ export function ConversationList({
                 const res = await fetch(`/api/chat/conversations/search?${params.toString()}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
-                        'x-account-id': currentAccount.id
+                        'x-account-id': accountId
                     },
                     signal: controller.signal
                 });
-                if (res.ok) {
-                    const data: unknown = await res.json();
-                    // Only apply newest in-flight result to avoid stale overwrite.
-                    if (requestId === searchRequestIdRef.current) {
-                        const results = ((data as { results?: SearchConversation[] }).results || []).map(normalizeSearchConversation);
-                        setSearchResults(results.filter(conversation => {
-                            if (filter === 'mine' && conversation.assignedTo !== currentUserId) return false;
-                            if (filter === 'unassigned' && conversation.assignedTo) return false;
-                            if (selectedLabelId && !conversation.labels?.some(label => label.id === selectedLabelId)) return false;
-                            return true;
-                        }));
-                    }
+                if (!res.ok) throw new Error(`Search failed (${res.status})`);
+                const data: unknown = await res.json();
+                // Only apply newest in-flight result to avoid stale overwrite.
+                if (!controller.signal.aborted && requestId === searchRequestIdRef.current) {
+                    const results = ((data as { results?: SearchConversation[] }).results || []).map(normalizeSearchConversation);
+                    setSearchResults(results.filter(conversation => {
+                        if (filter === 'mine' && conversation.assignedTo !== currentUserId) return false;
+                        if (filter === 'unassigned' && conversation.assignedTo) return false;
+                        if (selectedLabelId && !conversation.labels?.some(label => label.id === selectedLabelId)) return false;
+                        return true;
+                    }));
                 }
             } catch (e: unknown) {
-                if (e instanceof DOMException && e.name === 'AbortError') return;
+                if (controller.signal.aborted || requestId !== searchRequestIdRef.current) return;
+                setSearchError(true);
                 Logger.error('Search failed', { error: e });
             } finally {
-                if (requestId === searchRequestIdRef.current) {
+                if (!controller.signal.aborted && requestId === searchRequestIdRef.current) {
                     setIsSearching(false);
                 }
             }
@@ -213,9 +220,9 @@ export function ConversationList({
 
         return () => {
             clearTimeout(timeout);
-            activeSearchController.current?.abort();
+            controller.abort();
         };
-    }, [searchQuery, token, currentAccount, isSearchMode, showResolved, filter, currentUserId, selectedLabelId, refreshRevision]);
+    }, [searchQuery, token, accountId, isSearchMode, showResolved, filter, currentUserId, selectedLabelId, refreshRevision]);
 
     // Memoized: Use search results when searching, otherwise normal filtered list
     const filteredConversations = useMemo(() => {
@@ -412,6 +419,11 @@ export function ConversationList({
                 )}
 
                 {/* Filter Tabs - hide when searching */}
+                {isSearchMode && searchError && (
+                    <div role="status" className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+                        Search could not be updated. Please try again.
+                    </div>
+                )}
                 {!isSearchMode && (
                     <>
                         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -465,7 +477,7 @@ export function ConversationList({
             <div className="flex-1 overflow-hidden">
                 {filteredConversations.length === 0 ? (
                     <div className="p-8 text-center text-gray-500 text-sm">
-                        No conversations found
+                        {isSearchMode && isSearching ? 'Searching...' : isSearchMode && searchError ? 'Search unavailable' : 'No conversations found'}
                     </div>
                 ) : (
                     <Virtuoso

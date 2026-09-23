@@ -11,6 +11,7 @@ import { isExcludedOrderStatus, normalizeOrderStatus } from '../../constants/ord
 import { recalculateCustomerTotals, updateCustomerTotals, withOrderTotalsTransaction } from './orderCustomerTotals';
 import { materializeContact } from '../ContactMaterialization';
 import { queueContactProjection } from '../ContactProjection';
+import { importOrderSnapshot } from '../deliveryEstimates/importOrderSnapshot';
 
 const PURCHASE_TRACKING_STATUSES = ['pending', 'processing', 'on-hold', 'completed'];
 
@@ -112,6 +113,7 @@ export class OrderSync extends BaseSync {
                 continue;
             }
 
+            const snapshots = new Map<number, unknown>();
             const existingOrders = await withOrderTotalsTransaction(accountId, async tx => {
                 const existing = await tx.wooOrder.findMany({
                     where: { accountId, wooId: { in: orders.map(o => o.id) } },
@@ -135,7 +137,7 @@ export class OrderSync extends BaseSync {
                         rawData: order as any
                     };
                     associations.push({ wooId: order.id, status: order.status, wooCustomerId, billingEmail });
-                    await tx.wooOrder.upsert({
+                    const persisted = await tx.wooOrder.upsert({
                         where: { accountId_wooId: { accountId, wooId: order.id } },
                         update: data,
                         create: {
@@ -143,6 +145,7 @@ export class OrderSync extends BaseSync {
                             dateCreated: new Date(order.date_created_gmt || order.date_created || new Date())
                         }
                     });
+                    snapshots.set(order.id, await importOrderSnapshot(tx, accountId, order.id, order.meta_data, persisted?.deliveryEstimateSnapshot));
                     const contact = await materializeContact(tx, accountId, {
                         source: 'ORDER', sourceKey: `order:${order.id}`, wooCustomerId, email: billingEmail,
                         firstName: order.billing?.first_name, lastName: order.billing?.last_name
@@ -154,7 +157,7 @@ export class OrderSync extends BaseSync {
                 return existing;
             });
             const existingMap = new Map(existingOrders.map(o => [o.wooId, o.status]));
-            const persistedOrders = orders;
+            const persistedOrders = orders.map(order => ({ ...order, deliveryEstimateSnapshot: snapshots.get(order.id) ?? null }));
 
             let orderTagsMap: Map<number, string[]> | undefined;
             try {

@@ -13,6 +13,8 @@ import { MessageScheduler } from './MessageScheduler';
 import { MarketingScheduler } from './MarketingScheduler';
 import { MaintenanceScheduler } from './MaintenanceScheduler';
 import { ShippingTrackingScheduler } from './ShippingTrackingScheduler';
+import { DeliveryInputScheduler } from './DeliveryInputScheduler';
+import { GuardedReceiptScheduler } from './GuardedReceiptScheduler';
 
 export class SchedulerService {
     private static readonly DEPRECATED_JOB_NAMES = new Set([
@@ -28,6 +30,8 @@ export class SchedulerService {
      */
     static async start() {
         Logger.info('Starting Scheduler Service...');
+        DeliveryInputScheduler.start();
+        GuardedReceiptScheduler.start();
 
         // Register all BullMQ repeatable jobs
         await SyncScheduler.register();
@@ -183,6 +187,8 @@ export class SchedulerService {
      * Gracefully close the scheduler worker on shutdown.
      */
     static async shutdown() {
+        DeliveryInputScheduler.stop();
+        GuardedReceiptScheduler.stop();
         // Stop interval tickers first so no new work is enqueued during shutdown.
         MessageScheduler.stop();
         MarketingScheduler.stop();

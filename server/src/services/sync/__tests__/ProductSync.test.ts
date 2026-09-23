@@ -84,6 +84,21 @@ describe('ProductSync Reconciliation Performance', () => {
         productSync = new ProductSync();
     });
 
+    it('persists parent-managed Woo variations without coercing the owner marker to Boolean true', async () => {
+        const woo = {
+            getProducts: vi.fn().mockResolvedValueOnce({ data: [{ id: 10, name: 'Variable', type: 'variable', price: '10', manage_stock: true }], totalPages: 1 })
+                .mockResolvedValue({ data: [], totalPages: 1 }),
+            getProductVariations: vi.fn().mockResolvedValue([{ id: 11, manage_stock: 'parent', price: '10', stock_quantity: null }]),
+        };
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'p', wooId: 10, accountId, rawData: {}, seoData: {} }]);
+        mockPrisma.wooProduct.count.mockResolvedValue(0);
+        await (productSync as any).sync(woo, accountId, false);
+        expect(mockPrisma.productVariation.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            create: expect.objectContaining({ productId: 'p', wooId: 11, manageStock: false, rawData: expect.objectContaining({ manage_stock: 'parent' }) }),
+            update: expect.objectContaining({ manageStock: false, rawData: expect.objectContaining({ manage_stock: 'parent' }) }),
+        }));
+    });
+
     it('should use deleteMany for reconciliation', async () => {
         // Setup mock WooService to return one product (so reconciliation triggers, but it's different from local ones)
         const mockWooService = {

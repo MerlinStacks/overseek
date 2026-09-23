@@ -230,7 +230,7 @@ function getEventIconClasses(type: string, payload?: EventPayload) {
         case 'pageview':         return 'bg-slate-50 text-slate-500 hover:bg-slate-100 dark:bg-slate-700/50 dark:text-slate-400';
         case 'product_view':     return 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400';
         case 'search':           return 'bg-purple-50 text-purple-500 hover:bg-purple-100 dark:bg-purple-500/10 dark:text-purple-400';
-        case 'add_to_cart':      return 'bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-400';
+        case 'add_to_cart':      return 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400';
         case 'remove_from_cart': return 'bg-red-50 text-red-500 hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400';
         case 'cart_view':        return 'bg-amber-50 text-amber-500 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-400';
         case 'checkout_view':
@@ -564,6 +564,20 @@ const VisitorLogWidget = (_props: WidgetProps) => {
                                                         }
                                                         if (event.type === 'pageview' && payload?.is404) {
                                                             tooltip = `404 Not Found: ${event.url || 'Unknown'}`;
+                                                        }
+
+                                                        // Cart additions can reference mutation endpoints, not navigable pages.
+                                                        if (event.type === 'add_to_cart') {
+                                                            return (
+                                                                <span
+                                                                    key={event.id}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className={`w-6 h-6 rounded-md flex items-center justify-center cursor-default ${iconClasses}`}
+                                                                    title={`${tooltip}\n${formatDistanceToNowStrict(new Date(event.createdAt))} ago`}
+                                                                >
+                                                                    <IconComponent className="w-3 h-3" />
+                                                                </span>
+                                                            );
                                                         }
 
                                                         return (

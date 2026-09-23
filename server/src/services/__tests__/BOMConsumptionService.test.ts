@@ -28,7 +28,13 @@ vi.mock('../../utils/prisma', () => ({
         },
         bOM: { findUnique: mocks.bomFindUnique },
         bOMItem: { findMany: mocks.bomItemFindMany },
+        receiptAccount: { findUnique: vi.fn().mockResolvedValue(null) },
+        receiptLegacyWork: { updateMany: vi.fn() },
     },
+}));
+vi.mock('../deliveryEstimates/intents', () => ({ lockDeliveryAccount: vi.fn() }));
+vi.mock('../deliveryEstimates/bomStockTransport', () => ({ guardedBomMode: async () => false,
+    ensureLegacyBomWork: async (_tx: unknown, _account: string, entry: any) => ({ job: { id: `legacy-${entry.id}`, state: 'pending' }, created: true }),
 }));
 
 vi.mock('../../utils/redis', () => ({
@@ -125,6 +131,8 @@ describe('BOMConsumptionService durability', () => {
     });
 
     it('resumes Woo synchronization without decrementing stock again', async () => {
+        const localMutation = vi.fn();
+        mocks.transaction.mockImplementation(callback => callback({ wooProduct: { update: localMutation } }));
         mocks.ledgerFindFirst.mockResolvedValue({ id: 'ledger-1', status: 'EXECUTED' });
         mocks.ledgerFindMany.mockResolvedValue([{
             id: 'ledger-1',
@@ -140,7 +148,8 @@ describe('BOMConsumptionService durability', () => {
             line_items: [{ product_id: 10, variation_id: 0, quantity: 1, name: 'Parent' }],
         });
 
-        expect(mocks.transaction).not.toHaveBeenCalled();
+        expect(mocks.transaction).toHaveBeenCalledOnce(); // Tracks the legacy transport under Account lock.
+        expect(localMutation).not.toHaveBeenCalled();
         expect(mocks.wooUpdateProduct).toHaveBeenCalledWith(20, { stock_quantity: 8, manage_stock: true });
         expect(mocks.ledgerUpdate).toHaveBeenCalledWith({
             where: { id: 'ledger-1' },

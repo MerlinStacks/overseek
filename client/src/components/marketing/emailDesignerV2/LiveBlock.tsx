@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
 import { $createLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
@@ -27,7 +27,9 @@ import {
 } from 'lexical';
 import { AlignCenter, AlignLeft, AlignRight, Bold, Copy, Italic, Link2, List, ListOrdered, Search, Strikethrough, Underline, X } from 'lucide-react';
 import { getSocialIconSvg, getSocialPlatform, getSocialPlatformColor } from '../../../lib/emailDesignerV2';
-import type { EmailBlock, EmailDesignTheme, SocialIconStyle } from '../../../lib/emailDesignerV2';
+import { getDeliveryEstimateBlockOptions, type EmailBlock, type EmailDesignTheme, type SocialIconStyle } from '../../../lib/emailDesignerV2';
+import { renderDeliveryEstimateEmailBlock } from '@overseek/core';
+import { PreviewOrderContext } from './PreviewOrderContext';
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './mergeTags';
 import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
 import { sanitizeEmailHtml, sanitizeEmailPaste, stripBidiControls } from '../../../utils/emailHtml';
@@ -91,7 +93,14 @@ const EMAIL_TEXT_EDITOR_CONTENT_STYLE = `
 `;
 
 export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme: EmailDesignTheme; onUpdate: (updater: (block: EmailBlock) => void) => void }) {
+    const previewOrder = useContext(PreviewOrderContext);
     const responsiveStyle: CSSProperties = block.responsive ? { width: '100%', maxWidth: '100%' } : {};
+    if (block.type === 'deliveryEstimate') {
+        const html = renderDeliveryEstimateEmailBlock(previewOrder, getDeliveryEstimateBlockOptions(block.props, theme));
+        return html
+            ? <div dangerouslySetInnerHTML={{ __html: html }} />
+            : <p style={{ color: theme.mutedTextColor, fontSize: 13 }}>No saved delivery estimate on preview order</p>;
+    }
     if (block.type === 'siteLogo') {
         return <div style={{ padding: block.props.padding || '8px 0', textAlign: block.props.align || 'center', ...responsiveStyle }}>{block.props.src ? <img src={block.props.src} alt={block.props.alt || block.props.fallbackText || 'Logo'} width={block.props.width || 160} style={{ display: 'block', maxWidth: '100%', height: 'auto', border: 0, margin: '0 auto' }} /> : <h1 style={{ margin: 0, color: theme.textColor, fontSize: 28, lineHeight: 1.25 }}>{block.props.fallbackText || block.props.alt || 'Your Store'}</h1>}</div>;
     }
