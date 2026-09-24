@@ -11,6 +11,8 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
     const selectedKey = settings.defaultMethod ? methodKey(settings.defaultMethod) : '';
     const defaultValid = !selectedKey || settings.shippingMethods.some(row => row.enabled && methodKey(row) === selectedKey);
     const unconfiguredKey = (row: ShippingMethod) => unconfigured.find(key => key === methodKey(row) || key === `${row.methodId}:${row.instanceId}`);
+    const observedOptions = (row: ShippingMethod) => discovery?.status === 'available'
+        ? discovery.methods.find(method => method.methodId === row.methodId && method.instanceId === row.instanceId)?.observedRates ?? [] : [];
     // Instance titles are provider labels, not necessarily the options shown at checkout.
     // Use observations only for a matching exact identity; never infer an option by title.
     const displayTitle = (row: ShippingMethod) => {
@@ -24,29 +26,40 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
         return `${zone} — ${title}`;
     };
     return <section className="space-y-4">
-        <h3 className="text-lg font-semibold">Draft shipping transit grid</h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Names and provider details come from WooCommerce. Set transit days here; expand Mapping for provider-specific options.</p>
+        <h3 className="text-lg font-semibold">Shipping times</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Enter the minimum and maximum shipping days for each option, using the transit days selected in Dispatch.</p>
         <div className="overflow-x-auto">
             <table className="w-full text-sm"><caption className="sr-only">Draft WooCommerce shipping mappings</caption>
                 <thead><tr>{['Shipping method', 'Zone', 'Fulfilment', 'Days (min / max)', 'Enabled', ''].map((title, i) => <th className="p-2 text-left" key={i} scope="col">{title}</th>)}</tr></thead>
                 <tbody>{settings.shippingMethods.map((row, index) => <tr key={index} className="align-top border-t border-slate-200 dark:border-slate-700">
                     <td className="p-2 min-w-56">
                         <p className="font-medium">{displayTitle(row)}</p>
-                        <details className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            <summary className="cursor-pointer w-fit rounded focus-visible:outline-2 focus-visible:outline-indigo-500">Mapping · {row.methodId} · Instance #{row.instanceId}</summary>
+                        <details open={row.mappingKind === 'exact_rate' && !row.rateId ? true : undefined} className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            <summary className="cursor-pointer w-fit rounded focus-visible:outline-2 focus-visible:outline-indigo-500">Advanced mapping</summary>
                             <div className="mt-2 max-w-sm space-y-2">
+                        <p>{row.methodId} · Instance #{row.instanceId}</p>
                         <p>Exact options require the full Woo rate ID, not a title or rule number. Exact overrides win. Renaming an option in WooCommerce may change its ID.</p>
                         <label>Mapping policy<select aria-label={`Row ${index + 1} mapping policy`} value={row.mappingKind ?? 'core_instance'} onChange={e => update(index, { mappingKind: e.target.value as ShippingMethod['mappingKind'], rateId: undefined, allRatesConfirmed: undefined })}>
-                            <option value="core_instance">Core instance (legacy default)</option><option value="exact_rate">Exact actual rate ID</option><option value="all_provider_rates">All provider rates in this instance</option>
+                            <option value="core_instance">WooCommerce shipping method</option><option value="exact_rate">One specific shipping option</option><option value="all_provider_rates">All options use the same shipping time</option>
                         </select></label>
-                        {row.mappingKind === 'exact_rate' && <label>Actual rate ID<input aria-label={`Row ${index + 1} actual rate ID`} required maxLength={200} value={row.rateId ?? ''} onChange={e => update(index, { rateId: e.target.value })} /></label>}
+                        {row.mappingKind === 'exact_rate' && <>
+                            {observedOptions(row).length > 0 && <label>Choose a checkout option<select aria-label={`Row ${index + 1} checkout option`} value={row.rateId ?? ''} onChange={e => update(index, { rateId: e.target.value })}>
+                                <option value="">Select an option</option>
+                                {row.rateId && !observedOptions(row).some(rate => rate.rateId === row.rateId) && <option value={row.rateId}>Saved option (not recently seen)</option>}
+                                {observedOptions(row).map(rate => <option key={rate.rateId} value={rate.rateId}>{rate.title}</option>)}
+                            </select></label>}
+                            <label>Actual rate ID<input aria-label={`Row ${index + 1} actual rate ID`} required maxLength={200} value={row.rateId ?? ''} onChange={e => update(index, { rateId: e.target.value })} /></label>
+                        </>}
                         {row.mappingKind === 'all_provider_rates' && <label><input type="checkbox" checked={row.allRatesConfirmed === true} onChange={e => update(index, { allRatesConfirmed: e.target.checked })} />I confirm every option emitted by this instance shares this transit range, except configured exact overrides.</label>}
                         <button type="button" disabled={settings.shippingMethods.length >= 500} onClick={() => onChange({ ...settings, shippingMethods: [...settings.shippingMethods, {
                             ...row, mappingKind: 'exact_rate', rateId: '', allRatesConfirmed: undefined, enabled: false,
                         }] })}>Add exact rate mapping</button>
                             </div>
                         </details>
-                        {['wbs', 'wbsng'].includes(row.methodId) && (!row.mappingKind || row.mappingKind === 'core_instance') && <p className="mt-1 max-w-xs text-xs text-amber-800 dark:text-amber-300">Unverified WBS policy: no estimates until you choose an explicit mapping.</p>}
+                        {['wbs', 'wbsng'].includes(row.methodId) && (!row.mappingKind || row.mappingKind === 'core_instance') && <label className="mt-2 block max-w-xs text-xs text-amber-800 dark:text-amber-300">Do all shipping options for this method take the same time?<select aria-label={`Row ${index + 1} shipping options`} value="" onChange={e => {
+                            if (e.target.value === 'same') update(index, { mappingKind: 'all_provider_rates', allRatesConfirmed: true });
+                            if (e.target.value === 'different') update(index, { mappingKind: 'exact_rate', rateId: '' });
+                        }}><option value="">Choose to enable estimates</option><option value="same">Yes, use this range for all options</option><option value="different">No, configure a specific option</option></select></label>}
                         {row.mappingKind === 'exact_rate' && <p className="mt-1 max-w-xs break-all text-xs text-slate-500 dark:text-slate-400">{row.rateId || 'Actual rate ID required — expand Mapping.'}</p>}
                     </td>
                     <td className="p-2 min-w-32"><p>{row.zoneName || 'Unnamed zone'}</p><p className="text-xs text-slate-500 dark:text-slate-400">Zone {row.zoneId}</p></td>
@@ -56,7 +69,13 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
                     <td className="p-2"><div className="flex items-center gap-2">{(['minTransitDays', 'maxTransitDays'] as const).map(key => <label className="w-20 shrink-0" key={key}><span className="sr-only">{key === 'minTransitDays' ? 'Minimum' : 'Maximum'}</span>
                         <input aria-label={`Row ${index + 1} ${key === 'minTransitDays' ? 'minimum' : 'maximum'} transit days`} type="number" required min={0} max={3650} step={1}
                             title={key === 'minTransitDays' ? 'Minimum transit days' : 'Maximum transit days'}
-                            value={Number.isNaN(row[key]) ? '' : row[key]} onChange={e => update(index, { [key]: e.target.valueAsNumber })} /></label>)}</div></td>
+                             value={Number.isNaN(row[key]) ? '' : row[key]} onChange={e => {
+                                 const value = e.target.valueAsNumber;
+                                 update(index, { [key]: value });
+                                 const min = key === 'minTransitDays' ? value : row.minTransitDays;
+                                 const max = key === 'maxTransitDays' ? value : row.maxTransitDays;
+                                 if (Number.isInteger(min) && Number.isInteger(max) && min >= 0 && max >= min && max <= 3650) onConfigured?.(unconfiguredKey(row) ?? '');
+                             }} /></label>)}</div></td>
                     <td className="p-2">
                         <label className="relative inline-flex h-6 w-11 cursor-pointer align-middle">
                             <input className="peer sr-only" aria-label={`Enable row ${index + 1}`} role="switch" type="checkbox" checked={row.enabled} disabled={!!unconfiguredKey(row)} onChange={e => update(index, { enabled: e.target.checked })} />
@@ -85,7 +104,7 @@ export function ShippingTransitGrid({ settings, onChange, discovery, unconfigure
         }}>
             <option value="">No default selected</option>
             {!defaultValid && <option value={selectedKey}>Unavailable: {selectedKey} — choose a default or clear</option>}
-            {settings.shippingMethods.filter(row => row.enabled).map((row, index) => <option key={index} value={methodKey(row)}>{displayTitle(row)} — {methodKey(row)} (zone {row.zoneId})</option>)}
+            {settings.shippingMethods.filter(row => row.enabled).map((row, index) => <option key={index} value={methodKey(row)}>{displayTitle(row)} — {row.zoneName || `Zone ${row.zoneId}`} ({row.minTransitDays}–{row.maxTransitDays} days)</option>)}
         </select></label>
         {settings.defaultMethod?.mappingKind === 'all_provider_rates' && <label className="block">Default actual rate ID (optional; required when multiple options are offered)<input maxLength={200} value={settings.defaultMethod.rateId ?? ''} onChange={e => onChange({ ...settings, defaultMethod: { ...settings.defaultMethod!, rateId: e.target.value || undefined } })} /></label>}
         <p className="text-sm text-slate-500 dark:text-slate-400">Changing, disabling or removing the selected identity requires choosing a valid default or clearing it. Collection wording is separate; collection timing still requires rollout verification.</p>

@@ -75,14 +75,17 @@ export function LegacyReceiptRecovery({ job, request, onChanged, retryRequests }
         } finally { inFlight.current = false; setBusy(false); }
     };
     return <article className="space-y-2 rounded-lg border border-slate-200 dark:border-slate-700 p-3">
-        <h5 className="font-semibold">Legacy job {job.id}</h5>
+        <div className="flex flex-wrap items-center gap-2">
+            <h5 className="min-w-0 break-all font-semibold">Legacy job {job.id}</h5>
+            {job.state === 'drained' && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">Drained</span>}
+        </div>
         <p>Source: {operationSource(job.sourceType)} · Reference: {job.sourceId ?? 'not supplied'}</p>
         {(job.sourceType === 'purchase_order' || reversal) && !job.purchaseOrderId.startsWith('bom-order:') && <a className="text-indigo-600 dark:text-indigo-300 underline" href={purchaseOrderHref(job.purchaseOrderId)}>Open purchase order {job.purchaseOrderId}</a>}
         <p>Purchase order: {job.purchaseOrderId} · State: {job.state} · Attempts: {job.attempts} · Created: {job.createdAt}</p>
         {job.lastError && <p role="alert">{job.lastError}</p>}
         {!known && <p role="alert">Unknown legacy job state or source. Recovery is unavailable; refresh or contact your operator.</p>}
-        {!job.originalTargetsAvailable && <p>Original targets were not recorded. Current purchase-order links are advisory only; manually review inventory and dependent BOM work.</p>}
-        {!!job.targets?.length && <p>Affected historical targets: {job.targets.map(target => `${target.productWooId}${target.variationWooId ? ` / variation ${target.variationWooId}` : ''}`).join(', ')}. Historical stock intent is not evidence of current inventory.</p>}
+        {!job.originalTargetsAvailable && <p>{job.state === 'drained' ? 'Original targets were not recorded for this completed job.' : 'Original targets were not recorded. Current purchase-order links are advisory only; manually review inventory and dependent BOM work.'}</p>}
+        {!!job.targets?.length && <p>Historical product / variation IDs: {job.targets.map(target => `${target.productWooId}${target.variationWooId ? ` / variation ${target.variationWooId}` : ''}`).join(', ')}.{job.state !== 'drained' && ' Historical stock intent is not evidence of current inventory.'}</p>}
         {recoverable && <>
             <p>{reversal ? 'Establish corrected counts excluding the original legacy receipt effect, preserving other completed movements, excluding later queued native operations, and reviewing dependent BOM stock. The exact observation/audit ACK returns the PO to ORDERED; no guessed reversal delta is sent.' : 'Establish correct inventory in WooCommerce including this legacy job’s effects and dependent BOM work before observing.'} Do not replay the legacy job. Receiving will be frozen by this review and stays frozen until you resume cutover.</p>
             <fieldset disabled={busy || !!retry} className="space-y-2">

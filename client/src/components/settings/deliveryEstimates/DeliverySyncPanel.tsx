@@ -10,18 +10,20 @@ const descriptions: Record<DeliverySyncStatus['configurationSync'], string> = {
     failed: 'Sync failed — retry using the sync button below.',
 };
 
-export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, saving = false, saveRevision = 0 }: {
-    accountId: string; token: string; canEdit: boolean; dirty?: boolean; saving?: boolean; saveRevision?: number;
+export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, saving = false, saveRevision = 0, compact = false }: {
+    accountId: string; token: string; canEdit: boolean; dirty?: boolean; saving?: boolean; saveRevision?: number; compact?: boolean;
 }) {
     const { status, busy, error, queued, requestDisposition, backgroundPending, refresh, queue } = useDeliveryEstimateSync(accountId, token, canEdit, saveRevision);
     const progress = status?.progress;
     return <section aria-label="Settings and production sync readiness" className="space-y-3 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
-        <h3 className="font-semibold">Settings and production sync readiness</h3>
-        <p className="text-sm">Sync copies saved settings, production times and staged supplier inputs. It does not establish complete delivery readiness or supplier availability. Check the launch panel for storefront activation; syncing does not activate storefront output.</p>
+        <h3 className="font-semibold">{compact ? 'Publishing progress' : 'Settings and production sync readiness'}</h3>
+        <p className="text-sm">{compact ? 'Saved changes are queued automatically. Use sync below to prepare existing product timings on first setup, or retry a failed update.' : 'Sync copies saved settings, production times and staged supplier inputs. It does not establish complete delivery readiness or supplier availability. Check the launch panel for storefront activation; syncing does not activate storefront output.'}</p>
         {busy && <p role="status">{status ? 'Requesting sync status…' : 'Loading sync status…'}</p>}
         {error && <p role="alert" className="text-red-700 dark:text-red-300">{error} {status && 'The status below is from the last successful request.'}</p>}
         {status && <div className="space-y-1 text-sm" aria-live="polite">
             <p>{descriptions[status.configurationSync]}</p>
+            <details open={compact ? undefined : true}>
+            <summary className="cursor-pointer font-medium">Publishing details</summary>
             {progress ? <>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
                     {[
@@ -53,6 +55,7 @@ export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, sa
             {status.inboundCapability === 'plugin_update_required' && <p>Supplier input sync needs a newer companion plugin. Settings and production sync can continue independently.</p>}
             <p>Last acknowledged: {status.lastAcknowledgedAt ? <time dateTime={status.lastAcknowledgedAt}>{new Date(status.lastAcknowledgedAt).toLocaleString()}</time> : 'Never'}</p>
             {status.lastError && <p className="text-amber-800 dark:text-amber-200">Last sync error: {status.lastError}</p>}
+            </details>
         </div>}
         {queued && <p role="status">Sync request queued for background processing. This is not confirmation of completion. Refresh status to check progress.</p>}
         {requestDisposition === 'already_running' && <p role="status">Sync is already running and was not restarted. Refresh status to check progress.</p>}
@@ -64,6 +67,8 @@ export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, sa
             {canEdit && <button type="button" disabled={busy || dirty || saving || backgroundPending} onClick={() => { if (!dirty && !saving && !backgroundPending) void queue(); }} className="rounded-md bg-indigo-600 px-3 py-2 text-white disabled:opacity-50">Sync saved settings and production times</button>}
             <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-2 disabled:opacity-50">Refresh sync status</button>
         </div>
-        <DeliverySyncInputs key={accountId} accountId={accountId} token={token} canEdit={canEdit} disabled={busy || dirty || saving} onRetry={refresh} />
+        <details open={compact ? undefined : true}><summary className="cursor-pointer font-medium">Troubleshoot individual updates</summary>
+            <DeliverySyncInputs key={accountId} accountId={accountId} token={token} canEdit={canEdit} disabled={busy || dirty || saving} onRetry={refresh} />
+        </details>
     </section>;
 }

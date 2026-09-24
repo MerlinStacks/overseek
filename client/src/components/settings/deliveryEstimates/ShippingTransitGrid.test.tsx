@@ -16,7 +16,7 @@ it('edits explicit WBS policy and selects the exact mapping identity as default'
         return <ShippingTransitGrid settings={settings} onChange={value => { latest = value; setSettings(value); }} />;
     }
     render(<Form />);
-    expect(screen.getByText(/Unverified WBS policy/)).toBeTruthy();
+    expect(screen.getByLabelText('Row 1 shipping options')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Row 1 mapping policy'), { target: { value: 'all_provider_rates' } });
     expect(settingsErrors(latest).some(error => error.includes('explicitly confirm'))).toBe(true);
     fireEvent.click(screen.getByLabelText(/I confirm every option/));
@@ -64,7 +64,7 @@ it('adds an exact mapping without allowing the provider name or identity to chan
     const settings = responseFixture().settings;
     const onChange = vi.fn();
     render(<ShippingTransitGrid settings={settings} onChange={onChange} />);
-    fireEvent.click(screen.getByText(/Mapping ·/));
+    fireEvent.click(screen.getByText('Advanced mapping'));
     fireEvent.click(screen.getByRole('button', { name: 'Add exact rate mapping' }));
     expect(onChange.mock.calls[0][0].shippingMethods[1]).toEqual({
         ...settings.shippingMethods[0], mappingKind: 'exact_rate', rateId: '', allRatesConfirmed: undefined, enabled: false,
@@ -81,8 +81,8 @@ it('distinguishes repeated weight-based providers by zone without changing store
     render(<ShippingTransitGrid settings={settings} onChange={onChange} />);
     expect(screen.getByText('Newcastle — Weight-based rates')).toBeTruthy();
     expect(screen.getByText('N1 - Zone — Weight-based rates')).toBeTruthy();
-    expect(screen.getByText('Mapping · wbsng · Instance #28')).toBeTruthy();
-    expect(screen.getByText('Mapping · wbsng · Instance #31')).toBeTruthy();
+    expect(screen.getByText('wbsng · Instance #28')).toBeTruthy();
+    expect(screen.getByText('wbsng · Instance #31')).toBeTruthy();
     expect(onChange).not.toHaveBeenCalled();
 });
 
@@ -99,4 +99,30 @@ it('uses observed option labels only for matching exact rates, not the whole pro
     render(<ShippingTransitGrid settings={settings} onChange={vi.fn()} discovery={discovery} />);
     expect(screen.getByText('Newcastle — Weight-based rates')).toBeTruthy();
     expect(screen.getByText('Newcastle — Express Auspost')).toBeTruthy();
+});
+
+it('lets merchants confirm shared timing or choose an observed option without retyping opaque IDs', () => {
+    let latest = responseFixture().settings;
+    latest.shippingMethods = [{ ...latest.shippingMethods[0], methodId: 'wbsng', instanceId: 28 }];
+    latest.defaultMethod = null;
+    const original = { ...latest.shippingMethods[0] };
+    const discovery: ShippingDiscovery = {
+        status: 'available', warnings: [], methods: [{
+            ...original, provider: 'weight_based', rateIdentityScope: 'method_instance', requiresRateVerification: true,
+            observedRates: [{ rateId: 'wbsng:28:opaque/express?x=1', title: 'Express', capturedAt: '2026-09-23T00:00:00Z' }],
+        }],
+    };
+    function Form() {
+        const [settings, setSettings] = useState(latest);
+        return <ShippingTransitGrid settings={settings} discovery={discovery} onChange={value => { latest = value; setSettings(value); }} />;
+    }
+    render(<Form />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Row 1 shipping options' }), { target: { value: 'same' } });
+    expect(latest.shippingMethods[0]).toEqual({ ...original, mappingKind: 'all_provider_rates', allRatesConfirmed: true });
+    expect(settingsErrors(latest)).toEqual([]);
+    fireEvent.click(screen.getByText('Advanced mapping'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Row 1 mapping policy' }), { target: { value: 'exact_rate' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Row 1 checkout option' }), { target: { value: discovery.methods[0].observedRates![0].rateId } });
+    expect(latest.shippingMethods[0]).toEqual({ ...original, mappingKind: 'exact_rate', rateId: 'wbsng:28:opaque/express?x=1', allRatesConfirmed: undefined });
+    expect(settingsErrors(latest)).toEqual([]);
 });

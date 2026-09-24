@@ -10,7 +10,7 @@ import { ShippingDiscoveryPanel } from './ShippingDiscoveryPanel';
 import { DeliverySyncPanel } from './DeliverySyncPanel';
 import { DeliveryLaunchPanel } from './DeliveryLaunchPanel';
 
-const tabs = ['Timing & calendars', 'Shipping methods', 'Appearance', 'Launch & recovery'];
+const tabs = ['1. Dispatch', '2. Shipping', '3. Preview & enable'];
 
 /** Mounted with an account/permission key so drafts and late responses cannot cross scopes. */
 export function DeliverySettingsForm({ accountId, token, canEdit, canInventory = false }: { accountId: string; token: string; canEdit: boolean; canInventory?: boolean }) {
@@ -88,30 +88,32 @@ export function DeliverySettingsForm({ accountId, token, canEdit, canInventory =
                     : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}>{tab}</button>)}
         </div>
         {/* Keep operational panels mounted so switching tabs does not restart requests or lose recovery state. */}
-        <div role="tabpanel" id={`${tabId}-panel-3`} aria-labelledby={`${tabId}-tab-3`} hidden={activeTab !== 3} tabIndex={0} className="space-y-6">
-        <DeliveryLaunchPanel accountId={accountId} token={token} canEdit={canEdit} canInventory={canInventory}
-            dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} setupUnavailable={loading || !settings || blocked} />
-        {!loading && <DeliverySyncPanel accountId={accountId} token={token} canEdit={canEdit} dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} />}
-        </div>
-        {loading ? <p role="status">Loading delivery settings…</p> : <form onSubmit={save} onInvalidCapture={event => {
+        {loading && <p role="status">Loading delivery settings…</p>}
+        <form onSubmit={save} onInvalidCapture={event => {
             const input = event.target as HTMLInputElement;
             const panel = input.closest('[role="tabpanel"]');
-            if (!panel?.hasAttribute('hidden')) return;
+            if (!panel) return;
             event.preventDefault();
+            setErrors([input.validationMessage || 'Check the highlighted field.']);
             const index = tabs.findIndex((_, i) => panel.id === `${tabId}-panel-${i}`);
             if (index !== -1) {
                 setActiveTab(index);
+                let parent = input.parentElement;
+                while (parent && parent !== panel) {
+                    if (parent instanceof HTMLDetailsElement) parent.open = true;
+                    parent = parent.parentElement;
+                }
                 requestAnimationFrame(() => input.focus());
             }
         }} className="space-y-6 text-slate-900 dark:text-slate-100
-        [&_label]:text-sm [&_label]:font-medium [&_input:not([type=checkbox])]:block [&_input:not([type=checkbox])]:w-full
-        [&_input:not([type=checkbox])]:rounded-md [&_input:not([type=checkbox])]:border [&_input:not([type=checkbox])]:p-2
+        [&_label]:text-sm [&_label]:font-medium [&_input:not([type=checkbox]):not([type=color])]:block [&_input:not([type=checkbox]):not([type=color])]:w-full
+        [&_input:not([type=checkbox]):not([type=color])]:rounded-md [&_input:not([type=checkbox]):not([type=color])]:border [&_input:not([type=checkbox]):not([type=color])]:p-2
         [&_input]:bg-white dark:[&_input]:bg-slate-900 [&_select]:block [&_select]:w-full [&_select]:rounded-md [&_select]:border [&_select]:p-2
         [&_select]:bg-white dark:[&_select]:bg-slate-900 [&_button]:rounded-md [&_button]:border [&_button]:px-3 [&_button]:py-2 [&_button:disabled]:opacity-50">
         {errors.length > 0 && <div role="alert" className="rounded-lg bg-red-50 dark:bg-red-950 p-4 text-red-800 dark:text-red-200">
             <ul className="list-disc pl-4">{errors.map((error, i) => <li key={i}>{error}</li>)}</ul>
         </div>}
-        {!settings && <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry loading</button>}
+        {!settings && !loading && <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry loading</button>}
         {settings && <>
             {!canEdit && <p role="status">Read only. Managing these settings requires manage_shipping_settings permission.</p>}
             {blocked && <p>Saving is unavailable. Your draft is retained here; reload after account access is restored.</p>}
@@ -122,24 +124,38 @@ export function DeliverySettingsForm({ accountId, token, canEdit, canInventory =
             </div>
             <div role="tabpanel" id={`${tabId}-panel-1`} aria-labelledby={`${tabId}-tab-1`} hidden={activeTab !== 1} tabIndex={0} className="space-y-8">
                 <ShippingDiscoveryPanel accountId={accountId} token={token} canImport={canEdit && !saving && !blocked}
-                settings={settings} onChange={change} discovery={discovery} onDiscovery={setDiscovery}
+                 settings={settings} onChange={change} discovery={discovery} onDiscovery={setDiscovery} autoDiscover
                 onImported={keys => setUnconfigured(previous => [...previous, ...keys])} />
             <fieldset disabled={!canEdit || saving || blocked} className="space-y-8 min-w-0">
                 <ShippingTransitGrid settings={settings} onChange={change} discovery={discovery} unconfigured={unconfigured}
                     onConfigured={key => setUnconfigured(previous => previous.filter(value => value !== key))} />
             </fieldset>
             </div>
-            <div role="tabpanel" id={`${tabId}-panel-2`} aria-labelledby={`${tabId}-tab-2`} hidden={activeTab !== 2} tabIndex={0}>
-            <fieldset disabled={!canEdit || saving || blocked} className="min-w-0">
+        </>}
+            <div role="tabpanel" id={`${tabId}-panel-2`} aria-labelledby={`${tabId}-tab-2`} hidden={activeTab !== 2} tabIndex={0} className="space-y-5">
+            {settings && <fieldset disabled={!canEdit || saving || blocked} className="min-w-0">
                 <BrandingSettings settings={settings} onChange={change} />
-            </fieldset>
+            </fieldset>}
+            {/* Operational inputs use their own action buttons, not the settings form's implicit submit. */}
+            <div className="space-y-5" onKeyDown={event => {
+                if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault();
+            }}>
+            <DeliveryLaunchPanel accountId={accountId} token={token} canEdit={canEdit} canInventory={canInventory} compact
+                dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} setupUnavailable={loading || !settings || blocked} />
+            {!loading && <DeliverySyncPanel accountId={accountId} token={token} canEdit={canEdit} compact dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} />}
             </div>
+            </div>
+        {settings && <>
             {canEdit && <div className="flex flex-wrap gap-3 items-center">
                 <button type="submit" disabled={saving || blocked || JSON.stringify(settings) === saved} className="bg-indigo-600 text-white">{saving ? 'Saving…' : 'Save delivery settings'}</button>
                 <span className="text-sm">{JSON.stringify(settings) !== saved ? 'Unsaved changes' : 'No unsaved changes'}</span>
             </div>}
-            {success && <p role="status" className="text-green-700 dark:text-green-300">Settings saved in Overseek. Check sync and launch publishing status in Launch & recovery. Already-requested activation revalidates after sync; an explicit disable remains in effect. Shipping discovery is separate.</p>}
+            {success && <p role="status" className="text-green-700 dark:text-green-300">Settings saved in Overseek and queued for publishing. Check Preview &amp; enable for progress.</p>}
+            <div className="flex justify-between gap-3">
+                <button type="button" disabled={activeTab === 0} onClick={() => setActiveTab(value => value - 1)}>Back</button>
+                {activeTab < 2 && <button type="button" onClick={() => setActiveTab(value => value + 1)}>Continue to {activeTab === 0 ? 'shipping' : 'preview & enable'}</button>}
+            </div>
         </>}
-    </form>}
+    </form>
     </>;
 }
