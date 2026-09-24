@@ -4,9 +4,8 @@ import Fastify from 'fastify';
 const { db, woo } = vi.hoisted(() => ({
     db: {
         $transaction: vi.fn(),
-        $queryRaw: vi.fn(),
-        wooProduct: { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() },
-        productVariation: { deleteMany: vi.fn(), upsert: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+        wooProduct: { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn(), deleteMany: vi.fn() },
+        productVariation: { deleteMany: vi.fn(), upsert: vi.fn() },
         bOMItem: { updateMany: vi.fn() }, bOM: { deleteMany: vi.fn() }
     },
     woo: { getProduct: vi.fn(), getProductVariations: vi.fn() }
@@ -45,11 +44,6 @@ describe('Woo product transition entry paths', () => {
     beforeEach(async () => {
         vi.resetAllMocks();
         db.$transaction.mockImplementation(async work => work(db));
-        db.$queryRaw.mockResolvedValue([]);
-        db.productVariation.findMany.mockResolvedValue([]);
-        db.productVariation.updateMany.mockResolvedValue({ count: 0 });
-        db.wooProduct.updateMany.mockResolvedValue({ count: 1 });
-        db.bOMItem.updateMany.mockResolvedValue({ count: 0 });
         db.wooProduct.upsert.mockResolvedValue({ id: 'p', wooId: 10 });
         db.wooProduct.findUnique.mockResolvedValue({ id: 'p', wooId: 10, rawData: { type: 'variable' } });
         db.wooProduct.deleteMany.mockResolvedValue({ count: 1 });
@@ -84,12 +78,10 @@ describe('Woo product transition entry paths', () => {
         expect(IndexingService.indexProduct).not.toHaveBeenCalled();
     });
 
-    it('force sync preserves history even after a product-specific Woo 404', async () => {
+    it('force sync reconciles only a product-specific Woo 404', async () => {
         woo.getProduct.mockRejectedValue({ response: { status: 404, data: { code: 'woocommerce_rest_product_invalid_id' } } });
         expect((await app.inject({ method: 'POST', url: '/10/sync' })).statusCode).toBe(404);
-        expect(db.wooProduct.deleteMany).not.toHaveBeenCalled();
-        expect(db.bOMItem.updateMany).not.toHaveBeenCalled();
-        expect(IndexingService.deleteProduct).not.toHaveBeenCalled();
+        expect(db.wooProduct.deleteMany).toHaveBeenCalledWith({ where: { id: 'p', accountId: 'a', wooId: 10 } });
     });
 
     it.each(['webhook', 'force sync'])('%s restores by the same account/Woo key without replacing local fields', async path => {
@@ -130,12 +122,10 @@ describe('Woo product transition entry paths', () => {
         expect(db.wooProduct.deleteMany).not.toHaveBeenCalled();
     });
 
-    it('force missing reports preservation without invoking destructive search cleanup', async () => {
+    it('force missing does not report success when search removal fails', async () => {
         woo.getProduct.mockRejectedValue({ response: { status: 404, data: { code: 'woocommerce_rest_product_invalid_id' } } });
-        const response = await app.inject({ method: 'POST', url: '/10/sync' });
-        expect(response.statusCode).toBe(404);
-        expect(response.json().error).toContain('history preserved');
-        expect(IndexingService.deleteProduct).not.toHaveBeenCalled();
+        vi.mocked(IndexingService.deleteProduct).mockRejectedValueOnce(new Error('search unavailable'));
+        expect((await app.inject({ method: 'POST', url: '/10/sync' })).statusCode).toBe(500);
         expect(db.wooProduct.deleteMany).not.toHaveBeenCalled();
     });
 
@@ -144,10 +134,9 @@ describe('Woo product transition entry paths', () => {
         expect(woo.getProduct).toHaveBeenCalledWith(10, { bypassCache: true });
         expect(woo.getProductVariations).not.toHaveBeenCalled();
         expect(db.productVariation.upsert).not.toHaveBeenCalled();
-        expect(db.productVariation.findMany).toHaveBeenCalled();
-        expect(db.productVariation.deleteMany).not.toHaveBeenCalled();
+        expect(db.productVariation.deleteMany).toHaveBeenCalledWith({ where: { productId: 'p' } });
         expect(db.bOMItem.updateMany).toHaveBeenNthCalledWith(2, {
-            where: { bom: { productId: 'p', product: { accountId: 'a' }, variationId: { not: 0 } }, OR: [{ isActive: true }, { deactivatedReason: null }, { deactivatedReason: { not: 'VARIATION_DELETED_IN_WOO' } }] },
+            where: { bom: { productId: 'p', variationId: { not: 0 } } },
             data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }
         });
         expect(db.bOM.deleteMany).not.toHaveBeenCalled();
@@ -155,57 +144,17 @@ describe('Woo product transition entry paths', () => {
 
     it.each(['variable', undefined])('force sync preserves supported variations for type %j', async type => {
         woo.getProduct.mockResolvedValue({ ...payload, type });
-        expect((await app.inject({ method: 'POST', url: '/10/sync' })).statusCode).toBe(type ? 200 : 500);
-        expect(db.productVariation.deleteMany).not.toHaveBeenCalled();
-        if (type) expect(db.productVariation.upsert).toHaveBeenCalled();
-        else {
-            expect(db.productVariation.upsert).not.toHaveBeenCalled();
-            expect(db.wooProduct.upsert).not.toHaveBeenCalled();
-        }
-    });
-    it('force sync fetches an uncached empty variable listing and retires delivery membership', async () => {
-        woo.getProduct.mockResolvedValue({ ...payload, type: 'variable', variations: [] });
-        woo.getProductVariations.mockResolvedValue([]);
         expect((await app.inject({ method: 'POST', url: '/10/sync' })).statusCode).toBe(200);
-        expect(woo.getProductVariations).toHaveBeenCalledExactlyOnceWith(10, { bypassCache: true });
-        expect(db.productVariation.updateMany).toHaveBeenCalledWith({ where: {
-            productId: 'p', product: { accountId: 'a' }, wooId: { notIn: [] }, deliveryActive: true,
-        }, data: { deliveryActive: false } });
         expect(db.productVariation.deleteMany).not.toHaveBeenCalled();
-    });
-    it.each(['force sync', 'webhook'])('%s stops after a stale variable observation is rejected', async path => {
-        db.wooProduct.findUnique.mockResolvedValue({ id: 'p', deliveryMembershipObservedAt: new Date('2099-01-01') });
-        const stale = { ...payload, type: 'variable', variations: [11, 99] };
-        woo.getProduct.mockResolvedValue(stale);
-        woo.getProductVariations.mockResolvedValue([{ id: 11, stock_quantity: 999 }, { id: 99, stock_quantity: 999 }]);
-        if (path === 'force sync') expect((await app.inject({ method: 'POST', url: '/10/sync' })).statusCode).toBe(409);
-        else await processWebhookPayload('a', 'product.updated', stale);
-        expect(db.wooProduct.upsert).not.toHaveBeenCalled();
-        expect(db.wooProduct.update).not.toHaveBeenCalled();
-        expect(db.productVariation.upsert).not.toHaveBeenCalled();
-        expect(db.productVariation.updateMany).not.toHaveBeenCalled();
-        expect(IndexingService.indexProduct).not.toHaveBeenCalled();
-        expect(reconcileWholesaleProductsBestEffort).not.toHaveBeenCalled();
-    });
-    it.each(['error', 'quarantine', 'parent-mismatch'])('force sync never replaces membership on %s', async failure => {
-        woo.getProduct.mockResolvedValue({ ...payload, type: 'variable', variations: [11, 12] });
-        if (failure === 'error') woo.getProductVariations.mockRejectedValue(new Error('incomplete listing'));
-        else woo.getProductVariations.mockResolvedValue([{ id: 11, status: 'private', image: null },
-            ...(failure === 'quarantine' ? [{ id: 12, image: 'invalid' }] : [])]);
-        expect((await app.inject({ method: 'POST', url: '/10/sync' })).statusCode).toBe(500);
-        expect(db.productVariation.updateMany).not.toHaveBeenCalled();
-        expect(db.productVariation.deleteMany).not.toHaveBeenCalled();
-        expect(db.productVariation.upsert).not.toHaveBeenCalled();
-        expect(db.wooProduct.upsert).not.toHaveBeenCalled();
+        expect(db.productVariation.upsert).toHaveBeenCalled();
     });
 
     it.each(['product.created', 'product.updated'])('%s cleans stale variations even on repeated simple snapshots', async topic => {
         await processWebhookPayload('a', topic, payload);
         await processWebhookPayload('a', topic, payload);
-        expect(db.productVariation.findMany).toHaveBeenCalledTimes(2);
-        expect(db.productVariation.deleteMany).not.toHaveBeenCalled();
+        expect(db.productVariation.deleteMany).toHaveBeenCalledTimes(2);
         expect(db.bOMItem.updateMany).toHaveBeenCalledWith({
-            where: { bom: { productId: 'p', product: { accountId: 'a' }, variationId: { not: 0 } }, OR: [{ isActive: true }, { deactivatedReason: null }, { deactivatedReason: { not: 'VARIATION_DELETED_IN_WOO' } }] },
+            where: { bom: { productId: 'p', variationId: { not: 0 } } },
             data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }
         });
         expect(db.bOM.deleteMany).not.toHaveBeenCalled();
@@ -218,10 +167,9 @@ describe('Woo product transition entry paths', () => {
     it.each(['variable', undefined])('webhook retains variations for type %j and persists manageStock=false', async type => {
         await processWebhookPayload('a', 'product.updated', { ...payload, type, manage_stock: false });
         expect(db.productVariation.deleteMany).not.toHaveBeenCalled();
-        if (type) expect(db.wooProduct.upsert).toHaveBeenCalledWith(expect.objectContaining({
+        expect(db.wooProduct.upsert).toHaveBeenCalledWith(expect.objectContaining({
             update: expect.objectContaining({ manageStock: false }), create: expect.objectContaining({ manageStock: false })
         }));
-        else expect(db.wooProduct.upsert).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -231,7 +179,7 @@ describe('Woo product transition entry paths', () => {
         if (stage === 'recipes') {
             db.bOMItem.updateMany.mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce(new Error('cleanup failed'));
         } else {
-            db.productVariation.findMany.mockRejectedValueOnce(new Error('cleanup failed'));
+            db.productVariation.deleteMany.mockRejectedValueOnce(new Error('cleanup failed'));
         }
         if (path === 'webhook') {
             await expect(processWebhookPayload('a', 'product.updated', payload)).rejects.toThrow('cleanup failed');

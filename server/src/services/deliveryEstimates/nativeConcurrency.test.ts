@@ -94,7 +94,7 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native deliv
     });
 
     it('runs readiness against the complete migration chain and atomically rolls back/commits explicit feature disable', async () => {
-        expect(fixture.migrations).toHaveLength(19);
+        expect(fixture.migrations).toHaveLength(18);
         expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([]);
         await db.exec(`UPDATE "Account" SET "receiptTransportMode"='GUARDED' WHERE id='a';
             INSERT INTO "WooProduct" (id,"accountId","wooId","productionMinDays","productionMaxDays","rawData") VALUES ('p','a',10,0,2,'{"type":"simple"}');`);

@@ -294,7 +294,7 @@ export class WooService {
         return this.requestWithRetry('get', 'orders/statuses');
     }
 
-    async getProducts(params: { after?: string; page?: number; per_page?: number; status?: string; context?: 'view' | 'edit' } = {}) {
+    async getProducts(params: { after?: string; page?: number; per_page?: number; status?: string } = {}) {
         if (this.isDemo) return Promise.resolve({ data: MOCK_PRODUCTS, total: MOCK_PRODUCTS.length, totalPages: 1 });
         const { after, ...rest } = params;
         const apiParams = {
@@ -783,9 +783,9 @@ export class WooService {
                     await redisClient.del(cacheKey);
                 } else {
                     const parsed = JSON.parse(cached);
-                    // Older versions could cache a first page or an incomplete
-                    // listing. Only reuse the strict-enumeration cache format.
-                    if (parsed?.version === 3 && Array.isArray(parsed.data)) {
+                    // Version 1 cached only the first WooCommerce page. Never
+                    // reuse that legacy shape for reconciliation.
+                    if (parsed?.version === 2 && Array.isArray(parsed.data)) {
                         return parsed.data;
                     }
                     await redisClient.del(cacheKey);
@@ -800,38 +800,33 @@ export class WooService {
         const perPage = 100;
         const maxPages = 1000;
         let page = 1;
-        let expectedPages: number | undefined;
-        let expectedTotal: number | undefined;
 
         while (page <= maxPages) {
-            // Even an invalid-page error must fail closed. It can mean a
-            // collection changed mid-scan, not just a headerless terminal page.
-            const response = await this.requestWithRetry('get', `products/${productId}/variations`, {
-                page, per_page: perPage, status: 'any', context: 'edit'
-            });
-
-            if (!Array.isArray(response.data)) throw new Error(`Invalid WooCommerce variation listing for product ${productId}.`);
-            const pageData = response.data;
-            if (response.totalPages > 0) {
-                if (expectedPages !== undefined && expectedPages !== response.totalPages) throw new Error('WooCommerce variation page count changed during enumeration.');
-                expectedPages = response.totalPages;
-            }
-            if (response.total > 0) {
-                if (expectedTotal !== undefined && expectedTotal !== response.total) throw new Error('WooCommerce variation total changed during enumeration.');
-                expectedTotal = response.total;
-            }
-            if (pageData.length === 0) {
-                if ((expectedPages !== undefined && page <= expectedPages) || (expectedTotal !== undefined && variations.length < expectedTotal)) {
-                    throw new Error(`Incomplete WooCommerce variation listing for product ${productId}.`);
+            let response: { data: any[]; total: number; totalPages: number };
+            try {
+                response = await this.requestWithRetry('get', `products/${productId}/variations`, {
+                    page,
+                    per_page: perPage
+                });
+            } catch (error: any) {
+                const errorCode = String(error?.response?.data?.code || '');
+                // Some proxies strip total-page headers. In that case an exact
+                // multiple of 100 requires one final request, which WordPress
+                // reports as an invalid page rather than an empty array.
+                if (page > 1 && error?.response?.status === 400 && errorCode.includes('invalid_page_number')) {
+                    break;
                 }
-                break;
+                throw error;
             }
+
+            const pageData = Array.isArray(response.data) ? response.data : [];
+            if (pageData.length === 0) break;
 
             let newIds = 0;
             for (const variation of pageData) {
                 const id = Number(variation?.id);
                 if (Number.isFinite(id)) {
-                    if (seenIds.has(id)) throw new Error(`WooCommerce variation pagination repeated ID for product ${productId}.`);
+                    if (seenIds.has(id)) continue;
                     newIds++;
                     seenIds.add(id);
                 }
@@ -842,10 +837,10 @@ export class WooService {
                 throw new Error(`WooCommerce variation pagination repeated page data for product ${productId}.`);
             }
 
-            if (expectedPages !== undefined) {
-                if (page >= expectedPages) break;
-            } else if (expectedTotal !== undefined) {
-                if (variations.length >= expectedTotal) break;
+            if (response.totalPages > 0) {
+                if (page >= response.totalPages) break;
+            } else if (response.total > 0) {
+                if (variations.length >= response.total) break;
             } else if (pageData.length < perPage) {
                 break;
             }
@@ -856,13 +851,10 @@ export class WooService {
         if (page > maxPages) {
             throw new Error(`WooCommerce variation pagination exceeded ${maxPages} pages for product ${productId}.`);
         }
-        if (expectedTotal !== undefined && variations.length !== expectedTotal) {
-            throw new Error(`Incomplete WooCommerce variation total for product ${productId}.`);
-        }
 
         // Cache the result for 30 seconds
         try {
-            const serialized = JSON.stringify({ version: 3, data: variations });
+            const serialized = JSON.stringify({ version: 2, data: variations });
             if (serialized.length <= 5 * 1024 * 1024) {
                 await redisClient.setex(cacheKey, 30, serialized);
             }

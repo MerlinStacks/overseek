@@ -185,7 +185,7 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native 13-mi
                     ('pending','a','history','tracked-po','p',10,10,3,4,'pending');`);
         });
         try {
-            expect(historical.migrations).toHaveLength(19);
+            expect(historical.migrations).toHaveLength(18);
             expect((await historical.db.query(`SELECT "operationId",delta,state,"cascadeState","sourceType","sourceId" FROM "ReceiptOperation" ORDER BY sequence`)).rows).toEqual([
                 { operationId: 'applied', delta: 2, state: 'applied', cascadeState: 'done', sourceType: 'purchase_order', sourceId: null },
                 { operationId: 'reconciled', delta: 3, state: 'reconciled', cascadeState: 'done', sourceType: 'purchase_order', sourceId: null },
@@ -200,8 +200,8 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native 13-mi
         } finally { await historical.close(); }
     });
 
-    it('verifies final function bodies, indexed renewal and actual renewal/wake services after all 19 migrations', async () => {
-        expect(fixture.migrations).toHaveLength(19);
+    it('verifies final function bodies, indexed renewal and actual renewal/wake services after all 18 migrations', async () => {
+        expect(fixture.migrations).toHaveLength(18);
         expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([]);
         const bodies = new Map<string, string>();
         for (const name of fixture.migrations) {

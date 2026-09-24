@@ -727,8 +727,6 @@ model WooProduct {
   sku         String?
   status      String?
   catalogVisibility String?
-  // Fence the complete accepted catalogue source and delivery membership atomically.
-  deliveryMembershipObservedAt DateTime?
   dateCreated DateTime?
   price       Decimal? @db.Decimal(10, 2)
   stockStatus String? // "instock", "outofstock"
@@ -793,9 +791,6 @@ model WooProduct {
 }
 
 model ProductVariation {
-  // Retained history may be absent from an authoritative Woo catalogue snapshot.
-  // This flag controls delivery projections only; never changes stock or identity.
-  deliveryActive Boolean @default(true)
   productionMinDays Int?
   productionMaxDays Int?
   id        String @id @default(uuid())
@@ -839,7 +834,6 @@ model ProductVariation {
   updatedAt DateTime @updatedAt
 
   @@unique([productId, wooId])
-  @@index([productId, deliveryActive, wooId]) // Bounded delivery membership reads
   @@index([supplierId])
   @@index([productId, stockStatus])           // Variant inventory queries
   @@index([productId, updatedAt])              // Full-sync reconciliation

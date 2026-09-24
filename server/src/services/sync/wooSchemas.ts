@@ -33,7 +33,7 @@ const WooBillingSchema = z.object({
 const WooShippingSchema = WooBillingSchema.omit({ email: true, phone: true });
 
 export const WooProductSchema = z.object({
-    id: z.number().int().positive(),
+    id: z.number(),
     name: z.string(),
     slug: z.string().optional(),
     permalink: z.string().url().optional(),
@@ -50,7 +50,6 @@ export const WooProductSchema = z.object({
     weight: z.string().optional(),
     dimensions: WooDimensionsSchema.optional(),
     images: z.array(WooImageSchema).optional(),
-    variations: z.array(z.number().int().positive()).optional(),
     categories: z.array(z.object({
         id: z.number(),
         name: z.string().optional(),
@@ -75,8 +74,7 @@ const WooVariationAttributeSchema = z.object({
 }).passthrough();
 
 export const WooProductVariationSchema = z.object({
-    id: z.number().int().positive(),
-    parent_id: z.number().int().positive().optional(),
+    id: z.number(),
     sku: z.string().optional().nullable(),
     price: z.string().optional(),
     regular_price: z.string().optional(),
@@ -86,9 +84,7 @@ export const WooProductVariationSchema = z.object({
     manage_stock: z.union([z.boolean(), z.literal('parent')]).optional(),
     weight: z.string().optional(),
     dimensions: WooDimensionsSchema.optional(),
-    // Woo returns null for a variation without its own image. Keep null in
-    // rawData; persistence deliberately maps it to an empty images array.
-    image: WooImageSchema.nullable().optional(),
+    image: WooImageSchema.optional(),
     attributes: z.array(WooVariationAttributeSchema).optional()
 }).passthrough();
 
@@ -244,7 +240,7 @@ export interface WooVariationValidationFailure {
  * rejected. Payload values are deliberately omitted from failures because Woo
  * metadata can contain customer or plugin secrets.
  */
-export function parseWooVariations(data: unknown[], parentId?: number): {
+export function parseWooVariations(data: unknown[]): {
     variations: WooProductVariation[];
     failures: WooVariationValidationFailure[];
 } {
@@ -254,10 +250,6 @@ export function parseWooVariations(data: unknown[], parentId?: number): {
     for (const item of data) {
         const result = WooProductVariationSchema.safeParse(item);
         if (result.success) {
-            if (parentId !== undefined && result.data.parent_id !== undefined && result.data.parent_id !== parentId) {
-                failures.push({ variationId: result.data.id, issues: [{ path: 'parent_id', code: 'custom', message: 'Variation parent identity mismatch' }] });
-                continue;
-            }
             variations.push(result.data);
             continue;
         }

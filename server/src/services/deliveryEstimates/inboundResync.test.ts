@@ -83,7 +83,7 @@ describe('durable bounded inbound rebuild', () => {
         await dirty(); await drainInboundBuilds();
         expect([...state.rows.keys()]).toEqual([50_000, 1]);
         expect(state.rows.get(50_000).payload.targets).toEqual([]);
-        expect(mocks.page.mock.calls[0][0].where.OR).toEqual(expect.arrayContaining([{ productionMinDays: { not: null } }, { variations: { some: { deliveryActive: true, OR: [{ productionMinDays: { not: null } }, { productionMaxDays: { not: null } }] } } }]));
+        expect(mocks.page.mock.calls[0][0].where.OR).toEqual(expect.arrayContaining([{ productionMinDays: { not: null } }, { variations: { some: { OR: [{ productionMinDays: { not: null } }, { productionMaxDays: { not: null } }] } } }]));
     });
     it('processes only dirty targets in bounded batches without scanning or revising unrelated products', async () => {
         state.products = Array.from({ length: 10_000 }, (_, n) => ({ id: `${n}`, wooId: n + 1 }));

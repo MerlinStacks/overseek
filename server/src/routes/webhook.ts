@@ -6,8 +6,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../utils/prisma';
-import { needsWooVariationListing, persistWooProduct } from '../services/persistWooProduct';
-import { WooService } from '../services/woo';
+import { persistWooProduct } from '../services/persistWooProduct';
 import { permanentlyDeleteWooProduct, trashWooProduct } from '../services/productDeletion';
 import { importOrderSnapshot } from '../services/deliveryEstimates/importOrderSnapshot';
 import { Logger } from '../utils/logger';
@@ -292,7 +291,6 @@ export async function processWebhookPayload(
     }
 
     if (topic === 'product.created' || topic === 'product.updated') {
-        const observedBefore = new Date();
         const isTrashed = (body as { status?: string }).status === 'trash';
 
         if (isTrashed) {
@@ -304,9 +302,7 @@ export async function processWebhookPayload(
         // data drift — ES shows data that the DB doesn't know about until next sync.
         let persistedProduct: any = null;
         try {
-            const rawVariations = needsWooVariationListing(body.type, body)
-                ? await (await WooService.forAccount(accountId)).getProductVariations(body.id as number, { bypassCache: true }) : undefined;
-            const observation = await persistWooProduct(body.type, {
+            persistedProduct = await persistWooProduct(body.type, {
                 where: { accountId_wooId: { accountId, wooId: body.id as number } },
                 update: {
                     name: (body.name as string) || 'Unknown',
@@ -340,12 +336,7 @@ export async function processWebhookPayload(
                     mainImage: Array.isArray(body.images) && typeof body.images[0]?.src === 'string' ? body.images[0].src : null,
                     rawData: body as any
                 }
-            }, observedBefore, rawVariations);
-            if (observation.accepted === false) {
-                Logger.warn('[Webhook] Catalogue observation deferred; no source changes applied', { accountId, productId: body.id, reason: observation.reason });
-                return;
-            }
-            persistedProduct = observation.product;
+            });
         } catch (err: any) {
             Logger.warn('[Webhook] Failed to upsert product to DB', { accountId, productId: body.id, error: err.message });
             throw err; // Let delivery retry; never index a snapshot that failed to commit.

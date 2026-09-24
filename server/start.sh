@@ -48,19 +48,36 @@ fi
 
 # Note: prisma generate is done at build time (Dockerfile), no need to repeat here
 
-# Apply versioned SQL only: db push cannot install custom migration SQL/triggers.
+# Retry loop for database migrations
 echo "[Startup] Running database migrations..."
-# Inherit stdout/stderr so the original Prisma/database error remains visible.
+MAX_RETRIES=30
+COUNT=0
+
+# Try prisma migrate deploy first (production-safe, uses migration files)
+# If this fails (e.g., no baseline exists), fall back to db push
 if npx prisma migrate deploy --config ./prisma/prisma.config.ts; then
   echo "[Startup] Migrations applied via migrate deploy."
 else
-  migration_status=$?
-  echo "[Startup] ERROR: prisma migrate deploy failed (exit ${migration_status}); application startup stopped." >&2
-  echo "[Startup] Preserve the original Prisma error above. Inspect migration status with the same image and database environment:" >&2
-  echo "[Startup]   npx prisma migrate status --config ./prisma/prisma.config.ts (from the server directory)" >&2
-  echo "[Startup] See docs/migration-startup-recovery.md before retrying; prior db push may have left migration-history drift or missing SQL triggers." >&2
-  echo "[Startup] No automatic db push, resolve, reset, or retry is performed. ALLOW_DB_PUSH_FALLBACK is no longer supported." >&2
-  exit "$migration_status"
+  if [ "${NODE_ENV}" = "production" ] && [ "${ALLOW_DB_PUSH_FALLBACK}" != "true" ]; then
+    echo "[Startup] ERROR: prisma migrate deploy failed in production."
+    echo "[Startup] Refusing to run 'prisma db push' without explicit override."
+    echo "[Startup] If this is intentional, set ALLOW_DB_PUSH_FALLBACK=true."
+    exit 1
+  fi
+
+  echo "[Startup] migrate deploy failed, using db push to sync schema..."
+  echo "[Startup] WARNING: compatibility fallback does not repair migration history or install custom SQL triggers."
+  echo "[Startup] Data-loss acceptance is disabled; preserve the migration error above for repair."
+  until npx prisma db push --config ./prisma/prisma.config.ts; do
+    COUNT=$((COUNT+1))
+    if [ $COUNT -ge $MAX_RETRIES ]; then
+      echo "[Startup] Schema sync failed after $MAX_RETRIES attempts. Exiting."
+      exit 1
+    fi
+    echo "[Startup] Schema sync failed (attempt $COUNT/$MAX_RETRIES). Retrying in 5s..."
+    sleep 5
+  done
+  echo "[Startup] Schema synced via db push."
 fi
 
 echo "[Startup] Database ready."

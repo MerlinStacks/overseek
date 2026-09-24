@@ -13,7 +13,7 @@ describe.skipIf(!hasFreshnessTestDatabase)('cost-only versus stock-derived BOM e
         await db.exec(`
             CREATE TABLE "Account" (id text PRIMARY KEY);
             CREATE TABLE "WooProduct" (id text PRIMARY KEY, "accountId" text, "wooId" int, "supplierId" text, "manageStock" boolean, "rawData" jsonb, "productionMinDays" int, "productionMaxDays" int);
-            CREATE TABLE "ProductVariation" (id text PRIMARY KEY, "productId" text, "wooId" int, "manageStock" boolean, "rawData" jsonb, "productionMinDays" int, "productionMaxDays" int, "deliveryActive" boolean DEFAULT true);
+            CREATE TABLE "ProductVariation" (id text PRIMARY KEY, "productId" text, "wooId" int, "manageStock" boolean, "rawData" jsonb, "productionMinDays" int, "productionMaxDays" int);
             CREATE TABLE "BOM" (id text PRIMARY KEY, "productId" text);
             CREATE TABLE "BOMItem" (id text PRIMARY KEY, "bomId" text, "supplierItemId" text, "childProductId" text, "childVariationId" int, "internalProductId" text, "isActive" boolean DEFAULT true);
             CREATE TABLE "Supplier" (id text PRIMARY KEY, "accountId" text, "leadTimeMin" int, "leadTimeMax" int, "leadTimeDefault" int);
@@ -53,7 +53,7 @@ describe.skipIf(!hasFreshnessTestDatabase)('cost-only versus stock-derived BOM e
                 product.boms = (await db.query(`SELECT b.id FROM "BOM" b WHERE b."productId"=$1
                     ${predicate ? `AND EXISTS (SELECT 1 FROM "BOMItem" bi WHERE bi."bomId"=b.id AND (${predicate}))` : ''} LIMIT $2`, [product.id, select.boms.take])).rows;
                 product.supplier = (await db.query('SELECT * FROM "Supplier" WHERE id=$1', [product.supplierId])).rows[0] ?? null;
-                product.variations = (await db.query('SELECT * FROM "ProductVariation" WHERE "productId"=$1 AND "deliveryActive" ORDER BY "wooId" LIMIT $2', [product.id, select.variations.take])).rows;
+                product.variations = (await db.query('SELECT * FROM "ProductVariation" WHERE "productId"=$1 ORDER BY "wooId" LIMIT $2', [product.id, select.variations.take])).rows;
                 return product;
             } },
             purchaseOrderItem: { findMany: async ({ where, take }: any) => (await db.query(`SELECT i.*, p."accountId", p.status, p."expectedDate" FROM "PurchaseOrderItem" i

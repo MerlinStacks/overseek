@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
-    db: { $transaction: vi.fn(), $queryRaw: vi.fn(), wooProduct: { findUnique: vi.fn(), update: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() },
-        productVariation: { findMany: vi.fn(), updateMany: vi.fn() }, bOMItem: { updateMany: vi.fn() } },
+    db: { $transaction: vi.fn(), wooProduct: { findUnique: vi.fn(), update: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() }, bOMItem: { updateMany: vi.fn() } },
     remove: vi.fn()
 }));
 vi.mock('../../utils/prisma', () => ({ prisma: m.db }));
@@ -18,9 +17,6 @@ describe('Woo product deletion lifecycle', () => {
         m.db.$transaction.mockImplementation(work => work(m.db));
         m.db.wooProduct.findUnique.mockResolvedValue({ id: 'uuid', wooId: 42, rawData: { type: 'variable', status: 'publish' } });
         m.db.wooProduct.deleteMany.mockResolvedValue({ count: 1 });
-        m.db.wooProduct.updateMany.mockResolvedValue({ count: 1 });
-        m.db.productVariation.updateMany.mockResolvedValue({ count: 0 });
-        m.db.productVariation.findMany.mockResolvedValue([]);
     });
 
     it('atomically deactivates and detaches incoming product AND variant references before deletion', async () => {
@@ -57,7 +53,7 @@ describe('Woo product deletion lifecycle', () => {
         m.db.wooProduct.upsert.mockImplementation(async ({ update }) => row = { ...row, ...update });
         await trashWooProduct('a', 42);
         expect(row).toMatchObject({ ...original, status: 'trash', rawData: { type: 'variable', status: 'trash' } });
-        await persistWooProduct('variable', { where: { accountId_wooId: { accountId: 'a', wooId: 42 } }, create: { accountId: 'a', wooId: 42, name: 'Restored', rawData: original.rawData }, update: { status: 'publish', rawData: original.rawData } }, new Date(), []);
+        await persistWooProduct('variable', { where: { accountId_wooId: { accountId: 'a', wooId: 42 } }, create: { accountId: 'a', wooId: 42, name: 'Restored', rawData: original.rawData }, update: { status: 'publish', rawData: original.rawData } });
         expect(row).toMatchObject({ ...original, status: 'publish' });
         expect(m.db.bOMItem.updateMany).not.toHaveBeenCalled();
         expect(m.db.wooProduct.deleteMany).not.toHaveBeenCalled();
@@ -66,8 +62,7 @@ describe('Woo product deletion lifecycle', () => {
     it('simple trash snapshots never retire variations in the persistence helper', async () => {
         await persistWooProduct('simple', { where: { accountId_wooId: { accountId: 'a', wooId: 42 } }, create: { accountId: 'a', wooId: 42, name: 'Trash', status: 'trash', rawData: {} }, update: { status: 'trash' } });
         expect(m.db.wooProduct.upsert).toHaveBeenCalledOnce();
-        expect(m.db.$transaction).toHaveBeenCalledOnce();
-        expect(m.db.bOMItem.updateMany).not.toHaveBeenCalled();
+        expect(m.db.$transaction).not.toHaveBeenCalled();
     });
 
     it.each([401, 403, 500])('does not classify status %s as authoritative deletion', status => {

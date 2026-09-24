@@ -95,15 +95,12 @@ describe('inbound full replacement safety contract', () => {
         }
     });
     it('bounds DB source reads and scopes direct PO lines to tenant-owned ORDERED orders', async () => {
-        const tx = { receiptAccount: { findUnique: vi.fn().mockResolvedValue(null) }, wooProduct: { findFirst: vi.fn().mockResolvedValue(product()) }, $queryRaw: vi.fn().mockResolvedValue([]) };
+        const tx = { receiptAccount: { findUnique: vi.fn().mockResolvedValue(null) }, wooProduct: { findFirst: vi.fn().mockResolvedValue(product()) }, purchaseOrderItem: { findMany: vi.fn().mockResolvedValue([]) } };
         await buildInbound(tx as any, 'a', 10);
         expect(tx.wooProduct.findFirst.mock.calls[0][0]).toMatchObject({ where: { accountId: 'a', wooId: 10 }, select: { variations: { take: 1001, select: { supplierId: true, supplier: { select: { accountId: true, leadTimeMin: true, leadTimeMax: true, leadTimeDefault: true } } } }, boms: { take: 1 } } });
         expect(tx.wooProduct.findFirst.mock.calls[0][0].select.boms.where.items.some.OR).toEqual([
             { childProductId: { not: null } }, { childVariationId: { not: null } }, { internalProductId: { not: null } },
         ]);
-        expect(tx.wooProduct.findFirst.mock.calls[0][0].select.variations.where).toEqual({ deliveryActive: true });
-        const [sql] = tx.$queryRaw.mock.calls[0];
-        expect(sql.text).toContain('NOT v."deliveryActive"');
-        expect(sql.values).toEqual(['p', 'a', 1001]);
+        expect(tx.purchaseOrderItem.findMany.mock.calls[0][0]).toMatchObject({ where: { productId: 'p', purchaseOrder: { accountId: 'a', status: 'ORDERED' } }, take: 1001 });
     });
 });
