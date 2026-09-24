@@ -8,10 +8,49 @@ The operator verified `DashboardWidget.sortOrder` as integer, NOT NULL, default
 Read-only catalog queries found no `delivery_*` functions and no non-internal
 triggers in `public`. `db push` had supplied the Prisma schema, not custom SQL.
 
-`server/scripts/repair_migration_history.js` is a **one-time, pinned repair** for
+`server/scripts/repair_migration_history.js` is a **pinned repair** for
 that image/schema/history, not a replacement for normal migrations. It includes
 the older pending migrations as well as delivery. Original migration files and
 successful migration records are not modified.
+
+## Automatic container-start recovery
+
+Startup now uses `server/scripts/startup_migrations.js`. Recovery is enabled by
+default in the new image; existing stack environment files need no new setting.
+
+1. Run normal `prisma migrate deploy`. Healthy and fresh installs use this path.
+2. Retry Prisma connection/timeout errors P1001, P1002, P1017 and P1008 up to
+   three times, five seconds apart. Other errors are not treated as transient.
+3. On P3009/P3018, attempt the pinned repair once per startup. It requires the
+   complete matching Prisma schema, reviewed history and valid data described
+   below. Currently the only unresolved failures it can reconcile are:
+   - `20260107000000_add_widget_sort_order`
+   - `20260115000000_add_sms_channel`
+   Both are DDL-only migrations, with file checksums checked and their complete
+   resulting schema verified. Other unresolved failures stop recovery.
+4. Preserve each failed attempt and its logs, mark it rolled back, and add the
+   verified applied record **in the same transaction as the complete repair**.
+   Any verification/backfill failure rolls back all repair changes.
+5. Rerun `migrate deploy` after commit. Start the application only after it passes
+   and the plugin installer succeeds. A second migration failure cannot trigger
+   a second repair in that startup.
+
+`MIGRATION_AUTO_REPAIR=false` disables automatic repair, but retains transient
+retries and stops on migration failure. Set it in the API container environment
+(`stack.env` for Portainer). `MIGRATION_RECOVERY_MODE=hold` still takes precedence
+and skips all migration/repair attempts for the manual incident procedure below.
+Remove an existing `hold` setting to enable normal startup recovery.
+
+The legacy `ALLOW_DB_PUSH_FALLBACK` setting no longer has any effect: startup
+never falls through to `db push`, including after rejected recovery. No migration
+files, customer volumes or successful migration records are reset. This does not
+guarantee recovery from arbitrary failures or reverse changes already committed
+by a previously failed migration. Repairs for newer image schemas/history require
+a separately reviewed specification; a pin mismatch stops recovery.
+
+Repair takes exclusive table locks and can pause traffic from other running
+instances. Automatic recovery retains the same timeouts, delivery-display gate,
+data preservation rules and transactional backfills as the manual procedure.
 
 ## Deploy through Portainer without replaying the backlog first
 
@@ -49,7 +88,8 @@ successful migration records are not modified.
 6. Remove `MIGRATION_RECOVERY_MODE=hold` and the legacy
    `ALLOW_DB_PUSH_FALLBACK=true` override, then redeploy. Normal startup should say
    `No pending migrations to apply` and `Migrations applied via migrate deploy`.
-   The tool is not invoked automatically on later startups.
+   Healthy later startups do not invoke repair. Automatic recovery is considered
+   only if deployment fails with P3009/P3018.
 7. Recheck delivery readiness. Missing-variation/product rejections are a separate
    catalogue problem; this repair does not claim to fix them or enable storefront
    activation. It does not reconstruct past source-change events that occurred
@@ -63,8 +103,10 @@ the backlog. Hold is for this existing-schema incident, not for fresh installs.
 
 - Pins SHA-256 of the complete 60-file history and current Prisma schema. Different
   source images are rejected; the repair cannot silently absorb later migrations.
-- Requires all pre-backlog migrations applied, no unresolved failed history,
-  known names, and matching checksums on successful records.
+- Requires all pre-backlog migrations applied, known names, and matching
+  checksums on successful records. Manual repair rejects all unresolved failed
+  history; automatic repair admits only the two reviewed failures above and
+  allows the verified failed widget migration as the sole pre-backlog exception.
 - Generates an empty reference schema from the pinned Prisma model. Compares
   actual column types, defaults, nullability, enum values, indexes and PK/FK
   definitions. Merely having a column or table with the same name is insufficient.
@@ -93,6 +135,13 @@ the backlog. Hold is for this existing-schema incident, not for fresh installs.
 
 ## Tests
 
+Run the standalone checks with:
+
+```sh
+node --test server/scripts/tests/migration-repair.test.js server/scripts/tests/startup-rollback.test.js server/scripts/tests/startup-migrations.test.js
+sh -n server/start.sh
+```
+
 Native regression: `server/scripts/tests/migration-repair.native.test.js` uses an
 explicit `MIGRATION_REPAIR_TEST_DATABASE_URL` pointing to a disposable database
 whose name begins `migration_repair_test_`. Never point it at production; it
@@ -104,8 +153,10 @@ trigger behaviour, preserved stock/synced inputs, repeat repair, disabled-trigge
 rejection, normal Prisma deployment and scratch-schema cleanup.
 
 Validated locally on PostgreSQL **17.1** (matching the production major/minor
-shown in Portainer): **12 native checks passed**, including a parent-stock-owned
-receipt and an existing inbound input. **11 SQL/startup checks passed** separately.
+shown in Portainer). The automatic-recovery regression includes rejected unknown
+failures/checksums, failed-widget rollback, preserved failed-attempt logs, and the
+real startup runner recovering from Prisma P3009 then passing migrate deploy.
+There are **13 native subtests** plus their parent test, and **19 SQL/startup checks**.
 The disposable database was dropped and its PostgreSQL server stopped. An earlier
 basic repair/repeatability run also passed on PostgreSQL 18.4. No production
 database was accessed during development.

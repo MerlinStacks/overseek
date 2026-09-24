@@ -44,6 +44,30 @@ test('db-push history repair is atomic, verified, preserves data and is repeatab
             await assert.rejects(run(false), /Columns\/defaults\/nullability differs/);
             await db.query('ALTER TABLE "DashboardWidget" ALTER COLUMN "sortOrder" SET DEFAULT 0');
         });
+        await t.test('automatic repair rejects unreviewed failures and changed checksums', async () => {
+            for (const name of ['20260115000000_add_sms_channel', '20260116193056_add_sync_log_retry']) {
+                const m = migrations.find(m => m.name === name);
+                await db.query('INSERT INTO "_prisma_migrations" (id,checksum,migration_name) VALUES ($1,$2,$3)',
+                    ['auto-failed', name.includes('sms_channel') ? '0'.repeat(64) : m.hash, m.name]);
+                await assert.rejects(repair(db, { baseline, apply: true, automatic: true, log: () => {} }), /Unresolved failed migration/);
+                assert.equal((await db.query('SELECT rolled_back_at FROM "_prisma_migrations" WHERE id=\'auto-failed\'')).rows[0].rolled_back_at, null);
+                await db.query('DELETE FROM "_prisma_migrations" WHERE id=\'auto-failed\'');
+            }
+        });
+        await t.test('automatic failed-widget repair rolls back history on schema mismatch and late backfill failure', async () => {
+            await db.query('UPDATE "_prisma_migrations" SET finished_at=NULL,logs=\'original failure\' WHERE migration_name=\'20260107000000_add_widget_sort_order\'');
+            await db.query('ALTER TABLE "DashboardWidget" ALTER COLUMN "sortOrder" SET DEFAULT 99');
+            await assert.rejects(repair(db, { baseline, apply: true, automatic: true, log: () => {} }), /Columns\/defaults\/nullability differs/);
+            await db.query('ALTER TABLE "DashboardWidget" ALTER COLUMN "sortOrder" SET DEFAULT 0');
+            await db.query(`INSERT INTO "WooOrder" (id,"accountId","wooId",number,status,currency,total,"rawData","dateCreated","dateModified","updatedAt")
+                VALUES ('auto-bad','a',998,'998','pending','AUD',0,'{"date_created_gmt":"private-invalid-value"}',now(),now(),now())`);
+            await assert.rejects(repair(db, { baseline, apply: true, automatic: true, log: () => {} }), /22007/);
+            const row = (await db.query('SELECT finished_at,rolled_back_at,logs FROM "_prisma_migrations" WHERE migration_name=\'20260107000000_add_widget_sort_order\'')).rows[0];
+            assert.deepEqual(row, { finished_at: null, rolled_back_at: null, logs: 'original failure' });
+            assert.equal((await db.query('SELECT count(*)::int AS n FROM "_prisma_migrations"')).rows[0].n, 19);
+            await db.query('DELETE FROM "WooOrder" WHERE id=\'auto-bad\'');
+            await db.query('UPDATE "_prisma_migrations" SET finished_at=now() WHERE migration_name=\'20260107000000_add_widget_sort_order\'');
+        });
         await t.test('invalid data rolls back checks and history', async () => {
             await db.query('UPDATE "WooProduct" SET "productionMinDays"=10,"productionMaxDays"=2');
             await assert.rejects(run(true), /23514/);
@@ -75,9 +99,24 @@ test('db-push history repair is atomic, verified, preserves data and is repeatab
             assert.equal((await db.query('SELECT count(*)::int AS n FROM "_prisma_migrations"')).rows[0].n, 19);
         });
         await t.test('apply installs final SQL and records the complete history', async () => {
-            const result = await run(true);
-            assert.equal(result.pending, 41);
-            assert.equal((await db.query('SELECT count(*)::int AS n FROM "_prisma_migrations"')).rows[0].n, 60);
+            await db.query('UPDATE "_prisma_migrations" SET finished_at=NULL WHERE migration_name=\'20260107000000_add_widget_sort_order\'');
+            const sms = migrations.find(m => m.name === '20260115000000_add_sms_channel');
+            await db.query('INSERT INTO "_prisma_migrations" (id,checksum,migration_name,logs) VALUES ($1,$2,$3,$4)', ['failed-sms', sms.hash, sms.name, 'original SMS failure']);
+            // Run the real startup runner: Prisma P3009 -> automatic repair ->
+            // real migrate deploy verification, using only this disposable DB.
+            const result = spawnSync(process.execPath, ['scripts/startup_migrations.js'], {
+                cwd: path.resolve(__dirname, '../..'),
+                env: { ...process.env, DATABASE_URL: url, MIGRATION_AUTO_REPAIR: 'true' },
+                encoding: 'utf8', timeout: 60000,
+            });
+            assert.equal(result.status, 0, result.stderr);
+            assert.match(result.stderr, /P3009/);
+            assert.match(result.stdout, /COMMITTED: 42 migrations/);
+            assert.match(result.stdout, /No pending migrations/);
+            assert.equal((await db.query('SELECT count(*)::int AS n FROM "_prisma_migrations"')).rows[0].n, 62);
+            const attempts = (await db.query('SELECT logs,rolled_back_at FROM "_prisma_migrations" WHERE finished_at IS NULL')).rows;
+            assert.equal(attempts.length, 2);
+            assert.ok(attempts.every(row => row.rolled_back_at && row.logs.startsWith('original')));
             const product = (await db.query('SELECT status,"stockQuantity" FROM "WooProduct" WHERE id=\'p\'')).rows[0];
             assert.deepEqual(product, { status: 'private', stockQuantity: 17 });
             const input = (await db.query('SELECT status,"desiredRevision"::text,"ackRevision"::text FROM "DeliveryInputSync" WHERE id=\'s\'')).rows[0];

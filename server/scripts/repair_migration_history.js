@@ -15,6 +15,12 @@ const ROOT = path.resolve(__dirname, '..');
 const HISTORY_HASH = 'c60d2867666e1fc3b592eb4be29de5a951abdb22690218a8427702c37fe31377';
 const SCHEMA_HASH = 'bd576b4a0c8416ffed0a54aebda8cae72e854b73eaa4751581eb9435d829c9e5';
 const FIRST = '20260107060000_add_cascade_delete_to_account_relations';
+// Reviewed DDL-only failures. Full pinned-schema verification is still required;
+// never infer completion from an error message or object name alone.
+const AUTOMATIC_FAILURES = new Set([
+    '20260107000000_add_widget_sort_order',
+    '20260115000000_add_sms_channel',
+]);
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
 function loadMigrations() {
@@ -61,7 +67,9 @@ function assertSame(label, expected, actual, extras = false) {
     if (errors.length) throw new Error(`${label} differs: ${errors.slice(0, 15).join(', ')}. Repair stopped; do not mark migrations applied.`);
 }
 
-async function repair(db, { apply = false, baseline, migrations = loadMigrations(), log = console.log } = {}) {
+async function repair(db, { apply = false, baseline, migrations = loadMigrations(), log = console.log, automatic = false } = {}) {
+    // Automatic callers cannot bypass the reviewed image pins via injected input.
+    if (automatic) migrations = loadMigrations();
     const reference = 'migration_repair_' + crypto.randomBytes(8).toString('hex');
     let stage = 'preflight';
     await db.query('BEGIN');
@@ -73,18 +81,24 @@ async function repair(db, { apply = false, baseline, migrations = loadMigrations
         const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
         if (!tables.some(row => row.tablename === '_prisma_migrations')) throw new Error('Migration history is missing; this repair is not a fresh-install baseline.');
         await db.query(`LOCK TABLE ${tables.map(row => `public.${ident(row.tablename)}`).join(',')} IN ACCESS EXCLUSIVE MODE`);
-        const history = (await db.query('SELECT migration_name,checksum,finished_at,rolled_back_at FROM "_prisma_migrations"')).rows;
+        const history = (await db.query('SELECT id,migration_name,checksum,finished_at,rolled_back_at FROM "_prisma_migrations"')).rows;
         const known = new Map(migrations.map(m => [m.name, m]));
         for (const row of history) {
             if (!known.has(row.migration_name)) throw new Error(`Unknown migration history: ${row.migration_name}`);
-            if (!row.finished_at && !row.rolled_back_at) throw new Error(`Unresolved failed migration: ${row.migration_name}`);
+            if (!row.finished_at && !row.rolled_back_at &&
+                (!automatic || !AUTOMATIC_FAILURES.has(row.migration_name) || row.checksum !== known.get(row.migration_name).hash)) {
+                throw new Error(`Unresolved failed migration: ${row.migration_name}`);
+            }
             if (row.finished_at && !row.rolled_back_at && row.checksum !== known.get(row.migration_name).hash) {
                 throw new Error(`Applied migration checksum mismatch: ${row.migration_name}`);
             }
         }
         const applied = new Set(history.filter(row => row.finished_at && !row.rolled_back_at).map(row => row.migration_name));
         const pending = migrations.filter(m => !applied.has(m.name));
-        if (pending.some(m => m.name < FIRST)) throw new Error('Pre-January baseline is incomplete. This repair only handles the verified post-widget backlog.');
+        if (pending.some(m => m.name < FIRST && !(automatic && AUTOMATIC_FAILURES.has(m.name) &&
+            history.some(row => row.migration_name === m.name && !row.finished_at && !row.rolled_back_at)))) {
+            throw new Error('Pre-January baseline is incomplete. This repair only handles the verified post-widget backlog.');
+        }
         log(`[Repair] ${pending.length} pending migrations; mode=${apply ? 'apply' : 'rehearsal (ROLLBACK)'}.`);
 
         stage = 'reference schema';
@@ -147,6 +161,11 @@ async function repair(db, { apply = false, baseline, migrations = loadMigrations
         for (const kind of Object.keys(expected)) assertSame(`Final ${kind}`, expected[kind], final[kind]);
         // Commit migration history atomically with the verified repair. This is
         // equivalent to migrate resolve --applied, but cannot leave half a repair.
+        for (const row of history.filter(row => !row.finished_at && !row.rolled_back_at)) {
+            // Preserve the failed attempt and its logs. This and the replacement
+            // applied record roll back together if any later statement fails.
+            await db.query('UPDATE "_prisma_migrations" SET rolled_back_at=now() WHERE id=$1', [row.id]);
+        }
         for (const migration of pending) {
             await db.query(`INSERT INTO "_prisma_migrations"
                 (id,checksum,migration_name,started_at,finished_at,applied_steps_count,logs)
@@ -178,5 +197,16 @@ async function main() {
     try { await repair(db, { apply: args[0] === '--apply', baseline, migrations }); }
     finally { await db.end(); }
 }
+async function automaticRepair() {
+    loadMigrations();
+    const url = connectionUrl();
+    const schema = new URL(url).searchParams.get('schema');
+    if (schema && schema !== 'public') throw new Error('Repair supports public schema only.');
+    const baseline = baselineSql(url);
+    const db = new Client({ connectionString: url, application_name: 'overseek-startup-repair', connectionTimeoutMillis: 10000 });
+    await db.connect();
+    try { return await repair(db, { apply: true, automatic: true, baseline }); }
+    finally { await db.end(); }
+}
 if (require.main === module) main().catch(error => { console.error(`[Repair] ${error.message}`); process.exitCode = 1; });
-module.exports = { repair, loadMigrations, baselineSql, connectionUrl };
+module.exports = { repair, loadMigrations, baselineSql, connectionUrl, automaticRepair };

@@ -48,7 +48,7 @@ fi
 
 # Note: prisma generate is done at build time (Dockerfile), no need to repeat here
 
-# Retry loop for database migrations
+# Explicit incident hold takes precedence over automatic migration recovery.
 case "${MIGRATION_RECOVERY_MODE:-}" in
   ""|hold) ;;
   *) echo "[Startup] Invalid MIGRATION_RECOVERY_MODE (expected hold or unset)." >&2; exit 1 ;;
@@ -60,35 +60,7 @@ if [ "${MIGRATION_RECOVERY_MODE:-}" = "hold" ]; then
   echo "[Startup] Run scripts/repair_migration_history.js in the API console; remove hold after verified repair."
 else
 echo "[Startup] Running database migrations..."
-MAX_RETRIES=30
-COUNT=0
-
-# Try prisma migrate deploy first (production-safe, uses migration files)
-# If this fails (e.g., no baseline exists), fall back to db push
-if npx prisma migrate deploy --config ./prisma/prisma.config.ts; then
-  echo "[Startup] Migrations applied via migrate deploy."
-else
-  if [ "${NODE_ENV}" = "production" ] && [ "${ALLOW_DB_PUSH_FALLBACK}" != "true" ]; then
-    echo "[Startup] ERROR: prisma migrate deploy failed in production."
-    echo "[Startup] Refusing to run 'prisma db push' without explicit override."
-    echo "[Startup] If this is intentional, set ALLOW_DB_PUSH_FALLBACK=true."
-    exit 1
-  fi
-
-  echo "[Startup] migrate deploy failed, using db push to sync schema..."
-  echo "[Startup] WARNING: compatibility fallback does not repair migration history or install custom SQL triggers."
-  echo "[Startup] Data-loss acceptance is disabled; preserve the migration error above for repair."
-  until npx prisma db push --config ./prisma/prisma.config.ts; do
-    COUNT=$((COUNT+1))
-    if [ $COUNT -ge $MAX_RETRIES ]; then
-      echo "[Startup] Schema sync failed after $MAX_RETRIES attempts. Exiting."
-      exit 1
-    fi
-    echo "[Startup] Schema sync failed (attempt $COUNT/$MAX_RETRIES). Retrying in 5s..."
-    sleep 5
-  done
-  echo "[Startup] Schema synced via db push."
-fi
+node "$(dirname "$0")/scripts/startup_migrations.js"
 fi
 
 echo "[Startup] Database ready."

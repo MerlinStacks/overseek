@@ -121,6 +121,7 @@ COPY server/uploads/plugins/overseek-wc-plugin.zip /opt/overseek/plugin-download
 COPY server/uploads/plugins/overseek-wc-plugin.manifest.json /opt/overseek/plugin-download/overseek-wc-plugin.manifest.json
 COPY server/scripts/install_plugin_download.js ./server/scripts/install_plugin_download.js
 COPY server/scripts/repair_migration_history.js ./server/scripts/repair_migration_history.js
+COPY server/scripts/startup_migrations.js ./server/scripts/startup_migrations.js
 COPY server/scripts/migration-repair ./server/scripts/migration-repair
 ENV OVERSEEK_REQUIRE_PLUGIN_DOWNLOAD=1
 
