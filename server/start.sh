@@ -49,6 +49,16 @@ fi
 # Note: prisma generate is done at build time (Dockerfile), no need to repeat here
 
 # Retry loop for database migrations
+case "${MIGRATION_RECOVERY_MODE:-}" in
+  ""|hold) ;;
+  *) echo "[Startup] Invalid MIGRATION_RECOVERY_MODE (expected hold or unset)." >&2; exit 1 ;;
+esac
+if [ "${MIGRATION_RECOVERY_MODE:-}" = "hold" ]; then
+  # Explicit incident recovery: deploy the diagnostic/repair tool without first
+  # attempting the known db-push-conflicted migration backlog. No schema writes.
+  echo "[Startup] RECOVERY HOLD: skipping migrate deploy and db push. Existing schema only."
+  echo "[Startup] Run scripts/repair_migration_history.js in the API console; remove hold after verified repair."
+else
 echo "[Startup] Running database migrations..."
 MAX_RETRIES=30
 COUNT=0
@@ -78,6 +88,7 @@ else
     sleep 5
   done
   echo "[Startup] Schema synced via db push."
+fi
 fi
 
 echo "[Startup] Database ready."

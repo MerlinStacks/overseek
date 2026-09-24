@@ -66,6 +66,19 @@ test('successful migrations install the plugin before normal application startup
     assert.deepEqual(result.commands, [migrate, installer, 'npm start']);
 });
 
+test('explicit recovery hold starts existing schema without running pending migrations or db push', () => {
+    const result = runStartup({ MIGRATION_RECOVERY_MODE: 'hold', MIGRATE_STATUS: '1' });
+    assert.equal(result.status, 0);
+    assert.deepEqual(result.commands, [installer, 'npm start']);
+    assert.match(result.stdout, /RECOVERY HOLD/);
+});
+
+test('invalid recovery mode cannot silently bypass migrations', () => {
+    const result = runStartup({ MIGRATION_RECOVERY_MODE: 'typo' });
+    assert.equal(result.status, 1);
+    assert.deepEqual(result.commands, ['']);
+});
+
 test('production migration failure without an override exits before fallback or app', () => {
     const result = runStartup({ MIGRATE_STATUS: '1' });
     assert.equal(result.status, 1);
