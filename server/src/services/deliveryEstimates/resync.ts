@@ -66,7 +66,7 @@ export async function buildDeliveryResyncBatch(accountId: string, scanned?: { re
         if (control.resyncPhase === 'products') {
             const products = await tx.wooProduct.findMany({
                 where: { accountId, ...(cursor ? { id: { gt: cursor } } : {}), OR: [
-                    { productionMinDays: { not: null } }, { variations: { some: { productionMinDays: { not: null } } } },
+                    { productionMinDays: { not: null } }, { variations: { some: { deliveryActive: true, productionMinDays: { not: null } } } },
                 ] }, select: { id: true, wooId: true }, orderBy: { id: 'asc' }, take: RESYNC_BATCH_SIZE,
             });
             for (const product of products) {

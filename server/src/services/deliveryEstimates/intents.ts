@@ -73,7 +73,7 @@ export async function recoverStrandedInbound(tx: Prisma.TransactionClient, accou
 
 export const configuredInboundProducts: Prisma.WooProductWhereInput = { OR: [
     { productionMinDays: { not: null } }, { productionMaxDays: { not: null } },
-    { variations: { some: { OR: [{ productionMinDays: { not: null } }, { productionMaxDays: { not: null } }] } } },
+    { variations: { some: { deliveryActive: true, OR: [{ productionMinDays: { not: null } }, { productionMaxDays: { not: null } }] } } },
 ] };
 
 /** Caller holds Account before source writes. Only explicit identities are read, in
@@ -87,7 +87,10 @@ export async function dirtyInboundProducts(tx: Prisma.TransactionClient, account
         const chunk = ids.slice(offset, offset + 100);
         const [configured, existing] = await Promise.all([
             tx.wooProduct.findMany({ where: { accountId, wooId: { in: chunk }, ...configuredInboundProducts }, select: { wooId: true } }),
-            tx.deliveryInputSync.findMany({ where: { accountId, scope: 'inbound', entityId: { in: chunk } }, select: { entityId: true } }),
+            // Removing the final configured variation can leave only a product
+            // outbox. The targeted builder replaces BOTH projections, so retain
+            // that identity even before its first inbound snapshot exists.
+            tx.deliveryInputSync.findMany({ where: { accountId, scope: { in: ['product', 'inbound'] }, entityId: { in: chunk } }, select: { entityId: true } }),
         ]);
         for (const wooId of new Set([...configured.map(p => p.wooId), ...existing.map(row => row.entityId)])) {
             await tx.deliveryInboundDirtyTarget.upsert({ where: { accountId_wooId: { accountId, wooId } },

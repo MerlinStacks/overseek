@@ -37,7 +37,7 @@ describe('low-load durable inbound targets', () => {
         await dirtyInboundProducts(tx as any, 'a', [10, 10, 20]);
         expect(targets.size).toBe(0); expect(tx.deliverySyncAccount.upsert).not.toHaveBeenCalled();
         expect(tx.wooProduct.findMany).toHaveBeenCalledWith({ where: { accountId: 'a', wooId: { in: [10, 20] }, ...configuredInboundProducts }, select: { wooId: true } });
-        expect(tx.deliveryInputSync.findMany).toHaveBeenCalledWith({ where: { accountId: 'a', scope: 'inbound', entityId: { in: [10, 20] } }, select: { entityId: true } });
+        expect(tx.deliveryInputSync.findMany).toHaveBeenCalledWith({ where: { accountId: 'a', scope: { in: ['product', 'inbound'] }, entityId: { in: [10, 20] } }, select: { entityId: true } });
     });
     it('coalesces configured parents/variation overrides and preserves existing clears without clearing suppression', async () => {
         const { tx, targets } = adapter();
@@ -47,7 +47,15 @@ describe('low-load durable inbound targets', () => {
         await dirtyInboundProducts(tx as any, 'a', [10, 20, 30]);
         expect([...targets]).toEqual([[10, 2], [20, 2], [30, 2]]);
         expect(tx.deliverySyncAccount.upsert.mock.calls[0][0]).toEqual({ where: { accountId: 'a' }, create: { accountId: 'a', inboundRequested: true }, update: { inboundRequested: true, inboundVersion: { increment: 1 } } });
-        expect(configuredInboundProducts.OR).toContainEqual({ variations: { some: { OR: [{ productionMinDays: { not: null } }, { productionMaxDays: { not: null } }] } } });
+        expect(configuredInboundProducts.OR).toContainEqual({ variations: { some: { deliveryActive: true, OR: [{ productionMinDays: { not: null } }, { productionMaxDays: { not: null } }] } } });
+    });
+    it('queues a product-only outbox after the last configured variation is removed', async () => {
+        const { tx, targets } = adapter();
+        tx.deliveryInputSync.findMany.mockImplementation(async ({ where }: any) =>
+            where.accountId === 'a' && where.scope.in.includes('product') ? [{ entityId: 10 }] : []);
+        await dirtyInboundProducts(tx as any, 'a', [10]);
+        expect([...targets]).toEqual([[10, 1]]);
+        expect(tx.deliverySyncAccount.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: 'a' } }));
     });
     it('resolves old/new direct IDs inside the tenant and bounds each lookup to 100 identities', async () => {
         const { tx, targets } = adapter();

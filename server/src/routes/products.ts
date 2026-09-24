@@ -6,8 +6,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { ProductsService, ProductValidationError } from '../services/products';
 import { requireAuthFastify } from '../middleware/auth';
 import { WooService } from '../services/woo';
-import { persistWooProduct } from '../services/persistWooProduct';
-import { isWooProductNotFound, permanentlyDeleteWooProduct, trashWooProduct } from '../services/productDeletion';
+import { needsWooVariationListing, persistWooProduct } from '../services/persistWooProduct';
+import { isWooProductNotFound, trashWooProduct } from '../services/productDeletion';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { parseWooDate } from '../utils/wooDates';
@@ -22,6 +22,7 @@ import { AuditService } from '../services/AuditService';
 import { cacheAside, CacheTTL, invalidateCache } from '../utils/cache';
 import { validateProductDescriptionHtml } from '../utils/productDescriptionHtml';
 import { reconcileWholesaleProductsBestEffort } from '../services/wholesale/reconciliation';
+import { WooProductSchema } from '../services/sync/wooSchemas';
 
 const searchQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
@@ -389,6 +390,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /:id/sync - Force sync from Woo
     fastify.post<{ Params: { id: string } }>('/:id/sync', async (request, reply) => {
         try {
+            const observedBefore = new Date();
             const accountId = request.accountId!;
             const { id: wooId } = productIdParamSchema.parse(request.params);
 
@@ -398,31 +400,30 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                 p = await woo.getProduct(wooId, { bypassCache: true });
             } catch (error) {
                 if (!isWooProductNotFound(error)) throw error;
-                await permanentlyDeleteWooProduct(accountId, wooId);
-                return reply.code(404).send({ error: 'Product permanently deleted or not found in WooCommerce; local product reconciled' });
+                Logger.warn('Confirmed missing Woo product retained: catalogue retirement required', {
+                    accountId, productId: wooId, code: 'woocommerce_rest_product_invalid_id',
+                });
+                return reply.code(404).send({ error: 'Product not found in WooCommerce; local history preserved pending catalogue retirement' });
             }
 
             if (!p) return reply.code(404).send({ error: 'Product not found in WooCommerce' });
+            if (p.id !== wooId) throw new Error('Woo product response identity mismatch');
             if (p.status === 'trash') {
                 await trashWooProduct(accountId, wooId);
                 return reply.code(404).send({ error: 'Product is in WooCommerce trash; local data preserved' });
             }
 
-            // For variable products (including ATUM's custom types), fetch full variation data
-            // Check for variations existence, not just type name, to support plugins like ATUM Product Levels
-            let variationsData: any[] = [];
-            const hasVariations = p.variations?.length > 0 || p.type?.includes('variable');
-            if (p.type !== 'simple' && hasVariations && p.variations?.length > 0) {
-                variationsData = await woo.getProductVariations(wooId);
-                Logger.info(`Fetched ${variationsData.length} variations for product ${wooId} (type: ${p.type})`);
-            }
+            // All HTTP and validation precede the single per-parent transaction.
+            p = WooProductSchema.parse(p);
+            const rawVariations = needsWooVariationListing(p.type, p)
+                ? await woo.getProductVariations(wooId, { bypassCache: true }) : undefined;
 
             // No longer embed variationsData on parent rawData — all variation
             // data is read from the ProductVariation table. The variationsData
-            // array is still fetched above for upserting ProductVariation rows below.
+            // array is persisted with the parent, inside the same fenced transaction.
             const rawDataClean = { ...p };
 
-            const upsertedProduct = await persistWooProduct(p.type, {
+            const observation = await persistWooProduct(p.type, {
                 where: { accountId_wooId: { accountId, wooId: p.id } },
                 update: {
                     name: p.name,
@@ -464,50 +465,12 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
                     images: p.images || [],
                     rawData: rawDataClean as any
                 }
-            });
-
-            // Upsert variations so manageStock / stockQuantity are persisted
-            if (upsertedProduct && variationsData.length > 0) {
-                for (const v of variationsData) {
-                    await prisma.productVariation.upsert({
-                        where: {
-                            productId_wooId: {
-                                productId: upsertedProduct.id,
-                                wooId: v.id
-                            }
-                        },
-                        update: {
-                            sku: v.sku || null,
-                            price: v.price === '' ? null : v.price,
-                            salePrice: v.sale_price === '' ? null : v.sale_price,
-                            stockQuantity: v.stock_quantity ?? null,
-                            stockStatus: v.stock_status || 'instock',
-                            manageStock: v.manage_stock ?? false,
-                            weight: v.weight ? parseFloat(v.weight) : null,
-                            length: v.dimensions?.length ? parseFloat(v.dimensions.length) : null,
-                            width: v.dimensions?.width ? parseFloat(v.dimensions.width) : null,
-                            height: v.dimensions?.height ? parseFloat(v.dimensions.height) : null,
-                            rawData: v as any
-                        },
-                        create: {
-                            productId: upsertedProduct.id,
-                            wooId: v.id,
-                            sku: v.sku || null,
-                            price: v.price === '' ? null : v.price,
-                            salePrice: v.sale_price === '' ? null : v.sale_price,
-                            stockQuantity: v.stock_quantity ?? null,
-                            stockStatus: v.stock_status || 'instock',
-                            manageStock: v.manage_stock ?? false,
-                            weight: v.weight ? parseFloat(v.weight) : null,
-                            length: v.dimensions?.length ? parseFloat(v.dimensions.length) : null,
-                            width: v.dimensions?.width ? parseFloat(v.dimensions.width) : null,
-                            height: v.dimensions?.height ? parseFloat(v.dimensions.height) : null,
-                            rawData: v as any
-                        }
-                    });
-                }
-                Logger.info(`Synced ${variationsData.length} variations for product ${wooId}`);
+            }, observedBefore, rawVariations);
+            if (observation.accepted === false) {
+                if (observation.reason === 'stale') return reply.code(409).send({ error: 'Catalogue observation superseded; no source changes applied' });
+                throw new Error(`Catalogue observation rejected (${observation.reason}); no source changes applied`);
             }
+            const upsertedProduct = observation.product;
 
             if (upsertedProduct) {
                 const currentSeoData = (upsertedProduct.seoData as any) || {};

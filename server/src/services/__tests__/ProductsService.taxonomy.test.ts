@@ -19,7 +19,7 @@ describe('ProductsService taxonomy assignments', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         stored = { id: 'p', manageStock: true, stockQuantity: 17, rawData: { categories: oldCategories, tags: oldTags, custom: 'preserved' } };
-        vi.mocked(prisma.wooProduct.findUnique).mockImplementation(async () => stored);
+        vi.mocked(prisma.wooProduct.findUnique).mockImplementation((async () => stored) as any);
         vi.mocked(prisma.wooProduct.update).mockImplementation((async ({ data }: any) => {
             stored = { ...stored, ...structuredClone(data) };
             return stored;

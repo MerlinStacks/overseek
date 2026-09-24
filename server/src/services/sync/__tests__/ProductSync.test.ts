@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProductSync } from '../ProductSync';
 import { IndexingService } from '../../search/IndexingService';
 import { Logger } from '../../../utils/logger';
+import { EventBus } from '../../events';
 
 // Mock dependencies
 const mockPrisma = vi.hoisted(() => ({
@@ -17,8 +18,11 @@ const mockPrisma = vi.hoisted(() => ({
         delete: vi.fn(),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
         update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     productVariation: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         upsert: vi.fn().mockResolvedValue({}),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
@@ -32,6 +36,8 @@ vi.mock('../../../utils/prisma', () => ({
     prisma: mockPrisma
 }));
 vi.mock('../../../utils/cache', () => ({ invalidateCache: vi.fn() }));
+vi.mock('../../deliveryEstimates/intents', () => ({ lockDeliveryAccount: vi.fn(), dirtyInboundProducts: vi.fn() }));
+vi.mock('../../wholesale/reconciliation', () => ({ reconcileWholesaleProductsBestEffort: vi.fn() }));
 
 vi.mock('../../woo', () => ({
     WooService: vi.fn()
@@ -89,8 +95,12 @@ describe('ProductSync Reconciliation Performance', () => {
         vi.clearAllMocks();
         productSync = new ProductSync();
         mockPrisma.$transaction.mockImplementation(async work => work(mockPrisma));
-        mockPrisma.wooProduct.count.mockResolvedValue(0);
-        mockPrisma.wooProduct.findUnique.mockResolvedValue({ id: 'stale', wooId: 100, rawData: {} });
+        mockPrisma.wooProduct.count.mockReset().mockResolvedValue(0);
+        mockPrisma.wooProduct.upsert.mockReset().mockResolvedValue({ id: 'p', wooId: 10 });
+        mockPrisma.wooProduct.findMany.mockReset().mockResolvedValue([]);
+        mockPrisma.wooProduct.findUnique.mockReset().mockResolvedValue({ id: 'stale', wooId: 100, rawData: {} });
+        mockPrisma.productVariation.findMany.mockReset().mockResolvedValue([]);
+        mockPrisma.bOMItem.updateMany.mockResolvedValue({ count: 0 });
     });
 
     it.each([true, false])('promptly cleans explicit simple products (incremental=%s)', async incremental => {
@@ -104,14 +114,10 @@ describe('ProductSync Reconciliation Performance', () => {
         mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'p', wooId: 10 }]);
         mockPrisma.wooProduct.count.mockResolvedValue(0);
         await (productSync as any).sync(woo, accountId, incremental);
-        expect(mockPrisma.productVariation.deleteMany).toHaveBeenCalledExactlyOnceWith({ where: { productId: 'p' } });
-        expect(mockPrisma.bOMItem.updateMany).toHaveBeenNthCalledWith(2, {
-            where: { bom: { productId: 'p', variationId: { not: 0 } } },
-            data: { isActive: false, deactivatedReason: 'VARIATION_DELETED_IN_WOO' }
-        });
+        expect(mockPrisma.productVariation.updateMany).toHaveBeenCalledWith({ where: { productId: 'p', product: { accountId }, wooId: { notIn: [] }, deliveryActive: true }, data: { deliveryActive: false } });
         expect(mockPrisma.bOM.deleteMany).not.toHaveBeenCalled();
         expect(woo.getProductVariations).not.toHaveBeenCalled();
-        expect(mockPrisma.productVariation.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(IndexingService.bulkIndexProducts).mock.invocationCallOrder[0]);
+        expect(mockPrisma.productVariation.findMany.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(IndexingService.bulkIndexProducts).mock.invocationCallOrder[0]);
     });
 
     it('does not delete variations for a missing type even in full reconciliation', async () => {
@@ -123,24 +129,17 @@ describe('ProductSync Reconciliation Performance', () => {
         expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
     });
 
-    it.each(['variations', 'recipes'])('fails the sync checkpoint and skips indexing when simple %s cleanup fails', async stage => {
+    it('fails the sync checkpoint when simple cleanup fails', async () => {
         vi.spyOn(productSync as any, 'getLastSync').mockResolvedValue(undefined);
         const woo = { getProducts: vi.fn().mockResolvedValueOnce({ data: [{ id: 10, name: 'Simple', type: 'simple' }], totalPages: 1 })
             .mockResolvedValue({ data: [], totalPages: 1 }) };
         mockPrisma.wooProduct.upsert.mockResolvedValue({ id: 'p', wooId: 10 });
         mockPrisma.wooProduct.findMany.mockResolvedValue([]);
-        if (stage === 'recipes') {
-            mockPrisma.bOMItem.updateMany.mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce(new Error('cleanup failed'));
-        } else {
-            mockPrisma.productVariation.deleteMany.mockRejectedValueOnce(new Error('cleanup failed'));
-        }
+        mockPrisma.productVariation.findMany.mockRejectedValueOnce(new Error('cleanup failed'));
         await expect((productSync as any).sync(woo, accountId, true)).rejects.toThrow('checkpoint was not advanced');
         expect(IndexingService.bulkIndexProducts).toHaveBeenCalledWith(accountId, []);
-        expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(expect.any(String), accountId, [10]);
-        if (stage === 'recipes') {
-            expect(mockPrisma.bOMItem.updateMany).toHaveBeenCalledTimes(2);
-            expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
-        }
+        expect(mockPrisma.$executeRawUnsafe).not.toHaveBeenCalled();
+        expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
     });
 
     it('persists parent-managed Woo variations without coercing the owner marker to Boolean true', async () => {
@@ -181,13 +180,13 @@ describe('ProductSync Reconciliation Performance', () => {
         }
     });
 
-    it('confirms missing products before transactional reconciliation', async () => {
+    it('confirms missing products but retains history until safe retirement is supported', async () => {
         // Setup mock WooService to return one product (so reconciliation triggers, but it's different from local ones)
         const mockWooService = {
             getProduct: vi.fn().mockRejectedValue({ response: { status: 404, data: { code: 'woocommerce_rest_product_invalid_id' } } }),
             getProducts: vi.fn()
                 .mockResolvedValueOnce({
-                    data: [{ id: 999, name: 'Safe Product', price: '10.00' }],
+                    data: [{ id: 999, name: 'Safe Product', type: 'grouped', price: '10.00' }],
                     totalPages: 1
                 })
                 .mockResolvedValue({ data: [], totalPages: 1 }) // Subsequent calls empty
@@ -212,20 +211,13 @@ describe('ProductSync Reconciliation Performance', () => {
 
         // Assert optimized behavior
         expect(mockPrisma.wooProduct.delete).toHaveBeenCalledTimes(0);
-        expect(mockPrisma.wooProduct.deleteMany).toHaveBeenCalledTimes(productCount);
-
-        // Verify deleteMany args
-        const deleteManyArgs = mockPrisma.wooProduct.deleteMany.mock.calls[0][0];
-        expect(deleteManyArgs).toEqual({
-            where: {
-                accountId,
-                id: 'stale',
-                wooId: 100
-            }
+        expect(mockPrisma.wooProduct.deleteMany).not.toHaveBeenCalled();
+        expect(Logger.warn).toHaveBeenCalledWith('Confirmed missing Woo product retained: catalogue retirement required', {
+            accountId, productId: 100, code: 'woocommerce_rest_product_invalid_id',
         });
 
         // Verify IndexingService is still called for each product
-        expect(IndexingService.deleteProduct).toHaveBeenCalledTimes(productCount);
+        expect(IndexingService.deleteProduct).not.toHaveBeenCalled();
         expect(mockWooService.getProduct).toHaveBeenCalledWith(100, { bypassCache: true });
     });
 
@@ -268,6 +260,7 @@ describe('ProductSync Reconciliation Performance', () => {
         vi.spyOn(productSync as any, 'getLastSync').mockResolvedValue(undefined);
         const woo = { getProducts: vi.fn().mockResolvedValueOnce({ data: [{ id: 100, name: 'Restored', type: 'variable', status: 'publish' }], totalPages: 1 }).mockResolvedValue({ data: [], totalPages: 1 }), getProductVariations: vi.fn().mockResolvedValue([{ id: 101, sku: 'V' }]) };
         mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'original-uuid', wooId: 100 }]);
+        mockPrisma.wooProduct.upsert.mockResolvedValue({ id: 'original-uuid', wooId: 100 });
         await (productSync as any).sync(woo, accountId, incremental);
         const parent = mockPrisma.wooProduct.upsert.mock.calls[0][0];
         expect(parent.where).toEqual({ accountId_wooId: { accountId, wooId: 100 } });
@@ -279,17 +272,16 @@ describe('ProductSync Reconciliation Performance', () => {
         expect(mockPrisma.bOMItem.updateMany).not.toHaveBeenCalled();
     });
 
-    it.each(['trash', 'publish', 'proxy-404', 'search-failure'])('handles authoritative full-sync candidate %s safely', async outcome => {
+    it.each(['trash', 'publish', 'private', 'proxy-404', 'definite-404'])('handles authoritative full-sync candidate %s safely', async outcome => {
         const woo = { getProducts: vi.fn().mockResolvedValue({ data: [], totalPages: 1 }), getProduct: vi.fn() };
         mockPrisma.wooProduct.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
         mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'stale', wooId: 100 }]);
         if (outcome === 'proxy-404') woo.getProduct.mockRejectedValue(new Error('proxy 404'));
-        else if (outcome === 'search-failure') {
+        else if (outcome === 'definite-404') {
             woo.getProduct.mockRejectedValue({ response: { status: 404, data: { code: 'woocommerce_rest_product_invalid_id' } } });
-            vi.mocked(IndexingService.deleteProduct).mockRejectedValueOnce(new Error('search down'));
         } else woo.getProduct.mockResolvedValue({ id: 100, status: outcome });
         const run = (productSync as any).sync(woo, accountId, false);
-        if (outcome === 'proxy-404' || outcome === 'search-failure') await expect(run).rejects.toThrow();
+        if (outcome === 'proxy-404') await expect(run).rejects.toThrow();
         else await run;
         expect(mockPrisma.wooProduct.deleteMany).not.toHaveBeenCalled();
         expect(woo.getProduct).toHaveBeenCalledWith(100, { bypassCache: true });
@@ -328,6 +320,91 @@ describe('ProductSync Reconciliation Performance', () => {
         expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
     });
 
+    it.each([true, false])('accepts no-image variations and reconciles exact IDs (incremental=%s)', async incremental => {
+        vi.spyOn(productSync as any, 'getLastSync').mockResolvedValue(undefined);
+        const woo = {
+            getProducts: vi.fn().mockResolvedValueOnce({ data: [{ id: 35270, name: 'Variable', type: 'variable' }], totalPages: 1 })
+                .mockResolvedValue({ data: [], totalPages: 0 }),
+            getProductVariations: vi.fn().mockResolvedValue([{ id: 35273, image: null }, { id: 35272, image: null }]),
+        };
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'p', wooId: 35270 }]);
+        await (productSync as any).sync(woo, accountId, incremental);
+        expect(mockPrisma.productVariation.upsert).toHaveBeenCalledTimes(2);
+        for (const [args] of mockPrisma.productVariation.upsert.mock.calls) {
+            expect(args.update).toMatchObject({ images: [], rawData: { image: null } });
+            expect(args.create).toMatchObject({ images: [], rawData: { image: null } });
+        }
+        expect(woo.getProductVariations).toHaveBeenCalledWith(35270, { bypassCache: true });
+        expect(mockPrisma.productVariation.updateMany).toHaveBeenCalledWith({ where: {
+            productId: 'p', product: { accountId }, wooId: { notIn: [35273, 35272] }, deliveryActive: true,
+        }, data: { deliveryActive: false } });
+    });
+
+    it('retains parent-declared variations omitted by an otherwise successful listing', async () => {
+        const woo = {
+            getProducts: vi.fn().mockResolvedValueOnce({ data: [{ id: 60889, name: 'Variable', type: 'variable', variations: [11, 12] }], totalPages: 1 }),
+            getProductVariations: vi.fn().mockResolvedValue([{ id: 11, status: 'private', image: null }]),
+        };
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'p', wooId: 60889 }]);
+        await expect((productSync as any).sync(woo, accountId, false)).rejects.toThrow('checkpoint was not advanced');
+        expect(mockPrisma.productVariation.upsert).not.toHaveBeenCalled();
+        expect(mockPrisma.wooProduct.upsert).not.toHaveBeenCalled();
+        expect(mockPrisma.productVariation.findMany).not.toHaveBeenCalled();
+        expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it.each(['empty', 'error', 'repeat'])('commits only complete per-parent observations, then fails the checkpoint on %s catalogue pagination', async failure => {
+        const first = { data: [{ id: 10, name: 'Variable', type: 'variable' }], totalPages: 2, total: 2 };
+        const woo = { getProducts: vi.fn().mockResolvedValueOnce(first), getProductVariations: vi.fn().mockResolvedValue([]) };
+        if (failure === 'error') woo.getProducts.mockRejectedValueOnce(new Error('unavailable'));
+        else woo.getProducts.mockResolvedValueOnce(failure === 'repeat' ? first : { data: [], totalPages: 2, total: 2 });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'p', wooId: 10 }]);
+        await expect((productSync as any).sync(woo, accountId, false)).rejects.toThrow();
+        expect(mockPrisma.productVariation.updateMany).toHaveBeenCalledWith({ where: { productId: 'p', product: { accountId }, wooId: { notIn: [] }, deliveryActive: true }, data: { deliveryActive: false } });
+        expect(mockPrisma.wooProduct.deleteMany).not.toHaveBeenCalled();
+        expect(mockPrisma.wooProduct.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        { response: { status: 404, data: { code: 'rest_no_route' } } },
+        { response: { status: 404, data: {} } },
+        { response: { status: 403, data: { code: 'woocommerce_rest_product_invalid_id' } } },
+    ])('does not treat ambiguous/auth errors as confirmed missing', async error => {
+        const woo = { getProducts: vi.fn().mockResolvedValue({ data: [], totalPages: 0 }), getProduct: vi.fn().mockRejectedValue(error) };
+        mockPrisma.wooProduct.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'stale', wooId: 100 }]);
+        await expect((productSync as any).sync(woo, accountId, false)).rejects.toEqual(error);
+        expect(mockPrisma.wooProduct.deleteMany).not.toHaveBeenCalled();
+        expect(Logger.warn).not.toHaveBeenCalledWith('Confirmed missing Woo product retained: catalogue retirement required', expect.anything());
+    });
+
+    it('does not write or emit a rejected stale variable snapshot', async () => {
+        mockPrisma.wooProduct.findUnique.mockResolvedValue({ id: 'p', deliveryMembershipObservedAt: new Date('2099-01-01') });
+        const woo = { getProducts: vi.fn().mockResolvedValueOnce({ data: [{ id: 10, name: 'Stale', type: 'variable', variations: [11, 99] }], totalPages: 1 })
+            .mockResolvedValue({ data: [], totalPages: 0 }), getProductVariations: vi.fn().mockResolvedValue([{ id: 11, stock_quantity: 999 }, { id: 99 }]) };
+        expect(await (productSync as any).sync(woo, accountId, false)).toMatchObject({ itemsProcessed: 0 });
+        expect(mockPrisma.wooProduct.upsert).not.toHaveBeenCalled();
+        expect(mockPrisma.wooProduct.update).not.toHaveBeenCalled();
+        expect(mockPrisma.productVariation.upsert).not.toHaveBeenCalled();
+        expect(mockPrisma.productVariation.updateMany).not.toHaveBeenCalled();
+        expect(mockPrisma.$executeRawUnsafe).not.toHaveBeenCalled();
+        expect(EventBus.emit).not.toHaveBeenCalled();
+        expect(IndexingService.bulkIndexProducts).toHaveBeenCalledWith(accountId, []);
+    });
+
+    it('continues independent valid parents without writing valid siblings of a quarantined parent', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ id: 'p', wooId: 10 }]);
+        const woo = { getProducts: vi.fn().mockResolvedValueOnce({ data: [
+            { id: 20, name: 'Quarantined', type: 'variable' }, { id: 10, name: 'Valid', type: 'simple' },
+        ], totalPages: 1 }).mockResolvedValue({ data: [], totalPages: 0 }),
+            getProductVariations: vi.fn().mockResolvedValue([{ id: 21, stock_quantity: 999 }, { id: 22, image: 'invalid' }]) };
+        expect(await (productSync as any).sync(woo, accountId, false)).toMatchObject({ itemsProcessed: 1 });
+        expect(mockPrisma.wooProduct.upsert).toHaveBeenCalledOnce();
+        expect(mockPrisma.wooProduct.upsert.mock.calls[0][0].where).toEqual({ accountId_wooId: { accountId, wooId: 10 } });
+        expect(mockPrisma.productVariation.upsert).not.toHaveBeenCalled();
+        expect(EventBus.emit).toHaveBeenCalledExactlyOnceWith('product.synced', expect.objectContaining({ product: expect.objectContaining({ id: 10 }) }));
+    });
+
     it('quarantines malformed variations without failing or reconciling the parent', async () => {
         const remoteProduct = {
             id: 93144,
@@ -358,12 +435,15 @@ describe('ProductSync Reconciliation Performance', () => {
 
         await expect(
             (productSync as any).sync(mockWooService as any, accountId, false, undefined, 'sync-test')
-        ).resolves.toMatchObject({ itemsProcessed: 1 });
+        ).resolves.toMatchObject({ itemsProcessed: 0 });
 
-        expect(mockPrisma.productVariation.upsert).toHaveBeenCalledTimes(1);
+        expect(mockPrisma.productVariation.upsert).not.toHaveBeenCalled();
+        expect(mockPrisma.wooProduct.upsert).not.toHaveBeenCalled();
+        expect(mockPrisma.productVariation.updateMany).not.toHaveBeenCalled();
+        expect(mockPrisma.$executeRawUnsafe).not.toHaveBeenCalled();
         expect(mockPrisma.productVariation.deleteMany).not.toHaveBeenCalled();
         expect(Logger.warn).toHaveBeenCalledWith(
-            'Skipped invalid WooCommerce variation payloads',
+            'Quarantined WooCommerce parent snapshot; no source changes applied',
             expect.objectContaining({
                 accountId,
                 productId: 93144,

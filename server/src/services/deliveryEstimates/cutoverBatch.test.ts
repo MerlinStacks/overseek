@@ -11,7 +11,7 @@ describe.skipIf(!hasFreshnessTestDatabase)('bounded cutover metadata pages (isol
         db = await openFreshnessTestDatabase(); queries = [];
         await db.exec(`CREATE TABLE "WooProduct" (id text PRIMARY KEY,"accountId" text,"wooId" int,"manageStock" boolean,"rawData" jsonb);
           CREATE INDEX product_page ON "WooProduct" ("accountId",id);
-          CREATE TABLE "ProductVariation" (id text PRIMARY KEY,"productId" text,"wooId" int,"manageStock" boolean,"rawData" jsonb);
+          CREATE TABLE "ProductVariation" (id text PRIMARY KEY,"productId" text,"wooId" int,"manageStock" boolean,"rawData" jsonb,"deliveryActive" boolean DEFAULT true);
           CREATE INDEX variation_page ON "ProductVariation" ("productId","wooId");
           CREATE TABLE "BOM" (id text,"productId" text); CREATE INDEX bom_product ON "BOM" ("productId");
           CREATE TABLE "BOMItem" (id text,"bomId" text,"childProductId" text,"childVariationId" int,"internalProductId" text);

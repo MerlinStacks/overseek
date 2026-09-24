@@ -38,10 +38,11 @@ describe.skipIf(!hasFreshnessTestDatabase)('freshness migration transactional so
         await db.exec(await readFile('prisma/migrations/20260923100000_variant_suppliers/migration.sql', 'utf8'));
         await db.exec(await readFile('prisma/migrations/20260923110000_variant_supplier_freshness/migration.sql', 'utf8'));
         expect((await db.query(FRESHNESS_PREREQUISITE_SQL)).rows).toEqual([
-            { missing: 'function:delivery_bom_changed' }, { missing: 'function:delivery_bom_item_changed' }
+            { missing: 'function:delivery_bom_changed' }, { missing: 'function:delivery_bom_item_changed' }, { missing: 'function:delivery_variation_changed' }
         ]);
         await db.exec(await readFile('prisma/migrations/20260923120000_stock_write_offs/migration.sql', 'utf8'));
         await db.exec(await readFile('prisma/migrations/20260923130000_delivery_bom_noop_guards/migration.sql', 'utf8'));
+        await db.exec(await readFile('prisma/migrations/20260924100000_delivery_catalogue_membership/migration.sql', 'utf8'));
         await db.exec(`ALTER TABLE "BOM" ADD COLUMN "updatedAt" timestamp;
             ALTER TABLE "BOMItem" ADD COLUMN "updatedAt" timestamp, ADD COLUMN "childProductId" text,
                 ADD COLUMN "childVariationId" int, ADD COLUMN "internalProductId" text, ADD COLUMN "supplierItemId" text,

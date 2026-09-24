@@ -1,7 +1,6 @@
 import { BaseSync, SyncResult } from './BaseSync';
-import { persistWooProduct } from '../persistWooProduct';
-import { isWooProductNotFound, permanentlyDeleteWooProduct, trashWooProduct } from '../productDeletion';
-import { activeProductWhere } from '../productStatus';
+import { needsWooVariationListing, persistWooProduct } from '../persistWooProduct';
+import { isWooProductNotFound, trashWooProduct } from '../productDeletion';
 import { WooService } from '../woo';
 import { prisma } from '../../utils/prisma';
 import { IndexingService } from '../search/IndexingService';
@@ -11,7 +10,7 @@ import { EmbeddingService } from '../EmbeddingService';
 import { EventBus, EVENTS } from '../events';
 import { Logger } from '../../utils/logger';
 import { parseWooDate } from '../../utils/wooDates';
-import { WooProductSchema, WooProduct, parseWooVariations } from './wooSchemas';
+import { WooProductSchema, WooProduct } from './wooSchemas';
 import { reconcileWholesaleProductsBestEffort } from '../wholesale/reconciliation';
 
 
@@ -35,14 +34,26 @@ export class ProductSync extends BaseSync {
         let variationFailures = 0;
         let variationValidationFailures = 0;
         let totalVariationsSynced = 0;
-        const variationReconciliationParentIds = new Set<string>();
         const wholesaleReconciliationProductIds = new Set<string>();
 
         const syncStartedAt = new Date();
+        const seenProductIds = new Set<number>();
+        let expectedProductTotal: number | undefined;
+        let expectedProductPages: number | undefined;
 
         while (hasMore) {
-            const { data: rawProducts, totalPages } = await woo.getProducts({ page, after, per_page: 50 });
+            const { data: rawProducts, totalPages, total } = await woo.getProducts({ page, after, per_page: 50, status: 'any', context: 'edit' });
+            if (!Array.isArray(rawProducts)) throw new Error('Invalid Woo product listing');
+            if (totalPages > 0) {
+                if (expectedProductPages !== undefined && expectedProductPages !== totalPages) throw new Error('Woo product pagination changed');
+                expectedProductPages = totalPages;
+            }
+            if (total > 0) {
+                if (expectedProductTotal !== undefined && expectedProductTotal !== total) throw new Error('Woo product total changed');
+                expectedProductTotal = total;
+            }
             if (!rawProducts.length) {
+                if (expectedProductPages !== undefined && page <= expectedProductPages && (page > 1 || expectedProductPages > 1)) throw new Error('Incomplete Woo product listing');
                 hasMore = false;
                 break;
             }
@@ -50,6 +61,10 @@ export class ProductSync extends BaseSync {
             // Validate products with Zod schema, skip invalid ones
             const products: WooProduct[] = [];
             for (const raw of rawProducts) {
+                if (Number.isSafeInteger(raw?.id) && raw.id > 0) {
+                    if (seenProductIds.has(raw.id)) throw new Error('Woo product pagination repeated ID');
+                    seenProductIds.add(raw.id);
+                }
                 if (raw?.status === 'trash' && Number.isSafeInteger(raw.id) && raw.id > 0) {
                     await trashWooProduct(accountId, raw.id);
                     continue;
@@ -79,7 +94,8 @@ export class ProductSync extends BaseSync {
                 continue;
             }
 
-            // Batch prepare upsert operations
+            const acceptedWooIds = new Set<number>();
+            // Prepare complete per-parent observations before taking any DB lock.
             const upsertOperations = products.map((p) => {
 
                 // EDGE CASE: Log empty price strings for visibility
@@ -100,86 +116,95 @@ export class ProductSync extends BaseSync {
 
                 // COGS is Overseek-owned: remote native COGS stays in rawData only.
                 // Never hydrate the local cogs column, including on initial import.
-                return () => persistWooProduct(p.type, {
-                    where: { accountId_wooId: { accountId, wooId: p.id } },
-                    update: {
-                        name: p.name,
-                        sku: p.sku,
-                        status: p.status || null,
-                        catalogVisibility: p.catalog_visibility || 'visible',
-                        dateCreated: parseWooDate(p.date_created_gmt || p.date_created),
-                        price: parsedPrice,
-                        stockStatus: p.stock_status, // Sync from WooCommerce to distinguish states
-                        stockQuantity: p.stock_quantity ?? null,
-                        manageStock: p.manage_stock ?? (p as any).manage_stock ?? false,
-                        permalink: p.permalink,
-                        rawData: p as any,
-                        mainImage: p.images?.[0]?.src,
-                        weight: p.weight ? parseFloat(p.weight) : null,
-                        length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
-                        width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
-                        height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null,
-                        images: (p.images || []) as any
-                    },
-                    create: {
-                        accountId,
-                        wooId: p.id,
-                        name: p.name,
-                        sku: p.sku,
-                        status: p.status || null,
-                        catalogVisibility: p.catalog_visibility || 'visible',
-                        dateCreated: parseWooDate(p.date_created_gmt || p.date_created),
-                        price: parsedPrice,
-                        stockStatus: p.stock_status,
-                        stockQuantity: p.stock_quantity ?? null,
-                        manageStock: p.manage_stock ?? (p as any).manage_stock ?? false,
-                        permalink: p.permalink,
-                        mainImage: p.images?.[0]?.src,
-                        weight: p.weight ? parseFloat(p.weight) : null,
-                        length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
-                        width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
-                        height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null,
-                        images: (p.images || []) as any,
-                        rawData: p as any
+                return async () => {
+                    const rawVariations = needsWooVariationListing(p.type, p)
+                        ? await woo.getProductVariations(p.id, { bypassCache: true }) : undefined;
+                    const result = await persistWooProduct(p.type, {
+                        where: { accountId_wooId: { accountId, wooId: p.id } },
+                        update: {
+                            name: p.name,
+                            sku: p.sku,
+                            status: p.status || null,
+                            catalogVisibility: p.catalog_visibility || 'visible',
+                            dateCreated: parseWooDate(p.date_created_gmt || p.date_created),
+                            price: parsedPrice,
+                            stockStatus: p.stock_status,
+                            stockQuantity: p.stock_quantity ?? null,
+                            manageStock: p.manage_stock ?? false,
+                            permalink: p.permalink,
+                            rawData: p as any,
+                            mainImage: p.images?.[0]?.src,
+                            weight: p.weight ? parseFloat(p.weight) : null,
+                            length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
+                            width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
+                            height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null,
+                            images: (p.images || []) as any
+                        },
+                        create: {
+                            accountId,
+                            wooId: p.id,
+                            name: p.name,
+                            sku: p.sku,
+                            status: p.status || null,
+                            catalogVisibility: p.catalog_visibility || 'visible',
+                            dateCreated: parseWooDate(p.date_created_gmt || p.date_created),
+                            price: parsedPrice,
+                            stockStatus: p.stock_status,
+                            stockQuantity: p.stock_quantity ?? null,
+                            manageStock: p.manage_stock ?? false,
+                            permalink: p.permalink,
+                            mainImage: p.images?.[0]?.src,
+                            weight: p.weight ? parseFloat(p.weight) : null,
+                            length: p.dimensions?.length ? parseFloat(p.dimensions.length) : null,
+                            width: p.dimensions?.width ? parseFloat(p.dimensions.width) : null,
+                            height: p.dimensions?.height ? parseFloat(p.dimensions.height) : null,
+                            images: (p.images || []) as any,
+                            rawData: p as any
+                        }
+                    }, syncStartedAt, rawVariations);
+                    if (result.accepted === false) {
+                        totalSkipped++;
+                        if (result.reason === 'quarantined_variations') {
+                            variationValidationFailures += result.failures!.length;
+                            Logger.warn('Quarantined WooCommerce parent snapshot; no source changes applied', {
+                                accountId, syncId, productId: p.id, invalidCount: result.failures!.length, failures: result.failures,
+                            });
+                        } else if (result.reason === 'incomplete_product') {
+                            validationFailures++;
+                            Logger.warn('Quarantined incomplete WooCommerce product snapshot', { accountId, syncId, productId: p.id });
+                        } else if (result.reason !== 'stale') {
+                            variationFailures++;
+                            Logger.warn('Deferred incomplete WooCommerce parent snapshot', { accountId, syncId, productId: p.id, reason: result.reason });
+                        }
+                        return;
                     }
-                });
+                    acceptedWooIds.add(p.id);
+                    totalVariationsSynced += result.variationsSynced;
+                };
             });
 
-            // Execute upserts in chunks of 10 — prevents saturating the Prisma connection
-            // pool. OrderSync and CustomerSync already use similar chunking (BATCH_SIZE=50);
-            // products use 10 because each upsert carries a larger payload (images, rawData).
-            const UPSERT_CHUNK = 10;
-            const failedProductWooIds: number[] = [];
+            // Bound concurrent Woo enumerations and retained per-parent snapshots.
+            const UPSERT_CHUNK = 2;
             for (let i = 0; i < upsertOperations.length; i += UPSERT_CHUNK) {
                 const ops = upsertOperations.slice(i, i + UPSERT_CHUNK);
-                const productSlice = products.slice(i, i + UPSERT_CHUNK);
-                await Promise.all(ops.map((op, idx) => op().catch((err) => {
+                await Promise.all(ops.map(op => op().catch((err) => {
                     totalSkipped++;
                     totalUpsertFailures++;
-                    failedProductWooIds.push(productSlice[idx].id);
-                    Logger.warn('Failed to upsert product', { accountId, syncId, error: err.message });
+                    Logger.warn('Failed to apply WooCommerce product observation', { accountId, syncId, error: err.message });
                 })));
             }
 
-            // Preserve existing records that failed to upsert (transient DB errors)
-            // so updatedAt-based reconciliation doesn't delete them
-            if (failedProductWooIds.length > 0) {
-                await prisma.$executeRawUnsafe(
-                    `UPDATE "WooProduct" SET "updatedAt" = NOW() WHERE "accountId" = $1 AND "wooId" = ANY($2::int[])`,
-                    accountId, failedProductWooIds
-                );
-            }
-
-            const failedProductWooIdSet = new Set(failedProductWooIds);
-            const persistedProducts = products.filter(product => !failedProductWooIdSet.has(product.id));
+            // Rejected, quarantined and failed observations have ZERO source writes,
+            // including bookkeeping timestamps. Never score/index/emit them as saved.
+            const persistedProducts = products.filter(product => acceptedWooIds.has(product.id));
 
             // Batch-fetch all upserted products once (avoids N+1 queries)
-            const upsertedProducts = await prisma.wooProduct.findMany({
+            const upsertedProducts = persistedProducts.length ? await prisma.wooProduct.findMany({
                 where: {
                     accountId,
                     wooId: { in: persistedProducts.map(p => p.id) }
                 }
-            });
+            }) : [];
             const productMap = new Map(upsertedProducts.map(p => [p.wooId, p]));
             upsertedProducts.forEach(product => wholesaleReconciliationProductIds.add(product.id));
 
@@ -251,126 +276,6 @@ export class ProductSync extends BaseSync {
             }
             totalProcessed += persistedProducts.length;
 
-            // Sync variations for variable products (parallelized in batches of 5)
-            const variableProducts = persistedProducts.filter(p =>
-                p.type === 'variable' || (p.type && p.type.includes('variable'))
-            );
-            // Explicit simple products were cleaned atomically above. Missing or
-            // custom types alone must never authorize destructive reconciliation.
-
-            const VAR_BATCH_SIZE = 2;
-            const VARIATION_UPSERT_CHUNK = 25;
-            for (let vi = 0; vi < variableProducts.length; vi += VAR_BATCH_SIZE) {
-                const varBatch = variableProducts.slice(vi, vi + VAR_BATCH_SIZE);
-                await Promise.allSettled(varBatch.map(async (varProduct) => {
-                    const parentDbProduct = productMap.get(varProduct.id);
-                    if (!parentDbProduct) {
-                        variationFailures++;
-                        return;
-                    }
-
-                    try {
-                        const rawVariations = await woo.getProductVariations(varProduct.id);
-                        const { variations, failures: validationIssues } = parseWooVariations(rawVariations);
-
-                        if (validationIssues.length > 0) {
-                            variationValidationFailures += validationIssues.length;
-                            // Invalid remote data is deterministic: retrying the complete
-                            // catalogue cannot repair it. Keep any existing local rows for
-                            // this parent, ingest valid siblings, and allow the checkpoint
-                            // to advance so one bad payload cannot create a request storm.
-                            Logger.warn('Skipped invalid WooCommerce variation payloads', {
-                                accountId,
-                                syncId,
-                                productId: varProduct.id,
-                                invalidCount: validationIssues.length,
-                                failures: validationIssues
-                            });
-                        }
-
-                        if (variations.length === 0) {
-                            if (validationIssues.length === 0) {
-                                variationReconciliationParentIds.add(parentDbProduct.id);
-                            }
-                            return;
-                        }
-
-                        // Why no variationsData on parent: each variation's full JSON is
-                        // already persisted in ProductVariation.rawData. Duplicating it
-                        // here doubled heap usage for variable products with many SKUs.
-
-                        // Batch upsert variations; preserve Overseek-owned cogs here too.
-                        const variationOps = variations.map(v =>
-                            prisma.productVariation.upsert({
-                                where: { productId_wooId: { productId: parentDbProduct.id, wooId: v.id } },
-                                update: {
-                                    sku: v.sku || null,
-                                    price: v.price ? parseFloat(v.price) : null,
-                                    salePrice: v.sale_price ? parseFloat(v.sale_price) : null,
-                                    stockStatus: v.stock_status,
-                                    stockQuantity: v.stock_quantity ?? null,
-                                     manageStock: v.manage_stock === true,
-                                    weight: v.weight ? parseFloat(v.weight) : null,
-                                    length: v.dimensions?.length ? parseFloat(v.dimensions.length) : null,
-                                    width: v.dimensions?.width ? parseFloat(v.dimensions.width) : null,
-                                    height: v.dimensions?.height ? parseFloat(v.dimensions.height) : null,
-                                    images: (v.image ? [v.image] : []) as any,
-                                    rawData: v as any
-                                },
-                                create: {
-                                    productId: parentDbProduct.id,
-                                    wooId: v.id,
-                                    sku: v.sku || null,
-                                    price: v.price ? parseFloat(v.price) : null,
-                                    salePrice: v.sale_price ? parseFloat(v.sale_price) : null,
-                                    stockStatus: v.stock_status,
-                                    stockQuantity: v.stock_quantity ?? null,
-                                     manageStock: v.manage_stock === true,
-                                    weight: v.weight ? parseFloat(v.weight) : null,
-                                    length: v.dimensions?.length ? parseFloat(v.dimensions.length) : null,
-                                    width: v.dimensions?.width ? parseFloat(v.dimensions.width) : null,
-                                    height: v.dimensions?.height ? parseFloat(v.dimensions.height) : null,
-                                    images: (v.image ? [v.image] : []) as any,
-                                    rawData: v as any
-                                }
-                            })
-                        );
-
-                        let parentWriteFailures = 0;
-                        for (let i = 0; i < variationOps.length; i += VARIATION_UPSERT_CHUNK) {
-                            const chunk = variationOps.slice(i, i + VARIATION_UPSERT_CHUNK);
-                            await Promise.all(chunk.map(op => op.catch((err) => {
-                                parentWriteFailures++;
-                                Logger.warn('Failed to upsert variation', { accountId, syncId, error: err.message });
-                            })));
-                            await new Promise<void>((resolve) => setImmediate(resolve));
-                        }
-
-                        if (parentWriteFailures > 0) {
-                            variationFailures += parentWriteFailures;
-                            return;
-                        }
-
-                        totalVariationsSynced += variations.length;
-                        // Reconciliation is unsafe when Woo returned malformed siblings:
-                        // an existing row may represent one of those rejected payloads.
-                        if (validationIssues.length === 0) {
-                            variationReconciliationParentIds.add(parentDbProduct.id);
-                        }
-
-                        Logger.debug(`Synced ${variations.length} variations for product ${varProduct.name}`, {
-                            accountId, syncId, productId: varProduct.id
-                        });
-                    } catch (error: any) {
-                        variationFailures++;
-                        Logger.warn(`Failed to sync variations for product ${varProduct.id}`, {
-                            accountId, syncId, error: error.message
-                        });
-                    }
-                }));
-                await new Promise<void>((resolve) => setImmediate(resolve));
-            }
-
             Logger.info(`Synced batch of ${persistedProducts.length} products (${totalVariationsSynced} variations)`, { accountId, syncId, page, totalPages, skipped: totalSkipped });
             hasMore = this.hasMorePages(page, totalPages, rawProducts.length, 50);
 
@@ -386,6 +291,9 @@ export class ProductSync extends BaseSync {
             if (hasMore) await new Promise(r => setTimeout(r, 500));
         }
 
+        if (expectedProductTotal !== undefined && seenProductIds.size !== expectedProductTotal && validationFailures === 0) {
+            throw new Error('Incomplete Woo product total; checkpoint was not advanced.');
+        }
         if (totalUpsertFailures > 0) {
             throw new Error(`Product sync could not persist ${totalUpsertFailures} product(s); checkpoint was not advanced.`);
         }
@@ -414,9 +322,8 @@ export class ProductSync extends BaseSync {
             trashPage++;
         }
 
-        // Reconciliation: remove products/variations not touched during this full sync.
-        // Count-first pattern: evaluate the 30% safety cap via SQL count() rather
-        // than loading every stale id/wooId into Node memory.
+        // Missing-product diagnostics only. Timestamps identify lookup candidates,
+        // never deletion evidence. Bound the scan before loading IDs into memory.
         if (!incremental && validationFailures === 0) {
             const staleProductCount = await prisma.wooProduct.count({
                 where: { accountId, updatedAt: { lt: syncStartedAt } }
@@ -427,7 +334,7 @@ export class ProductSync extends BaseSync {
                 const maxDeletions = Math.max(10, Math.floor(localTotal * 0.3));
 
                 if (staleProductCount > maxDeletions) {
-                    Logger.warn(`Product reconciliation aborted: would delete ${staleProductCount}/${localTotal} (>30% cap)`, {
+                    Logger.warn(`Product reconciliation lookup deferred: ${staleProductCount}/${localTotal} stale candidates (>30% cap)`, {
                         accountId, syncId, toDelete: staleProductCount, localTotal
                     });
                 } else {
@@ -449,34 +356,25 @@ export class ProductSync extends BaseSync {
                                 remote = await woo.getProduct(candidate.wooId, { bypassCache: true });
                             } catch (error) {
                                 if (!isWooProductNotFound(error)) throw error;
-                                totalDeleted += await permanentlyDeleteWooProduct(accountId, candidate.wooId);
+                                // No safe product tombstone exists. Hard deletion cascades
+                                // recipes and detaches purchase orders; retain the row until
+                                // a lifecycle-aware archival design is implemented.
+                                Logger.warn('Confirmed missing Woo product retained: catalogue retirement required', {
+                                    accountId, productId: candidate.wooId,
+                                    code: 'woocommerce_rest_product_invalid_id',
+                                });
                                 continue;
                             }
-                            if (remote?.status === 'trash') await trashWooProduct(accountId, candidate.wooId);
+                            if (remote?.id === candidate.wooId && remote.status === 'trash') await trashWooProduct(accountId, candidate.wooId);
                         }
                         cursor = chunk[chunk.length - 1].id;
                         if (chunk.length < DELETE_CHUNK) break;
                     }
 
-                    Logger.info(`Reconciliation: Deleted ${totalDeleted} orphaned products`, { accountId, syncId });
+                    Logger.info('Completed missing-product lookups; historical records retained', { accountId, syncId });
                 }
             }
 
-            // Variation reconciliation: delete directly (no per-id ES calls needed,
-            // variations aren't indexed in ES separately from their parent product).
-            const reconciledParentIds = Array.from(variationReconciliationParentIds);
-            if (reconciledParentIds.length > 0) {
-                const { count: staleVarCount } = await prisma.productVariation.deleteMany({
-                    where: {
-                        productId: { in: reconciledParentIds },
-                        product: { accountId, ...activeProductWhere },
-                        updatedAt: { lt: syncStartedAt }
-                    }
-                });
-                if (staleVarCount > 0) {
-                    Logger.info(`Reconciliation: Deleted ${staleVarCount} orphaned variations`, { accountId, syncId });
-                }
-            }
         }
 
         await reconcileWholesaleProductsBestEffort(accountId, [...wholesaleReconciliationProductIds]);

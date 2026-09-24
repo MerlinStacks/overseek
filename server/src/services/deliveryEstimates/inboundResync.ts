@@ -25,7 +25,7 @@ export async function buildInboundBatch(accountId: string, scanned?: Checkpoint)
                 // Reconcile topology and deletion clears with the same durable target.
                 const product = await tx.wooProduct.findFirst({ where: { accountId, wooId }, select: {
                     wooId: true, productionMinDays: true, productionMaxDays: true,
-                    variations: { take: 1001, orderBy: { wooId: 'asc' }, select: { wooId: true, productionMinDays: true, productionMaxDays: true } },
+                    variations: { where: { deliveryActive: true }, take: 1001, orderBy: { wooId: 'asc' }, select: { wooId: true, productionMinDays: true, productionMaxDays: true } },
                 } });
                 await recordProductIntent(tx, accountId, product ?? { wooId, productionMinDays: null, productionMaxDays: null, variations: [] }, true);
                 await recordIntent(tx, accountId, 'inbound', wooId, await buildInbound(tx, accountId, wooId));

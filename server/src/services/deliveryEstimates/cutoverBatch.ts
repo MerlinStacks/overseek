@@ -43,7 +43,7 @@ async function mappings(tx: Prisma.TransactionClient, accountId: string, after: 
           ORDER BY p.id LIMIT ${Math.min(CUTOVER_PRODUCTS_PER_PAGE, limit)}
          ) SELECT p.*, EXISTS(SELECT 1 FROM "BOM" b JOIN "BOMItem" bi ON bi."bomId"=b.id
              WHERE b."productId"=p.id AND ${stockDerivedBomItemSql}) AS "hasBom",
-          (SELECT COUNT(*) FROM (SELECT v.id FROM "ProductVariation" v WHERE v."productId"=p.id ORDER BY v."wooId" LIMIT 1001) bounded) AS "variationCount"
+          (SELECT COUNT(*) FROM (SELECT v.id FROM "ProductVariation" v WHERE v."productId"=p.id AND v."deliveryActive" ORDER BY v."wooId" LIMIT 1001) bounded) AS "variationCount"
         FROM page p ORDER BY p.id`);
     const selected: Header[] = []; let variationRows = 0;
     for (const h of headers) {
@@ -58,7 +58,7 @@ async function mappings(tx: Prisma.TransactionClient, accountId: string, after: 
     const variations = variationRows ? await tx.$queryRaw<Variation[]>(Prisma.sql`
         SELECT v."productId", v."wooId", v."manageStock", v."rawData"->'manage_stock' AS "rawManage"
         FROM "ProductVariation" v JOIN "WooProduct" p ON p.id=v."productId"
-        WHERE p."accountId"=${accountId} AND v."productId" IN (${Prisma.join(selected.map(p => p.id))})
+        WHERE p."accountId"=${accountId} AND v."deliveryActive" AND v."productId" IN (${Prisma.join(selected.map(p => p.id))})
         ORDER BY v."productId", v."wooId" LIMIT 1001`) : [];
     if (variations.length > CUTOVER_MAX_VARIATIONS) error('variation mapping changed during its bounded read');
     return selected.map(header => {

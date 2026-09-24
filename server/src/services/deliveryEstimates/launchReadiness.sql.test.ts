@@ -26,7 +26,7 @@ describe.skipIf(!hasFreshnessTestDatabase)('launch eligibility classification (i
         m.db = await openFreshnessTestDatabase();
         m.settings = { ...defaultSettings('UTC'), shippingMethods: [{ methodId: 'flat_rate', instanceId: 7, zoneId: 0, zoneName: 'Rest', title: 'Shipping', enabled: true, minTransitDays: 1, maxTransitDays: 2, fulfilmentType: 'delivery' }] };
         await m.db.exec(`CREATE TABLE "WooProduct" (id text, "accountId" text, "wooId" int, "productionMinDays" int, "productionMaxDays" int, "rawData" jsonb);
-            CREATE TABLE "ProductVariation" ("productId" text, "wooId" int, "productionMinDays" int, "productionMaxDays" int);
+            CREATE TABLE "ProductVariation" ("productId" text, "wooId" int, "productionMinDays" int, "productionMaxDays" int, "deliveryActive" boolean DEFAULT true);
             CREATE TABLE "DeliveryInputSync" (id text, "accountId" text, scope text, "entityId" int, payload jsonb);`);
     });
     afterEach(async () => { await m.db?.close(); m.db = null; });

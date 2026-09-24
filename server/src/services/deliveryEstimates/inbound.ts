@@ -92,14 +92,22 @@ export async function buildInbound(tx: Prisma.TransactionClient, accountId: stri
         id: true, accountId: true, wooId: true, supplierId: true, manageStock: true, rawData: true,
         supplier: { select: { accountId: true, leadTimeMin: true, leadTimeMax: true, leadTimeDefault: true } },
         boms: { where: { items: { some: stockDerivedBomItemWhere } }, take: 1, select: { id: true } },
-        variations: { take: MAX_INBOUND_TARGETS, orderBy: { wooId: 'asc' }, select: {
+        variations: { where: { deliveryActive: true }, take: MAX_INBOUND_TARGETS, orderBy: { wooId: 'asc' }, select: {
             wooId: true, productId: true, supplierId: true, manageStock: true, rawData: true,
             supplier: { select: { accountId: true, leadTimeMin: true, leadTimeMax: true, leadTimeDefault: true } },
         } },
     } });
-    const lines = product ? await tx.purchaseOrderItem.findMany({
-        where: { productId: product.id, purchaseOrder: { accountId, status: 'ORDERED' } }, take: MAX_INBOUND_LINES + 1,
-        select: { productId: true, variationWooId: true, quantity: true, purchaseOrder: { select: { accountId: true, status: true, expectedDate: true } } },
-    }) : [];
+    // Retain historical PO lines, but exclude only identities explicitly retired
+    // by authoritative sync. Unknown/orphan lines still fail integrity validation;
+    // a partial parent list can never silently discard inbound supply.
+    const rows = product ? await tx.$queryRaw<Array<{ productId: string; variationWooId: number | null; quantity: number;
+        accountId: string; status: string; expectedDate: Date | null }>>(Prisma.sql`
+        SELECT i."productId", i."variationWooId", i.quantity, po."accountId", po.status, po."expectedDate"
+        FROM "PurchaseOrderItem" i JOIN "PurchaseOrder" po ON po.id = i."purchaseOrderId"
+        WHERE i."productId" = ${product.id} AND po."accountId" = ${accountId} AND po.status = 'ORDERED'
+          AND NOT EXISTS (SELECT 1 FROM "ProductVariation" v
+            WHERE v."productId" = i."productId" AND v."wooId" = i."variationWooId" AND NOT v."deliveryActive")
+        ORDER BY i.id LIMIT ${MAX_INBOUND_LINES + 1}`) : [];
+    const lines = rows.map(row => ({ ...row, purchaseOrder: { accountId: row.accountId, status: row.status, expectedDate: row.expectedDate } }));
     return attachReceiptProof(tx, accountId, projectInbound(wooId, product, lines));
 }

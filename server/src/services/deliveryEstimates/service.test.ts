@@ -111,7 +111,7 @@ describe('local delivery persistence and tenant isolation', () => {
         mocks.variationUpdate.mockResolvedValue({ count: 1 });
         await DeliveryEstimateService.saveProduct('a', 'p', { ...range, variations: [{ id: 'v', ...range }] });
         expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'p', accountId: 'a' }, data: range });
-        expect(mocks.variationUpdate).toHaveBeenCalledWith({ where: { id: 'v', productId: 'p', product: { accountId: 'a' } }, data: range });
+        expect(mocks.variationUpdate).toHaveBeenCalledWith({ where: { id: 'v', productId: 'p', product: { accountId: 'a' }, deliveryActive: true }, data: range });
         mocks.variationUpdate.mockClear();
         await DeliveryEstimateService.saveProduct('a', 'p', range);
         expect(mocks.variationUpdate).not.toHaveBeenCalled();

@@ -9,7 +9,7 @@ export const deliveryStatus = { syncStatus: 'plugin_update_required', storefront
 const rangeSelect = { productionMinDays: true, productionMaxDays: true } as const;
 const productSelect = {
     id: true, wooId: true, ...rangeSelect,
-    variations: { select: { id: true, wooId: true, ...rangeSelect }, orderBy: { wooId: 'asc' as const } },
+    variations: { where: { deliveryActive: true }, select: { id: true, wooId: true, ...rangeSelect }, orderBy: { wooId: 'asc' as const } },
 } as const;
 
 /** Distinguishes tenant-safe missing resources from operational failures. */
@@ -75,7 +75,7 @@ export class DeliveryEstimateService {
             if (updated.count !== 1) throw new DeliveryResourceNotFound('Product not found');
             for (const variation of input.variations ?? []) {
                 const updatedVariation = await tx.productVariation.updateMany({
-                    where: { id: variation.id, productId: id, product: { accountId } },
+                    where: { id: variation.id, productId: id, product: { accountId }, deliveryActive: true },
                     data: { productionMinDays: variation.productionMinDays, productionMaxDays: variation.productionMaxDays },
                 });
                 if (updatedVariation.count !== 1) throw new DeliveryResourceNotFound('Variation not found for product');

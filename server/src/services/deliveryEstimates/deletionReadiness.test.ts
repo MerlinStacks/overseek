@@ -35,7 +35,7 @@ describe.skipIf(!hasFreshnessTestDatabase)('deleted-product ACK/readiness isolat
         try {
             m.settings = { ...defaultSettings('UTC'), shippingMethods: [{ methodId: 'flat_rate', instanceId: 7, zoneId: 0, zoneName: 'Rest', title: 'Shipping', enabled: true, minTransitDays: 1, maxTransitDays: 2, fulfilmentType: 'delivery' }] };
             await m.db.exec(`CREATE TABLE "WooProduct" (id text, "accountId" text, "wooId" int, "productionMinDays" int, "productionMaxDays" int, "rawData" jsonb);
-                CREATE TABLE "ProductVariation" ("productId" text, "wooId" int, "productionMinDays" int, "productionMaxDays" int);
+                CREATE TABLE "ProductVariation" ("productId" text, "wooId" int, "productionMinDays" int, "productionMaxDays" int, "deliveryActive" boolean DEFAULT true);
                 CREATE TABLE "DeliveryInputSync" (id text, "accountId" text, scope text, "entityId" int, status text, payload jsonb);
                 INSERT INTO "WooProduct" VALUES ('live','a',20,0,2,'{"type":"simple"}');
                 INSERT INTO "DeliveryInputSync" VALUES ('deleted-product','a','product',10,'pending','{"wooId":10,"productionMinDays":null,"productionMaxDays":null,"variations":[]}'),

@@ -78,18 +78,18 @@ describe('WooService variation pagination', () => {
         expect(variations).toHaveLength(150);
         expect(request).toHaveBeenNthCalledWith(1, 'get', 'products/42/variations', {
             page: 1,
-            per_page: 100
+            per_page: 100, status: 'any', context: 'edit'
         });
         expect(request).toHaveBeenNthCalledWith(2, 'get', 'products/42/variations', {
             page: 2,
-            per_page: 100
+            per_page: 100, status: 'any', context: 'edit'
         });
         const cached = JSON.parse(redis.setex.mock.calls[0][2]);
-        expect(cached.version).toBe(2);
+        expect(cached.version).toBe(3);
         expect(cached.data).toHaveLength(150);
     });
     it('bypasses a valid but stale variation cache for strict stock calculations', async () => {
-        redis.get.mockResolvedValue(JSON.stringify({ version: 2, data: [{ id: 11, stock_quantity: 100 }] }));
+        redis.get.mockResolvedValue(JSON.stringify({ version: 3, data: [{ id: 11, stock_quantity: 100 }] }));
         const woo = new WooService({ url: 'https://store.example.com', consumerKey: 'ck_test', consumerSecret: 'cs_test', accountId: 'a' });
         const request = vi.fn().mockResolvedValue({ data: [{ id: 11, stock_quantity: 2 }], total: 1, totalPages: 1 });
         (woo as any).requestWithRetry = request;
@@ -112,6 +112,37 @@ describe('WooService variation pagination', () => {
 
         expect(redis.del).toHaveBeenCalled();
         expect(request).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['empty', 'object', 'repeated', 'short', 'auth', 'invalid-page', 'changed-total'])('rejects %s partial variation listings without caching', async failure => {
+        const woo = new WooService({ url: 'https://store.example.com', consumerKey: 'ck_test', consumerSecret: 'cs_test', accountId: 'a' });
+        const first = Array.from({ length: 100 }, (_, id) => ({ id: id + 1 }));
+        const request = vi.fn().mockResolvedValueOnce({ data: first, total: 101, totalPages: 2 });
+        if (failure === 'auth' || failure === 'invalid-page') request.mockRejectedValueOnce({ response: {
+            status: failure === 'auth' ? 401 : 400, data: { code: 'rest_post_invalid_page_number' },
+        } });
+        else request.mockResolvedValueOnce({
+            data: failure === 'object' ? {} : failure === 'empty' ? [] : failure === 'repeated' ? [{ id: 1 }] : [{ id: 101 }],
+            total: failure === 'short' ? 102 : failure === 'changed-total' ? 100 : 101, totalPages: 2,
+        });
+        (woo as any).requestWithRetry = request;
+        await expect(woo.getProductVariations(42)).rejects.toBeDefined();
+        expect(redis.setex).not.toHaveBeenCalled();
+    });
+
+    it('retains private variations from an unfiltered successful listing', async () => {
+        const woo = new WooService({ url: 'https://store.example.com', consumerKey: 'ck_test', consumerSecret: 'cs_test', accountId: 'a' });
+        (woo as any).requestWithRetry = vi.fn().mockResolvedValue({ data: [{ id: 7, status: 'private' }], total: 1, totalPages: 1 });
+        expect(await woo.getProductVariations(42)).toEqual([{ id: 7, status: 'private' }]);
+    });
+    it('does not treat a headerless invalid-page error as a complete listing', async () => {
+        const woo = new WooService({ url: 'https://store.example.com', consumerKey: 'ck_test', consumerSecret: 'cs_test', accountId: 'a' });
+        const error = { response: { status: 400, data: { code: 'rest_post_invalid_page_number' } } };
+        (woo as any).requestWithRetry = vi.fn()
+            .mockResolvedValueOnce({ data: Array.from({ length: 100 }, (_, id) => ({ id: id + 1 })) })
+            .mockRejectedValueOnce(error);
+        await expect(woo.getProductVariations(42)).rejects.toEqual(error);
+        expect(redis.setex).not.toHaveBeenCalled();
     });
 
     it('configures a bounded request timeout', () => {

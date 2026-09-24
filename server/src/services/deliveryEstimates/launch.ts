@@ -85,7 +85,7 @@ export async function deliveryReadiness(accountId: string, transportBudgetMs = 1
         WITH configured AS (
           SELECT p.* FROM "WooProduct" p WHERE p."accountId" = ${accountId}
           AND (p."productionMinDays" IS NOT NULL OR p."productionMaxDays" IS NOT NULL OR EXISTS
-            (SELECT 1 FROM "ProductVariation" v WHERE v."productId" = p.id AND (v."productionMinDays" IS NOT NULL OR v."productionMaxDays" IS NOT NULL)))
+            (SELECT 1 FROM "ProductVariation" v WHERE v."productId" = p.id AND v."deliveryActive" AND (v."productionMinDays" IS NOT NULL OR v."productionMaxDays" IS NOT NULL)))
         ), classified AS (
           SELECT p."wooId", i.id AS input_id, i.payload,
             targets.eligible_targets, targets.excluded_targets, targets.invalid_targets, targets.target_count
@@ -98,7 +98,7 @@ export async function deliveryReadiness(accountId: string, transportBudgetMs = 1
               COUNT(*) AS target_count
             FROM jsonb_array_elements(COALESCE(i.payload->'targets', '[]'::jsonb)) t
             WHERE (p."productionMinDays" IS NOT NULL OR p."productionMaxDays" IS NOT NULL OR EXISTS
-              (SELECT 1 FROM "ProductVariation" v WHERE v."productId" = p.id AND v."wooId" = (t->>'wooId')::int
+              (SELECT 1 FROM "ProductVariation" v WHERE v."productId" = p.id AND v."deliveryActive" AND v."wooId" = (t->>'wooId')::int
                AND (v."productionMinDays" IS NOT NULL OR v."productionMaxDays" IS NOT NULL)))
             AND NOT COALESCE((t->>'state' = 'unsupported' AND (t->>'wooId')::int = p."wooId"
               AND p."rawData"->>'type' = 'variable' AND jsonb_array_length(i.payload->'targets') > 1), false)
