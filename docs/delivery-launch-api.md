@@ -10,6 +10,14 @@ Readiness, receipt recovery, sync and explicit disable remain reachable with `DE
 
 ## UI endpoints (exact names)
 
+### Estimate modes (companion plugin 2.24.0+)
+
+The settings document accepts optional `estimateMode: 'production' | 'inventory'`. Omission retains historical inventory-aware behaviour and is not rewritten on read. New unsaved account defaults use `production`. Mode changes preserve all existing settings and product/variation records. Entering production mode automatically queues a bounded background publication of saved product timings and restarts a failed publication; routine settings saves do not restart that catalogue build. In production mode, malformed product inputs are skipped with their source records retained, allowing healthy products to publish. Database failures still roll back the batch and retry normally.
+
+Production-mode readiness requires current acknowledged settings, an enabled supported shipping mapping, at least one synced configured native product, and explicit plugin `productionEstimates: true` capability. It does not require inventory SQL certification, catalogue-wide inventory compatibility, inbound freshness, or settled receipt/legacy work. Individual unsynced products become `production_products_not_synced` notices. Already-frozen inventory work remains recoverable and must be resolved before activation.
+
+The production activation command includes `estimateMode: 'production'` and the exact settings revision. Plugin control keeps its existing receipt `mode` and `epoch`; the new estimate mode is independent of receipt transport. Mode agreement is checked against synchronized settings and at the storefront gate. The adapter reads live Woo stock, aggregates shared-owner demand and subtracts held stock; backorders/shortages get no date. No incoming-stock or receipt proofs are read in this mode. Inventory mode keeps its existing calculation and activation prerequisites. Explicit disable and automatic settings revalidation work in either mode.
+
 ### `GET /api/delivery-estimates/readiness`
 
 Returns HTTP 200 for a diagnostic, **not a readiness assertion**:
@@ -17,6 +25,7 @@ Returns HTTP 200 for a diagnostic, **not a readiness assertion**:
 ```ts
 type Readiness = {
   ready: boolean;
+  estimateMode: 'production' | 'inventory';
   mode: 'LEGACY' | 'GUARDED';
   active: boolean;                 // verified plugin/settings/environment activation, not a promise for every SKU
   acknowledgedActive: boolean;     // last server control ACK; may differ during revalidation/outages
@@ -47,17 +56,17 @@ type Readiness = {
   eligibleConfiguredCount: number;
   excludedConfiguredCount: number;
   excludedProductWooIds: number[]; // first 100 sorted parent Woo IDs with excluded configured targets
-  freshnessPrerequisite: { ready: boolean; version: string; missing: string[]; diagnostic: string | null };
+  freshnessPrerequisite: { ready: boolean; version: string; missing: string[]; diagnostic: string | null } | null; // production mode only evaluates these for frozen-inventory recovery
   inventoryCompatibility: {
     ready: boolean; blockedCount: number;
     targets: {productWooId: number; variationWooId: number|null; reason: string}[];
-  };
+  } | null;
   freshness: { stale: number; unverified: number };
   providerSupport: { supportedMethodIds: string[]; configuredSupported: number };
   sync: { capability: string; inboundCapability: string; resyncRequested: boolean;
           inboundRequested: boolean; lastError: string | null };
   plugin: null | {
-    schemaVersion: 1; protocolVersion: 1; wooVersion: string | null;
+    schemaVersion: 1; protocolVersion: 1; productionEstimates?: boolean; wooVersion: string | null;
     blockers: string[];
     environmentFingerprint: string;
     presentation: 'classic' | 'blocks' | 'unknown';

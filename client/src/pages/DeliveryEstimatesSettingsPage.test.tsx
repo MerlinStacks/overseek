@@ -46,6 +46,25 @@ describe('Delivery estimates settings', () => {
     });
     afterEach(() => vi.unstubAllGlobals());
 
+    it('switches to simple setup without losing advanced settings and enables without inventory preparation', async () => {
+        const data = responseFixture();
+        data.settings.fallbackSupplierLeadTimeDays = 17;
+        data.settings.closures = [{ date: '2026-12-25', scope: 'both', label: 'Christmas' }];
+        fetchMock.mockResolvedValueOnce(ok(data));
+        launchReadiness = readinessFixture({ estimateMode: 'production', ready: true, mode: 'LEGACY', cutoverState: 'legacy', blockers: [] });
+        render(<DeliveryEstimatesSettingsPage />);
+        const mode = await screen.findByLabelText('How should estimates work?');
+        expect(mode).toHaveValue('inventory');
+        fireEvent.change(mode, { target: { value: 'production' } });
+        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...data, settings: JSON.parse(options.body) }));
+        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+        await screen.findByText(/Settings saved in Overseek/);
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ ...data.settings, estimateMode: 'production' });
+        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Activate storefront estimates' })).toBeEnabled());
+        expect(screen.queryByRole('checkbox', { name: 'I have paused inventory receiving.' })).not.toBeInTheDocument();
+    });
+
     it('preserves saved advanced settings and exact shipping identities when editing only dispatch', async () => {
         const data = responseFixture();
         data.settings.timezone = 'US/Eastern';

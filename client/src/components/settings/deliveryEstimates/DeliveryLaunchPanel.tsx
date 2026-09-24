@@ -32,6 +32,7 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
     const [message, setMessage] = useState('');
     const launch = useDeliveryLaunch(accountId, token, canInventory, open && inView, saveRevision, canRead);
     const status = launch.readiness;
+    const simple = status?.estimateMode === 'production';
     const unresolvedLegacyJobs = launch.legacy?.jobs.filter(job => job.state !== 'drained') ?? [];
     const completedLegacyJobs = launch.legacy?.jobs.filter(job => job.state === 'drained') ?? [];
     const navigation = [
@@ -105,8 +106,9 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
             {status?.receivingFrozen && <p role="alert">Inventory receiving is paused. Open advanced setup to review and resume the inventory upgrade.</p>}
             {status?.revalidationRequested && <p role="status">Publishing settings / revalidating. Estimates will resume once checks finish.</p>}
             {status?.work.lastError && <p role="alert">{status.work.lastError}</p>}
-            {status?.sync?.lastError && <p role="alert">{status.sync.lastError}</p>}
-            {!!status?.warnings.length && <p>{status.warnings.length} delivery notice(s). Review advanced setup for affected products or shipping options.</p>}
+            {!simple && status?.sync?.lastError && <p role="alert">{status.sync.lastError}</p>}
+            {simple && <p>Production + shipping times. Your saved product and variant timings are used automatically. Incoming-stock estimates are optional in Dispatch settings.</p>}
+            {!!status?.warnings.length && (simple ? <ul className="list-disc space-y-1 pl-5">{status.warnings.map(code => <li key={code}>{launchGuidance(code)}</li>)}</ul> : <p>{status.warnings.length} delivery notice(s). Review advanced setup for affected products or shipping options.</p>)}
             {controls}
             <button type="button" disabled={launch.loading} onClick={() => void launch.refresh()}>Check status</button>
             <button type="button" aria-expanded={advanced} aria-controls={`${sectionId}-details`} onClick={() => setAdvanced(value => !value)}>Advanced setup &amp; recovery</button>

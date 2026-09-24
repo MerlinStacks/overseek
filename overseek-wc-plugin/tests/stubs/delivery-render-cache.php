@@ -69,6 +69,7 @@ class wpdb {
 	}
 	public function get_results( $sql, $mode ) {
 		++$this->num_queries;
+		if ( ! empty( $GLOBALS['receipt_cache_unavailable'] ) && str_contains( $sql, 'overseek_receipt_guards' ) ) { throw new RuntimeException( 'Receipt tables unavailable' ); }
 		if ( ! str_contains( $sql, 'UNION ALL' ) ) {
 			return array_map( static fn( $key, $value ) => [ 'meta_key' => $key, 'meta_value' => $value ], array_keys( $this->stock ), $this->stock );
 		}

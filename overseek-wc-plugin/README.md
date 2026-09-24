@@ -2,7 +2,15 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.23.1**.
+Current version: **2.24.0**.
+
+### Simple delivery estimate setup
+
+In Overseek, open **Delivery estimates → Dispatch → How should estimates work?** and choose **Simple: production + shipping times**. Save, then use **Preview & enable** to activate once your saved timings have published. New configurations start with this option; existing configurations keep incoming-stock behaviour until you switch.
+
+Simple mode uses saved product production times, variant overrides, calendars and shipping mappings for items available now. It does not require inventory cutover or supplier/receipt proofs. Unsynced catalogue entries do not block other synced products. Backordered or insufficient-stock items show no date in this mode.
+
+Switching modes preserves product/variant data, supplier timing, purchase orders, closures, shipping identities and styling. **Advanced: include incoming stock** retains the existing inventory preparation and receipt workflow. An inventory upgrade already in progress must finish or be recovered before activation; switching estimate modes does not abandon inventory work or unfreeze receiving.
 
 > **Important:** This plugin is **not standalone** - it connects your WooCommerce store to your self-hosted OverSeek server. You must set up the server first.
 

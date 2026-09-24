@@ -10,6 +10,7 @@ export interface ShippingMethod extends MethodIdentity {
     fulfilmentType: 'delivery' | 'collection';
 }
 export interface DeliverySettings {
+    estimateMode?: 'production' | 'inventory';
     cutoffTime: string;
     timezone: string;
     fallbackSupplierLeadTimeDays: number;

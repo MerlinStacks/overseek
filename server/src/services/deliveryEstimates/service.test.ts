@@ -5,9 +5,9 @@ vi.mock('../../utils/prisma', () => {
         deliveryEstimateSettings: { findUnique: mocks.settingsFind, upsert: mocks.upsert },
         $queryRaw: mocks.lock, deliveryInputSync: { upsert: mocks.intent, findUnique: mocks.inputFind, findMany: mocks.inboundRows },
         deliveryInboundDirtyTarget: { upsert: mocks.dirtyTarget },
-        deliverySyncAccount: { upsert: mocks.control },
+        deliverySyncAccount: { upsert: mocks.control, updateMany: mocks.control },
         receiptAccount: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
-        account: { findUniqueOrThrow: async () => ({ timezone: 'UTC' }) }, accountFeature: { findUnique: async () => null } };
+        account: { findUnique: async () => ({ timezone: 'UTC' }), findUniqueOrThrow: async () => ({ timezone: 'UTC' }) }, accountFeature: { findUnique: async () => null } };
     return { prisma: { ...db, $transaction: (callback: (tx: unknown) => unknown) => mocks.transaction(callback, db) } };
 });
 import { DeliveryEstimateService, resolveProductionRange } from './service';
@@ -22,6 +22,24 @@ describe('local delivery persistence and tenant isolation', () => {
         mocks.eligible.mockResolvedValue([]); mocks.inboundRows.mockResolvedValue([]);
     });
     const range = { productionMinDays: 2, productionMaxDays: 4 };
+    it('defaults only unconfigured accounts to simple mode', async () => {
+        mocks.settingsFind.mockResolvedValue(null);
+        expect(await DeliveryEstimateService.getSettings('a')).toEqual({ ...defaultSettings(), estimateMode: 'production' });
+        mocks.settingsFind.mockResolvedValue({ settings: defaultSettings() });
+        expect(await DeliveryEstimateService.getSettings('a')).not.toHaveProperty('estimateMode');
+        expect(mocks.upsert).not.toHaveBeenCalled();
+    });
+    it('switches modes while retaining saved settings and all product/variant production data', async () => {
+        const saved = { ...defaultSettings(), fallbackSupplierLeadTimeDays: 17, closures: [{ date: '2026-12-25', scope: 'both' as const, label: 'Christmas' }] };
+        for (const estimateMode of ['production', 'inventory'] as const) {
+            const settings = { ...saved, estimateMode };
+            mocks.settingsFind.mockResolvedValue({ settings }).mockResolvedValueOnce({ settings: saved });
+            expect(await DeliveryEstimateService.saveSettings('a', settings)).toEqual(settings);
+            expect(await DeliveryEstimateService.getSettings('a')).toEqual(settings);
+        }
+        expect(mocks.control).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: 'a', OR: [{ resyncRequested: false }, { buildFailed: true }] }, data: expect.objectContaining({ resyncRequested: true, buildFailed: false }) }));
+        expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.variationUpdate).not.toHaveBeenCalled();
+    });
     it('keeps unknown products unresolved and distinguishes inheritance from zero overrides', () => {
         const unset = { productionMinDays: null, productionMaxDays: null };
         expect(resolveProductionRange(unset).source).toBe('unset');

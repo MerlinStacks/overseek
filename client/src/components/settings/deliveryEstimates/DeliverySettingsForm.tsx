@@ -142,7 +142,7 @@ export function DeliverySettingsForm({ accountId, token, canEdit, canInventory =
             }}>
             <DeliveryLaunchPanel accountId={accountId} token={token} canEdit={canEdit} canInventory={canInventory} compact
                 dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} setupUnavailable={loading || !settings || blocked} />
-            {!loading && <DeliverySyncPanel accountId={accountId} token={token} canEdit={canEdit} compact dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} />}
+            {!loading && <DeliverySyncPanel accountId={accountId} token={token} canEdit={canEdit} compact productionOnly={settings?.estimateMode === 'production'} dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} />}
             </div>
             </div>
         {settings && <>

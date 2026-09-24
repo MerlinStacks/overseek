@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { DeliveryEstimateService } from './service';
-import { dirtyInbound, lockDeliveryAccount, recordIntent, recordProductIntent, recordSettingsIntent, recoverStrandedInbound } from './intents';
+import { dirtyInbound, lockDeliveryAccount, productionPayload, recordIntent, recordProductIntent, recordSettingsIntent, recoverStrandedInbound } from './intents';
 
 export const RESYNC_BATCH_SIZE = 25;
 export const RESYNC_MAX_ATTEMPTS = 8;
@@ -63,6 +63,20 @@ export async function buildDeliveryResyncBatch(accountId: string, scanned?: { re
         attempt.state = { generation: control.resyncGeneration, version: control.buildVersion, failures: control.buildAttempts };
         const generation = control.resyncGeneration;
         const cursor = control.resyncCursor;
+        const stored = await tx.deliveryEstimateSettings.findUnique({ where: { accountId } });
+        const simple = (stored?.settings as { estimateMode?: string } | null)?.estimateMode === 'production';
+        const publishProduct = async (id: string) => {
+            const snapshot = await DeliveryEstimateService.getProduct(accountId, id, tx);
+            // Only catch pure input validation. Database failures still roll back
+            // the page and use the normal durable retry policy.
+            try { productionPayload(snapshot); }
+            catch (error) {
+                if (!simple) throw error;
+                Logger.warn('Skipping invalid delivery production input; source data retained', { accountId, productId: id });
+                return;
+            }
+            await recordProductIntent(tx, accountId, snapshot);
+        };
         if (control.resyncPhase === 'products') {
             const products = await tx.wooProduct.findMany({
                 where: { accountId, ...(cursor ? { id: { gt: cursor } } : {}), OR: [
@@ -73,7 +87,7 @@ export async function buildDeliveryResyncBatch(accountId: string, scanned?: { re
                 const existing = await tx.deliveryInputSync.findUnique({ where: { accountId_scope_entityId: { accountId, scope: 'product', entityId: product.wooId } }, select: { resyncGeneration: true } });
                 // A normal save during this build already recorded the current snapshot.
                 if (existing?.resyncGeneration !== generation) {
-                    await recordProductIntent(tx, accountId, await DeliveryEstimateService.getProduct(accountId, product.id, tx));
+                    await publishProduct(product.id);
                 }
             }
             await tx.deliverySyncAccount.update({ where: { accountId }, data: {
@@ -89,7 +103,7 @@ export async function buildDeliveryResyncBatch(accountId: string, scanned?: { re
             });
             for (const row of rows) {
                 const product = await tx.wooProduct.findFirst({ where: { accountId, wooId: row.entityId }, select: { id: true } });
-                if (product) await recordProductIntent(tx, accountId, await DeliveryEstimateService.getProduct(accountId, product.id, tx));
+                if (product) await publishProduct(product.id);
                 else await recordIntent(tx, accountId, 'product', row.entityId, { wooId: row.entityId, productionMinDays: null, productionMaxDays: null, variations: [] });
             }
             await tx.deliverySyncAccount.update({ where: { accountId }, data: {

@@ -46,6 +46,8 @@ final class OverSeek_Delivery_Live_Adapter {
 		self::check( true === ( $payload['enabled'] ?? null ) && is_array( $payload['settings'] ?? null ), 'invalid_settings' );
 		self::check( count( $cart ) <= 200, 'input_too_large' );
 		$settings = $payload['settings'];
+		$production_only = 'production' === ( $settings['estimateMode'] ?? null );
+		$production_owners = [];
 		$products = [];
 		$snapshots = [];
 		$blobs = [];
@@ -82,17 +84,32 @@ final class OverSeek_Delivery_Live_Adapter {
 			}
 			if ( ! isset( $blobs[ $parent_id ] ) ) {
 				$production = self::payload( $this->storage->read_product( $parent_id ), 'production_missing' );
-				$inbound = self::payload( $this->storage->read_inbound( $parent_id ), 'inbound_missing' );
+				$inbound = $production_only ? [] : self::payload( $this->storage->read_inbound( $parent_id ), 'inbound_missing' );
 				self::check( ( $production['wooId'] ?? null ) === $parent_id, 'production_identity_mismatch' );
 				$blobs[ $parent_id ] = [
 					'proof' => $inbound['receiptProof'] ?? null,
 					'production' => self::production_map( $production ),
-					'targets' => self::inbound_map( $inbound, $parent_id, $now ),
+					'targets' => $production_only ? [] : self::inbound_map( $inbound, $parent_id, $now ),
 				];
 			}
 			$blob = $blobs[ $parent_id ];
 			$range = $blob['production'][ $id ] ?? $blob['production'][ $parent_id ];
 			self::check( null !== $range, 'missing_range' );
+			if ( $production_only ) {
+				// No arrival promise for backorders. Pool native stock demand across
+				// sibling variations and duplicate cart lines before accepting a date.
+				self::check( 'in_stock' === $status, 'production_stock_unavailable' );
+				$owner_id = $product->get_stock_managed_by_id();
+				self::integer( $owner_id, 1, PHP_INT_MAX, 'invalid_stock_owner' );
+				self::check( in_array( $owner_id, [ $id, $parent_id ], true ), 'invalid_stock_owner' );
+				$owner = self::product( $owner_id, $products, $snapshots );
+				$demand[ $owner_id ] = ( $demand[ $owner_id ] ?? 0 ) + $quantity;
+				self::integer( $demand[ $owner_id ], 1, 1000000, 'invalid_quantity' );
+				if ( $owner->managing_stock() ) { $production_owners[ $owner_id ] = $owner; }
+				$items[] = [ 'virtual' => false, 'needs_shipping' => true, 'supported' => true, 'purchasable' => true,
+					'stock_status' => 'in_stock', 'quantity' => $quantity, 'production' => $range, 'managed_stock' => false ];
+				continue;
+			}
 			$target = $blob['targets'][ $id ] ?? null;
 			self::check( is_array( $target ), 'inbound_target_missing' );
 			self::check( 'unsupported' !== $target['state'], 'inbound_unsupported' );
@@ -134,7 +151,13 @@ final class OverSeek_Delivery_Live_Adapter {
 				'stock_status' => $status, 'quantity' => $quantity, 'production' => $range,
 				'managed_stock' => $manages, 'stock_owner' => $key ];
 		}
-		// Every managed owner already passed its proof/guard fence, even when fully stocked.
+		foreach ( $production_owners as $owner_id => $owner ) {
+			$stock = $owner->get_stock_quantity();
+			$held = wc_get_held_stock_quantity( $owner, $held_exclusion );
+			self::check( is_numeric( $stock ) && is_numeric( $held ) && is_finite( (float) $stock ) && is_finite( (float) $held ) && $held >= 0
+				&& $stock - $held >= $demand[ $owner_id ], 'production_stock_unavailable' );
+		}
+		// Inventory mode still verifies every managed owner, even when fully stocked.
 		$methods = OverSeek_Delivery_Rate_Resolver::resolve( $settings, $rates );
 		self::check( $account === get_option( 'overseek_account_id', '' ), 'account_changed' );
 		$result = OverSeek_Delivery_Engine::calculate( [

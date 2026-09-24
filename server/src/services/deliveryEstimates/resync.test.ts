@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 const mocks = vi.hoisted(() => ({ page: vi.fn(), product: vi.fn(), lock: vi.fn(), groups: vi.fn(), latest: vi.fn(),
     controlFind: vi.fn(), controlUpsert: vi.fn(), controlUpdate: vi.fn(), controlScan: vi.fn(), controlMany: vi.fn(),
-    inputFind: vi.fn(), inputUpsert: vi.fn(), inputScan: vi.fn(), transaction: vi.fn(), warn: vi.fn() }));
+    inputFind: vi.fn(), inputUpsert: vi.fn(), inputScan: vi.fn(), transaction: vi.fn(), warn: vi.fn(), settings: vi.fn() }));
 vi.mock('../../utils/logger', () => ({ Logger: { warn: mocks.warn } }));
 vi.mock('../../utils/prisma', () => {
     const db = {
@@ -16,7 +16,7 @@ vi.mock('../../utils/prisma', () => {
         wooProduct: { findMany: mocks.page, findFirst: mocks.product },
         account: { findUniqueOrThrow: async () => ({ timezone: 'UTC' }) },
         accountFeature: { findUnique: async () => ({ isEnabled: false }) },
-        deliveryEstimateSettings: { findUnique: async () => null },
+        deliveryEstimateSettings: { findUnique: mocks.settings },
     };
     return { prisma: { ...db, $transaction: (callback: (tx: unknown) => unknown) => mocks.transaction(callback, db) } };
 });
@@ -25,6 +25,7 @@ import { requestDeliverySync, deliverySyncStatus } from './sync';
 import { buildDeliveryResyncBatch, drainDeliveryResyncs, RESYNC_BATCH_SIZE, RESYNC_MAX_ATTEMPTS, RESYNC_MAX_BACKOFF_MS } from './resync';
 import { recordProductIntent, recordSettingsIntent } from './intents';
 import { prisma } from '../../utils/prisma';
+import { defaultSettings } from './validation';
 
 // Transactional in-memory adapter exercises the real enqueue, builder and intent functions.
 // PostgreSQL lock/CAS behavior still requires a live integration environment.
@@ -95,6 +96,29 @@ describe('durable background resync and truthful status', () => {
         });
     });
     afterEach(() => vi.useRealTimers());
+    it('publishes healthy products past malformed product and variant inputs in simple mode without clearing source data', async () => {
+        mocks.settings.mockResolvedValue({ settings: { ...defaultSettings(), estimateMode: 'production' } });
+        state.products = [ { ...product(1), productionMaxDays: -1 },
+            { ...product(2), variations: [{ wooId: 0, productionMinDays: 1, productionMaxDays: 2 }] }, product(3) ];
+        const saved = structuredClone(state.products);
+        await requestDeliverySync('a');
+        await buildDeliveryResyncBatch('a');
+        await buildDeliveryResyncBatch('a');
+        expect(state.control).toMatchObject({ resyncRequested: false, buildFailed: false });
+        expect(state.rows.has('product:3')).toBe(true);
+        expect(state.rows.has('product:1')).toBe(false); expect(state.rows.has('product:2')).toBe(false);
+        expect(state.products).toEqual(saved);
+        expect(mocks.warn).toHaveBeenCalledTimes(2);
+    });
+    it('still retries database failures during simple publication', async () => {
+        mocks.settings.mockResolvedValue({ settings: { ...defaultSettings(), estimateMode: 'production' } });
+        state.products = [product(1)];
+        await requestDeliverySync('a');
+        mocks.inputUpsert.mockRejectedValueOnce(new Error('database unavailable'));
+        await expect(buildDeliveryResyncBatch('a')).rejects.toThrow('database unavailable');
+        expect(state.control).toMatchObject({ resyncRequested: true, buildAttempts: 1, resyncCursor: null });
+        expect(state.rows.has('product:1')).toBe(false);
+    });
     it('enqueues 10,000 products with no catalogue read, row-wide wake or network, and coalesces repeats', async () => {
         state.products = Array.from({ length: 10_000 }, (_, n) => product(n + 1));
         const result = await requestDeliverySync('a');

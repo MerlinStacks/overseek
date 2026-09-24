@@ -13,6 +13,15 @@ const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 export function CalendarSettings({ settings, onChange }: SettingsFieldsProps) {
     const timezones = useMemo(() => [...new Set(['UTC', ...supportedTimezones, settings.timezone].filter(Boolean))].sort(), [settings.timezone]);
     return <section className="space-y-4">
+        <label className="block">How should estimates work?
+            <select value={settings.estimateMode ?? 'inventory'} onChange={e => onChange({ ...settings, estimateMode: e.target.value as 'production' | 'inventory' })}>
+                <option value="production">Simple: production + shipping times</option>
+                <option value="inventory">Advanced: include incoming stock</option>
+            </select>
+        </label>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{settings.estimateMode === 'production'
+            ? 'Use your saved product and variant production times for items available now. No inventory upgrade is needed. Backordered items do not show a date in this mode.'
+            : 'Include purchase orders and supplier timing when stock is due to arrive. This requires inventory preparation.'} Switching modes keeps your existing product times, shipping settings and supplier configuration.</p>
         <h3 className="text-lg font-semibold">When do you dispatch?</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400">Estimates use the production times already set on your products and variations, followed by shipping time. Choose the days your team works and your daily order cutoff.</p>
         <div className="grid gap-4 sm:grid-cols-2">

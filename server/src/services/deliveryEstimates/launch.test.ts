@@ -59,6 +59,54 @@ function readyStore() {
 }
 
 describe('launch readiness eligibility', () => {
+    it('enables production estimates without inventory migration or clearing unrelated catalogue records', async () => {
+        readyStore();
+        m.input.payload.settings.estimateMode = 'production';
+        m.plugin.productionEstimates = true;
+        m.plugin.blockers = ['woocommerce_native_stock_management_required'];
+        m.prerequisite = { ready: false }; m.inventory.ready = false;
+        m.account.receiptTransportMode = 'LEGACY';
+        Object.assign(m.control, { cutoverState: 'legacy', cutoverEpoch: null });
+        m.plugin.state = { revision: 0, mode: 'legacy', epoch: null, active: false };
+        m.unresolved = 3; m.legacy = 2; m.configuredCount = 4;
+        const result = await deliveryReadiness('a');
+        expect(result).toMatchObject({ ready: true, estimateMode: 'production', eligibleConfiguredCount: 1 });
+        expect(result.warnings).toContain('production_products_not_synced');
+        await requestActivation('a', true);
+        m.control.controlPayload = null; // Mock Prisma's SQL NULL sentinel as a stored read.
+        m.transport.mockImplementation(async command => command ? { schemaVersion: 1, revision: command.revision,
+            state: { active: true, epoch: null, mode: 'legacy', estimateMode: 'production' } } : m.plugin);
+        await drainDeliveryControls();
+        expect(m.transport).toHaveBeenCalledWith(expect.objectContaining({ action: 'activate', estimateMode: 'production', settingsRevision: 1 }), expect.any(Number));
+        expect(m.control).toMatchObject({ active: true, cutoverState: 'legacy', receivingFrozen: false });
+        expect(m.account.receiptTransportMode).toBe('LEGACY');
+        expect(m.upsertOwner).not.toHaveBeenCalled(); expect(m.dirty).not.toHaveBeenCalled();
+    });
+    it('requires explicit plugin support and synchronized settings for simple mode', async () => {
+        readyStore(); m.input.payload.settings.estimateMode = 'production';
+        expect((await deliveryReadiness('a')).blockers).toContain('production_estimates_plugin_update_required');
+        m.plugin.productionEstimates = true; m.input.ackRevision = 0n;
+        await expect(requestActivation('a', true)).rejects.toThrow('settings_not_synced_or_invalid');
+    });
+    it('retains recovery diagnostics for an inventory upgrade already frozen when simple mode is selected', async () => {
+        readyStore(); m.input.payload.settings.estimateMode = 'production'; m.plugin.productionEstimates = true;
+        m.control.receivingFrozen = true;
+        const result = await deliveryReadiness('a');
+        expect(result.blockers).toContain('receiving_frozen');
+        expect(result.freshnessPrerequisite?.ready).toBe(true);
+        expect(result.inventoryCompatibility?.ready).toBe(true);
+        await expect(requestActivation('a', true)).rejects.toThrow('receiving_frozen');
+        expect(m.control.receivingFrozen).toBe(true);
+    });
+    it('restores inventory prerequisites when switching back without deleting saved inputs', async () => {
+        readyStore(); m.prerequisite = { ready: false };
+        const saved = structuredClone(m.input.payload.settings);
+        m.input.payload.settings.estimateMode = 'production'; m.plugin.productionEstimates = true;
+        expect((await deliveryReadiness('a')).ready).toBe(true);
+        m.input.payload.settings.estimateMode = 'inventory';
+        expect((await deliveryReadiness('a')).blockers).toContain('freshness_sql_prerequisite_missing');
+        expect(m.input.payload.settings).toEqual({ ...saved, estimateMode: 'inventory' });
+    });
     it('warns with explicit unsupported product IDs without blocking an eligible verified product', async () => {
         readyStore(); m.configuredCount = 2;
         m.proofs = [{ total: 2n, eligible: 1n, stale: 0n, unverified: 0n, excluded: 1n, excludedProductWooIds: [22] }];
@@ -88,7 +136,7 @@ describe('launch readiness eligibility', () => {
     it('blocks both activation request and dispatch when exact SQL freshness prerequisites are absent', async () => {
         readyStore(); m.prerequisite = { ready: false };
         const result = await deliveryReadiness('a');
-        expect(result.freshnessPrerequisite.ready).toBe(false);
+        expect(result.freshnessPrerequisite?.ready).toBe(false);
         expect(result.blockers).toContain('freshness_sql_prerequisite_missing');
         await expect(requestActivation('a', true)).rejects.toThrow('freshness_sql_prerequisite_missing');
         Object.assign(m.control, { controlAction: 'activate', controlRevision: 1n, desiredActive: true });

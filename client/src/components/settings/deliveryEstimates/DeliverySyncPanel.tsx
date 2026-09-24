@@ -10,8 +10,8 @@ const descriptions: Record<DeliverySyncStatus['configurationSync'], string> = {
     failed: 'Sync failed — retry using the sync button below.',
 };
 
-export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, saving = false, saveRevision = 0, compact = false }: {
-    accountId: string; token: string; canEdit: boolean; dirty?: boolean; saving?: boolean; saveRevision?: number; compact?: boolean;
+export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, saving = false, saveRevision = 0, compact = false, productionOnly = false }: {
+    accountId: string; token: string; canEdit: boolean; dirty?: boolean; saving?: boolean; saveRevision?: number; compact?: boolean; productionOnly?: boolean;
 }) {
     const { status, busy, error, queued, requestDisposition, backgroundPending, refresh, queue } = useDeliveryEstimateSync(accountId, token, canEdit, saveRevision);
     const progress = status?.progress;
@@ -21,7 +21,7 @@ export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, sa
         {busy && <p role="status">{status ? 'Requesting sync status…' : 'Loading sync status…'}</p>}
         {error && <p role="alert" className="text-red-700 dark:text-red-300">{error} {status && 'The status below is from the last successful request.'}</p>}
         {status && <div className="space-y-1 text-sm" aria-live="polite">
-            <p>{descriptions[status.configurationSync]}</p>
+            <p>{productionOnly ? 'Product timings publish in the background. Check the enable panel above for storefront readiness. Individual catalogue issues do not block other synced products.' : descriptions[status.configurationSync]}</p>
             <details open={compact ? undefined : true}>
             <summary className="cursor-pointer font-medium">Publishing details</summary>
             {progress ? <>
@@ -51,7 +51,7 @@ export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, sa
                 <p>Synced inputs reflect current-version state. Acknowledged-at-least-once, rebuild and scope counts are unavailable from this server.</p>
             </>}
             <p>These are current-state counts, not cumulative job totals. Saved changes or data rebuilds can requeue inputs: current-version synced may fall while pending rises. This does not mean previously acknowledged data was lost. Acknowledged-at-least-once counts can overlap pending inputs.</p>
-            {status.receiptSafety === 'unverified' && <p className="text-amber-800 dark:text-amber-200">Receipt safety is not yet verified. Managed-stock estimates remain unavailable, even after supplier inputs sync, until receipt and reversal safeguards are complete.</p>}
+            {!productionOnly && status.receiptSafety === 'unverified' && <p className="text-amber-800 dark:text-amber-200">Receipt safety is not yet verified. Managed-stock estimates remain unavailable, even after supplier inputs sync, until receipt and reversal safeguards are complete.</p>}
             {status.inboundCapability === 'plugin_update_required' && <p>Supplier input sync needs a newer companion plugin. Settings and production sync can continue independently.</p>}
             <p>Last acknowledged: {status.lastAcknowledgedAt ? <time dateTime={status.lastAcknowledgedAt}>{new Date(status.lastAcknowledgedAt).toLocaleString()}</time> : 'Never'}</p>
             {status.lastError && <p className="text-amber-800 dark:text-amber-200">Last sync error: {status.lastError}</p>}

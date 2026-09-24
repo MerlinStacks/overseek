@@ -33,7 +33,7 @@ export class DeliveryEstimateService {
         if (stored) return settingsSchema.parse(stored.settings);
         const account = await prisma.account.findUnique({ where: { id: accountId }, select: { timezone: true } });
         if (!account) throw new DeliveryResourceNotFound('Account not found');
-        return defaultSettings(account.timezone);
+        return { ...defaultSettings(account.timezone), estimateMode: 'production' as const };
     }
 
     /** Replace the complete validated settings document for this account only. */
@@ -41,10 +41,20 @@ export class DeliveryEstimateService {
         const settings = settingsSchema.parse(input);
         await prisma.$transaction(async tx => {
             await lockDeliveryAccount(tx, accountId);
+            const previous = settings.estimateMode === 'production' ? await tx.deliveryEstimateSettings.findUnique({ where: { accountId } }) : null;
             await tx.deliveryEstimateSettings.upsert({
                 where: { accountId }, create: { accountId, settings }, update: { settings },
             });
             await recordSettingsIntent(tx, accountId);
+            if (settings.estimateMode === 'production' && (previous?.settings as { estimateMode?: string } | null)?.estimateMode !== 'production') {
+                // Publish existing timings automatically, using the bounded worker.
+                // Coalesce saves into an in-progress build and retain every source row.
+                await tx.deliverySyncAccount.updateMany({ where: { accountId, OR: [{ resyncRequested: false }, { buildFailed: true }] }, data: {
+                    resyncRequested: true, resyncGeneration: { increment: 1 }, resyncPhase: 'products', resyncCursor: null,
+                    buildAttempts: 0, buildFailed: false, buildLastError: null, buildNextAttemptAt: new Date(), buildVersion: { increment: 1 },
+                    hasWork: true, nextAttemptAt: new Date(),
+                } });
+            }
             await requestSettingsRevalidation(tx, accountId);
         });
         return settings;

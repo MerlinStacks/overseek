@@ -14,7 +14,7 @@ vi.mock('../../utils/prisma', () => ({ prisma: {
             ['total', 'eligible', 'stale', 'unverified', 'excluded'].includes(key) ? [key, BigInt(value as string)] : [key, value])));
     },
 } }));
-vi.mock('../woo', () => ({ WooService: { forAccount: async () => ({ deliveryControl: async () => ({ schemaVersion: 1, protocolVersion: 1, blockers: [], wooVersion: '10.6.2', presentation: 'classic', environmentFingerprint: 'a'.repeat(64), state: { revision: 1, active: false, mode: 'guarded', epoch: 'epoch' } }) }) } }));
+vi.mock('../woo', () => ({ WooService: { forAccount: async () => ({ deliveryControl: async () => ({ schemaVersion: 1, protocolVersion: 1, productionEstimates: true, blockers: [], wooVersion: '10.6.2', presentation: 'classic', environmentFingerprint: 'a'.repeat(64), state: { revision: 1, active: false, mode: 'guarded', epoch: 'epoch' } }) }) } }));
 vi.mock('../../utils/accountFeatures', () => ({ isAccountFeatureEnabled: async () => true }));
 vi.mock('./freshnessPrerequisite', () => ({ checkFreshnessPrerequisite: async () => ({ ready: true }) }));
 vi.mock('./inventoryCompatibility', () => ({ checkInventoryCompatibility: async () => ({ ready: true, blockedCount: 0, targets: [] }) }));
@@ -30,6 +30,21 @@ describe.skipIf(!hasFreshnessTestDatabase)('launch eligibility classification (i
             CREATE TABLE "DeliveryInputSync" (id text, "accountId" text, scope text, "entityId" int, payload jsonb);`);
     });
     afterEach(async () => { await m.db?.close(); m.db = null; });
+    it('allows healthy synced production products while isolating stale, missing and other-account records', async () => {
+        m.settings.estimateMode = 'production';
+        await m.db.exec(`ALTER TABLE "DeliveryInputSync" ADD COLUMN status text, ADD COLUMN "ackRevision" bigint, ADD COLUMN "desiredRevision" bigint;
+            INSERT INTO "WooProduct" VALUES
+              ('healthy','a',10,0,2,'{"type":"simple"}'), ('broken','a',20,0,2,'{"type":"simple"}'),
+              ('missing','a',30,0,2,'{"type":"simple"}'), ('foreign','b',40,0,2,'{"type":"simple"}'),
+              ('custom','a',50,0,2,'{"type":"custom"}'), ('trash','a',60,0,2,'{"type":"simple","status":"trash"}');
+            INSERT INTO "DeliveryInputSync" (id,"accountId",scope,"entityId",status,"ackRevision","desiredRevision") VALUES
+              ('healthy','a','product',10,'synced',1,1), ('broken','a','product',20,'blocked',0,1),
+              ('foreign','b','product',40,'synced',1,1), ('custom','a','product',50,'synced',1,1), ('trash','a','product',60,'synced',1,1);`);
+        expect(await deliveryReadiness('a')).toMatchObject({ ready: true, estimateMode: 'production', eligibleConfiguredCount: 1,
+            warnings: expect.arrayContaining(['production_products_not_synced']) });
+        await m.db.exec(`UPDATE "DeliveryInputSync" SET "desiredRevision"=2 WHERE id='healthy'`);
+        expect((await deliveryReadiness('a')).blockers).toContain('no_eligible_configured_products');
+    });
     async function product(id: number, targets: { wooId: number; state: string }[], safety = 'verified', expired = false, type = 'simple') {
         await m.db.query(`INSERT INTO "WooProduct" VALUES ($1,'a',$2,0,2,$3)`, [String(id), id, JSON.stringify({ type })]);
         await m.db.query(`INSERT INTO "DeliveryInputSync" VALUES ($1,'a','inbound',$2,$3)`, [String(id), id, JSON.stringify({

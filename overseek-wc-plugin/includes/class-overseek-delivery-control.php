@@ -86,6 +86,12 @@ final class OverSeek_Delivery_Control {
 		return $blockers;
 	}
 
+	/** Production-only estimates do not change or depend on receipt transport. */
+	public static function activation_blockers( bool $production ): array {
+		return array_values( array_filter( self::blockers(), static fn( string $code ): bool => ! $production || ! in_array( $code,
+			[ 'woocommerce_native_stock_management_required', 'guarded_receipts_native_stock_store_required', 'transactional_native_stock_storage_required' ], true ) ) );
+	}
+
 	public function register_routes(): void {
 		register_rest_route( 'overseek/v1', '/delivery-estimates/control', [
 			'methods' => 'GET,POST', 'callback' => [ $this, 'handle' ],
@@ -96,12 +102,14 @@ final class OverSeek_Delivery_Control {
 	public function handle( WP_REST_Request $request ) {
 		$permission = ( new OverSeek_Delivery_Input_API() )->check_permission( $request );
 		if ( true !== $permission ) { return $permission; }
-		if ( 'GET' === $request->get_method() ) { return new WP_REST_Response( [ 'schemaVersion' => 1, 'protocolVersion' => 1, 'state' => self::state(), 'blockers' => self::blockers(), 'environmentFingerprint' => self::fingerprint(), 'presentation' => self::presentation(), 'wooVersion' => defined( 'WC_VERSION' ) ? WC_VERSION : null ], 200 ); }
+		if ( 'GET' === $request->get_method() ) { return new WP_REST_Response( [ 'schemaVersion' => 1, 'protocolVersion' => 1, 'productionEstimates' => true, 'state' => self::state(), 'blockers' => self::blockers(), 'environmentFingerprint' => self::fingerprint(), 'presentation' => self::presentation(), 'wooVersion' => defined( 'WC_VERSION' ) ? WC_VERSION : null ], 200 ); }
 		$storage = new OverSeek_Receipt_Storage();
 		try {
 			$body = $request->get_json_params();
 			if ( strlen( $request->get_body() ) > 65536 || 1 !== ( $body['schemaVersion'] ?? null ) || ! is_int( $body['revision'] ?? null ) || $body['revision'] < 1 || $body['revision'] > 9007199254740991 || ! in_array( $body['action'] ?? null, [ 'baseline', 'guarded', 'activate', 'disable' ], true ) ) { throw new InvalidArgumentException(); }
 			$action = $body['action'];
+			$production = 'activate' === $action && 'production' === ( $body['estimateMode'] ?? null );
+			if ( isset( $body['estimateMode'] ) && ! $production ) { throw new InvalidArgumentException(); }
 			$owners = $body['owners'] ?? [];
 			if ( ! is_array( $owners ) || count( $owners ) > 1001 ) { throw new InvalidArgumentException(); }
 			foreach ( $owners as $owner ) { if ( ! is_int( $owner ) || $owner < 1 || $owner > 9007199254740991 ) { throw new InvalidArgumentException(); } }
@@ -116,15 +124,15 @@ final class OverSeek_Delivery_Control {
 				// An activation retry must not report success while coexistence (or
 				// another current activation prerequisite) now blocks the storefront.
 				if ( 'activate' === $action ) {
-					$blockers = self::blockers();
+					$blockers = self::activation_blockers( $production );
 					if ( $blockers ) { throw new DomainException( implode( ', ', $blockers ) ); }
 				}
 				return new WP_REST_Response( [ 'schemaVersion' => 1, 'revision' => $current['revision'], 'state' => $current ], 200 );
 			}
 			$epoch = $body['epoch'] ?? null;
-			if ( 'disable' !== $action && ( ! is_string( $epoch ) || ! preg_match( '/\A[A-Za-z0-9_-]{1,64}\z/', $epoch ) ) ) { throw new InvalidArgumentException(); }
+			if ( 'disable' !== $action && ! $production && ( ! is_string( $epoch ) || ! preg_match( '/\A[A-Za-z0-9_-]{1,64}\z/', $epoch ) ) ) { throw new InvalidArgumentException(); }
 			$fingerprint = self::fingerprint();
-			$blockers = 'disable' === $action ? [] : self::blockers();
+			$blockers = 'disable' === $action ? [] : self::activation_blockers( $production );
 			// Baseline/guarded preparation always writes active:false. Keep the old
 			// display during private synchronization; activation still requires removal.
 			if ( in_array( $action, [ 'baseline', 'guarded' ], true ) ) {
@@ -151,11 +159,13 @@ final class OverSeek_Delivery_Control {
 				$next['epoch'] = $epoch;
 				$next['mode'] = 'baseline';
 			} elseif ( 'disable' !== $action ) {
-				if ( $current['epoch'] !== $epoch || ! in_array( $current['mode'], [ 'baseline', 'guarded' ], true ) ) { throw new DomainException( 'Baseline required.' ); }
-				$next['mode'] = 'guarded';
+				if ( ! $production && ( $current['epoch'] !== $epoch || ! in_array( $current['mode'], [ 'baseline', 'guarded' ], true ) ) ) { throw new DomainException( 'Baseline required.' ); }
+				if ( ! $production ) { $next['mode'] = 'guarded'; }
 				if ( 'activate' === $action ) {
 					$settings = ( new OverSeek_Delivery_Input_Storage() )->read_settings();
 					if ( ! $settings || true !== ( $settings['payload']['enabled'] ?? null ) || $settings['revision'] !== ( $body['settingsRevision'] ?? null ) ) { throw new DomainException( 'Settings synchronization required.' ); }
+					if ( $production !== ( 'production' === ( $settings['payload']['settings']['estimateMode'] ?? null ) ) ) { throw new DomainException( 'Estimate mode changed; synchronize settings.' ); }
+					$next['estimateMode'] = $production ? 'production' : 'inventory';
 					$next['active'] = true;
 					$next['settingsRevision'] = $settings['revision'];
 					$next['environmentFingerprint'] = $fingerprint;

@@ -95,7 +95,8 @@ class OverSeek_Delivery_Input_Validation {
 	}
 
 	private function settings( $settings ): void {
-		$this->object_keys( $settings, [ 'cutoffTime', 'timezone', 'fallbackSupplierLeadTimeDays', 'productionWeekdays', 'transitWeekdays', 'closures', 'shippingMethods', 'defaultMethod', 'branding' ] );
+		$this->object_keys( $settings, [ 'cutoffTime', 'timezone', 'fallbackSupplierLeadTimeDays', 'productionWeekdays', 'transitWeekdays', 'closures', 'shippingMethods', 'defaultMethod', 'branding' ], [ 'estimateMode' ] );
+		$this->require_valid( ! property_exists( $settings, 'estimateMode' ) || in_array( $settings->estimateMode, [ 'production', 'inventory' ], true ) );
 		$this->require_valid( is_string( $settings->cutoffTime ) && 1 === preg_match( '/\A([01]\d|2[0-3]):[0-5]\d\z/', $settings->cutoffTime ) );
 		$this->text( $settings->timezone, 1, 100 );
 		// IANA identifiers/aliases only, never PHP's numeric offsets or abbreviations.

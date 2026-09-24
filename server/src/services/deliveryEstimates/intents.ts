@@ -127,14 +127,18 @@ export async function recordSettingsIntent(tx: Prisma.TransactionClient, account
 }
 
 type ProductSnapshot = ProductionRange & { wooId: number; variations: (ProductionRange & { wooId: number })[] };
-export async function recordProductIntent(tx: Prisma.TransactionClient, accountId: string, product: ProductSnapshot, onlyIfChanged = false) {
-    await ensureSettingsIntent(tx, accountId);
+/** Pure validation lets background publication isolate malformed catalogue entries. */
+export function productionPayload(product: ProductSnapshot) {
     const range = (value: ProductionRange & { wooId: number }) => {
         if (!Number.isSafeInteger(value.wooId) || value.wooId <= 0) throw new Error('Invalid Woo product identity');
         return { wooId: value.wooId, ...productionRangeSchema.parse({ productionMinDays: value.productionMinDays, productionMaxDays: value.productionMaxDays }) };
     };
     if (product.variations.length > 1000) throw new Error('Too many delivery variations');
-    const payload = { ...range(product), variations: product.variations.map(range) };
+    return { ...range(product), variations: product.variations.map(range) };
+}
+export async function recordProductIntent(tx: Prisma.TransactionClient, accountId: string, product: ProductSnapshot, onlyIfChanged = false) {
+    await ensureSettingsIntent(tx, accountId);
+    const payload = productionPayload(product);
     if (onlyIfChanged) {
         const current = await tx.deliveryInputSync.findUnique({ where: { accountId_scope_entityId: { accountId, scope: 'product', entityId: product.wooId } }, select: { payload: true } });
         if (current && isDeepStrictEqual(current.payload, payload)) return;

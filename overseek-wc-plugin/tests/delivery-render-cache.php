@@ -113,3 +113,20 @@ $queries = $wpdb->num_queries;
 same( '', $rates['flat_rate:2']->get_delivery_time(), 'subsequent inactive callback stays blank' );
 same( true, $wpdb->num_queries - $queries <= 2, 'inactive admission uses bounded control reads' );
 fwrite( STDOUT, 'Delivery render cache: ' . $assertions . ' assertions; native 20-rate managed probe: 1 calculation, ' . $queries20 . " modeled queries.\n" );
+
+// Simple timing works through the real storefront callback before inventory setup.
+$wpdb->rows['control:0']['payload']['active'] = true;
+$wpdb->rows['control:0']['payload']['mode'] = 'legacy';
+$wpdb->rows['control:0']['payload']['epoch'] = null;
+$wpdb->rows['control:0']['payload']['estimateMode'] = 'production';
+$wpdb->rows['settings:0']['payload']['settings']['estimateMode'] = 'production';
+++ $wpdb->rows['control:0']['revision'];
+unset( $wpdb->rows['inbound:10'] );
+$receipt_cache_unavailable = true;
+same( true, '' !== $rates['flat_rate:1']->get_delivery_time(), 'simple storefront needs no inbound inputs or receipt cache' );
+$held[0] = 100;
+same( '', $rates['flat_rate:1']->get_delivery_time(), 'uncached simple timing still checks live held stock' );
+$held[0] = 0;
+$wpdb->rows['settings:0']['payload']['settings']['estimateMode'] = 'inventory';
+same( '', $rates['flat_rate:1']->get_delivery_time(), 'mode changes cannot reuse a simple estimate' );
+fwrite( STDOUT, "Simple-mode storefront fallback passed.\n" );

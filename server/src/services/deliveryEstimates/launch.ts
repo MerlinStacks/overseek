@@ -15,7 +15,9 @@ import { materializeLegacyBomReviews } from './bomStockTransport';
 export class LaunchConflict extends Error { statusCode = 409; }
 export const cutoverSchema = z.object({ receivingPaused: z.literal(true), legacyJobsDrained: z.literal(true), preupgradeWorkersRestarted: z.literal(true) }).strict();
 export const activationSchema = z.object({ active: z.boolean() }).strict();
-const pluginSchema = z.object({ schemaVersion: z.literal(1), protocolVersion: z.literal(1), blockers: z.array(z.string()), wooVersion: z.string().nullable(), environmentFingerprint: z.string().regex(/^[a-f0-9]{64}$/), presentation: z.enum(['classic', 'blocks', 'unknown']), state: z.object({ revision: z.number().int(), active: z.boolean(), mode: z.string(), epoch: z.string().nullable() }).passthrough() });
+const pluginSchema = z.object({ schemaVersion: z.literal(1), protocolVersion: z.literal(1), productionEstimates: z.boolean().optional(), blockers: z.array(z.string()), wooVersion: z.string().nullable(), environmentFingerprint: z.string().regex(/^[a-f0-9]{64}$/), presentation: z.enum(['classic', 'blocks', 'unknown']), state: z.object({ revision: z.number().int(), active: z.boolean(), mode: z.string(), epoch: z.string().nullable() }).passthrough() });
+const inventoryPluginBlockers = new Set(['woocommerce_native_stock_management_required', 'guarded_receipts_native_stock_store_required', 'transactional_native_stock_storage_required']);
+const productionSettings = (payload: unknown) => object(object(payload).settings).estimateMode === 'production';
 const settled = ['applied', 'reconciled'];
 
 async function requireCutoverFreshness(db?: Prisma.TransactionClient) {
@@ -48,23 +50,29 @@ export async function deliveryReadiness(accountId: string, transportBudgetMs = 1
     ]);
     const blockers: string[] = [];
     const warnings: string[] = [];
-    const freshnessPrerequisite = await checkFreshnessPrerequisite();
-    if (!freshnessPrerequisite.ready) blockers.push('freshness_sql_prerequisite_missing');
-    const inventoryCompatibility = await checkInventoryCompatibility(accountId);
-    if (!inventoryCompatibility.ready || control?.controlError?.startsWith('inventory_')) blockers.push('inventory_compatibility_required');
+    const simple = productionSettings(settings?.payload);
+    // Keep diagnostics available for an inventory upgrade already being recovered.
+    const inventoryDiagnostics = !simple || !!control?.receivingFrozen;
+    const freshnessPrerequisite = inventoryDiagnostics ? await checkFreshnessPrerequisite() : null;
+    if (!simple && !freshnessPrerequisite?.ready) blockers.push('freshness_sql_prerequisite_missing');
+    const inventoryCompatibility = inventoryDiagnostics ? await checkInventoryCompatibility(accountId) : null;
+    if (!simple && (!inventoryCompatibility?.ready || control?.controlError?.startsWith('inventory_'))) blockers.push('inventory_compatibility_required');
     let plugin: z.infer<typeof pluginSchema> | null = null;
     try {
         if (Date.now() >= discoveryDeadline) throw new Error('Readiness discovery budget exhausted');
         plugin = pluginSchema.parse(await (await WooService.forAccount(accountId)).deliveryControl(undefined, Math.max(1, discoveryDeadline - Date.now())));
     }
     catch { blockers.push('plugin_control_unavailable_or_upgrade_required'); }
-    if (plugin) blockers.push(...plugin.blockers);
+    if (plugin) {
+        blockers.push(...plugin.blockers.filter(code => !simple || !inventoryPluginBlockers.has(code)));
+        if (simple && plugin.productionEstimates !== true) blockers.push('production_estimates_plugin_update_required');
+    }
     if (!await isAccountFeatureEnabled(accountId, 'DELIVERY_ESTIMATES')) blockers.push('feature_disabled');
-    if (account.receiptTransportMode !== 'GUARDED' || control?.cutoverState !== 'guarded') blockers.push('cutover_required');
+    if (!simple && (account.receiptTransportMode !== 'GUARDED' || control?.cutoverState !== 'guarded')) blockers.push('cutover_required');
     if (control?.receivingFrozen) blockers.push('receiving_frozen');
-    if (unresolvedReceipts) blockers.push('unresolved_receipts');
-    if (unresolvedLegacyJobs) blockers.push('legacy_jobs_not_drained');
-    if (pendingInputs || sync?.resyncRequested || sync?.inboundRequested) blockers.push('inputs_pending');
+    if (!simple && unresolvedReceipts) blockers.push('unresolved_receipts');
+    if (!simple && unresolvedLegacyJobs) blockers.push('legacy_jobs_not_drained');
+    if (!simple && (pendingInputs || sync?.resyncRequested || sync?.inboundRequested)) blockers.push('inputs_pending');
     if (!settings || settings.status !== 'synced' || settings.ackRevision !== settings.desiredRevision || !settingsSchema.safeParse((settings.payload as Prisma.JsonObject)?.settings).success) blockers.push('settings_not_synced_or_invalid');
     const parsedSettings = settingsSchema.safeParse((settings?.payload as Prisma.JsonObject | undefined)?.settings);
     const enabledMappings = parsedSettings.success ? parsedSettings.data.shippingMethods.filter(row => row.enabled) : [];
@@ -81,7 +89,17 @@ export async function deliveryReadiness(accountId: string, transportBudgetMs = 1
     if (parsedSettings.success && !parsedSettings.data.defaultMethod) warnings.push('product_page_default_method_not_configured');
     if (!configuredCount) blockers.push('no_configured_products');
     // Indexed account-scoped SQL aggregates avoid loading a catalogue in a request.
-    const proofCounts = await prisma.$queryRaw<Array<{ stale: bigint; unverified: bigint; excluded: bigint; eligible: bigint; total: bigint; excludedProductWooIds: number[] | null }>>`
+    type ProofCounts = { stale: bigint; unverified: bigint; excluded: bigint; eligible: bigint; total: bigint; excludedProductWooIds: number[] | null };
+    // A stale catalogue entry must not prevent other products from going live.
+    // The storefront validates each requested product/variation against live Woo data.
+    const proofCounts = simple ? await prisma.$queryRaw<ProofCounts[]>`
+        SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE i.status = 'synced' AND i."ackRevision" = i."desiredRevision") AS eligible,
+          0::bigint AS stale, 0::bigint AS unverified, 0::bigint AS excluded, NULL::int[] AS "excludedProductWooIds"
+        FROM "WooProduct" p JOIN "DeliveryInputSync" i ON i."accountId" = p."accountId" AND i.scope = 'product' AND i."entityId" = p."wooId"
+        WHERE p."accountId" = ${accountId} AND p."rawData"->>'type' IN ('simple', 'variable')
+          AND p."rawData"->>'status' IS DISTINCT FROM 'trash' AND (p."productionMinDays" IS NOT NULL OR EXISTS
+          (SELECT 1 FROM "ProductVariation" v WHERE v."productId" = p.id AND v."productionMinDays" IS NOT NULL))`
+        : await prisma.$queryRaw<ProofCounts[]>`
         WITH configured AS (
           SELECT p.* FROM "WooProduct" p WHERE p."accountId" = ${accountId}
           AND (p."productionMinDays" IS NOT NULL OR p."productionMaxDays" IS NOT NULL OR EXISTS
@@ -115,16 +133,17 @@ export async function deliveryReadiness(accountId: string, transportBudgetMs = 1
           (ARRAY_AGG("wooId" ORDER BY "wooId") FILTER (WHERE excluded_targets > 0))[1:100] AS "excludedProductWooIds"
         FROM classified`;
     const counts = proofCounts[0];
-    if (!counts || Number(counts.total) < configuredCount) blockers.push('inbound_missing');
+    if (!simple && (!counts || Number(counts.total) < configuredCount)) blockers.push('inbound_missing');
+    if (simple && Number(counts?.eligible ?? 0) < configuredCount) warnings.push('production_products_not_synced');
     if (Number(counts?.stale ?? 0) > 0) blockers.push('inbound_stale');
     if (Number(counts?.unverified ?? 0) > 0) blockers.push('inbound_unverified');
     if (Number(counts?.eligible ?? 0) === 0) blockers.push('no_eligible_configured_products');
     if (Number(counts?.excluded ?? 0) > 0) warnings.push('configured_products_excluded_unsupported_or_BOM');
-    if (plugin && control?.cutoverEpoch && plugin.state.epoch !== control.cutoverEpoch) blockers.push('plugin_epoch_mismatch');
-    const active = !!(control?.active && plugin?.state.active && !plugin.blockers.length && plugin.state.epoch === control.cutoverEpoch
+    if (!simple && plugin && control?.cutoverEpoch && plugin.state.epoch !== control.cutoverEpoch) blockers.push('plugin_epoch_mismatch');
+    const active = !!(control?.active && plugin?.state.active && !plugin.blockers.some(code => !simple || !inventoryPluginBlockers.has(code)) && (simple ? plugin.state.estimateMode === 'production' : plugin.state.estimateMode !== 'production' && plugin.state.epoch === control.cutoverEpoch)
         && plugin.state.environmentFingerprint === plugin.environmentFingerprint && settings && settings.status === 'synced'
         && plugin.state.settingsRevision === Number(settings.ackRevision) && (settings.payload as Prisma.JsonObject).enabled === true);
-    return { ready: blockers.length === 0, mode: account.receiptTransportMode, active, acknowledgedActive: control?.active ?? false,
+    return { ready: blockers.length === 0, estimateMode: simple ? 'production' : 'inventory', mode: account.receiptTransportMode, active, acknowledgedActive: control?.active ?? false,
         desiredActive: control?.desiredActive ?? false, cutoverState: control?.cutoverState ?? 'legacy', receivingFrozen: control?.receivingFrozen ?? false,
         revalidationRequested: control?.revalidationRequested ?? false,
         actions: { legacyReview: unresolvedLegacyJobs > 0 ? '/api/delivery-estimates/receipts/legacy' : null,
@@ -189,7 +208,8 @@ export async function requestActivation(accountId: string, active: boolean) {
             return { accepted: true, revision: String(next.controlRevision), desiredActive: false };
         }
         const current = await tx.receiptAccount.upsert({ where: { accountId }, create: { accountId }, update: {} });
-        if (active && (current.receivingFrozen || current.cutoverState !== 'guarded')) throw new LaunchConflict('Cutover is not complete.');
+        const settings = await tx.deliveryInputSync.findUnique({ where: { accountId_scope_entityId: { accountId, scope: 'settings', entityId: 0 } } });
+        if (active && (current.receivingFrozen || (!productionSettings(settings?.payload) && current.cutoverState !== 'guarded'))) throw new LaunchConflict('Cutover is not complete.');
         const next = await tx.receiptAccount.update({ where: { accountId }, data: { desiredActive: active, revalidationRequested: false, controlAction: active ? 'activate' : 'disable', controlRevision: { increment: 1 }, controlPayload: Prisma.DbNull, controlAttempts: 0, controlError: null, controlNextAttemptAt: new Date() } });
         return { accepted: true, revision: String(next.controlRevision), desiredActive: active };
     });
@@ -264,7 +284,9 @@ export async function dispatchDeliveryControl(candidate: ReceiptAccount, deadlin
             // Private cutover preparation stays inactive, so the merchant may retain
             // the old display until inputs are ready. No other compatibility waiver.
             const preparation = candidate.controlAction === 'cutover' && (!candidate.controlPayload || ['baseline', 'guarded'].includes(String(object(candidate.controlPayload).action)));
-            const pluginBlockers = (plugin?.blockers ?? []).filter(blocker => !(preparation && blocker.startsWith('deactivate_old_delivery_plugin:')));
+            const activationSettings = candidate.controlAction === 'activate' ? await prisma.deliveryInputSync.findUnique({ where: { accountId_scope_entityId: { accountId: candidate.accountId, scope: 'settings', entityId: 0 } } }) : null;
+            const simple = candidate.controlAction === 'activate' && productionSettings(activationSettings?.payload);
+            const pluginBlockers = (plugin?.blockers ?? []).filter(blocker => !(preparation && blocker.startsWith('deactivate_old_delivery_plugin:')) && !(simple && inventoryPluginBlockers.has(blocker)));
             if (pluginBlockers.length) {
                 if (candidate.revalidationRequested) { await waitForReadiness('Automatic revalidation waiting: ' + pluginBlockers.join(', ')); return; }
                 throw new LaunchConflict(pluginBlockers.join(', '));
@@ -305,7 +327,7 @@ export async function dispatchDeliveryControl(candidate: ReceiptAccount, deadlin
                 if (!inventory.ready) throw new LaunchConflict('inventory_compatibility_required: ' + inventory.targets.map(t => `${t.productWooId}: ${t.reason}`).join(', '));
             }
             const settings = action === 'activate' ? await prisma.deliveryInputSync.findUnique({ where: { accountId_scope_entityId: { accountId: candidate.accountId, scope: 'settings', entityId: 0 } } }) : null;
-            envelope ??= { schemaVersion: 1, revision: Number(candidate.controlRevision), action, epoch: candidate.cutoverEpoch, owners: [], cursor: null, ...(settings ? { settingsRevision: Number(settings.ackRevision) } : {}) };
+            envelope ??= { schemaVersion: 1, revision: Number(candidate.controlRevision), action, epoch: candidate.cutoverEpoch, owners: [], cursor: null, ...(settings ? { settingsRevision: Number(settings.ackRevision), ...(productionSettings(settings.payload) ? { estimateMode: 'production' as const } : {}) } : {}) };
             const { owners } = envelope; const cursor = envelope.cursor ?? null;
             if (owners.length > 1001 || controlBytes(envelope) > CONTROL_MAX_BYTES) throw new LaunchConflict('Control command exceeds the owner/64 KiB envelope bound.');
             const reserved = await prisma.receiptAccount.updateMany({ where: { ...fence, controlLeaseExpiresAt: { gt: new Date() } }, data: { controlPayload: envelope } });
@@ -314,8 +336,8 @@ export async function dispatchDeliveryControl(candidate: ReceiptAccount, deadlin
                 await prisma.receiptAccount.updateMany({ where: fence, data: { controlAttempts: candidate.controlAttempts, controlNextAttemptAt: new Date() } });
                 return; // Keep the immutable reserved command for the next bounded tick.
             }
-            const ack = await woo.deliveryControl(envelope, Math.max(1, deadline - Date.now())) as { schemaVersion?: number; revision?: number; state?: { active?: boolean; epoch?: string; mode?: string } };
-            if (ack?.schemaVersion !== 1 || ack.revision !== envelope.revision || !ack.state || ack.state.active !== (action === 'activate') || (action !== 'disable' && (ack.state.epoch !== candidate.cutoverEpoch || ack.state.mode !== (action === 'baseline' ? 'baseline' : 'guarded')))) throw new Error('Invalid control acknowledgement');
+            const ack = await woo.deliveryControl(envelope, Math.max(1, deadline - Date.now())) as { schemaVersion?: number; revision?: number; state?: { active?: boolean; epoch?: string; mode?: string; estimateMode?: string } };
+            if (ack?.schemaVersion !== 1 || ack.revision !== envelope.revision || !ack.state || ack.state.active !== (action === 'activate') || (envelope.estimateMode === 'production' ? ack.state.estimateMode !== 'production' : action !== 'disable' && (ack.state.epoch !== candidate.cutoverEpoch || ack.state.mode !== (action === 'baseline' ? 'baseline' : 'guarded')))) throw new Error('Invalid control acknowledgement');
             await controlTransaction(async tx => {
                 await lockDeliveryAccount(tx, candidate.accountId);
                 if (!await tx.receiptAccount.findFirst({ where: { ...fence, controlLeaseExpiresAt: { gt: new Date() } } })) return;

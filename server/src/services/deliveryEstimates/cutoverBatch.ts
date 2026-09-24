@@ -12,7 +12,7 @@ export type CutoverProgress = { productsProcessed: number; ownerCertifications: 
     lastPageProducts: number; lastPageOwners: number; sourceRebuilds: number; pageRebuilds: number; baselineEstablished: boolean; countsFromStart: boolean };
 export type CutoverPage = { version: 1; after: string | null; productIds: string[]; sourceHash: string; productCount: number; ownerCount: number };
 export type DeliveryControlCommand = { schemaVersion: number; revision: number; action: string; epoch: string | null; owners: number[];
-    cursor?: string | null; settingsRevision?: number; page?: CutoverPage };
+    cursor?: string | null; settingsRevision?: number; estimateMode?: 'production'; page?: CutoverPage };
 export const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 export function cutoverProgress(value: unknown, cursor?: string | null): CutoverProgress {
     const p = object(object(value).cutoverProgress);

@@ -28,6 +28,13 @@ final class OverSeek_Delivery_Render_Cache {
 			return $result;
 		} catch ( Throwable $error ) {
 			self::clear();
+			// Simple timing also works before receipt tables/stock certification exist.
+			// If that cache fence is unavailable, calculate afresh instead of caching.
+			try {
+				if ( 'production' === ( OverSeek_Delivery_Control::state()['estimateMode'] ?? null ) && OverSeek_Delivery_Storefront_Gate::is_active() ) {
+					return ( new OverSeek_Delivery_Live_Adapter() )->calculate( $cart, $package['rates'] );
+				}
+			} catch ( Throwable $unavailable ) { /* Local inputs are unavailable. */ }
 			return [ 'status' => 'unavailable', 'reason' => 'render_snapshot_unavailable' ];
 		}
 	}

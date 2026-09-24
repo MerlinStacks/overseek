@@ -174,6 +174,15 @@ $settings = [
     'branding' => ['textColor' => '#ff0011', 'accentColor' => null, 'backgroundColor' => null, 'fontSize' => 14, 'spacing' => 'compact', 'showIcon' => false],
 ];
 $input = ['schemaVersion' => 1, 'scope' => 'settings', 'entityId' => 0, 'revision' => 1, 'payload' => ['enabled' => true, 'settings' => $settings]];
+$validator = new OverSeek_Delivery_Input_Validation();
+$legacy_payload = $validator->validate(json_encode($input))['payload'];
+foreach (['production', 'inventory'] as $mode) {
+    $with_mode = $input; $with_mode['payload']['settings']['estimateMode'] = $mode;
+    $validated = $validator->validate(json_encode($with_mode))['payload'];
+    same($validated->settings->estimateMode, $mode);
+    unset($validated->settings->estimateMode);
+    same(json_encode($validated), json_encode($legacy_payload));
+}
 function send(array $value, array $headers = ['x-overseek-account-id' => 'account-A'], array $query = []) {
     return $GLOBALS['api']->ingest(new WP_REST_Request(json_encode($value, JSON_THROW_ON_ERROR), $headers, $query));
 }
@@ -215,6 +224,7 @@ $bad = $input; $bad['payload']['settings'] = []; invalid($bad);
 foreach (array_keys($settings) as $key) { $bad = $input; unset($bad['payload']['settings'][$key]); invalid($bad); }
 foreach ([
     ['cutoffTime', '24:00'], ['cutoffTime', '14:60'], ['cutoffTime', '1:00'],
+    ['estimateMode', 'unknown'], ['estimateMode', null], ['estimateMode', true],
     ['timezone', '+10:00'], ['timezone', 'Invalid/Zone'], ['timezone', ''], ['timezone', 'Factory'],
     ['fallbackSupplierLeadTimeDays', 3651], ['fallbackSupplierLeadTimeDays', null],
     ['productionWeekdays', []], ['productionWeekdays', [1, 1]], ['transitWeekdays', [7]], ['transitWeekdays', ['1']],

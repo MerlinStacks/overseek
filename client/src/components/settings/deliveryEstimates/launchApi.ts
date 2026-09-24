@@ -1,5 +1,6 @@
 /** Wire contract: docs/delivery-launch-api.md and server/routes/deliveryEstimates.ts. */
 export interface DeliveryReadiness {
+    estimateMode?: 'production' | 'inventory';
     ready: boolean;
     mode: 'LEGACY' | 'GUARDED';
     active: boolean;
@@ -7,8 +8,8 @@ export interface DeliveryReadiness {
     cutoverState: 'legacy' | 'legacy_review' | 'baseline' | 'guarded';
     revalidationRequested: boolean;
     actions: { legacyReview: string | null; revalidateActivation: string | null; resumeCutover?: string | null };
-    freshnessPrerequisite?: { ready: boolean; version: string; missing: string[]; diagnostic: string | null };
-    inventoryCompatibility?: { ready: boolean; blockedCount: number; targets: { productWooId: number; variationWooId: number | null; reason: string }[] };
+    freshnessPrerequisite?: { ready: boolean; version: string; missing: string[]; diagnostic: string | null } | null;
+    inventoryCompatibility?: { ready: boolean; blockedCount: number; targets: { productWooId: number; variationWooId: number | null; reason: string }[] } | null;
     receivingFrozen: boolean;
     epoch: string | null;
     revision: string;
@@ -114,7 +115,7 @@ export function knownControl(data: DeliveryReadiness) {
         && /^\d+$/.test(data.revision) && /^\d+$/.test(data.acknowledgedRevision);
 }
 export function canActivate(data: DeliveryReadiness | null) {
-    return !!data && knownControl(data) && data.ready === true && data.mode === 'GUARDED' && data.cutoverState === 'guarded'
+    return !!data && knownControl(data) && data.ready === true && (data.estimateMode === 'production' || (data.mode === 'GUARDED' && data.cutoverState === 'guarded'))
         && data.receivingFrozen === false && data.blockers.length === 0
         && (data.work.action === null || (data.work.action === 'activate' && data.work.attempts >= 8));
 }
@@ -157,6 +158,9 @@ export function preparationBlockReason(data: DeliveryReadiness | null): string |
 }
 
 const guidance: Record<string, string> = {
+    production_estimates_plugin_update_required: 'Update the Overseek WooCommerce plugin to use simple production and shipping estimates.',
+    production_products_not_synced: 'Some product timings are still syncing or need attention. Other synced products can show estimates; you do not need to clear product or variant data to enable them.',
+    no_eligible_configured_products: 'Waiting for saved product production times to publish. If none are set, add a production time to a product first.',
     plugin_control_unavailable_or_upgrade_required: 'Update the Overseek Woo companion plugin and check the store connection, then refresh readiness.',
     woocommerce_8_required: 'Upgrade WooCommerce to version 8 or newer.',
     blocks_woocommerce_9_9_required: 'Upgrade WooCommerce to 9.9 or newer for Blocks cart or checkout pages.',
@@ -170,7 +174,7 @@ const guidance: Record<string, string> = {
     inputs_pending: 'Wait for queued settings, production and inbound inputs to sync, then refresh.',
     settings_not_synced_or_invalid: 'Save valid delivery settings and sync them using the sync panel.',
     no_supported_enabled_shipping_mapping: 'Configure an enabled supported shipping mapping. WBS/WBSNG needs exact or explicitly confirmed provider-wide mappings.',
-    no_configured_products: 'Configure production times on supported products, sync, then certify their stock owners.',
+    no_configured_products: 'Set production times on the products you want to show delivery estimates for.',
     inbound_missing: 'Sync production and supplier inputs, then refresh readiness.',
     inbound_stale: 'Refresh supplier inputs using the sync panel, then check freshness again.',
     inbound_unverified_or_unsupported: 'Resolve receipt work and certify supported stock owners. Unsupported products remain excluded.',
