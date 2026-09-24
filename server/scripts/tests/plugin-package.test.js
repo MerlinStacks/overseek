@@ -95,12 +95,13 @@ test('verified publication preserves exact bytes, version/exclusions and support
     const f = publishingFixture(t);
     const expectedSha256 = f.build();
     const bytes = fs.readFileSync(f.archive);
+    const expectedSource = sourceReport(f.projectRoot);
     const report = publishVerified({ ...f, expectedSha256 });
     assert.deepEqual(fs.readFileSync(f.target), bytes);
     assert.deepEqual(JSON.parse(fs.readFileSync(f.sidecar)), report);
-    assert.equal(report.version, '2.23.1');
+    assert.equal(report.version, expectedSource.version);
     assert.deepEqual(report.excluded, ['tests/']);
-    assert.deepEqual(report.files, sourceReport(f.projectRoot).files);
+    assert.deepEqual(report.files, expectedSource.files);
     fs.unlinkSync(f.sidecar);
     assert.deepEqual(publishVerified({ ...f, archive: f.target, expectedSha256 }), report);
     assert.deepEqual(fs.readFileSync(f.target), bytes);
