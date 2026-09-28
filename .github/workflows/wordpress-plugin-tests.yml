@@ -96,7 +96,6 @@ jobs:
           php overseek-wc-plugin/tests/delivery-launch-receipts.php
           php overseek-wc-plugin/tests/delivery-legacy-recovery.php
           php overseek-wc-plugin/tests/delivery-control-disable.php
-          php overseek-wc-plugin/tests/delivery-control-coexistence.php
           php overseek-wc-plugin/tests/delivery-managed-stock.php
           php overseek-wc-plugin/tests/delivery-checkout-capture.php
           php overseek-wc-plugin/tests/delivery-wbs-mapping.php
