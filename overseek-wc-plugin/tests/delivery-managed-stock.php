@@ -121,7 +121,9 @@ unavailable('owner_pool_conflict', run_adapter($store, [line($a)], $rates), 'uns
 fwrite(STDOUT, "Verified managed-stock snapshot assertions passed.\n");
 
 define('WC_VERSION', getenv('OVERSEEK_TEST_WOO_VERSION') ?: '9.9.0');
-function get_plugins() { $GLOBALS['plugin_scans'] = ($GLOBALS['plugin_scans'] ?? 0) + 1; return $GLOBALS['test_plugins'] ?? []; }
+// Scanning is optional: initialise the spy before any readiness or storefront reads.
+$GLOBALS['plugin_scans'] = 0;
+function get_plugins() { $GLOBALS['plugin_scans']++; return $GLOBALS['test_plugins'] ?? []; }
 function get_site_option($key, $default = false) { return $GLOBALS['test_site_options'][$key] ?? $default; }
 function get_post_field($field, $id) { return $GLOBALS['test_pages'][$id] ?? ($id === 1 ? '[woocommerce_cart]' : '[woocommerce_checkout]'); }
 function get_post_status($id) { return 'publish'; }
