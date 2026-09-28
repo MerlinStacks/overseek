@@ -12,6 +12,17 @@ export function BrandingSettings({ settings, onChange }: SettingsFieldsProps) {
     const branding = settings.branding;
     const update = (patch: Partial<typeof branding>) => onChange({ ...settings, branding: { ...branding, ...patch } });
     return <section className="flex flex-col gap-6">
+        <div className="order-2 space-y-2 text-sm">
+            <p>On supported WooCommerce cart and checkout pages, estimates appear automatically beside each configured shipping method once enabled. No delivery shortcode or block is needed there.</p>
+            <details className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                <summary className="cursor-pointer font-medium">Add estimates to product pages (optional)</summary>
+                <div className="mt-3 space-y-2 text-slate-600 dark:text-slate-400">
+                    <p>Place the <strong>Overseek Delivery Estimate</strong> block in your product template, or add this shortcode where you want the estimate to appear:</p>
+                    <code className="inline-block select-all rounded bg-slate-100 px-3 py-2 text-slate-900 dark:bg-slate-900 dark:text-slate-100">[overseek_delivery_estimate]</code>
+                    <p>It uses the current product. Choose a default shipping method in Shipping settings for the product-page estimate.</p>
+                </div>
+            </details>
+        </div>
         <details className="order-2 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
         <summary className="cursor-pointer font-medium">Customise appearance (optional)</summary>
         <div className="mt-4 space-y-6">

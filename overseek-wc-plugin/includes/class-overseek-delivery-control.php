@@ -52,7 +52,7 @@ final class OverSeek_Delivery_Control {
 		return in_array( 'unknown', $kinds, true ) ? 'unknown' : ( in_array( 'blocks', $kinds, true ) ? 'blocks' : 'classic' );
 	}
 
-	/** Inspect active plugin names/basenames only during authenticated validation. */
+	/** Validate capabilities, rather than blocking unrelated plugins by name. */
 	public static function blockers(): array {
 		$blockers = [];
 		if ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, '8.0', '<' ) ) { $blockers[] = 'woocommerce_8_required'; }
@@ -64,15 +64,6 @@ final class OverSeek_Delivery_Control {
 		try {
 			if ( ! ( new OverSeek_Receipt_Storage() )->native_transactions() ) { $blockers[] = 'transactional_native_stock_storage_required'; }
 		} catch ( Throwable $error ) { $blockers[] = 'transactional_native_stock_storage_required'; }
-		if ( ! function_exists( 'get_plugins' ) && defined( 'ABSPATH' ) ) { require_once ABSPATH . 'wp-admin/includes/plugin.php'; }
-		$active = array_unique( array_merge( (array) get_option( 'active_plugins', [] ), array_keys( (array) get_site_option( 'active_sitewide_plugins', [] ) ) ) );
-		$plugins = get_plugins();
-		foreach ( $active as $file ) {
-			$header = $plugins[ $file ] ?? [];
-			if ( defined( 'OVERSEEK_WC_PLUGIN_FILE' ) && function_exists( 'plugin_basename' ) && $file === plugin_basename( OVERSEEK_WC_PLUGIN_FILE ) ) { continue; }
-			$identity = str_replace( [ '-', '_' ], ' ', $file . ' ' . ( $header['Name'] ?? '' ) . ' ' . ( $header['TextDomain'] ?? '' ) );
-			if ( preg_match( '~(?:^|/)(?:pi-edd|pi-woocommerce-order-delivery-date|pisol-estimated-delivery-date)(?:[-_][^/]*)?(?:/|\.php$)~i', $file ) || preg_match( '/\b(?:delivery|shipping)\b.{0,60}\b(?:estimated?|estimates|date|dates)\b|\b(?:estimated?|estimates|date|dates)\b.{0,60}\b(?:delivery|shipping)\b/i', $identity ) ) { $blockers[] = 'deactivate_old_delivery_plugin:' . $file; }
-		}
 		$presentation = self::presentation();
 		if ( 'unknown' === $presentation ) { $blockers[] = 'declare_classic_or_supported_blocks_checkout_pages'; }
 		if ( 'blocks' === $presentation && ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, '9.9', '<' ) ) ) { $blockers[] = 'blocks_woocommerce_9_9_required'; }
@@ -121,8 +112,7 @@ final class OverSeek_Delivery_Control {
 			$identity = OverSeek_Receipt_Storage::request_identity( $body );
 			if ( $body['revision'] === $current['revision'] ) {
 				if ( ( $current['identity'] ?? null ) !== $identity ) { throw new DomainException( 'Control identity conflict.' ); }
-				// An activation retry must not report success while coexistence (or
-				// another current activation prerequisite) now blocks the storefront.
+				// Recheck capabilities even when retrying an acknowledged activation.
 				if ( 'activate' === $action ) {
 					$blockers = self::activation_blockers( $production );
 					if ( $blockers ) { throw new DomainException( implode( ', ', $blockers ) ); }
@@ -133,11 +123,6 @@ final class OverSeek_Delivery_Control {
 			if ( 'disable' !== $action && ! $production && ( ! is_string( $epoch ) || ! preg_match( '/\A[A-Za-z0-9_-]{1,64}\z/', $epoch ) ) ) { throw new InvalidArgumentException(); }
 			$fingerprint = self::fingerprint();
 			$blockers = 'disable' === $action ? [] : self::activation_blockers( $production );
-			// Baseline/guarded preparation always writes active:false. Keep the old
-			// display during private synchronization; activation still requires removal.
-			if ( in_array( $action, [ 'baseline', 'guarded' ], true ) ) {
-				$blockers = array_values( array_filter( $blockers, static fn( string $blocker ): bool => 0 !== strpos( $blocker, 'deactivate_old_delivery_plugin:' ) ) );
-			}
 			if ( $blockers ) { throw new DomainException( implode( ', ', $blockers ) ); }
 			if ( 'disable' !== $action && $fingerprint !== self::fingerprint() ) { throw new DomainException( 'Environment changed during validation; retry.' ); }
 			$next = [ 'epoch' => $current['epoch'], 'mode' => $current['mode'], 'active' => false, 'identity' => $identity ];

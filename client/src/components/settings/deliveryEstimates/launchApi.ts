@@ -164,7 +164,7 @@ const guidance: Record<string, string> = {
     plugin_control_unavailable_or_upgrade_required: 'Update the Overseek Woo companion plugin and check the store connection, then refresh readiness.',
     woocommerce_8_required: 'Upgrade WooCommerce to version 8 or newer.',
     blocks_woocommerce_9_9_required: 'Upgrade WooCommerce to 9.9 or newer for Blocks cart or checkout pages.',
-    declare_classic_or_supported_blocks_checkout_pages: 'Configure both cart and checkout pages with explicit Woo classic shortcodes or supported Woo Blocks, then refresh readiness.',
+    declare_classic_or_supported_blocks_checkout_pages: 'Overseek could not recognise your WooCommerce cart or checkout layout. Check the assigned pages in WooCommerce settings and that your checkout integration is supported. Delivery estimates attach to shipping methods automatically; do not add an Overseek shortcode or block to these pages.',
     blocks_pickup_requires_verified_presentation: 'Verify supported Blocks pickup presentation before launch; review pickup configuration in WooCommerce.',
     feature_disabled: 'Ask a super admin to enable Delivery Estimates for this account. Disable and receipt recovery remain available.',
     cutover_required: 'Pause receiving, drain legacy work and restart pre-upgrade workers, then queue cutover below.',
@@ -172,7 +172,7 @@ const guidance: Record<string, string> = {
     unresolved_receipts: 'An inventory manager must review unresolved receipts below.',
     legacy_jobs_not_drained: 'Review unfinished legacy jobs below. Pause receiving, drain/restart workers, verify corrected inventory and dependent BOM work, then submit an observation-backed attestation. Resume cutover once drained.',
     inputs_pending: 'Wait for queued settings, production and inbound inputs to sync, then refresh.',
-    settings_not_synced_or_invalid: 'Save valid delivery settings and sync them using the sync panel.',
+    settings_not_synced_or_invalid: 'Save your delivery settings. Your store will update automatically.',
     no_supported_enabled_shipping_mapping: 'Configure an enabled supported shipping mapping. WBS/WBSNG needs exact or explicitly confirmed provider-wide mappings.',
     no_configured_products: 'Set production times on the products you want to show delivery estimates for.',
     inbound_missing: 'Sync production and supplier inputs, then refresh readiness.',
@@ -184,6 +184,6 @@ const guidance: Record<string, string> = {
     product_page_default_method_not_configured: 'Choose a product-page default shipping method if you want product-page estimates.',
 };
 export function launchGuidance(code: string) {
-    if (code.startsWith('deactivate_old_delivery_plugin:')) return `Deactivate the old delivery plugin in WordPress: ${code.slice('deactivate_old_delivery_plugin:'.length)}. Then refresh readiness.`;
+    if (code.startsWith('deactivate_old_delivery_plugin:')) return 'Update the Overseek WooCommerce plugin to enable estimates alongside your existing delivery plugin.';
     return guidance[code] ?? 'Review this server diagnostic with your operator, then refresh. It cannot be bypassed here.';
 }

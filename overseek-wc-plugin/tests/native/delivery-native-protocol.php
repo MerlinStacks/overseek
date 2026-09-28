@@ -15,12 +15,10 @@ function overseek_native_protocol(OverSeek_Native_Fixture $f): void {
  $f->check($adapter->calculate($cart,[$rate])['status']==='unavailable','Unverified inbound suppresses managed dates');
  $f->check(!is_wp_error(activate_plugin($d['old_plugin'])),'Activate inert real old-plugin header fixture');
  $f->control('baseline',['owners'=>[$d['simple'],$d['unmanaged'],$d['parent']]]);$f->control('guarded');
- $blocked=$f->control('activate',['settingsRevision'=>$storage->read_settings()['revision']],409);
- $f->check(str_contains(wp_json_encode($blocked),'deactivate_old_delivery_plugin'),'Old plugin allows private baseline/guarded preparation but refuses activation');
- deactivate_plugins($d['old_plugin']);
- $f->check(!OverSeek_Delivery_Storefront_Gate::is_active(),'Guarded cutover does not activate');
+  $f->check(!OverSeek_Delivery_Storefront_Gate::is_active(),'Guarded cutover does not activate');
  foreach(['simple','unmanaged','parent'] as $key){$id=$d[$key];$f->publish($id,$key==='parent'?$d['children']:[$id],$id);}
- $f->activate();
+  $f->activate();
+  $f->check(is_plugin_active($d['old_plugin']),'Existing delivery plugin remains active alongside Overseek');
  $f->check($adapter->calculate($cart,[$rate])['status']==='available','Verified managed native estimate available');
  $siblings=array_map(static fn($id)=>['product_id'=>$d['parent'],'variation_id'=>$id,'quantity'=>2,'data'=>wc_get_product($id)],$d['children']);
  $f->check(wc_get_product($d['children'][0])->managing_stock()==='parent','Fixture uses native inherited managing_stock sentinel');

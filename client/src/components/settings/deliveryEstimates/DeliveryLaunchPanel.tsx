@@ -30,7 +30,7 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
     const legacyRetries = useRef(new Map<string, LegacyAttestation>());
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
-    const launch = useDeliveryLaunch(accountId, token, canInventory, open && inView, saveRevision, canRead);
+    const launch = useDeliveryLaunch(accountId, token, canInventory && (!compact || advanced), open && inView, saveRevision, canRead);
     const status = launch.readiness;
     const simple = status?.estimateMode === 'production';
     const unresolvedLegacyJobs = launch.legacy?.jobs.filter(job => job.state !== 'drained') ?? [];
@@ -81,7 +81,9 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
                 action === 'activate' || action === 'disable' ? { active: action === 'activate' }
                     : { receivingPaused: true, legacyJobsDrained: true, preupgradeWorkersRestarted: true });
             if (ack.accepted !== true || !/^\d+$/.test(ack.revision)) throw new Error('Unknown acknowledgement. Refresh state before retrying.');
-            setMessage(`${action === 'disable' ? 'Disable' : action === 'activate' ? 'Activation' : action === 'certification' ? 'Certification' : 'Cutover'} queued (revision ${ack.revision}), not yet acknowledged by WooCommerce.`);
+            setMessage(compact && (action === 'activate' || action === 'disable')
+                ? action === 'activate' ? 'Turning on delivery estimates…' : 'Turning off delivery estimates…'
+                : `${action === 'disable' ? 'Disable' : action === 'activate' ? 'Activation' : action === 'certification' ? 'Certification' : 'Cutover'} queued (revision ${ack.revision}), not yet acknowledged by WooCommerce.`);
             setConfirmations([false, false, false]);
             await launch.refresh();
         } catch (e) {
@@ -99,16 +101,16 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
     return <section ref={element} aria-label="Delivery launch and recovery" className="space-y-3 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-sm [&_button]:rounded-md [&_button]:border [&_button]:px-3 [&_button]:py-2 [&_button:disabled]:opacity-50">
         <h3 className="text-lg font-semibold">{compact ? 'Enable delivery estimates' : 'Launch and receipt recovery'}</h3>
         {compact && <div className="space-y-3">
-            <p role="status" className="font-semibold">{!status ? 'Checking your store…' : status.work.action || status.revalidationRequested ? 'Preparing changes…' : status.active ? 'Live on your store' : canActivate(status) ? 'Ready to enable' : 'Setup needs attention'}</p>
+            <p role="status" className="font-semibold">{!status ? 'Checking your store…' : status.work.action || status.revalidationRequested || status.sync?.resyncRequested || (status.pendingInputs > 0 && !canActivate(status)) ? 'Updating your store…' : status.active ? 'Live on your store' : canActivate(status) ? 'Ready to enable' : 'Setup needs attention'}</p>
             {draftBlocked ? <p>Save your delivery settings before enabling estimates.</p> : status && !status.active && <p>{canActivate(status) ? 'Review the sample above, then activate estimates on your storefront.'
                 : status.blockers.includes('cutover_required') ? 'Your store needs a one-time inventory upgrade. Open advanced setup below for your inventory or deployment team to complete it.'
                 : status.blockers.length ? launchGuidance(status.blockers[0]) : nextStep}</p>}
             {status?.receivingFrozen && <p role="alert">Inventory receiving is paused. Open advanced setup to review and resume the inventory upgrade.</p>}
-            {status?.revalidationRequested && <p role="status">Publishing settings / revalidating. Estimates will resume once checks finish.</p>}
+            {status?.revalidationRequested && <p role="status">Your saved changes are being applied automatically.</p>}
             {status?.work.lastError && <p role="alert">{status.work.lastError}</p>}
             {!simple && status?.sync?.lastError && <p role="alert">{status.sync.lastError}</p>}
-            {simple && <p>Production + shipping times. Your saved product and variant timings are used automatically. Incoming-stock estimates are optional in Dispatch settings.</p>}
-            {!!status?.warnings.length && (simple ? <ul className="list-disc space-y-1 pl-5">{status.warnings.map(code => <li key={code}>{launchGuidance(code)}</li>)}</ul> : <p>{status.warnings.length} delivery notice(s). Review advanced setup for affected products or shipping options.</p>)}
+            {simple && <p>Your saved product timings and shipping times update automatically.</p>}
+            {!!status?.warnings.length && <details><summary className="cursor-pointer">Delivery notices ({status.warnings.length})</summary><ul className="list-disc space-y-1 pl-5">{status.warnings.map(code => <li key={code}>{launchGuidance(code)}</li>)}</ul></details>}
             {controls}
             <button type="button" disabled={launch.loading} onClick={() => void launch.refresh()}>Check status</button>
             <button type="button" aria-expanded={advanced} aria-controls={`${sectionId}-details`} onClick={() => setAdvanced(value => !value)}>Advanced setup &amp; recovery</button>
@@ -227,7 +229,7 @@ function LaunchPanel({ accountId, token, canEdit, canInventory, canRead = true, 
                 </section>
             </div>}
             <div id={`${sectionId}-purchase-order`} className="scroll-mt-6">
-                <PurchaseOrderReceiptRecovery accountId={accountId} token={token} canInventory={canInventory} visible={open && inView} onChanged={() => void launch.refresh()} />
+                <PurchaseOrderReceiptRecovery accountId={accountId} token={token} canInventory={canInventory} visible={open && inView && (!compact || advanced)} onChanged={() => void launch.refresh()} />
             </div>
             <a href={`#${sectionId}-overview`} className="inline-block py-2 font-medium text-indigo-700 dark:text-indigo-300">Back to overview ↑</a>
         </div>

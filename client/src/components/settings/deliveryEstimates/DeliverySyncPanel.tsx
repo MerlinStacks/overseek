@@ -17,7 +17,7 @@ export function DeliverySyncPanel({ accountId, token, canEdit, dirty = false, sa
     const progress = status?.progress;
     return <section aria-label="Settings and production sync readiness" className="space-y-3 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
         <h3 className="font-semibold">{compact ? 'Publishing progress' : 'Settings and production sync readiness'}</h3>
-        <p className="text-sm">{compact ? 'Saved changes are queued automatically. Use sync below to prepare existing product timings on first setup, or retry a failed update.' : 'Sync copies saved settings, production times and staged supplier inputs. It does not establish complete delivery readiness or supplier availability. Check the launch panel for storefront activation; syncing does not activate storefront output.'}</p>
+        <p className="text-sm">{compact ? 'Settings and product timings publish automatically when saved. These tools are available if an update needs troubleshooting.' : 'Sync copies saved settings, production times and staged supplier inputs. It does not establish complete delivery readiness or supplier availability. Check the launch panel for storefront activation; syncing does not activate storefront output.'}</p>
         {busy && <p role="status">{status ? 'Requesting sync status…' : 'Loading sync status…'}</p>}
         {error && <p role="alert" className="text-red-700 dark:text-red-300">{error} {status && 'The status below is from the last successful request.'}</p>}
         {status && <div className="space-y-1 text-sm" aria-live="polite">

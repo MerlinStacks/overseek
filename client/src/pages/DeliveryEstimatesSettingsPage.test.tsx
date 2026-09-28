@@ -101,7 +101,7 @@ describe('Delivery estimates settings', () => {
         expect(await screen.findByText(/one-time inventory upgrade/)).toBeVisible();
         expect(screen.getByRole('button', { name: 'Activate storefront estimates' })).toBeDisabled();
         expect(screen.queryByRole('region', { name: 'Prepare inventory' })).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Advanced setup & recovery' }));
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Advanced setup & recovery' })));
         expect(screen.getByRole('region', { name: 'Prepare inventory' })).toBeVisible();
         expect(screen.getByRole('checkbox', { name: 'I have paused inventory receiving.' })).not.toBeChecked();
         expect(fetchMock.mock.calls.every(([, options]) => !options.method || options.method === 'GET')).toBe(true);
@@ -233,7 +233,7 @@ describe('Delivery estimates settings', () => {
         launchReadiness = readinessFixture({ blockers: ['inputs_pending'], revalidationRequested: true, desiredActive: true });
         fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
         await screen.findByText(/Settings saved in Overseek/);
-        await screen.findByText(/Publishing settings \/ revalidating/);
+        await screen.findByText(/Your saved changes are being applied automatically/);
         expect(activate).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Disable storefront estimates' })).toBeEnabled();
     });

@@ -38,7 +38,7 @@ describe('Delivery launch contract', () => {
         render(<DeliveryLaunchPanel {...props} />); await loaded();
         expect(activate()).toBeDisabled();
         expect(screen.getByText(/Update the Overseek Woo companion/)).toBeInTheDocument();
-        expect(screen.getByText(/Deactivate the old delivery plugin/)).toHaveTextContent('old/plugin.php');
+        expect(screen.getByText(/Update the Overseek WooCommerce plugin to enable estimates alongside/)).toBeInTheDocument();
         expect(screen.getByText(/Verify supported Blocks pickup/)).toBeInTheDocument();
         expect(screen.getByText(/Unsupported products and BOM/)).toBeInTheDocument();
         expect(fetchMock.mock.calls[0][1]).toMatchObject({ headers: { Authorization: 'Bearer token-a', 'X-Account-ID': 'account-a' }, cache: 'no-store' });
@@ -369,6 +369,24 @@ describe('Delivery launch contract', () => {
         await act(async () => finish(ok({ schemaVersion: 1, operationId: 'receipt-a', observationToken: 'old-secret', stockQuantity: 17, expiresAt: new Date(Date.now() + 120000).toISOString() })));
         expect(screen.queryByText(/Observed Woo stock/)).not.toBeInTheDocument();
         expect(fetchMock).toHaveBeenCalledTimes(count);
+    });
+
+    it('automatically follows saved settings to ready without fetching inventory recovery', async () => {
+        vi.useFakeTimers();
+        readiness = readinessFixture({ estimateMode: 'production', pendingInputs: 2, blockers: ['settings_not_synced_or_invalid'] });
+        render(<DeliveryLaunchPanel {...props} compact />);
+        await act(async () => {});
+        expect(screen.getByText('Updating your store…')).toBeVisible();
+        expect(activate()).toBeDisabled();
+        expect(fetchMock.mock.calls.every(([url]) => url.endsWith('/readiness'))).toBe(true);
+        readiness = readinessFixture({ estimateMode: 'production', ready: true, blockers: [] });
+        await act(async () => vi.advanceTimersByTimeAsync(LAUNCH_POLL_MS));
+        expect(screen.getByText('Ready to enable')).toBeVisible();
+        expect(activate()).toBeEnabled();
+        const count = fetchMock.mock.calls.length;
+        await act(async () => vi.advanceTimersByTimeAsync(LAUNCH_POLL_MS * 3));
+        expect(fetchMock).toHaveBeenCalledTimes(count);
+        expect(posts()).toHaveLength(0);
     });
 
     it('stops pending polling in a background tab and aborts the current read', async () => {

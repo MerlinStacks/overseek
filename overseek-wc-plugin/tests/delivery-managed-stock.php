@@ -145,7 +145,7 @@ $GLOBALS['test_plugins'] = ['vendor/renamed-file.php' => ['Name' => 'Estimated D
 same(false, OverSeek_Delivery_Storefront_Gate::is_active(), 'plugin change invalidates fingerprint without a header scan');
 same(0, $GLOBALS['plugin_scans'] ?? 0, 'no frontend header scans, including repeatedly active gates');
 $classic_blockers = version_compare(WC_VERSION, '9.7', '<') ? ['classic_woocommerce_9_7_required'] : [];
-same(array_merge(['deactivate_old_delivery_plugin:vendor/renamed-file.php'], $classic_blockers), OverSeek_Delivery_Control::blockers(), 'authenticated readiness detects old plugin header despite renamed file');
+same($classic_blockers, OverSeek_Delivery_Control::blockers(), 'delivery plugin names do not block activation');
 $GLOBALS['test_options']['active_plugins'] = [];
 $GLOBALS['test_options']['overseek_delivery_environment_generation'] = 'plugin-toggle-generation';
 same(false, OverSeek_Delivery_Storefront_Gate::is_active(), 'returning to the prior plugin set still requires revalidation');
@@ -155,7 +155,7 @@ $GLOBALS['test_options']['active_plugins'] = ['carrier/update-manager.php'];
 $GLOBALS['test_plugins'] = ['carrier/update-manager.php' => ['Name' => 'Shipping Updater', 'PluginURI' => 'https://shipping.invalid/update/delivery/date', 'AuthorURI' => 'https://vendor.invalid/estimated-delivery']];
 same($classic_blockers, OverSeek_Delivery_Control::blockers(), 'unrelated URI date substrings do not block carrier plugins');
 $GLOBALS['test_options']['active_plugins'] = ['pi-edd/pi-edd.php']; $GLOBALS['test_plugins'] = ['pi-edd/pi-edd.php' => ['Name' => 'Renamed vendor plugin']];
-same(array_merge(['deactivate_old_delivery_plugin:pi-edd/pi-edd.php'], $classic_blockers), OverSeek_Delivery_Control::blockers(), 'known Pi basename cannot hide behind a renamed header');
+same($classic_blockers, OverSeek_Delivery_Control::blockers(), 'existing Pi plugin can remain active');
 $GLOBALS['test_options']['active_plugins'] = [];
 $GLOBALS['test_options']['woocommerce_pickup_location_settings'] = ['enabled' => 'yes'];
 same(false, OverSeek_Delivery_Storefront_Gate::is_active(), 'checkout option change invalidates fingerprint before revalidation');

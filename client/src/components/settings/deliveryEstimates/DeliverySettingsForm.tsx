@@ -142,7 +142,10 @@ export function DeliverySettingsForm({ accountId, token, canEdit, canInventory =
             }}>
             <DeliveryLaunchPanel accountId={accountId} token={token} canEdit={canEdit} canInventory={canInventory} compact
                 dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} setupUnavailable={loading || !settings || blocked} />
-            {!loading && <DeliverySyncPanel accountId={accountId} token={token} canEdit={canEdit} compact productionOnly={settings?.estimateMode === 'production'} dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} />}
+            {!loading && <details className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                <summary className="cursor-pointer text-sm font-medium">Troubleshooting</summary>
+                <div className="mt-4"><DeliverySyncPanel accountId={accountId} token={token} canEdit={canEdit} compact productionOnly={settings?.estimateMode === 'production'} dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} /></div>
+            </details>}
             </div>
             </div>
         {settings && <>
@@ -150,7 +153,7 @@ export function DeliverySettingsForm({ accountId, token, canEdit, canInventory =
                 <button type="submit" disabled={saving || blocked || JSON.stringify(settings) === saved} className="bg-indigo-600 text-white">{saving ? 'Saving…' : 'Save delivery settings'}</button>
                 <span className="text-sm">{JSON.stringify(settings) !== saved ? 'Unsaved changes' : 'No unsaved changes'}</span>
             </div>}
-            {success && <p role="status" className="text-green-700 dark:text-green-300">Settings saved in Overseek and queued for publishing. Check Preview &amp; enable for progress.</p>}
+            {success && <p role="status" className="text-green-700 dark:text-green-300">Settings saved in Overseek. Your store updates automatically.</p>}
             <div className="flex justify-between gap-3">
                 <button type="button" disabled={activeTab === 0} onClick={() => setActiveTab(value => value - 1)}>Back</button>
                 {activeTab < 2 && <button type="button" onClick={() => setActiveTab(value => value + 1)}>Continue to {activeTab === 0 ? 'shipping' : 'preview & enable'}</button>}

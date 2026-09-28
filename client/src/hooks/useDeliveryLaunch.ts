@@ -84,7 +84,8 @@ export function useDeliveryLaunch(accountId: string, token: string, canInventory
         return () => readRequest.current?.abort();
     }, [refresh, visible, pageVisible]);
     const current = readiness?.revision === saveRevision ? readiness.value : null;
-    const pending = (!!current && ((current.work.action !== null && current.work.attempts < 8) || current.revalidationRequested === true))
+    const pending = (!!current && ((current.work.action !== null && current.work.attempts < 8) || current.revalidationRequested === true
+        || current.sync?.resyncRequested || current.sync?.inboundRequested || current.pendingInputs > 0))
         || !!receipts?.receipts.some(pendingReceipt) || !!legacy?.jobs.some(job => job.state === 'reconciling' && job.attempts < 8);
     useEffect(() => {
         if (!visible || !pageVisible) return;

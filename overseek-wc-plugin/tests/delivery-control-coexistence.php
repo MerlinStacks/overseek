@@ -1,5 +1,5 @@
 <?php
-/** Keep the old display during private preparation, never during new activation. */
+/** Existing delivery plugins do not prevent preparation or activation. */
 declare(strict_types=1);
 require __DIR__ . '/delivery-control-disable.php';
 define('WC_VERSION', '9.9.0');
@@ -19,9 +19,8 @@ $send_control = static fn($revision, $action) => $handler->handle(new WP_REST_Re
     'schemaVersion' => 1, 'revision' => $revision, 'action' => $action, 'epoch' => 'epoch',
     'owners' => $action === 'baseline' ? [20] : [], 'settingsRevision' => 1,
 ])));
-$blocker = 'deactivate_old_delivery_plugin:pi-edd/pi-edd.php';
-same(OverSeek_Delivery_Control::blockers(), [$blocker]);
-// The exception is narrow: compatibility prerequisites still reject preparation.
+same(OverSeek_Delivery_Control::blockers(), []);
+// Capability prerequisites still reject preparation.
 $GLOBALS['receipt_test_options']['woocommerce_manage_stock'] = 'no';
 error_is($send_control(1, 'baseline'), 'overseek_control_conflict', 409);
 $GLOBALS['receipt_test_options']['woocommerce_manage_stock'] = 'yes';
@@ -31,26 +30,23 @@ foreach ([1 => 'baseline', 2 => 'guarded'] as $revision => $action) {
     same($response->data['state']['mode'], $action);
     same($response->data['state']['active'], false);
     same(OverSeek_Delivery_Storefront_Gate::is_active(), false);
-    same(OverSeek_Delivery_Control::blockers(), [$blocker]);
+    same(OverSeek_Delivery_Control::blockers(), []);
 }
-$blocked = $send_control(3, 'activate');
-error_is($blocked, 'overseek_control_conflict', 409);
-same(str_contains($blocked->message, $blocker), true);
-same(OverSeek_Delivery_Storefront_Gate::is_active(), false);
-// Merchant removes Pi only when private inputs/preparation are complete.
-$GLOBALS['receipt_test_options']['active_plugins'] = [];
 $activated = $send_control(3, 'activate');
 same($activated instanceof WP_REST_Response, true);
 same($activated->data['state']['active'], true);
 same($activated->data['state']['environmentFingerprint'], OverSeek_Delivery_Control::fingerprint());
 same(OverSeek_Delivery_Storefront_Gate::is_active(), true);
-// Re-enabling the old plugin invalidates the gate and blocks any new activation.
-$GLOBALS['receipt_test_options']['active_plugins'] = ['pi-edd/pi-edd.php'];
+same($GLOBALS['receipt_test_options']['active_plugins'], ['pi-edd/pi-edd.php']);
+same($send_control(3, 'activate')->data['state']['active'], true);
+// Environment changes still require a fresh activation, with either plugin set.
+$GLOBALS['receipt_test_options']['active_plugins'] = [];
 same(OverSeek_Delivery_Storefront_Gate::is_active(), false);
-error_is($send_control(3, 'activate'), 'overseek_control_conflict', 409);
-error_is($send_control(4, 'activate'), 'overseek_control_conflict', 409);
+same($send_control(4, 'activate')->data['state']['active'], true);
+same(OverSeek_Delivery_Storefront_Gate::is_active(), true);
 $GLOBALS['receipt_test_options']['woocommerce_manage_stock'] = 'no';
-same($send_control(4, 'disable')->data['state']['active'], false);
+error_is($send_control(4, 'activate'), 'overseek_control_conflict', 409);
+same($send_control(5, 'disable')->data['state']['active'], false);
 same(OverSeek_Delivery_Storefront_Gate::is_active(), false);
 same($GLOBALS['calls'], []); // No stock effects added by coexistence policy.
-fwrite(STDOUT, "Old-plugin preparation coexistence: inactive baseline/guarded accepted; activation gated; disable unconditional.\n");
+fwrite(STDOUT, "Old-plugin coexistence: preparation and activation accepted; capability checks retained; disable unconditional.\n");
