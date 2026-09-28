@@ -1,10 +1,10 @@
 {
   "version": "2.25.0",
-  "bytes": 263534,
-  "sha256": "1da919cde869880494f39bda9c487b4846dea721875b18dc8f4b773491831eca",
+  "bytes": 263475,
+  "sha256": "a2e6af0bec1d33de1c60b803373bb2c975b6839840130c2e6ccc40da7b43d745",
   "files": {
     "overseek-wc-plugin/LICENSE": "754776f6dd261b91433379016282bc620fb92d5cf91acc32d4f6f05c9512b035",
-    "overseek-wc-plugin/README.md": "dfe3ce663f80a04ad2dcb3c730cc281b7afc79b366c1e6deea5520a206bb8e03",
+    "overseek-wc-plugin/README.md": "df90be3f67e0a5e5bb0eb391a679be84272af44a25eaee1251f692eadb645770",
     "overseek-wc-plugin/assets/admin-tabs.js": "2a046d7fd07d9cc1f38a1d9611cb069aa1d1da8006ccaf14b11499dc1c461512",
     "overseek-wc-plugin/assets/admin.css": "e17f9ed43a0d1279e931322f8a80c9ff4bbf1500ba64c7b4d2b68e455f66594c",
     "overseek-wc-plugin/assets/css/delivery-estimate.css": "8986b9bc4b606937c993bef0fe61e534b8ff4d846e2774309f01f1c2574216e5",
@@ -46,7 +46,7 @@
     "overseek-wc-plugin/includes/class-overseek-delivery-calendar.php": "f52cfcd34acbde708f995c81842de5a246ad8cc59412e5a9d750a64d41cbfb26",
     "overseek-wc-plugin/includes/class-overseek-delivery-cart-display.php": "4d9aaef3620b048a164f51794bd59a60baf38c94374510eff5533a5ff711e00d",
     "overseek-wc-plugin/includes/class-overseek-delivery-checkout-capture.php": "f814bdb2d4901f99bf7ccbaf781d0e2cd09607bdcf6634b22cad067d5397d4f1",
-    "overseek-wc-plugin/includes/class-overseek-delivery-control.php": "bee66a214eddbb93ede932cada03c6ee91574bd30b57a87073216432badd29f6",
+    "overseek-wc-plugin/includes/class-overseek-delivery-control.php": "9a86648a111048e18779f6803cae9729db91cabf0a0ddf0aee0e9a05d4f44acd",
     "overseek-wc-plugin/includes/class-overseek-delivery-discovery-api.php": "0c9dfbc14d1f6aff02cf5a2bca12f0bb17efb02426bd8d761b5418014d7fad00",
     "overseek-wc-plugin/includes/class-overseek-delivery-display.php": "0b9486dc3563f5706c11d7c87a62f376d6cb8e9b9a1330a806e1ee60ea98cff9",
     "overseek-wc-plugin/includes/class-overseek-delivery-engine.php": "61aeec01c7cc7d0113d9de9179b1254ced146582711e907ae54bd16350e5eee1",

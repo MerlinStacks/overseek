@@ -114,7 +114,10 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native 13-mi
         for (let attempt = 1; attempt <= 8; attempt++) {
             await dispatchReceiptCascade('a');
             expect((await ops())[0]).toMatchObject({ state: 'applied', cascadeAttempts: attempt, cascadeState: attempt === 8 ? 'failed' : 'pending' });
-            if (attempt < 8) await db.exec(`UPDATE "ReceiptOperation" SET "cascadeNextAttemptAt"=now()`);
+            // Make the retry unambiguously due. PostgreSQL now() has microsecond
+            // precision, while the worker's JS Date is truncated to milliseconds.
+            if (attempt < 8) await m.client.receiptOperation.update({ where: { operationId: created.operationId },
+                data: { cascadeNextAttemptAt: new Date(Date.now() - 1000) } });
         }
         expect(await owner()).toMatchObject({ cascadePending: true });
         await dispatchGuardedReceipt('a'); expect(m.receipt).toHaveBeenCalledTimes(2);
