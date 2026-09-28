@@ -3,7 +3,8 @@ import { ProductsService } from '../products';
 import { prisma } from '../../utils/prisma';
 import { WooService } from '../woo';
 
-vi.mock('../../utils/prisma', () => ({ prisma: { wooProduct: { findUnique: vi.fn(), update: vi.fn() }, productVariation: { findMany: vi.fn() } } }));
+const { findProduct } = vi.hoisted(() => ({ findProduct: vi.fn() }));
+vi.mock('../../utils/prisma', () => ({ prisma: { wooProduct: { findUnique: findProduct, update: vi.fn() }, productVariation: { findMany: vi.fn() } } }));
 vi.mock('../woo', () => ({ WooService: { forAccount: vi.fn() } }));
 vi.mock('../productSearch', () => ({ ProductSearchService: {} }));
 vi.mock('../deliveryEstimates/intents', () => ({ dirtyInboundProducts: vi.fn(), lockDeliveryAccount: vi.fn() }));
@@ -19,7 +20,8 @@ describe('ProductsService taxonomy assignments', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         stored = { id: 'p', manageStock: true, stockQuantity: 17, rawData: { categories: oldCategories, tags: oldTags, custom: 'preserved' } };
-        vi.mocked(prisma.wooProduct.findUnique).mockImplementation(async () => stored);
+        // The service awaits the result; this test double need not implement Prisma's fluent relation client.
+        findProduct.mockImplementation(async () => stored);
         vi.mocked(prisma.wooProduct.update).mockImplementation((async ({ data }: any) => {
             stored = { ...stored, ...structuredClone(data) };
             return stored;

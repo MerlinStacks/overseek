@@ -4,8 +4,17 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { installPluginDownload, RELEASE } = require('../install_plugin_download');
+const { sourceReport } = require('../publish_verified_plugin');
 const root = path.resolve(__dirname, '../../..');
 const names = ['overseek-wc-plugin.zip', 'overseek-wc-plugin.manifest.json'];
+
+test('release pins and packaged manifest match the current plugin source', () => {
+    const source = sourceReport(root);
+    const packaged = JSON.parse(fs.readFileSync(path.join(root, 'server/uploads/plugins', names[1]), 'utf8'));
+    assert.equal(RELEASE.version, source.version);
+    assert.equal(packaged.version, source.version);
+    assert.deepEqual(packaged.files, source.files);
+});
 
 function fixture(t) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'overseek-download-'));
@@ -28,7 +37,7 @@ function fixture(t) {
 
 test('valid image installs both files; identical restart leaves them untouched', t => {
     const f = fixture(t);
-    assert.deepEqual(f.run(), { version: '2.23.1', sha256: RELEASE.zip, updated: names });
+    assert.deepEqual(f.run(), { version: RELEASE.version, sha256: RELEASE.zip, updated: names });
     const before = names.map(name => fs.statSync(path.join(f.plugins, name)));
     assert.deepEqual(f.run().updated, []);
     names.forEach((name, i) => {
