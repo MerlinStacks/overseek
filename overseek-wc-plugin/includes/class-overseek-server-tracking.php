@@ -2,25 +2,15 @@
 /**
  * Server-Side Analytics Tracking
  *
- * 100% server-side tracking via WooCommerce/WordPress hooks.
- * Unblockable by ad blockers since it runs entirely on the server.
+ * Commerce events use WooCommerce hooks. Page/product views use an uncached
+ * same-origin browser collector so visits served by full-page caches are counted.
  *
  * CACHING PLUGIN COMPATIBILITY (EDGE CASE FIX):
  * Some caching plugins may serve cached pages before the visitor ID cookie is set,
  * causing missed or fragmented visitor sessions. To prevent this:
  *
- * 1. Exclude "_os_vid" cookie from page cache key
- * 2. Exclude cart/checkout pages from full-page cache
- * 3. For LiteSpeed Cache, add to "Do Not Cache Cookies": _os_vid
- * 4. For WP Rocket, add to "Never Cache Cookies": _os_vid
- * 5. For W3 Total Cache, add to "Rejected cookies": _os_vid
- * 6. For WP Super Cache, enable "Don't cache pages with GET parameters"
- *
- * Alternatively, use the 'overseek_skip_tracking' filter to disable tracking
- * on specific cached pages:
- * add_filter('overseek_skip_tracking', function($skip) {
- *     return defined('DOING_CRON') || defined('LSCACHE_NO_CACHE');
- * });
+ * Keep tracking cookies out of cache variation/bypass rules. Exclude WooCommerce
+ * cart, checkout, account and wc-ajax endpoints at the page-cache/CDN layer.
  *
  * @package OverSeek
  * @since   1.0.0
@@ -36,7 +26,7 @@ if (!defined('ABSPATH')) {
  * Class OverSeek_Server_Tracking
  *
  * Handles server-side analytics tracking for WooCommerce events.
- * NO JAVASCRIPT REQUIRED - completely ad-blocker proof.
+ * Transactional tracking remains server-side; browsing views require JavaScript.
  *
  * @since 1.0.0
  */
@@ -50,6 +40,8 @@ class OverSeek_Server_Tracking
      * @var string|null
      */
     private $visitor_id = null;
+
+    private bool $browser_views = true;
 
     /**
      * Event queue for deferred sending at shutdown.
@@ -100,19 +92,22 @@ class OverSeek_Server_Tracking
         // Recover queues created before the background worker existed, or after a missed schedule.
         OverSeek_Tracking_Transport::schedule_failed_events_retry();
 
-        // CRITICAL: Initialize visitor cookie BEFORE any output is sent.
-        // 'init' hook fires early enough that headers haven't been sent yet.
-        // This ensures the cookie is properly set and persisted across requests.
+        // Legacy mode and Store API identity reads; shared HTML defers cookies
+        // to the browser collector, private Woo pages initialize at template_redirect.
         add_action('init', array($this, 'init_visitor_cookie'), 1);
-
-        // Auto-configure cache plugin exclusions (LiteSpeed, WP Rocket, W3TC, etc.)
-        add_action('init', array($this, 'configure_cache_exclusions'), 0);
 
         // Flush event queue at shutdown (non-blocking for performance)
         add_action('shutdown', array($this, 'flush_event_queue'));
 
-        // Pageview - fires on every page load
-        add_action('template_redirect', array($this, 'track_pageview'));
+        $this->browser_views = (bool) apply_filters('overseek_browser_views', true);
+        if ($this->browser_views) {
+            require_once __DIR__ . '/class-overseek-browser-views.php';
+            new OverSeek_Browser_Views($this);
+            add_action('template_redirect', array($this, 'init_private_visitor_cookie'), 0);
+        } else {
+            add_action('template_redirect', array($this, 'track_pageview'));
+            add_action('woocommerce_after_single_product', array($this, 'track_product_view'));
+        }
 
         // Add to cart
         add_action('woocommerce_add_to_cart', array($this, 'track_add_to_cart'), 10, 6);
@@ -143,9 +138,6 @@ class OverSeek_Server_Tracking
         // Checkout View - track when checkout page is viewed (not processing)
         add_action('woocommerce_before_checkout_form', array($this, 'track_checkout_view'));
 
-        // Product View - detailed product tracking
-        add_action('woocommerce_after_single_product', array($this, 'track_product_view'));
-
         // Review Tracking - when customers leave product reviews
         add_action('comment_post', array($this, 'track_review'), 10, 3);
 
@@ -170,6 +162,11 @@ class OverSeek_Server_Tracking
      */
     public function init_visitor_cookie()
     {
+        // Shared HTML responses must not issue a visitor's cookies. The collector
+        // initializes them on its private response; private Woo pages do so below.
+        if ($this->browser_views && !is_admin() && !wp_doing_ajax() && !wp_doing_cron() && !(defined('REST_REQUEST') && REST_REQUEST)) {
+            return;
+        }
         // Skip admin, AJAX, and cron
         if (is_admin() || wp_doing_ajax() || wp_doing_cron()) {
             return;
@@ -205,7 +202,7 @@ class OverSeek_Server_Tracking
             $this->visitor_id = OverSeek_Tracking_Request_Utils::generate_uuid();
 
             // Set cookie with admin-configured retention period
-        $expires = time() + OverSeek_Tracking_Guard_Utils::get_cookie_retention_seconds();
+            $expires = time() + OverSeek_Tracking_Guard_Utils::get_cookie_retention_seconds();
             OverSeek_Tracking_Request_Utils::set_cookie_safe($cookie_name, $this->visitor_id, $expires);
         }
 
@@ -222,18 +219,48 @@ class OverSeek_Server_Tracking
     }
 
 
-    /**
-     * Auto-configure cache exclusions for popular caching plugins.
-     * Ensures the _os_vid cookie isn't stripped and tracking pages aren't cached.
-     *
-     * Supports: LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache,
-     * WP Fastest Cache, SG Optimizer.
-     */
-    public function configure_cache_exclusions()
+    public function init_private_visitor_cookie(): void
     {
-        // Do not reject or vary full-page cache by tracking cookies. Cart and checkout
-        // views set no-cache headers in their own handlers; applying this globally can
-        // bypass page cache for every visitor on high-traffic stores.
+        if (!(is_cart() || is_checkout() || is_account_page())) { return; }
+        $this->browser_views = false;
+        try { $this->init_visitor_cookie(); } finally { $this->browser_views = true; }
+        if (is_account_page()) { $this->track_pageview(); }
+    }
+
+    /** Called only after the browser collector validates public context and current consent. */
+    public function track_browser_view(array $context, array $input): void
+    {
+        $get = $_GET;
+        $referrer = $_SERVER['HTTP_REFERER'] ?? null;
+        try {
+            // Reuse attribution helpers with this visit's URL, not the AJAX endpoint URL.
+            parse_str((string) wp_parse_url($input['url'], PHP_URL_QUERY), $params);
+            $_GET = array_filter($params, 'is_string');
+            $_SERVER['HTTP_REFERER'] = esc_url_raw($input['referrer']);
+            $this->get_visitor_id();
+            OverSeek_Tracking_Attribution_Utils::persist_utm_parameters();
+            OverSeek_Tracking_Attribution_Utils::persist_click_id(self::$click_id_params);
+            OverSeek_Tracking_Attribution_Utils::persist_meta_identifiers();
+            OverSeek_Tracking_Attribution_Utils::persist_landing_referrer();
+            $title = sanitize_text_field($input['title']);
+            if (!empty($context['product_id'])) {
+                $product = $this->get_product_safely((int) $context['product_id']);
+                if (!$product || $product->get_status() !== 'publish') { return; }
+                $terms = get_the_terms($product->get_id(), 'product_cat');
+                $categories = is_array($terms) ? wp_list_pluck($terms, 'name') : [];
+                $payload = OverSeek_Tracking_Event_Builder::build_product_view_payload($product, $categories, $this->get_pixel_meta_config(), $input['eventId']);
+                $this->queue_event('product_view', $payload, false, esc_url_raw($input['url']), $title);
+            } else {
+                $payload = array_intersect_key($context, array_flip(['page_type', 'categoryId', 'categoryName', 'searchQuery']));
+                $this->queue_event('pageview', $payload, '404' === ($context['page_type'] ?? ''), esc_url_raw($input['url']), $title);
+                if (isset($context['searchQuery'])) {
+                    $this->queue_event('search', ['searchQuery' => $context['searchQuery'], 'eventId' => $input['eventId']], false, esc_url_raw($input['url']), $title);
+                }
+            }
+        } finally {
+            $_GET = $get;
+            if (null === $referrer) { unset($_SERVER['HTTP_REFERER']); } else { $_SERVER['HTTP_REFERER'] = $referrer; }
+        }
     }
 
     /**
@@ -303,7 +330,7 @@ class OverSeek_Server_Tracking
      * @param array $payload Event-specific data
      * @param bool $is_404 Whether this is a 404 error page
      */
-    private function queue_event($type, $payload = array(), $is_404 = false, $url_override = '')
+    private function queue_event($type, $payload = array(), $is_404 = false, $url_override = '', $title_override = null)
     {
         // Skip if no consent
         if (!OverSeek_Tracking_Guard_Utils::has_tracking_consent()) {
@@ -334,7 +361,7 @@ class OverSeek_Server_Tracking
             'type' => $type,
             'occurredAt' => gmdate('c'),
             'url' => $url_override ?: OverSeek_Tracking_Request_Utils::get_sanitized_current_url(),
-            'pageTitle' => wp_get_document_title(),
+            'pageTitle' => $title_override ?? wp_get_document_title(),
             'referrer' => $referrer_data['referrer'],
             'referrerDomain' => $referrer_data['referrerDomain'],
             'referrerType' => $referrer_data['referrerType'],

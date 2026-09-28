@@ -174,6 +174,8 @@ final class OverSeek_Delivery_Control {
 			}
 			$result = ( new OverSeek_Delivery_Input_Storage() )->store( get_option( 'overseek_account_id', '' ), [ 'scope' => 'control', 'entityId' => 0, 'revision' => $body['revision'], 'payload' => $next ] );
 			if ( is_wp_error( $result ) ) { return $result; }
+			// Previously cached pages may have omitted the delivery placeholder entirely.
+			if ( class_exists( 'OverSeek_Cache' ) ) { OverSeek_Cache::request_purge( 'delivery_control' ); }
 			return new WP_REST_Response( [ 'schemaVersion' => 1, 'revision' => $body['revision'], 'state' => self::state() ], 200 );
 		} catch ( InvalidArgumentException $error ) { return new WP_Error( 'overseek_control_invalid', 'Invalid launch control.', [ 'status' => 400 ] );
 		} catch ( Throwable $error ) { return new WP_Error( 'overseek_control_conflict', $error->getMessage() ?: 'Launch control unavailable.', [ 'status' => 409 ] );

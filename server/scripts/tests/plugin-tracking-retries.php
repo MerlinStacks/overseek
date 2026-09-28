@@ -46,6 +46,7 @@ function wp_schedule_single_event($timestamp, $hook): bool
 function wp_unschedule_event($timestamp, $hook): bool { unset($GLOBALS['cron'][$hook]); return true; }
 function add_action($hook, $callback, ...$args): void { $GLOBALS['actions'][$hook][] = $callback; }
 function add_filter(...$args): void {}
+function apply_filters($hook, $value) { return $value; }
 function untrailingslashit($value): string { return rtrim($value, '/'); }
 function wp_doing_ajax(): bool { return false; }
 function wp_json_encode($value): string { return json_encode($value, JSON_THROW_ON_ERROR); }

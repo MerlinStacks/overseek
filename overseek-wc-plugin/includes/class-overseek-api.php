@@ -1216,6 +1216,7 @@ class OverSeek_API {
 		$updated = [];
 		if ( isset( $params['chat'] ) && is_array( $params['chat'] ) ) {
 			update_option( 'overseek_storefront_chat_config', $this->sanitize_storefront_config_array( $params['chat'] ), false );
+			update_option( 'overseek_storefront_chat_config_updated_at', time(), false );
 			delete_transient( 'overseek_chat_config_' . md5( $stored_account_id ) );
 			delete_transient( 'overseek_chat_config_stale_' . md5( $stored_account_id ) );
 			$updated[] = 'chat';

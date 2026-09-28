@@ -151,7 +151,7 @@ class OverSeek_Pixels {
 		if ( empty( $account_id ) ) {
 			$account_id = $this->account_id;
 		}
-		if ( empty( $account_id ) || empty( $this->api_url ) ) {
+		if ( empty( $account_id ) || empty( $this->api_url ) || $account_id !== $this->account_id ) {
 			return;
 		}
 		OverSeek_Pixel_Config_Provider::refresh_config( $this->api_url, $account_id );
@@ -166,6 +166,9 @@ class OverSeek_Pixels {
 		if ( empty( $config ) ) {
 			return;
 		}
+		// Never embed a visitor's matching data into shared catalogue HTML. Private
+		// Woo pages retain advanced matching; collector/CAPI enrichment is per visit.
+		$private_identity = is_user_logged_in() || is_cart() || is_checkout() || is_account_page();
 
 		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.EnqueuedResources.NonEnqueuedScript
 		echo "\n<!-- OverSeek Tracking Pixels v" . esc_html( OVERSEEK_WC_VERSION ) . " -->\n";
@@ -178,10 +181,10 @@ class OverSeek_Pixels {
 		// ─── Meta Pixel ─────────────────────────────────────────────────.
 		if ( ! empty( $config['meta']['pixelId'] ) ) {
 			$pixel_id    = esc_js( $config['meta']['pixelId'] );
-			$init_params = OverSeek_Pixel_Matching_Utils::get_advanced_matching_params( $config['meta'] );
+			$init_params = $private_identity ? OverSeek_Pixel_Matching_Utils::get_advanced_matching_params( $config['meta'] ) : [];
 
 			// Add external_id for improved Event Match Quality.
-			$external_id = OverSeek_Pixel_Matching_Utils::get_external_id();
+			$external_id = $private_identity ? OverSeek_Pixel_Matching_Utils::get_external_id() : '';
 			if ( $external_id && ! empty( $config['meta']['advancedMatching'] ) ) {
 				$init_params['external_id'] = hash( 'sha256', strtolower( trim( $external_id ) ) );
 			}
@@ -201,7 +204,7 @@ class OverSeek_Pixels {
 			echo "<script>overseekRunWithAdvertisingConsent(function(){!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js',o=n&&n.partner;ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;ttq._t=ttq._t||{};ttq._t[e+\"_\"+o]=1;w.overseekLoadTrackingScript&&w.overseekLoadTrackingScript(r+'?sdkid='+e+'&lib='+t)};ttq.load('{$pixel_code}');";
 
 			// TikTok Advanced Matching — send hashed PII for better match rates.
-			if ( ! empty( $config['tiktok']['advancedMatching'] ) ) {
+			if ( $private_identity && ! empty( $config['tiktok']['advancedMatching'] ) ) {
 				$tt_identify = OverSeek_Pixel_Matching_Utils::get_tiktok_identify_params();
 				if ( ! empty( $tt_identify ) ) {
 					echo 'ttq.identify(' . wp_json_encode( $tt_identify ) . ');';
@@ -218,7 +221,7 @@ class OverSeek_Pixels {
 			echo '<script async fetchpriority="low" src="https://www.googletagmanager.com/gtag/js?id=' . esc_attr( $gtag_primary ) . '"></script>' . "\n";
 			// gtag() and dataLayer already defined by consent mode above — only add js init + config calls.
 			echo "<script>gtag('js',new Date());";
-			$google_user_data = ! empty( $gads_id ) ? OverSeek_Pixel_Matching_Utils::get_google_user_data_params() : array();
+			$google_user_data = $private_identity && ! empty( $gads_id ) ? OverSeek_Pixel_Matching_Utils::get_google_user_data_params() : array();
 			if ( ! empty( $google_user_data ) ) {
 				echo "gtag('set','user_data'," . wp_json_encode( $google_user_data ) . ');';
 			}
@@ -298,9 +301,13 @@ class OverSeek_Pixels {
 		echo '});';
 
 		echo 'window.overseekAdvertisingConsentGranted=' . ( $consent_required ? 'false' : 'true' ) . ';';
+		if ( apply_filters( 'overseek_browser_views', true ) ) {
+			// Shared even if an optimizer delays the collector until after inline pixel events.
+			echo 'window.overseekGetViewEventId=window.overseekGetViewEventId||function(key){var ids=window.__overseekViewIds=window.__overseekViewIds||{};return ids[key]||(ids[key]="os_view_"+(window.crypto&&crypto.randomUUID?crypto.randomUUID().replace(/-/g,""):Date.now().toString(36)+Math.random().toString(36).slice(2)));};';
+		}
 		echo 'window.__overseekConsentQueue=[];window.overseekRunWithAdvertisingConsent=function(fn){if(window.overseekAdvertisingConsentGranted){fn();}else{window.__overseekConsentQueue.push(fn);}};';
 		echo 'window.overseekSetAdvertisingConsent=function(granted){granted=!!granted;if(window.overseekAdvertisingConsentGranted===granted){return;}window.overseekAdvertisingConsentGranted=granted;gtag("consent","update",{ad_storage:granted?"granted":"denied",analytics_storage:granted?"granted":"denied",ad_user_data:granted?"granted":"denied",ad_personalization:granted?"granted":"denied"});if(granted){var q=window.__overseekConsentQueue.splice(0);q.forEach(function(fn){fn();});if(window.fbq){fbq("consent","grant");}if(window.ttq&&ttq.grantConsent){ttq.grantConsent();}if(window.pintrk){pintrk("set","consent",true);}if(window.uetq&&window.uetq.push){window.uetq.push("consent","update",{ad_storage:"granted"});}}else{if(window.fbq){fbq("consent","revoke");}if(window.ttq&&ttq.revokeConsent){ttq.revokeConsent();}if(window.pintrk){pintrk("set","consent",false);}if(window.uetq&&window.uetq.push){window.uetq.push("consent","update",{ad_storage:"denied"});}}};';
-		echo 'window.overseekTakeProductViewEventId=function(productId){var match=document.cookie.match(/(?:^|; )_os_pv_eid=([^;]*)/),value=match?decodeURIComponent(match[1]):"",parts=value.split("|");document.cookie="_os_pv_eid=; Max-Age=0; path=/; SameSite=Lax";return Number(parts[0])===Number(productId)&&parts[1]?parts[1]:"os_pv_"+(window.crypto&&crypto.randomUUID?crypto.randomUUID().replace(/-/g,""):Date.now().toString(36)+Math.random().toString(36).slice(2));};';
+		echo 'window.overseekTakeProductViewEventId=function(productId){if(window.overseekGetViewEventId){return window.overseekGetViewEventId("product:"+productId);}var match=document.cookie.match(/(?:^|; )_os_pv_eid=([^;]*)/),value=match?decodeURIComponent(match[1]):"",parts=value.split("|");document.cookie="_os_pv_eid=; Max-Age=0; path=/; SameSite=Lax";return Number(parts[0])===Number(productId)&&parts[1]?parts[1]:"os_pv_"+(window.crypto&&crypto.randomUUID?crypto.randomUUID().replace(/-/g,""):Date.now().toString(36)+Math.random().toString(36).slice(2));};';
 		echo 'window.overseekGetCheckoutEventId=function(){var key="overseek_checkout_event_id",id="";try{id=sessionStorage.getItem(key)||"";}catch(e){}if(!id){id=window.crypto&&crypto.randomUUID?crypto.randomUUID():"os_checkout_"+Date.now().toString(36)+Math.random().toString(36).slice(2);try{sessionStorage.setItem(key,id);}catch(e){}}document.cookie=key+"="+encodeURIComponent(id)+"; path=/; SameSite=Lax";return id;};';
 		if ( $consent_required ) {
 			echo 'var overseekSyncConsent=function(e){var granted=typeof window.wp_has_consent==="function"?window.wp_has_consent("marketing"):false;if(e&&e.detail&&e.detail.changedConsentCategory==="marketing"){granted=e.detail.newConsentStatus==="allow"||e.detail.newConsentStatus==="granted";}window.overseekSetAdvertisingConsent(granted);};document.addEventListener("wp_listen_for_consent_change",overseekSyncConsent);if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",overseekSyncConsent,{once:true});}else{overseekSyncConsent();}';
@@ -573,9 +580,10 @@ JS;
 	 */
 	private function build_search_events( array $config ): string {
 		$query = get_search_query();
-		OverSeek_Tracking_Payload_Utils::issue_search_event_id( $query );
+		if ( ! apply_filters( 'overseek_browser_views', true ) ) { OverSeek_Tracking_Payload_Utils::issue_search_event_id( $query ); }
 		$query_key = md5( strtolower( trim( $query ) ) );
 		$js        = "(function(){var m=document.cookie.match(/(?:^|; )_os_search_eid=([^;]+)/),v=m?decodeURIComponent(m[1]):'',p=v.split('|'),eid=(p[0]==='" . esc_js( $query_key ) . "'&&p[1])?p[1]:((window.crypto&&crypto.randomUUID)?crypto.randomUUID():'os_search_'+Date.now().toString(36)+Math.random().toString(36).slice(2));document.cookie='_os_search_eid=; Max-Age=0; path=/; SameSite=Lax';";
+		$js .= "if(window.overseekGetViewEventId){eid=window.overseekGetViewEventId('search');}";
 		if ( OverSeek_Pixel_Ecommerce_Events::is_platform_event_enabled( $config, 'meta', 'search' ) ) {
 			$js .= "fbq('track','Search'," . wp_json_encode( array( 'search_string' => $query ) ) . ",{eventID:eid});";
 		}

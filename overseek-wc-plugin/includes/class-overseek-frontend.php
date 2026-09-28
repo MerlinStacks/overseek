@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
  * Class OverSeek_Frontend
  *
  * Handles frontend script injection based on settings.
- * Analytics tracking is 100% server-side via class-overseek-server-tracking.php.
+ * Commerce tracking is handled by class-overseek-server-tracking.php.
  * This class handles the optional Live Chat widget only.
  *
  * @since 1.0.0
@@ -33,8 +33,7 @@ class OverSeek_Frontend
 	}
 
 	/**
-	 * Print scripts to the footer if chat is enabled and within business hours.
-	 * Analytics is handled server-side - no JavaScript needed.
+	 * Print a cache-safe widget reference; its script evaluates current business hours.
 	 *
 	 * @return void
 	 */
@@ -49,10 +48,9 @@ class OverSeek_Frontend
 			return;
 		}
 
-		// Server-side business hours check - don't load widget outside hours.
-		if (!$this->is_within_business_hours($api_url, $account_id)) {
-			return;
-		}
+		// Keep shared HTML independent of the time it was cached. The uncached widget
+		// script checks current business hours in the visitor's browser.
+		$this->get_chat_config($api_url, $account_id);
 
 		$api_url = untrailingslashit($api_url);
 
@@ -144,6 +142,10 @@ class OverSeek_Frontend
 	{
 		$local = get_option('overseek_storefront_chat_config', false);
 		if (is_array($local)) {
+			$updated_at = (int) get_option('overseek_storefront_chat_config_updated_at', 0);
+			if ($updated_at <= 0 || time() - $updated_at >= self::CHAT_CONFIG_TTL) {
+				$this->schedule_background_refresh($account_id);
+			}
 			return $local;
 		}
 
@@ -179,6 +181,7 @@ class OverSeek_Frontend
 
 	public function handle_background_refresh(string $account_id): void
 	{
+		if ($account_id !== (string) get_option('overseek_account_id', '')) { return; }
 		$api_url = (string) get_option('overseek_api_url', '');
 		$this->refresh_chat_config($api_url, $account_id);
 	}
@@ -215,6 +218,7 @@ class OverSeek_Frontend
 		set_transient($fresh_key, $data, self::CHAT_CONFIG_TTL);
 		set_transient($stale_key, $data, self::CHAT_CONFIG_STALE_TTL);
 		update_option('overseek_storefront_chat_config', $data, false);
+		update_option('overseek_storefront_chat_config_updated_at', time(), false);
 
 		return $data;
 	}

@@ -161,7 +161,7 @@ export function buildWidgetScript(config: WidgetConfig): string {
         if (!BUSINESS_HOURS.enabled) return true;
         try {
             const now = new Date();
-            const options = { timeZone: BUSINESS_TIMEZONE, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
+            const options = { timeZone: BUSINESS_TIMEZONE, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
             const formatter = new Intl.DateTimeFormat('en-US', options);
             const parts = formatter.formatToParts(now);
             const weekdayPart = parts.find(p => p.type === 'weekday');
@@ -183,6 +183,9 @@ export function buildWidgetScript(config: WidgetConfig): string {
             return true;
         }
     }
+
+    // Evaluate at visit time, even when the store HTML came from a full-page cache.
+    if (!isWithinBusinessHours()) return;
 
     const EMOJIS = ['😀','😂','😍','🥰','😊','👍','👏','❤️','🔥','✨','🎉','💯','🙏','😎','🤔','👀','💪','🙌','😅','🥳'];
 

@@ -3,7 +3,7 @@
  * Plugin Name: OverSeek Integration for WooCommerce
  * Plugin URI:  https://github.com/MerlinStacks/overseek
  * Description: Connects your WooCommerce store to your self-hosted OverSeek server. Server-side tracking, live chat, and full data sync. Requires OverSeek server.
- * Version:     2.24.0
+ * Version:     2.25.0
  * License:     MIT
  * License URI: https://opensource.org/license/mit
  * Author:      OverSeek Contributors
@@ -26,10 +26,14 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants.
-define('OVERSEEK_WC_VERSION', '2.24.0');
+define('OVERSEEK_WC_VERSION', '2.25.0');
 define('OVERSEEK_WC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('OVERSEEK_WC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('OVERSEEK_WC_PLUGIN_FILE', __FILE__);
+
+require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-crypto-utils.php';
+require_once OVERSEEK_WC_PLUGIN_DIR . 'includes/class-overseek-cache.php';
+OverSeek_Cache::register();
 
 /**
  * Declare WooCommerce feature compatibility.
@@ -70,6 +74,9 @@ add_action('before_woocommerce_init', static function (): void {
  */
 function overseek_wc_deactivate(): void
 {
+    OverSeek_Cache::clear_config_transients((string) get_option('overseek_account_id', ''));
+    wp_unschedule_hook('overseek_refresh_pixel_config');
+    wp_unschedule_hook('overseek_refresh_chat_config');
     wp_unschedule_hook('overseek_retry_tracking_events');
     delete_transient('_overseek_failed_events');
 

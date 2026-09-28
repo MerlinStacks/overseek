@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.24.0**.
+Current version: **2.25.0**.
 
 ### Simple delivery estimate setup
 
@@ -44,13 +44,13 @@ After activating, go to **WooCommerce -> OverSeek** in your WordPress admin.
 | Setting | Description |
 |---------|-------------|
 | **Enable Live Chat** | Shows the live chat widget on your store |
-| **Enable Server Tracking** | Sends pageview/cart events server-side (ad-blocker proof) |
+| **Enable Server Tracking** | Server-side commerce events plus cache-safe browser pageviews |
 | **Email Relay** | Allows OverSeek to send emails via your WordPress SMTP |
 
 ## What the Plugin Does
 
 ### Server-Side Tracking
-Tracks pageviews, add-to-cart events, and purchases directly from your server. Unlike JavaScript-based tracking, this works even when customers use ad blockers.
+Tracks add-to-cart events and purchases through WooCommerce server hooks. Page/product views use a same-origin browser collector so cached visits are counted too; these browsing events require JavaScript and can be blocked by browser tools.
 
 Pageviews and product views exclude identifiable background requests (AJAX/fetch, non-document requests and prefetch/prerender traffic). Repeated view hooks are counted once per request, not suppressed across a time window. GET requests without browser fetch metadata remain supported; POST views require an explicit navigation header. Background requests with no distinguishing headers can still resemble real visits, and prefetched pages activated without another server request are not measured by this server-only tracker.
 
@@ -78,10 +78,22 @@ The plugin works alongside WooCommerce's built-in REST API for:
 The plugin fully supports the block-based checkout introduced in WooCommerce 8.x. Visitor cookies are initialised during Store API REST requests so that tracking works correctly regardless of checkout type.
 
 ### Caching Plugin Compatibility
-The plugin is tested with popular caching solutions including LiteSpeed Cache, WP Super Cache, and W3 Total Cache. It automatically:
-- Excludes OverSeek tracking cookies from cache key generation
-- Prevents caching of cart and checkout pages
-- Sets `no-cache` headers on tracking endpoints
+Catalogue pages can remain in full-page caches. Page/product views are collected by a small JavaScript request to the same-origin `?wc-ajax=overseek_view` endpoint, with `private, no-store` responses. Public page context is signed; visitor identity, campaign attribution and event IDs are resolved per visit. Browsing analytics therefore requires JavaScript; cart, checkout and purchase events continue to use WooCommerce server hooks.
+
+- Do **not** add `_os_vid` or other tracking cookies to cache bypass/variation rules.
+- Keep WooCommerce cart, checkout, account, logged-in traffic and `wc-ajax` endpoints excluded in your page cache and CDN. The plugin also sends early no-cache directives for private pages, but PHP cannot change a response already served by an upstream cache.
+- Delivery dates are fetched separately from shared HTML. Chat hours are evaluated by the uncached widget script at visit time.
+- Changed storefront configuration requests a page-cache purge, coalesced to one per request. Supported purge integrations: LiteSpeed Cache, WP Rocket, W3 Total Cache (page cache), and WP Super Cache. Custom proxies/CDNs can subscribe to the `overseek_purge_page_cache` action, which receives an array of reasons. External caches without an integration require their own purge.
+
+#### Updating the plugin
+
+Versioned asset URLs change with each plugin release. From 2.25.0, the first WordPress request loading a different plugin version also purges supported page caches and schedules background configuration refreshes. This covers manual ZIP replacements and file deployments as well as WordPress updates. Subsequent updates through WordPress mark the cache for cleanup at update completion; the next request finalizes cleanup using the new code. Same-version WordPress reinstalls also trigger cleanup.
+
+Last-known-good configuration stays available during refresh. Only plugin configuration transients are removed through WordPress's transient API (including persistent object-cache entries); visitor sessions, purchase deduplication and the failed-event retry queue are preserved. Redis/Memcached is not globally flushed. WP-Cron must run for background refreshes.
+
+On the **first upgrade from an older release**, the old code has no update-completion purge hook. Open a WordPress admin page after installation to run version detection, then purge any separately managed CDN. On multisite, version detection/config refresh is per site on its next WordPress request. Replacing files with the **same version outside WordPress's updater** requires a manual page-cache purge.
+
+Delivery readiness has its own existing environment fingerprint: plugin/WooCommerce versions and WordPress upgrade events invalidate it. Managed delivery estimates may need readiness revalidation after an update; clearing page caches does not reactivate them.
 
 ### Bot Detection
 Server-side tracking includes improved bot detection patterns to filter out crawlers, headless browsers, and monitoring bots, reducing false positives in visitor analytics.
@@ -142,6 +154,13 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.0 - 2026-09-28
+- **Fixed:** Page/product views from full-page caches, with visit-time attribution and shared browser/CAPI event IDs.
+- **Fixed:** Visitor matching data is no longer embedded in shared catalogue HTML.
+- **Fixed:** Chat config freshness recovery and visit-time business-hours checks (deploy the matching OverSeek server update).
+- **Added:** Coalesced page-cache purging for storefront changes, delivery activation and plugin updates, plus a custom CDN purge hook.
+- **Updates:** Version-change detection refreshes configuration through WordPress's transient API without clearing order deduplication, retry queues or the global object cache.
 
 ### 2.23.1 - 2026-09-23
 - **Fixed:** Shared stock-owner variants support distinct supplier leads through `variantSupplierLeads`.

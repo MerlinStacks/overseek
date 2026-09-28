@@ -205,7 +205,7 @@ class OverSeek_Tracking_Event_Builder
      * @param array<string, mixed> $meta_config Meta pixel config (contentIdFormat, contentIdPrefix, contentIdSuffix)
      * @return array<string, mixed>
      */
-    public static function build_product_view_payload($product, array $categories, array $meta_config = array()): array
+    public static function build_product_view_payload($product, array $categories, array $meta_config = array(), string $event_id = ''): array
     {
         $sku = $product->get_sku();
         $product_id = $product->get_id();
@@ -226,7 +226,7 @@ class OverSeek_Tracking_Event_Builder
             'categories' => $categories,
             'productType' => $product->get_type(),
             'contentId' => $content_id,
-            'eventId' => OverSeek_Tracking_Payload_Utils::issue_product_view_event_id((int) $product->get_id()),
+            'eventId' => $event_id ?: OverSeek_Tracking_Payload_Utils::issue_product_view_event_id((int) $product->get_id()),
             'externalId' => OverSeek_Pixel_Matching_Utils::get_external_id(),
         );
 

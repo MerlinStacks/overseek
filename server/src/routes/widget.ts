@@ -70,6 +70,7 @@ const widgetRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (e) {
             Logger.error('Widget script error', { error: e });
             reply.header('Content-Type', 'application/javascript; charset=utf-8');
+            reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
             return '';
         }
     });
