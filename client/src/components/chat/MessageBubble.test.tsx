@@ -17,6 +17,23 @@ function renderMessage(content: string, senderType: 'CUSTOMER' | 'AGENT' = 'CUST
 }
 
 describe('MessageBubble attachments', () => {
+    it.each(['no glass (outlined)-02.svg', 'artwork (1).svg', 'artwork (final (2)).svg', '100% artwork.svg'])('preserves the full legacy download path for %s', (filename) => {
+        renderMessage(`Please check this artwork.\n\n[Attachment: ${filename}](/uploads/attachments/123-${filename})`);
+        const link = screen.getByRole('link', { name: `Attachment: ${filename}` });
+        const url = new URL(link.getAttribute('href')!);
+        expect(decodeURIComponent(url.pathname)).toBe(`/uploads/attachments/123-${filename}`);
+        expect(url.hash).toBe('');
+        expect(url.search).toBe('');
+        expect(link).toHaveAttribute('download');
+        expect(screen.queryByText('.svg)')).not.toBeInTheDocument();
+    });
+
+    it('preserves already encoded download paths without double encoding', () => {
+        renderMessage('[Attachment: artwork (1).svg](/uploads/attachments/123-artwork%20%281%29.svg)');
+        const link = screen.getByRole('link', { name: 'Attachment: artwork (1).svg' });
+        expect(new URL(link.getAttribute('href')!).pathname).toBe('/uploads/attachments/123-artwork%20%281%29.svg');
+    });
+
     it.each(['svg', 'eps', 'ai', 'custom'])('shows incoming %s files as downloads', (extension) => {
         const filename = `artwork.${extension}`;
         const url = `/uploads/attachments/123-${filename}`;

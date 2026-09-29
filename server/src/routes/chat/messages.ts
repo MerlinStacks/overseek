@@ -17,6 +17,7 @@ import fs from 'fs';
 import { getRouteAccountIdOrReply } from '../routeHelpers';
 import { isAccountFeatureEnabled } from '../../utils/accountFeatures';
 import { requireInboxMutationAccess } from './authorization';
+import { getAttachmentUrl } from '../../utils/attachmentUrl';
 
 const attachmentsDir = path.join(__dirname, '../../../uploads/attachments');
 const MAX_RELAY_ATTACHMENTS = 10;
@@ -42,7 +43,7 @@ function getPublicAttachmentUrl(filename: string): string {
     const appUrl = (process.env.APP_URL || process.env.CLIENT_URL || 'http://localhost:5173')
         .trim()
         .replace(/\/+$/, '');
-    return `${appUrl}/uploads/attachments/${filename}`;
+    return `${appUrl}${getAttachmentUrl(filename)}`;
 }
 
 // Why: ensure the directory exists on startup so file writes don't crash with ENOENT

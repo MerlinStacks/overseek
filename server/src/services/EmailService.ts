@@ -15,6 +15,7 @@ import { decrypt } from '../utils/encryption';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { getAttachmentUrl } from '../utils/attachmentUrl';
 
 const attachmentsDir = path.join(__dirname, '../../uploads/attachments');
 if (!fs.existsSync(attachmentsDir)) {
@@ -1080,7 +1081,7 @@ export class EmailService {
                                         const filename = `${uniqueSuffix}-inline-${cid.replace(/[^a-zA-Z0-9_-]/g, '') || 'image'}.${extension}`;
                                         const filePath = path.join(attachmentsDir, filename);
                                         fs.writeFileSync(filePath, attachment.content);
-                                        const inlineUrl = `/uploads/attachments/${filename}`;
+                                        const inlineUrl = getAttachmentUrl(filename);
                                         html = html.split(`cid:${cid}`).join(inlineUrl);
                                         isInline = true;
                                     }
@@ -1155,7 +1156,7 @@ export class EmailService {
 
                                         processedAttachments.push({
                                             filename: attachment.filename,
-                                            url: `/uploads/attachments/${filename}`,
+                                            url: getAttachmentUrl(filename),
                                             type: attachment.contentType || 'application/octet-stream'
                                         });
                                     } catch (err) {

@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { GravatarAvatar } from './GravatarAvatar';
 import { parseEmailContent, parseQuotedContent, cleanEmailMetadata } from '../../utils/emailParser';
 import { AttachmentGallery } from './AttachmentDisplay';
+import { normalizeAttachmentLinks } from '../../utils/attachmentLinks';
 
 const MAX_RENDERED_EMAIL_CHARS = 60000;
 const EMAIL_ALLOWED_TAGS = [
@@ -79,7 +80,7 @@ export const MessageBubble = memo(function MessageBubble({
     const isPendingUndo = Boolean(message.pendingUndo);
     const deliveryStatus = message.deliveryStatus || message.status;
 
-    const { subject, body } = useMemo(() => parseEmailContent(message.content), [message.content]);
+    const { subject, body } = useMemo(() => parseEmailContent(normalizeAttachmentLinks(message.content)), [message.content]);
     const { mainContent, quotedContent, quotedPreview, quotedLineCount, quotedAttachmentCount } = useMemo(() => parseQuotedContent(body), [body]);
     const attachments = useMemo(() => {
         // Extract from full body to catch attachments after quoted markers

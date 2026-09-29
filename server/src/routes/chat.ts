@@ -22,6 +22,7 @@ import { TwilioService } from '../services/TwilioService';
 import { InboxAIService } from '../services/InboxAIService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
+import { getAttachmentUrl } from '../utils/attachmentUrl';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 import { syncStorefrontConfigToWoo } from '../services/StorefrontConfigSync';
 import path from 'path';
@@ -504,7 +505,7 @@ export const createChatRoutes = (chatService: ChatService): FastifyPluginAsync =
                     fullContent += '\n\nAttachments:\n';
                     attachments.forEach(att => {
                         const filename = path.basename(att.path);
-                        const url = `/uploads/attachments/${filename}`;
+                        const url = getAttachmentUrl(filename);
                         fullContent += `[${att.filename}](${url})\n`;
                     });
                 }
