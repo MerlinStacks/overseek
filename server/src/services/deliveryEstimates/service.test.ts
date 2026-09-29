@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ find: vi.fn(), update: vi.fn(), variationUpdate: vi.fn(), settingsFind: vi.fn(), upsert: vi.fn(), intent: vi.fn(), lock: vi.fn(), transaction: vi.fn(), inputFind: vi.fn(), control: vi.fn(), eligible: vi.fn(), inboundRows: vi.fn(), dirtyTarget: vi.fn() }));
+const mocks = vi.hoisted(() => ({ find: vi.fn(), update: vi.fn(), variationUpdate: vi.fn(), settingsFind: vi.fn(), upsert: vi.fn(), intent: vi.fn(), lock: vi.fn(), transaction: vi.fn(), inputFind: vi.fn(), control: vi.fn(), eligible: vi.fn(), inboundRows: vi.fn(), dirtyTarget: vi.fn(), launchFind: vi.fn(), launchUpsert: vi.fn() }));
 vi.mock('../../utils/prisma', () => {
     const db = { wooProduct: { findFirst: mocks.find, updateMany: mocks.update, findMany: mocks.eligible }, productVariation: { updateMany: mocks.variationUpdate },
         deliveryEstimateSettings: { findUnique: mocks.settingsFind, upsert: mocks.upsert },
         $queryRaw: mocks.lock, deliveryInputSync: { upsert: mocks.intent, findUnique: mocks.inputFind, findMany: mocks.inboundRows },
         deliveryInboundDirtyTarget: { upsert: mocks.dirtyTarget },
         deliverySyncAccount: { upsert: mocks.control, updateMany: mocks.control },
-        receiptAccount: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        receiptAccount: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), findUnique: mocks.launchFind, upsert: mocks.launchUpsert },
         account: { findUnique: async () => ({ timezone: 'UTC' }), findUniqueOrThrow: async () => ({ timezone: 'UTC' }) }, accountFeature: { findUnique: async () => null } };
     return { prisma: { ...db, $transaction: (callback: (tx: unknown) => unknown) => mocks.transaction(callback, db) } };
 });
@@ -22,6 +22,25 @@ describe('local delivery persistence and tenant isolation', () => {
         mocks.eligible.mockResolvedValue([]); mocks.inboundRows.mockResolvedValue([]);
     });
     const range = { productionMinDays: 2, productionMaxDays: 4 };
+    it('durably queues simple enable with saved settings and automatic product publication', async () => {
+        const settings = { ...defaultSettings(), estimateMode: 'inventory' as const };
+        const saved = await DeliveryEstimateService.saveSettings('a', settings, true);
+        expect(saved.estimateMode).toBe('production');
+        expect(mocks.transaction).toHaveBeenCalledTimes(1);
+        expect(mocks.launchUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: 'a' },
+            create: expect.objectContaining({ desiredActive: true, revalidationRequested: true, controlAction: 'activate', controlRevision: 1n }),
+            update: expect.objectContaining({ controlRevision: { increment: 1 }, controlPayload: expect.anything() }) }));
+        expect(mocks.control).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ resyncRequested: true }) }));
+        expect(mocks.launchUpsert.mock.calls[0][0].update).not.toHaveProperty('active');
+    });
+    it('does not queue enable if persistence fails or inventory work is in progress', async () => {
+        mocks.intent.mockRejectedValueOnce(new Error('outbox unavailable'));
+        await expect(DeliveryEstimateService.saveSettings('a', defaultSettings(), true)).rejects.toThrow('outbox unavailable');
+        expect(mocks.launchUpsert).not.toHaveBeenCalled();
+        mocks.upsert.mockClear(); mocks.launchFind.mockResolvedValue({ receivingFrozen: true });
+        await expect(DeliveryEstimateService.saveSettings('a', defaultSettings(), true)).rejects.toThrow('inventory update');
+        expect(mocks.upsert).not.toHaveBeenCalled(); expect(mocks.launchUpsert).not.toHaveBeenCalled();
+    });
     it('defaults only unconfigured accounts to simple mode', async () => {
         mocks.settingsFind.mockResolvedValue(null);
         expect(await DeliveryEstimateService.getSettings('a')).toEqual({ ...defaultSettings(), estimateMode: 'production' });

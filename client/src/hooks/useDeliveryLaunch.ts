@@ -5,7 +5,7 @@ export const LAUNCH_POLL_LIMIT = 12;
 export const LAUNCH_POLL_MS = 5000;
 
 /** The panel keys this hook by account and permissions. All requests are cancelled on scope exit. */
-export function useDeliveryLaunch(accountId: string, token: string, canInventory: boolean, visible: boolean, saveRevision: number, canRead = true) {
+export function useDeliveryLaunch(accountId: string, token: string, canInventory: boolean, visible: boolean, saveRevision: number, canRead = true, followUntilSettled = false) {
     const [readiness, setReadiness] = useState<{ revision: number; value: DeliveryReadiness } | null>(null);
     const [receipts, setReceipts] = useState<ReceiptPage | null>(null);
     const [cursor, setCursor] = useState('');
@@ -89,11 +89,11 @@ export function useDeliveryLaunch(accountId: string, token: string, canInventory
         || !!receipts?.receipts.some(pendingReceipt) || !!legacy?.jobs.some(job => job.state === 'reconciling' && job.attempts < 8);
     useEffect(() => {
         if (!visible || !pageVisible) return;
-        if (!pending || loading || error || polls >= LAUNCH_POLL_LIMIT) return;
-        const timer = window.setTimeout(() => { setPolls(count => count + 1); void refresh(false); }, LAUNCH_POLL_MS);
+        if (!pending || loading || error || (!followUntilSettled && polls >= LAUNCH_POLL_LIMIT)) return;
+        const timer = window.setTimeout(() => { setPolls(count => count + 1); void refresh(false); }, polls >= LAUNCH_POLL_LIMIT ? 30_000 : LAUNCH_POLL_MS);
         return () => window.clearTimeout(timer);
-    }, [visible, pageVisible, pending, loading, error, polls, refresh]);
+    }, [visible, pageVisible, pending, loading, error, polls, refresh, followUntilSettled]);
 
     return { readiness: current, receipts, cursor, setCursor, legacy, legacyCursor, setLegacyCursor, error, loading, refresh, request,
-        pollingStopped: pending && polls >= LAUNCH_POLL_LIMIT };
+        pollingStopped: !followUntilSettled && pending && polls >= LAUNCH_POLL_LIMIT };
 }

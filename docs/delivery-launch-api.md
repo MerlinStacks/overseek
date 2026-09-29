@@ -10,6 +10,14 @@ Readiness, receipt recovery, sync and explicit disable remain reachable with `DE
 
 ## UI endpoints (exact names)
 
+### Simple settings page and `POST /api/delivery-estimates/enable`
+
+The merchant settings page is a single page with a Turn on / Turn off switch, dispatch schedule, shipping day ranges, and optional product-page placement. It uses production + shipping estimates. There are no setup tabs, estimate-mode selector, manual synchronization, inventory migration, recovery, or technical mapping controls on this page. Existing hidden settings are retained when timings are edited.
+
+`POST /enable` requires account membership, `manage_shipping_settings`, and the enabled account feature. Its body is the complete validated settings document. In one account-locked transaction it saves production-mode settings, requests bounded background publication of existing product timings, and persists explicit activation intent (`desiredActive: true`, `revalidationRequested: true`). It returns HTTP 202 with `{ settings, status }`; this acknowledges the request, not live storefront output. Inventory work already frozen or undergoing cutover returns 409 without saving or replacing that work.
+
+The existing control worker waits for publication and all production-mode readiness checks before activating. The request survives closing the page. Ordinary `PUT /settings` saves do not invent activation intent. Turn off continues to use `POST /activation` with `{ active: false }` and works independently of unsaved or invalid drafts. The UI follows pending changes automatically, slowing its checks after one minute and pausing while the browser tab is hidden.
+
 ### Estimate modes (companion plugin 2.24.0+)
 
 The settings document accepts optional `estimateMode: 'production' | 'inventory'`. Omission retains historical inventory-aware behaviour and is not rewritten on read. New unsaved account defaults use `production`. Mode changes preserve all existing settings and product/variation records. Entering production mode automatically queues a bounded background publication of saved product timings and restarts a failed publication; routine settings saves do not restart that catalogue build. In production mode, malformed product inputs are skipped with their source records retained, allowing healthy products to publish. Database failures still roll back the batch and retry normally.

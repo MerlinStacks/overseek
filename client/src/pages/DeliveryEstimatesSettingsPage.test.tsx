@@ -1,5 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeliveryEstimatesSettingsPage } from './DeliveryEstimatesSettingsPage';
 import { responseFixture } from '../components/settings/deliveryEstimates/fixtures.test-support';
@@ -10,485 +9,183 @@ let enabled = true;
 let canView = true;
 let canEdit = true;
 let token = 'test-token';
-let launchReadiness = readinessFixture();
+let readiness = readinessFixture();
+let data = responseFixture();
+const fetchMock = vi.fn();
+const settingsRequest = vi.fn();
+const discoveryRequest = vi.fn();
+const ok = (body: unknown) => ({ ok: true, json: async () => body });
 vi.mock('../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: { id: accountId } }) }));
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token }) }));
 vi.mock('../hooks/useAccountFeature', () => ({ useAccountFeature: () => enabled }));
-vi.mock('../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: (key: string) => key === 'view_shipping' ? canView : canEdit }) }));
-const fetchMock = vi.fn();
-const syncFetchMock = vi.fn();
-const discoveryFetchMock = vi.fn();
-const ok = (data = responseFixture()) => ({ ok: true, json: async () => data });
-const discovery = (status = 'available') => ({ ok: true, json: async () => ({ status, timezone: 'Australia/Sydney', warnings: ['Verify checkout rates'], methods: status === 'available' ? [
-    { methodId: 'weight_based_shipping', instanceId: 9, zoneId: 1, zoneName: 'Australia', title: 'Standard', enabled: false, provider: 'weight_based', rateIdentityScope: 'method_instance', requiresRateVerification: true },
-] : [] }) });
+vi.mock('../hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: (key: string) => key === 'view_shipping' ? canView : key === 'manage_shipping_settings' && canEdit }) }));
 
-describe('Delivery estimates settings', () => {
+describe('simple delivery settings', () => {
     beforeEach(() => {
+        vi.resetAllMocks();
         accountId = 'account-a'; enabled = true; canView = true; canEdit = true; token = 'test-token';
-        launchReadiness = readinessFixture();
-        fetchMock.mockReset(); fetchMock.mockResolvedValue(ok());
-        discoveryFetchMock.mockReset();
-        discoveryFetchMock.mockResolvedValue({ ok: true, json: async () => ({ status: 'available', warnings: [], methods: [] }) });
-        syncFetchMock.mockReset();
-        syncFetchMock.mockResolvedValue({ ok: true, json: async () => ({ status: { configurationSync: 'not_requested', storefrontActivated: false, pendingCount: 0, syncedCount: 0, lastAcknowledgedAt: null, lastError: null } }) });
-        vi.stubGlobal('fetch', (url: string, options: RequestInit) => url === '/api/delivery-estimates/readiness'
-            ? Promise.resolve({ ok: true, json: async () => launchReadiness })
-            : url === '/api/delivery-estimates/receipts/legacy'
-            ? Promise.resolve({ ok: true, json: async () => ({ jobs: [], nextCursor: null }) })
-            : url === '/api/delivery-estimates/receipts'
-            ? Promise.resolve({ ok: true, json: async () => ({ receipts: [], legacyJobs: [], nextCursor: null }) })
-            : url === '/api/delivery-estimates/sync'
-            ? syncFetchMock(url, options)
-            : url === '/api/delivery-estimates/shipping-methods'
-            ? discoveryFetchMock(url, options)
-            : fetchMock(url, options));
-    });
-    afterEach(() => vi.unstubAllGlobals());
-
-    it('switches to simple setup without losing advanced settings and enables without inventory preparation', async () => {
-        const data = responseFixture();
-        data.settings.fallbackSupplierLeadTimeDays = 17;
-        data.settings.closures = [{ date: '2026-12-25', scope: 'both', label: 'Christmas' }];
-        fetchMock.mockResolvedValueOnce(ok(data));
-        launchReadiness = readinessFixture({ estimateMode: 'production', ready: true, mode: 'LEGACY', cutoverState: 'legacy', blockers: [] });
-        render(<DeliveryEstimatesSettingsPage />);
-        const mode = await screen.findByLabelText('How should estimates work?');
-        expect(mode).toHaveValue('inventory');
-        fireEvent.change(mode, { target: { value: 'production' } });
-        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...data, settings: JSON.parse(options.body) }));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ ...data.settings, estimateMode: 'production' });
-        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Activate storefront estimates' })).toBeEnabled());
-        expect(screen.queryByRole('checkbox', { name: 'I have paused inventory receiving.' })).not.toBeInTheDocument();
-    });
-
-    it('preserves saved advanced settings and exact shipping identities when editing only dispatch', async () => {
-        const data = responseFixture();
-        data.settings.timezone = 'US/Eastern';
-        data.settings.fallbackSupplierLeadTimeDays = 17;
-        data.settings.closures = [{ date: '2026-12-25', scope: 'both', label: 'Christmas closure' }];
-        data.settings.transitWeekdays = [1, 3, 5];
-        data.settings.branding = { textColor: '#123456', accentColor: '#abcdef', backgroundColor: '#ffffff', fontSize: 18, spacing: 'comfortable', showIcon: true };
-        data.settings.shippingMethods = [
-            { ...data.settings.shippingMethods[0], methodId: 'wbs', mappingKind: 'exact_rate', rateId: 'wbs:3:express', minTransitDays: 2, maxTransitDays: 6 },
-            { ...data.settings.shippingMethods[0], instanceId: 7, enabled: false, title: 'Archived shipping option' },
-        ];
-        data.settings.defaultMethod = { methodId: 'wbs', instanceId: 3, mappingKind: 'exact_rate', rateId: 'wbs:3:express' };
-        fetchMock.mockResolvedValueOnce(ok(data));
-        discoveryFetchMock.mockResolvedValueOnce(discovery());
-        render(<DeliveryEstimatesSettingsPage />);
-        const cutoff = await screen.findByLabelText('Daily cutoff');
-        await screen.findByText(/shipping methods found in WooCommerce/);
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(screen.getByRole('button', { name: 'Save delivery settings' })).toBeDisabled();
-        fireEvent.change(cutoff, { target: { value: '16:45' } });
-        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...data, settings: JSON.parse(options.body) }));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ ...data.settings, cutoffTime: '16:45' });
-        expect(discoveryFetchMock.mock.calls.every(([, options]) => !options.method || options.method === 'GET')).toBe(true);
-    });
-
-    it('keeps migration tools optional and reachable while retaining activation prerequisites', async () => {
-        launchReadiness = readinessFixture({ blockers: ['cutover_required'] });
-        render(<DeliveryEstimatesSettingsPage />);
-        await screen.findByLabelText('Daily cutoff');
-        fireEvent.click(screen.getByRole('button', { name: 'Continue to shipping' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Continue to preview & enable' }));
-        expect(await screen.findByText(/one-time inventory upgrade/)).toBeVisible();
-        expect(screen.getByRole('button', { name: 'Activate storefront estimates' })).toBeDisabled();
-        expect(screen.queryByRole('region', { name: 'Prepare inventory' })).not.toBeInTheDocument();
-        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Advanced setup & recovery' })));
-        expect(screen.getByRole('region', { name: 'Prepare inventory' })).toBeVisible();
-        expect(screen.getByRole('checkbox', { name: 'I have paused inventory receiving.' })).not.toBeChecked();
-        expect(fetchMock.mock.calls.every(([, options]) => !options.method || options.method === 'GET')).toBe(true);
-    });
-
-    it('reveals an invalid optional field when saving from a different step', async () => {
-        render(<DeliveryEstimatesSettingsPage />);
-        await screen.findByLabelText('Daily cutoff');
-        const fontSize = screen.getByLabelText('Text size (px)');
-        fireEvent.change(fontSize, { target: { value: '25' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        expect(screen.getByRole('tab', { name: '3. Preview & enable' })).toHaveAttribute('aria-selected', 'true');
-        expect(fontSize.closest('details')).toHaveAttribute('open');
-        expect(fontSize).toBeVisible();
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it('shows only the selected panel while keeping every panel mounted', async () => {
-        render(<DeliveryEstimatesSettingsPage />);
-        await screen.findByLabelText('Daily cutoff');
-        const tabs = within(screen.getByRole('tablist', { name: 'Delivery estimate settings' })).getAllByRole('tab');
-        expect(tabs.map(tab => tab.textContent)).toEqual(['1. Dispatch', '2. Shipping', '3. Preview & enable']);
-        const panels = screen.getAllByRole('tabpanel', { hidden: true });
-        expect(panels).toHaveLength(3);
-        expect(screen.getByRole('tabpanel', { name: '1. Dispatch' })).toBeVisible();
-        for (const tab of tabs) {
-            fireEvent.click(tab);
-            const panel = screen.getByRole('tabpanel', { name: tab.textContent! });
-            expect(screen.getAllByRole('tabpanel')).toEqual([panel]);
-            expect(panel).toBeVisible();
-            expect(tab).toHaveAttribute('aria-controls', panel.id);
-            expect(panel).toHaveAttribute('aria-labelledby', tab.id);
-            for (const mountedPanel of panels) {
-                expect(mountedPanel).toBeInTheDocument();
-                if (mountedPanel !== panel) expect(mountedPanel).not.toBeVisible();
+        data = responseFixture(); readiness = readinessFixture({ estimateMode: 'production' });
+        settingsRequest.mockImplementation(async (_url, options) => ok(options.body ? { ...data, settings: JSON.parse(options.body) } : data));
+        discoveryRequest.mockResolvedValue(ok({ status: 'available', methods: [], warnings: [] }));
+        fetchMock.mockImplementation(async (url: string, options: RequestInit) => {
+            if (url.endsWith('/readiness')) return ok(readiness);
+            if (url.endsWith('/shipping-methods')) return discoveryRequest(url, options);
+            if (url.endsWith('/activation')) {
+                readiness = readinessFixture({ desiredActive: false, active: true, work: { action: 'disable', attempts: 0, lastError: null, nextAttemptAt: null } });
+                return ok({ accepted: true, revision: '2' });
             }
-            for (const candidate of tabs) {
-                expect(candidate).toHaveAttribute('aria-selected', String(candidate === tab));
-                expect(candidate).toHaveAttribute('tabindex', candidate === tab ? '0' : '-1');
-            }
-        }
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(syncFetchMock).toHaveBeenCalledTimes(1);
+            if (url.endsWith('/enable')) readiness = readinessFixture({ desiredActive: true, revalidationRequested: true, work: { action: 'activate', attempts: 0, lastError: null, nextAttemptAt: null } });
+            return settingsRequest(url, options);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+    });
+    afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+    const toggle = () => screen.getByRole('switch', { name: 'Delivery estimates' });
+    const loaded = async () => { await screen.findByLabelText('Daily cutoff'); await waitFor(() => expect(screen.queryByText('Loading shipping methods…')).not.toBeInTheDocument()); };
+
+    it('shows one page with an on/off control and only everyday settings', async () => {
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        expect(toggle()).toHaveAttribute('aria-checked', 'false');
+        expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Advanced|Receipt recovery|Technical diagnostics|Troubleshooting/)).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('How should estimates work?')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Mapping policy|Actual rate ID/)).not.toBeInTheDocument();
+        expect(fetchMock.mock.calls.map(([url]) => url).every(url => !/receipts|sync|cutover/.test(url))).toBe(true);
+        expect(screen.getByText('[overseek_delivery_estimate]')).not.toBeVisible();
+        fireEvent.click(screen.getByText('Show estimates on product pages'));
+        expect(screen.getByText('[overseek_delivery_estimate]')).toBeVisible();
     });
 
-    it('navigates tabs with arrow wrapping and Home / End, moving focus and selection together', async () => {
-        const user = userEvent.setup();
-        render(<DeliveryEstimatesSettingsPage />);
-        await screen.findByLabelText('Daily cutoff');
-        const tabs = screen.getAllByRole('tab');
-        await user.click(tabs[0]);
-        for (const [key, index] of [
-            ['{ArrowRight}', 1], ['{ArrowRight}', 2], ['{ArrowLeft}', 1],
-            ['{End}', 2], ['{ArrowRight}', 0], ['{ArrowLeft}', 2], ['{Home}', 0],
-        ] as const) {
-            await user.keyboard(key);
-            expect(tabs[index]).toHaveFocus();
-            expect(screen.getAllByRole('tab', { selected: true })).toEqual([tabs[index]]);
-            expect(tabs[index]).toHaveAttribute('tabindex', '0');
-            tabs.filter((_, i) => i !== index).forEach(tab => expect(tab).toHaveAttribute('tabindex', '-1'));
-            expect(screen.getAllByRole('tabpanel')).toEqual([screen.getByRole('tabpanel', { name: tabs[index].textContent! })]);
-        }
+    it('saves current edits and enables in one request, without a manual save or sync', async () => {
+        data.settings.fallbackSupplierLeadTimeDays = 17;
+        data.settings.closures = [{ date: '2026-12-25', scope: 'both' }];
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        fireEvent.change(screen.getByLabelText('Daily cutoff'), { target: { value: '16:00' } });
+        fireEvent.click(toggle());
+        await screen.findByText('Turning on…');
+        const enables = fetchMock.mock.calls.filter(([url]) => url.endsWith('/enable'));
+        expect(enables).toHaveLength(1);
+        expect(enables[0][1]).toMatchObject({ method: 'POST', headers: expect.objectContaining({ 'X-Account-ID': 'account-a' }) });
+        expect(JSON.parse(enables[0][1].body)).toEqual({ ...data.settings, cutoffTime: '16:00', estimateMode: 'production' });
+        expect(toggle()).toHaveAttribute('aria-checked', 'true');
+        expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/sync'))).toBe(false);
     });
 
-    it('retains drafts across tabs and saves timezone, shipping and appearance changes through the shared save', async () => {
-        const user = userEvent.setup();
-        render(<DeliveryEstimatesSettingsPage />);
-        fireEvent.change(await screen.findByLabelText('Daily cutoff'), { target: { value: '18:00' } });
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Store timezone (IANA)' }), 'Australia/Sydney');
-        await user.click(screen.getByRole('tab', { name: '2. Shipping' }));
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Fulfilment' }), 'collection');
-        await user.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        await user.click(screen.getByText('Customise appearance (optional)'));
-        fireEvent.change(screen.getByRole('spinbutton', { name: 'Text size (px)' }), { target: { value: '18' } });
-        await user.click(screen.getByRole('tab', { name: '1. Dispatch' }));
-        expect(screen.getByLabelText('Daily cutoff')).toHaveValue('18:00');
-        expect(screen.getByRole('combobox', { name: 'Store timezone (IANA)' })).toHaveValue('Australia/Sydney');
-        await user.click(screen.getByRole('tab', { name: '2. Shipping' }));
-        expect(screen.getByRole('combobox', { name: 'Fulfilment' })).toHaveValue('collection');
-        await user.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        expect(screen.getByRole('spinbutton', { name: 'Text size (px)' })).toHaveValue(18);
-        await user.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(screen.getByText('Unsaved changes')).toBeVisible();
-        expect(screen.getAllByRole('button', { name: 'Save delivery settings' })).toHaveLength(1);
-        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...responseFixture(), settings: JSON.parse(options.body) }));
-        await user.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        expect(fetchMock).toHaveBeenCalledTimes(2);
-        const request = fetchMock.mock.calls[1][1];
-        expect(request.method).toBe('PUT');
-        expect(JSON.parse(request.body)).toEqual({ ...responseFixture().settings, cutoffTime: '18:00', timezone: 'Australia/Sydney',
-            shippingMethods: [{ ...responseFixture().settings.shippingMethods[0], fulfilmentType: 'collection' }],
-            branding: { ...responseFixture().settings.branding, fontSize: 18 } });
-        expect(screen.getByText('No unsaved changes')).toBeVisible();
-        expect(screen.getByRole('button', { name: 'Save delivery settings' })).toBeDisabled();
+    it('turns off with invalid unsaved settings, without saving or validating the draft', async () => {
+        readiness = readinessFixture({ active: true, desiredActive: true });
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        fireEvent.change(screen.getByLabelText('Daily cutoff'), { target: { value: '' } });
+        fireEvent.click(toggle());
+        await screen.findByText('Turning off…');
+        const mutations = fetchMock.mock.calls.filter(([, options]) => options.method === 'POST' || options.method === 'PUT');
+        expect(mutations).toHaveLength(1);
+        expect(mutations[0][0]).toBe('/api/delivery-estimates/activation');
+        expect(JSON.parse(mutations[0][1].body)).toEqual({ active: false });
+        expect(screen.getByLabelText('Daily cutoff')).toHaveValue('');
+        expect(toggle()).toHaveAttribute('aria-checked', 'false');
     });
 
-    it('preserves a saved legacy timezone alias in the dropdown and subsequent saves', async () => {
-        const data = responseFixture();
-        data.settings.timezone = 'US/Eastern';
-        fetchMock.mockResolvedValueOnce(ok(data));
-        render(<DeliveryEstimatesSettingsPage />);
-        const timezone = await screen.findByRole('combobox', { name: 'Store timezone (IANA)' });
-        expect(timezone).toHaveValue('US/Eastern');
-        expect(within(timezone).getByRole('option', { name: 'US/Eastern' })).toHaveProperty('selected', true);
-        fireEvent.change(screen.getByLabelText('Daily cutoff'), { target: { value: '18:00' } });
-        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...data, settings: JSON.parse(options.body) }));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        expect(JSON.parse(fetchMock.mock.calls[1][1].body).timezone).toBe('US/Eastern');
-        fireEvent.click(screen.getByRole('tab', { name: '1. Dispatch' }));
-        expect(screen.getByRole('combobox', { name: 'Store timezone (IANA)' })).toHaveValue('US/Eastern');
+    it('follows a slow enable automatically until the store confirms it is on', async () => {
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        vi.useFakeTimers();
+        await act(async () => fireEvent.click(toggle()));
+        for (let i = 0; i < 13; i++) await act(async () => vi.advanceTimersByTimeAsync(5000));
+        expect(screen.getByText('Turning on…')).toBeVisible();
+        expect(screen.queryByText('Check again')).not.toBeInTheDocument();
+        readiness = readinessFixture({ active: true, desiredActive: true, ready: true });
+        await act(async () => vi.advanceTimersByTimeAsync(30_000));
+        expect(screen.getByText('On')).toBeVisible();
+        expect(toggle()).toHaveAttribute('aria-checked', 'true');
+        const count = fetchMock.mock.calls.length;
+        await act(async () => vi.advanceTimersByTimeAsync(60_000));
+        expect(fetchMock).toHaveBeenCalledTimes(count);
     });
 
-    it('connects dirty and save revision state to launch setup while keeping disable available', async () => {
-        launchReadiness = readinessFixture({ ready: true, mode: 'GUARDED', cutoverState: 'guarded', blockers: [] });
-        render(<DeliveryEstimatesSettingsPage />);
-        const cutoff = await screen.findByLabelText('Daily cutoff');
-        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        const activate = screen.getByRole('button', { name: 'Activate storefront estimates' });
-        await waitFor(() => expect(activate).toBeEnabled());
-        fireEvent.click(screen.getByRole('tab', { name: '1. Dispatch' }));
-        fireEvent.change(cutoff, { target: { value: '18:00' } });
-        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        expect(activate).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Disable storefront estimates' })).toBeEnabled();
-        launchReadiness = readinessFixture({ blockers: ['inputs_pending'], revalidationRequested: true, desiredActive: true });
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        await screen.findByText(/Your saved changes are being applied automatically/);
-        expect(activate).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Disable storefront estimates' })).toBeEnabled();
+    it('automatically adds store methods without inventing shipping durations', async () => {
+        discoveryRequest.mockResolvedValue(ok({ status: 'available', warnings: [], methods: [
+            { methodId: 'wbs', instanceId: 8, zoneId: 2, zoneName: 'Australia', title: 'Express', enabled: true, provider: 'weight_based' },
+        ] }));
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        const min = screen.getByLabelText('Express minimum days');
+        const max = screen.getByLabelText('Express maximum days');
+        expect(min).toHaveValue(null); expect(max).toHaveValue(null);
+        expect(screen.getByLabelText('Show estimates for Express')).not.toBeChecked();
+        fireEvent.change(min, { target: { value: '2' } });
+        fireEvent.change(max, { target: { value: '4' } });
+        expect(screen.getByLabelText('Show estimates for Express')).toBeChecked();
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+        await screen.findByText('Saved. Your store updates automatically.');
+        const saved = JSON.parse(settingsRequest.mock.calls.at(-1)![1].body);
+        expect(saved.shippingMethods[0]).toEqual(data.settings.shippingMethods[0]);
+        expect(saved.shippingMethods[1]).toMatchObject({ methodId: 'wbs', instanceId: 8, minTransitDays: 2, maxTransitDays: 4, enabled: true, mappingKind: 'all_provider_rates', allRatesConfirmed: true });
     });
 
-    it('discovers automatically, preserves unsaved fields, imports disabled rows and saves only settings metadata', async () => {
-        discoveryFetchMock.mockResolvedValueOnce(discovery());
-        render(<DeliveryEstimatesSettingsPage />);
-        fireEvent.change(await screen.findByLabelText('Daily cutoff'), { target: { value: '18:00' } });
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        fireEvent.click(screen.getByRole('tab', { name: '2. Shipping' }));
-        expect(await screen.findByText(/Timezone mismatch/)).toHaveTextContent('Australia/Sydney');
-        expect(screen.getByText(/Rate verification required/)).toBeInTheDocument();
-        expect(discoveryFetchMock.mock.calls[0][0]).toBe('/api/delivery-estimates/shipping-methods');
-        expect(discoveryFetchMock.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer test-token', 'X-Account-ID': 'account-a' });
-        fireEvent.click(screen.getByRole('button', { name: 'Import discovered methods into draft' }));
-        expect(screen.getByLabelText('Daily cutoff')).toHaveValue('18:00');
-        expect(screen.getByLabelText('Enable row 2')).not.toBeChecked();
-        expect(screen.getByLabelText('Enable row 2')).toBeDisabled();
-        expect(screen.getByText(/Unconfigured: 0 days/)).toBeInTheDocument();
-        expect(screen.getByText(/Missing from latest/)).toBeInTheDocument();
-        expect(screen.getByText(/Disabled in WooCommerce — review/)).toBeInTheDocument();
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        fireEvent.change(screen.getByLabelText('Row 2 maximum transit days'), { target: { value: '5' } });
-        expect(screen.getByLabelText('Enable row 2')).toBeEnabled();
-        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...responseFixture(), settings: JSON.parse(options.body) }));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        const saved = JSON.parse(fetchMock.mock.calls[1][1].body);
-        expect(saved.timezone).toBe('UTC');
-        expect(saved.shippingMethods[1]).not.toHaveProperty('provider');
-        expect(saved.shippingMethods[1]).not.toHaveProperty('requiresRateVerification');
-        expect(saved.defaultMethod).toEqual(responseFixture().settings.defaultMethod);
+    it('does not enable empty or invalid shipping timings', async () => {
+        data.settings.shippingMethods = []; data.settings.defaultMethod = null;
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        fireEvent.click(toggle());
+        expect(await screen.findByRole('alert')).toHaveTextContent('Enter shipping times');
+        expect(fetchMock.mock.calls.some(([, options]) => options.method === 'POST')).toBe(false);
     });
 
-    it('allows read-only discovery but prevents import and editing', async () => {
+    it('allows view-only users to see timings but not edit, discover or activate', async () => {
         canEdit = false;
-        render(<DeliveryEstimatesSettingsPage />);
-        fireEvent.click(await screen.findByRole('tab', { name: '2. Shipping' }));
-        const refresh = await screen.findByRole('button', { name: 'Refresh from WooCommerce' });
-        expect(refresh).toBeEnabled();
-        discoveryFetchMock.mockResolvedValueOnce(discovery()); fireEvent.click(refresh);
-        expect(await screen.findByRole('button', { name: 'Import discovered methods into draft' })).toBeDisabled();
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        expect(screen.queryByRole('switch')).not.toBeInTheDocument();
         expect(screen.getByLabelText('Daily cutoff')).toBeDisabled();
+        expect(discoveryRequest).not.toHaveBeenCalled();
+        expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     });
 
-    it('distinguishes old plugin from real errors and can retry without losing the draft', async () => {
+    it('retains turn-off access when the feature is disabled', async () => {
+        enabled = false; readiness = readinessFixture({ active: true, desiredActive: true });
         render(<DeliveryEstimatesSettingsPage />);
-        fireEvent.change(await screen.findByLabelText('Daily cutoff'), { target: { value: '18:00' } });
-        discoveryFetchMock.mockResolvedValueOnce(discovery('plugin_update_required'));
-        fireEvent.click(screen.getByRole('tab', { name: '2. Shipping' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Refresh from WooCommerce' }));
-        await screen.findByText(/Shipping discovery requires a newer/);
-        for (const status of [502, 503]) {
-            discoveryFetchMock.mockResolvedValueOnce({ ok: false, status, json: async () => ({ error: `Remote error ${status}` }) });
-            fireEvent.click(screen.getByRole('button', { name: 'Refresh from WooCommerce' }));
-            expect(await screen.findByRole('alert')).toHaveTextContent(`Remote error ${status}`);
-            expect(screen.queryByText(/Shipping discovery requires a newer/)).not.toBeInTheDocument();
-            expect(screen.getByLabelText('Daily cutoff')).toHaveValue('18:00');
-        }
+        await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'true'));
+        fireEvent.click(toggle()); await screen.findByText('Turning off…');
+        expect(settingsRequest).not.toHaveBeenCalled();
+        expect(discoveryRequest).not.toHaveBeenCalled();
     });
 
-    it('aborts stale discovery on account switch and ignores its late result', async () => {
-        const { rerender } = render(<DeliveryEstimatesSettingsPage />);
-        await screen.findByLabelText('Daily cutoff');
-        let finish!: (value: ReturnType<typeof discovery>) => void;
-        discoveryFetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-        fireEvent.click(screen.getByRole('tab', { name: '2. Shipping' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Refresh from WooCommerce' }));
-        const signal = discoveryFetchMock.mock.calls[1][1].signal;
-        accountId = 'account-b'; rerender(<DeliveryEstimatesSettingsPage />);
-        await screen.findByLabelText('Daily cutoff');
-        expect(signal.aborted).toBe(true);
-        await act(async () => finish(discovery()));
-        fireEvent.click(screen.getByRole('tab', { name: '2. Shipping' }));
-        expect(screen.queryByText(/Timezone mismatch/)).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Import discovered methods into draft' })).toBeDisabled();
-    });
-
-    it('preserves drafts across silent token refresh and saves with current credentials', async () => {
-        const { rerender } = render(<DeliveryEstimatesSettingsPage />);
-        fireEvent.change(await screen.findByLabelText('Daily cutoff'), { target: { value: '18:00' } });
-        token = 'refreshed-token'; rerender(<DeliveryEstimatesSettingsPage />);
-        expect(screen.getByLabelText('Daily cutoff')).toHaveValue('18:00');
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer refreshed-token');
-    });
-
-    it('loads account-scoped settings and PUTs the full document, including calendars and collection mappings', async () => {
+    it('can turn off without view access and never loads settings or readiness', async () => {
+        canView = false;
         render(<DeliveryEstimatesSettingsPage />);
-        const cutoff = await screen.findByLabelText('Daily cutoff');
-        expect(fetchMock.mock.calls[0][1].headers['X-Account-ID']).toBe('account-a');
-        fireEvent.change(cutoff, { target: { value: '15:30' } });
-        const work = screen.getByRole('group', { name: 'Production / work days' });
-        fireEvent.click(within(work).getByLabelText('Sunday'));
-        fireEvent.click(screen.getByText(/Holidays & supplier timing/));
-        const production = within(screen.getByRole('region', { name: 'Production closures' }));
-        const closureDay = production.getAllByRole('button', { name: /: No closure/ })[0];
-        const closureDate = closureDay.getAttribute('data-date');
-        fireEvent.click(closureDay);
-        fireEvent.click(screen.getByRole('tab', { name: '2. Shipping' }));
-        fireEvent.change(screen.getByLabelText('Fulfilment'), { target: { value: 'collection' } });
-        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...responseFixture(), settings: JSON.parse(options.body) }));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        const request = fetchMock.mock.calls[1][1];
-        expect(request.method).toBe('PUT');
-        expect(JSON.parse(request.body)).toEqual({ ...responseFixture().settings, cutoffTime: '15:30', productionWeekdays: [0, 1, 2, 3, 4, 5],
-            closures: [{ date: closureDate, scope: 'work' }], shippingMethods: [{ ...responseFixture().settings.shippingMethods[0], fulfilmentType: 'collection' }] });
-        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        expect(screen.getByRole('button', { name: 'Activate storefront estimates' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Turn off estimates' }));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        expect(fetchMock.mock.calls[0][0]).toBe('/api/delivery-estimates/activation');
+        expect(settingsRequest).not.toHaveBeenCalled();
     });
 
-    it('allows disabled-state sync but does not load settings when disabled or denied; view-only users cannot edit', async () => {
-        enabled = false;
-        const { rerender } = render(<DeliveryEstimatesSettingsPage />);
-        expect(screen.getByRole('alert')).toHaveTextContent('disabled'); expect(fetchMock).not.toHaveBeenCalled();
-        await screen.findByText(/Not requested/);
-        fireEvent.click(screen.getByRole('button', { name: 'Sync saved settings and production times' }));
-        await screen.findByText(/Sync request queued/);
-        expect(syncFetchMock.mock.calls[1][1].method).toBe('POST');
-        syncFetchMock.mockClear();
-        enabled = true; canView = false; canEdit = false; rerender(<DeliveryEstimatesSettingsPage />);
-        expect(screen.getByRole('alert')).toHaveTextContent('permission'); expect(fetchMock).not.toHaveBeenCalled();
-        expect(syncFetchMock).not.toHaveBeenCalled();
-        canView = true; canEdit = false; rerender(<DeliveryEstimatesSettingsPage />);
-        expect(await screen.findByLabelText('Daily cutoff')).toBeDisabled();
-        fireEvent.click(screen.getByText(/Holidays & supplier timing/));
-        expect(within(screen.getByRole('region', { name: 'Production closures' })).getAllByRole('button', { name: /: No closure/ })[0]).toBeDisabled();
-        expect(screen.queryByRole('button', { name: 'Save delivery settings' })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Sync saved settings and production times' })).not.toBeInTheDocument();
-    });
-
-    it('keeps authorized recovery reachable without granting settings-read access', async () => {
-        canView = false; enabled = false;
-        render(<DeliveryEstimatesSettingsPage />);
-        expect(screen.getByRole('button', { name: 'Disable storefront estimates' })).toBeEnabled();
-        expect(screen.getByText(/Readiness and settings require view_shipping/)).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Save delivery settings' })).not.toBeInTheDocument();
-        await screen.findByText('No receipt operations on this page.');
-        expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it('connects dirty settings to save-first sync messaging and enables sync after saving', async () => {
-        render(<DeliveryEstimatesSettingsPage />);
-        fireEvent.change(await screen.findByLabelText('Daily cutoff'), { target: { value: '18:00' } });
-        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        await within(screen.getByRole('region', { name: 'Settings and production sync readiness' })).findByText(/save delivery settings first/);
-        const sync = screen.getByRole('button', { name: 'Sync saved settings and production times' });
-        expect(sync).toBeDisabled();
-        fireEvent.click(sync);
-        expect(syncFetchMock.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
-        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...responseFixture(), settings: JSON.parse(options.body) }));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        expect(screen.queryByText(/save delivery settings first/)).not.toBeInTheDocument();
-        await waitFor(() => expect(sync).toBeEnabled());
-    });
-
-    it('discards a late account load and does not expose the old account draft', async () => {
-        let resolveOld!: (value: ReturnType<typeof ok>) => void;
-        fetchMock.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
-        const { rerender } = render(<DeliveryEstimatesSettingsPage />);
-        const oldSignal = fetchMock.mock.calls[0][1].signal;
-        accountId = 'account-b'; rerender(<DeliveryEstimatesSettingsPage />);
-        expect(await screen.findByLabelText('Daily cutoff')).toHaveValue('14:00');
-        expect(oldSignal.aborted).toBe(true);
-        const oldData = responseFixture(); oldData.settings.cutoffTime = '01:00';
-        await act(async () => resolveOld(ok(oldData)));
-        expect(screen.getByLabelText('Daily cutoff')).toHaveValue('14:00');
-        expect(fetchMock.mock.calls[1][1].headers['X-Account-ID']).toBe('account-b');
-    });
-
-    it.each([false, true])('invalidates synced status after saving and reloads once (account switch: %s)', async switchAccount => {
-        const syncResponse = (configurationSync: string) => ({ ok: true, json: async () => ({ status: {
-            configurationSync, storefrontActivated: false, pendingCount: configurationSync === 'pending' ? 1 : 0,
-            syncedCount: 2, lastAcknowledgedAt: '2026-09-21T12:00:00Z', lastError: null,
-        } }) });
-        syncFetchMock.mockResolvedValueOnce(syncResponse('synced'));
-        const { rerender } = render(<DeliveryEstimatesSettingsPage />);
-        await screen.findByText(/configuration acknowledged by the plugin/);
-        fireEvent.change(screen.getByLabelText('Daily cutoff'), { target: { value: '18:00' } });
-        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        expect(syncFetchMock).toHaveBeenCalledTimes(1);
-        let finishRefresh!: (value: ReturnType<typeof syncResponse>) => void;
-        syncFetchMock.mockImplementationOnce(() => new Promise(resolve => { finishRefresh = resolve; }));
-        fetchMock.mockImplementationOnce(async (_url, options) => ok({ ...responseFixture(), settings: JSON.parse(options.body) }));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        await screen.findByText(/Settings saved in Overseek/);
-        expect(screen.queryByText(/configuration acknowledged by the plugin/)).not.toBeInTheDocument();
-        expect(screen.getByText('Loading sync status…')).toBeInTheDocument();
-        expect(syncFetchMock).toHaveBeenCalledTimes(2);
-        expect(syncFetchMock.mock.calls[1][1]).toMatchObject({ method: 'GET', headers: { 'X-Account-ID': 'account-a' } });
-        const signal = syncFetchMock.mock.calls[1][1].signal;
-        // Further edits remain a draft while the status reload is in flight.
-        fireEvent.click(screen.getByRole('tab', { name: '1. Dispatch' }));
-        fireEvent.change(screen.getByLabelText('Daily cutoff'), { target: { value: '19:00' } });
-        fireEvent.click(screen.getByRole('tab', { name: '3. Preview & enable' }));
-        if (switchAccount) {
-            accountId = 'account-b'; rerender(<DeliveryEstimatesSettingsPage />);
-            await screen.findByText(/Not requested/);
-            expect(signal.aborted).toBe(true);
-        }
-        await act(async () => finishRefresh(syncResponse('pending')));
-        if (switchAccount) {
-            expect(screen.queryByText(/Pending — saved inputs/)).not.toBeInTheDocument();
-            expect(screen.getByLabelText('Daily cutoff')).toHaveValue('14:00');
-        } else {
-            expect(screen.getByText(/Pending — saved inputs/)).toBeInTheDocument();
-            expect(screen.getByText('Pending inputs: 1 · Synced inputs: 2')).toBeInTheDocument();
-            expect(screen.getByLabelText('Daily cutoff')).toHaveValue('19:00');
-            expect(within(screen.getByRole('region', { name: 'Settings and production sync readiness' })).getByText(/save delivery settings first/)).toBeInTheDocument();
-        }
-        expect(syncFetchMock).toHaveBeenCalledTimes(switchAccount ? 3 : 2);
-    });
-
-    it('ignores a late save after switching accounts and loads the new account', async () => {
-        const { rerender } = render(<DeliveryEstimatesSettingsPage />);
-        fireEvent.change(await screen.findByLabelText('Daily cutoff'), { target: { value: '18:00' } });
-        let finishSave!: (value: ReturnType<typeof ok>) => void;
-        fetchMock.mockImplementationOnce(() => new Promise(resolve => { finishSave = resolve; }));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        expect(screen.getByLabelText('Daily cutoff')).toBeDisabled();
-        accountId = 'account-b'; rerender(<DeliveryEstimatesSettingsPage />);
-        expect(await screen.findByLabelText('Daily cutoff')).toHaveValue('14:00');
-        await act(async () => finishSave(ok()));
-        expect(screen.queryByText(/Settings saved in Overseek/)).not.toBeInTheDocument();
-    });
-
-    it('retries failed loads and retains edits on save failure', async () => {
-        fetchMock.mockRejectedValueOnce(new Error('Network unavailable'));
-        render(<DeliveryEstimatesSettingsPage />);
-        expect(await screen.findByRole('alert')).toHaveTextContent('Network unavailable');
-        fireEvent.click(screen.getByRole('button', { name: 'Retry loading' }));
-        fireEvent.change(await screen.findByLabelText('Daily cutoff'), { target: { value: '16:00' } });
-        fetchMock.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: 'Invalid settings', issues: [{ path: ['timezone'], message: 'Invalid timezone' }] }) });
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        expect(await screen.findByRole('alert')).toHaveTextContent('timezone: Invalid timezone');
+    it('preserves edits across token refresh and saves using the new token', async () => {
+        const view = render(<DeliveryEstimatesSettingsPage />); await loaded();
+        fireEvent.change(screen.getByLabelText('Daily cutoff'), { target: { value: '16:00' } });
+        token = 'new-token'; view.rerender(<DeliveryEstimatesSettingsPage />);
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+        await screen.findByText('Saved. Your store updates automatically.');
+        expect(settingsRequest.mock.calls.at(-1)![1].headers.Authorization).toBe('Bearer new-token');
         expect(screen.getByLabelText('Daily cutoff')).toHaveValue('16:00');
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Save delivery settings' })).toBeEnabled());
     });
 
-    it('blocks invalid defaults and handles feature disable during save', async () => {
-        render(<DeliveryEstimatesSettingsPage />);
-        fireEvent.click(await screen.findByRole('tab', { name: '2. Shipping' }));
-        fireEvent.click(await screen.findByLabelText('Enable row 1'));
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        expect(await screen.findByRole('alert')).toHaveTextContent('Default method is unavailable');
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        fireEvent.change(screen.getByLabelText('Default product-page method'), { target: { value: '' } });
-        fetchMock.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ error: 'Disabled', code: 'FEATURE_DISABLED' }) });
-        fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
-        expect(await screen.findByRole('alert')).toHaveTextContent('were disabled');
-        expect(screen.getByRole('button', { name: 'Save delivery settings' })).toBeDisabled();
-        expect(screen.getByLabelText('Daily cutoff')).toBeDisabled();
+    it('aborts late enable responses when switching accounts', async () => {
+        const view = render(<DeliveryEstimatesSettingsPage />); await loaded();
+        let finish!: (value: ReturnType<typeof ok>) => void;
+        settingsRequest.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        fireEvent.click(toggle());
+        const signal = settingsRequest.mock.calls.at(-1)![1].signal;
+        accountId = 'account-b'; readiness = readinessFixture();
+        view.rerender(<DeliveryEstimatesSettingsPage />); await loaded();
+        expect(signal.aborted).toBe(true);
+        await act(async () => finish(ok(data)));
+        expect(toggle()).toHaveAttribute('aria-checked', 'false');
+        expect(screen.queryByText('Turning on…')).not.toBeInTheDocument();
+    });
+
+    it('keeps a failed enable off and retains the draft for retry', async () => {
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        settingsRequest.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ error: 'Store unavailable' }) });
+        fireEvent.change(screen.getByLabelText('Daily cutoff'), { target: { value: '16:00' } });
+        fireEvent.click(toggle());
+        await screen.findByText('Store unavailable');
+        expect(toggle()).toHaveAttribute('aria-checked', 'false');
+        expect(screen.getByLabelText('Daily cutoff')).toHaveValue('16:00');
     });
 });

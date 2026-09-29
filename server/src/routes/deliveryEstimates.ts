@@ -106,6 +106,12 @@ export default async function deliveryEstimateRoutes(fastify: FastifyInstance) {
         if (!parsed.success) return reply.code(400).send({ error: 'Invalid settings', issues: parsed.error.issues });
         return { settings: await DeliveryEstimateService.saveSettings(request.accountId!, parsed.data), status: await deliveryLocalStatus(request.accountId!) };
     });
+    fastify.post('/enable', { bodyLimit: 512 * 1024 }, async (request, reply) => {
+        const parsed = settingsSchema.safeParse(request.body);
+        if (!parsed.success) return reply.code(400).send({ error: 'Check your delivery timings.', issues: parsed.error.issues });
+        return reply.code(202).send({ settings: await DeliveryEstimateService.saveSettings(request.accountId!, parsed.data, true),
+            status: await deliveryLocalStatus(request.accountId!) });
+    });
     fastify.get<{ Params: { id: string } }>('/products/:id', async request => ({
         product: await DeliveryEstimateService.getProduct(request.accountId!, request.params.id), status: await deliveryLocalStatus(request.accountId!),
     }));

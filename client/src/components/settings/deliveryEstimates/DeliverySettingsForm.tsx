@@ -1,21 +1,15 @@
-import { useEffect, useEffectEvent, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from 'react';
 import { CalendarSettings } from './CalendarSettings';
-import { ShippingTransitGrid } from './ShippingTransitGrid';
-import { BrandingSettings } from './BrandingSettings';
+import { SimpleShippingTimes } from './SimpleShippingTimes';
 import { DeliverySettingsError, requestSettings } from './api';
 import { settingsErrors } from './validation';
-import type { DeliverySettings } from './types';
-import type { ShippingDiscovery } from './discovery';
-import { ShippingDiscoveryPanel } from './ShippingDiscoveryPanel';
-import { DeliverySyncPanel } from './DeliverySyncPanel';
-import { DeliveryLaunchPanel } from './DeliveryLaunchPanel';
+import { methodKey, type DeliverySettings } from './types';
+import { useDeliveryLaunch } from '../../../hooks/useDeliveryLaunch';
 
-const tabs = ['1. Dispatch', '2. Shipping', '3. Preview & enable'];
-
-/** Mounted with an account/permission key so drafts and late responses cannot cross scopes. */
-export function DeliverySettingsForm({ accountId, token, canEdit, canInventory = false }: { accountId: string; token: string; canEdit: boolean; canInventory?: boolean }) {
-    const [activeTab, setActiveTab] = useState(0);
-    const tabId = useId();
+/** Account/permission-keyed by the page; explicit enable persists through navigation. */
+export function DeliverySettingsForm({ accountId, token, canEdit, featureEnabled = true, canRead = true }: {
+    accountId: string; token: string; canEdit: boolean; featureEnabled?: boolean; canRead?: boolean;
+}) {
     const [settings, setSettings] = useState<DeliverySettings | null>(null);
     const [saved, setSaved] = useState('');
     const [loading, setLoading] = useState(true);
@@ -23,142 +17,118 @@ export function DeliverySettingsForm({ accountId, token, canEdit, canInventory =
     const [errors, setErrors] = useState<string[]>([]);
     const [blocked, setBlocked] = useState(false);
     const [success, setSuccess] = useState(false);
-    const [saveRevision, setSaveRevision] = useState(0);
     const [attempt, setAttempt] = useState(0);
-    const [discovery, setDiscovery] = useState<ShippingDiscovery | null>(null);
-    const [unconfigured, setUnconfigured] = useState<string[]>([]);
+    const [requested, setRequested] = useState<boolean | null>(null);
     const controller = useRef<AbortController | null>(null);
-    const saveInFlight = useRef(false);
-    // Silent token refresh must not replace an in-progress merchant draft.
+    const inFlight = useRef(false);
+    const launch = useDeliveryLaunch(accountId, token, false, true, 0, canRead, true);
+    const status = launch.readiness;
+    const on = requested ?? (status ? status.desiredActive || (status.active && status.work.action !== 'disable') : false);
+    const dirty = settings !== null && JSON.stringify(settings) !== saved;
     const load = useEffectEvent((signal: AbortSignal) => requestSettings(accountId, token, signal));
-
     useEffect(() => {
-        const request = new AbortController();
-        controller.current = request;
-        setLoading(true); setErrors([]); setBlocked(false); setSettings(null); setSuccess(false);
+        if (requested !== null && status?.desiredActive === requested) setRequested(null);
+    }, [requested, status?.desiredActive]);
+    useEffect(() => {
+        const request = new AbortController(); controller.current = request;
+        if (!featureEnabled || !canRead) { setLoading(false); return () => request.abort(); }
+        setLoading(true); setErrors([]); setBlocked(false);
         load(request.signal).then(data => {
             if (request.signal.aborted) return;
             setSettings(data.settings); setSaved(JSON.stringify(data.settings));
         }).catch(error => {
-            if (request.signal.aborted) return;
-            setErrors([error instanceof DeliverySettingsError && error.code === 'FEATURE_DISABLED'
-                ? 'Delivery estimates are disabled for this account. Contact a super admin.' : error.message || 'Unable to load delivery settings.']);
+            if (!request.signal.aborted) setErrors([error.message || 'Could not load delivery settings.']);
         }).finally(() => { if (!request.signal.aborted) setLoading(false); });
         return () => request.abort();
-    }, [accountId, attempt]);
+    }, [accountId, attempt, featureEnabled, canRead]);
 
     const change = (value: DeliverySettings) => { setSettings(value); setSuccess(false); setErrors([]); };
-    const save = async (event: FormEvent) => {
-        event.preventDefault();
-        if (!settings || !canEdit || blocked || saveInFlight.current || !controller.current) return;
-        const validation = settingsErrors(settings);
+    const save = async (enable = false) => {
+        if (!settings || !canEdit || !featureEnabled || blocked || inFlight.current || !controller.current) return;
+        const next = { ...settings, estimateMode: 'production' as const };
+        const validation = settingsErrors(next);
+        if (enable && !next.shippingMethods.some(row => row.enabled)) validation.push('Enter shipping times for at least one method below.');
         setErrors(validation); setSuccess(false);
         if (validation.length) return;
+        inFlight.current = true; setSaving(true);
         const signal = controller.current.signal;
-        saveInFlight.current = true; setSaving(true);
         try {
-            const data = await requestSettings(accountId, token, signal, settings);
+            const data = await requestSettings(accountId, token, signal, next, enable);
             if (signal.aborted) return;
-            setSettings(data.settings); setSaved(JSON.stringify(data.settings)); setSuccess(true);
-            setSaveRevision(revision => revision + 1);
+            setSettings(data.settings); setSaved(JSON.stringify(data.settings)); setSuccess(!enable);
+            if (enable) setRequested(true);
+            await launch.refresh();
         } catch (error) {
             if (signal.aborted) return;
-            if (error instanceof DeliverySettingsError && (error.status === 403 || error.status === 401)) setBlocked(true);
-            setErrors([error instanceof DeliverySettingsError && error.code === 'FEATURE_DISABLED'
-                ? 'Delivery estimates were disabled for this account. Your draft has not been saved. Contact a super admin.'
-                : error instanceof Error ? error.message : 'Unable to save delivery settings.']);
-        } finally {
-            saveInFlight.current = false;
-            if (!signal.aborted) setSaving(false);
-        }
+            if (error instanceof DeliverySettingsError && [401, 403].includes(error.status)) setBlocked(true);
+            setErrors([error instanceof Error ? error.message : 'Could not save. Please try again.']);
+        } finally { inFlight.current = false; if (!signal.aborted) setSaving(false); }
     };
-    return <>
-        <div role="tablist" aria-label="Delivery estimate settings" className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
-            {tabs.map((tab, index) => <button key={tab} type="button" role="tab" id={`${tabId}-tab-${index}`}
-                aria-controls={`${tabId}-panel-${index}`} aria-selected={activeTab === index} tabIndex={activeTab === index ? 0 : -1}
-                onClick={() => setActiveTab(index)} onKeyDown={event => {
-                    const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
-                        : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
-                        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
-                    if (next === null) return;
-                    event.preventDefault(); setActiveTab(next);
-                    document.getElementById(`${tabId}-tab-${next}`)?.focus();
-                }} className={`shrink-0 border-b-2 px-4 py-3 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 ${activeTab === index
-                    ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-                    : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}>{tab}</button>)}
-        </div>
-        {/* Keep operational panels mounted so switching tabs does not restart requests or lose recovery state. */}
+    const disable = async () => {
+        if (!canEdit || inFlight.current || !controller.current) return;
+        const signal = controller.current.signal;
+        inFlight.current = true; setSaving(true); setErrors([]); setSuccess(false);
+        try {
+            const result = await launch.request<{ accepted: boolean }>('activation', { active: false }, signal);
+            if (result.accepted !== true) throw new Error('Could not confirm the change. Please try again.');
+            if (signal.aborted) return;
+            setRequested(false);
+            await launch.refresh();
+        } catch (error) {
+            if (!signal.aborted) setErrors([error instanceof Error ? error.message : 'Could not turn off estimates.']);
+        } finally { inFlight.current = false; if (!signal.aborted) setSaving(false); }
+    };
+    const submit = (event: FormEvent) => { event.preventDefault(); void save(); };
+    const settled = status && !status.work.action && !status.revalidationRequested && (requested === null || status.desiredActive === requested);
+    const statusText = !canRead ? 'Store status unavailable' : !status ? 'Checking your store…'
+        : !settled ? on ? 'Turning on…' : 'Turning off…' : status.active ? 'On' : on ? 'Finishing setup…' : 'Off';
+    const issue = status?.blockers.find(code => !['settings_not_synced_or_invalid', 'inputs_pending', 'no_eligible_configured_products', 'cutover_required'].includes(code));
+    const help = issue === 'no_configured_products' ? 'Add production times to your products to show delivery dates.'
+        : issue === 'no_supported_enabled_shipping_mapping' ? 'Enter shipping times for a supported method below.'
+        : issue?.includes('plugin') ? 'Update or reconnect the Overseek WooCommerce plugin to finish enabling estimates.'
+        : issue === 'receiving_frozen' ? 'An inventory update is still in progress. Estimates will be available once it finishes.'
+        : issue && issue !== 'feature_disabled' ? 'Your store needs attention before estimates can appear. Contact support for help.' : null;
+    return <div className="space-y-6">
+        <section aria-label="Delivery estimates status" className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-slate-50 p-5 dark:bg-slate-900/50">
+            <div><p role="status" className="text-lg font-semibold">{statusText}</p>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Show delivery dates beside shipping methods at cart and checkout.</p></div>
+            {canEdit && canRead && !launch.error && <button type="button" role="switch" aria-checked={on} aria-label="Delivery estimates"
+                disabled={saving || (!on && (loading || !settings || blocked || !featureEnabled || !canRead || !status))}
+                onClick={() => void (on ? disable() : save(true))}
+                className={`inline-flex min-h-11 items-center gap-3 rounded-full px-4 py-2 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 ${on ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
+                <span aria-hidden="true" className={`relative h-6 w-10 rounded-full ${on ? 'bg-indigo-400' : 'bg-slate-400'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${on ? 'translate-x-5' : 'translate-x-1'}`} /></span>
+                {on ? 'Turn off' : 'Turn on'}
+            </button>}
+            {canEdit && (!canRead || launch.error) && <button type="button" disabled={saving} onClick={() => void disable()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-600">Turn off estimates</button>}
+        </section>
+        {!featureEnabled && <p role="alert">Delivery estimates are unavailable for this account. Contact your account administrator.</p>}
+        {!canRead && <p>You do not have permission to view delivery settings.</p>}
+        {help && on && <p role="status" className="text-sm text-amber-800 dark:text-amber-300">{help}</p>}
+        {errors.length > 0 && <div role="alert" className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{errors.map(error => <p key={error}>{error}</p>)}</div>}
+        {launch.error && <p role="alert" className="text-sm">Could not check your store. <button type="button" className="underline" onClick={() => void launch.refresh()}>Try again</button></p>}
+        {status && status.work.attempts >= 8 && status.work.lastError && <p role="alert" className="text-sm">Your store could not apply the change. Please try turning estimates off and on again.</p>}
         {loading && <p role="status">Loading delivery settings…</p>}
-        <form onSubmit={save} onInvalidCapture={event => {
-            const input = event.target as HTMLInputElement;
-            const panel = input.closest('[role="tabpanel"]');
-            if (!panel) return;
-            event.preventDefault();
-            setErrors([input.validationMessage || 'Check the highlighted field.']);
-            const index = tabs.findIndex((_, i) => panel.id === `${tabId}-panel-${i}`);
-            if (index !== -1) {
-                setActiveTab(index);
-                let parent = input.parentElement;
-                while (parent && parent !== panel) {
-                    if (parent instanceof HTMLDetailsElement) parent.open = true;
-                    parent = parent.parentElement;
-                }
-                requestAnimationFrame(() => input.focus());
-            }
-        }} className="space-y-6 text-slate-900 dark:text-slate-100
-        [&_label]:text-sm [&_label]:font-medium [&_input:not([type=checkbox]):not([type=color])]:block [&_input:not([type=checkbox]):not([type=color])]:w-full
-        [&_input:not([type=checkbox]):not([type=color])]:rounded-md [&_input:not([type=checkbox]):not([type=color])]:border [&_input:not([type=checkbox]):not([type=color])]:p-2
-        [&_input]:bg-white dark:[&_input]:bg-slate-900 [&_select]:block [&_select]:w-full [&_select]:rounded-md [&_select]:border [&_select]:p-2
-        [&_select]:bg-white dark:[&_select]:bg-slate-900 [&_button]:rounded-md [&_button]:border [&_button]:px-3 [&_button]:py-2 [&_button:disabled]:opacity-50">
-        {errors.length > 0 && <div role="alert" className="rounded-lg bg-red-50 dark:bg-red-950 p-4 text-red-800 dark:text-red-200">
-            <ul className="list-disc pl-4">{errors.map((error, i) => <li key={i}>{error}</li>)}</ul>
-        </div>}
-        {!settings && !loading && <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry loading</button>}
-        {settings && <>
-            {!canEdit && <p role="status">Read only. Managing these settings requires manage_shipping_settings permission.</p>}
-            {blocked && <p>Saving is unavailable. Your draft is retained here; reload after account access is restored.</p>}
-            <div role="tabpanel" id={`${tabId}-panel-0`} aria-labelledby={`${tabId}-tab-0`} hidden={activeTab !== 0} tabIndex={0}>
-                <fieldset disabled={!canEdit || saving || blocked} className="min-w-0">
-                    <CalendarSettings settings={settings} onChange={change} />
-                </fieldset>
-            </div>
-            <div role="tabpanel" id={`${tabId}-panel-1`} aria-labelledby={`${tabId}-tab-1`} hidden={activeTab !== 1} tabIndex={0} className="space-y-8">
-                <ShippingDiscoveryPanel accountId={accountId} token={token} canImport={canEdit && !saving && !blocked}
-                 settings={settings} onChange={change} discovery={discovery} onDiscovery={setDiscovery} autoDiscover
-                onImported={keys => setUnconfigured(previous => [...previous, ...keys])} />
-            <fieldset disabled={!canEdit || saving || blocked} className="space-y-8 min-w-0">
-                <ShippingTransitGrid settings={settings} onChange={change} discovery={discovery} unconfigured={unconfigured}
-                    onConfigured={key => setUnconfigured(previous => previous.filter(value => value !== key))} />
+        {!settings && !loading && featureEnabled && canRead && <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry loading</button>}
+        {settings && featureEnabled && canRead && <form onSubmit={submit} className="space-y-6 [&_label]:text-sm [&_input:not([type=checkbox])]:mt-1 [&_input:not([type=checkbox])]:block [&_input:not([type=checkbox])]:w-full [&_input:not([type=checkbox])]:rounded-lg [&_input:not([type=checkbox])]:border [&_input:not([type=checkbox])]:p-2 [&_input]:bg-white dark:[&_input]:bg-slate-900 [&_select]:mt-1 [&_select]:block [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:p-2 [&_select]:bg-white dark:[&_select]:bg-slate-900">
+            {!canEdit && <p className="text-sm">You have read-only access to these settings.</p>}
+            <p className="text-sm text-slate-500 dark:text-slate-400">Delivery dates use your product production times plus shipping time.</p>
+            <fieldset disabled={!canEdit || saving || blocked} className="min-w-0 space-y-6">
+                <CalendarSettings settings={settings} onChange={change} />
+                <SimpleShippingTimes accountId={accountId} token={token} canEdit={canEdit && !saving && !blocked} settings={settings} onChange={change} />
+                <details className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                    <summary className="cursor-pointer text-sm font-medium">Show estimates on product pages</summary>
+                    <div className="mt-3 space-y-3 text-sm">
+                        <p>Place the <strong>Overseek Delivery Estimate</strong> block or <code className="select-all">[overseek_delivery_estimate]</code> on your product page.</p>
+                        <label>Product-page shipping method<select value={settings.defaultMethod ? methodKey(settings.defaultMethod) : ''} onChange={event => {
+                            const row = settings.shippingMethods.find(method => methodKey(method) === event.target.value);
+                            change({ ...settings, defaultMethod: row ? { methodId: row.methodId, instanceId: row.instanceId, mappingKind: row.mappingKind, rateId: row.rateId } : null });
+                        }}><option value="">Choose a shipping method</option>{settings.shippingMethods.filter(row => row.enabled).map(row => <option key={methodKey(row)} value={methodKey(row)}>{row.title} — {row.zoneName}</option>)}</select></label>
+                    </div>
+                </details>
             </fieldset>
-            </div>
-        </>}
-            <div role="tabpanel" id={`${tabId}-panel-2`} aria-labelledby={`${tabId}-tab-2`} hidden={activeTab !== 2} tabIndex={0} className="space-y-5">
-            {settings && <fieldset disabled={!canEdit || saving || blocked} className="min-w-0">
-                <BrandingSettings settings={settings} onChange={change} />
-            </fieldset>}
-            {/* Operational inputs use their own action buttons, not the settings form's implicit submit. */}
-            <div className="space-y-5" onKeyDown={event => {
-                if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault();
-            }}>
-            <DeliveryLaunchPanel accountId={accountId} token={token} canEdit={canEdit} canInventory={canInventory} compact
-                dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} setupUnavailable={loading || !settings || blocked} />
-            {!loading && <details className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-                <summary className="cursor-pointer text-sm font-medium">Troubleshooting</summary>
-                <div className="mt-4"><DeliverySyncPanel accountId={accountId} token={token} canEdit={canEdit} compact productionOnly={settings?.estimateMode === 'production'} dirty={settings !== null && JSON.stringify(settings) !== saved} saving={saving} saveRevision={saveRevision} /></div>
-            </details>}
-            </div>
-            </div>
-        {settings && <>
-            {canEdit && <div className="flex flex-wrap gap-3 items-center">
-                <button type="submit" disabled={saving || blocked || JSON.stringify(settings) === saved} className="bg-indigo-600 text-white">{saving ? 'Saving…' : 'Save delivery settings'}</button>
-                <span className="text-sm">{JSON.stringify(settings) !== saved ? 'Unsaved changes' : 'No unsaved changes'}</span>
+            {canEdit && <div className="flex items-center gap-3"><button type="submit" disabled={saving || blocked || !dirty} className="rounded-lg bg-indigo-600 px-5 py-2.5 font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
+                {success && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">Saved. Your store updates automatically.</p>}
             </div>}
-            {success && <p role="status" className="text-green-700 dark:text-green-300">Settings saved in Overseek. Your store updates automatically.</p>}
-            <div className="flex justify-between gap-3">
-                <button type="button" disabled={activeTab === 0} onClick={() => setActiveTab(value => value - 1)}>Back</button>
-                {activeTab < 2 && <button type="button" onClick={() => setActiveTab(value => value + 1)}>Continue to {activeTab === 0 ? 'shipping' : 'preview & enable'}</button>}
-            </div>
-        </>}
-    </form>
-    </>;
+        </form>}
+    </div>;
 }

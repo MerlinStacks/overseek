@@ -6,18 +6,18 @@ Current version: **2.25.0**.
 
 ### Simple delivery estimate setup
 
-In Overseek, open **Delivery estimates → Dispatch → How should estimates work?** and choose **Simple: production + shipping times**. Save, then use **Preview & enable** to activate once your saved timings have published. New configurations start with this option; existing configurations keep incoming-stock behaviour until you switch.
+In Overseek, open **Settings → Delivery estimates**, set your dispatch schedule and shipping day ranges, then choose **Turn on**. Shipping methods load automatically from WooCommerce. Turning on saves your timings and enables estimates once your store has received them; you can leave the page while this finishes. Use the same switch to turn estimates off at any time, including when you have unsaved edits.
 
-Saving publishes settings and existing product timings automatically, and the enable panel follows progress without manual refreshes. Sync tools are under **Troubleshooting** for recovery only. Existing delivery-date plugins can remain active: Overseek no longer blocks activation based on their name. Their own messages may still appear alongside Overseek's; this does not merge or suppress another plugin's output.
+The page uses production + shipping times with automatic background updates. There are no setup tabs, manual sync steps, or advanced inventory controls. Existing delivery-date plugins can remain active, although their own messages may still appear alongside Overseek's.
 
 Simple mode uses saved product production times, variant overrides, calendars and shipping mappings for items available now. It does not require inventory cutover or supplier/receipt proofs. Unsynced catalogue entries do not block other synced products. Backordered or insufficient-stock items show no date in this mode.
 
-Switching modes preserves product/variant data, supplier timing, purchase orders, closures, shipping identities and styling. **Advanced: include incoming stock** retains the existing inventory preparation and receipt workflow. An inventory upgrade already in progress must finish or be recovered before activation; switching estimate modes does not abandon inventory work or unfreeze receiving.
+Saving keeps existing product/variant timings, closures, shipping identities and styling. An inventory upgrade already in progress must finish before estimates can be enabled.
 
 ### Where estimates appear
 
 - **Cart and checkout:** estimates appear automatically beside configured shipping methods on supported WooCommerce layouts. Classic checkout uses the shipping-rate hook; WooCommerce Blocks use the rate's native delivery-time field when the shipping provider has not already supplied one. Do not add an Overseek delivery shortcode or block to either page or the shipping-method area.
-- **Product pages (optional):** place the **Overseek Delivery Estimate** block in a product template, or insert `[overseek_delivery_estimate]` where the estimate should appear. Both use the current product. Select a default shipping method in Overseek's Shipping settings for these estimates.
+- **Product pages (optional):** expand **Show estimates on product pages**, choose a shipping method, then place the **Overseek Delivery Estimate** block or `[overseek_delivery_estimate]` shortcode in your product template. Both use the current product.
 
 Checkout compatibility checks identify the store's existing WooCommerce cart and checkout layout. They do not require placing an Overseek delivery block or shortcode on those pages.
 

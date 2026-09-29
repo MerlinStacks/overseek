@@ -1,10 +1,10 @@
 {
   "version": "2.25.0",
-  "bytes": 263475,
-  "sha256": "a2e6af0bec1d33de1c60b803373bb2c975b6839840130c2e6ccc40da7b43d745",
+  "bytes": 263367,
+  "sha256": "b333ebbf07213dfbd36ea18c501071823b953ff52b889768bd782fd160e9904a",
   "files": {
     "overseek-wc-plugin/LICENSE": "754776f6dd261b91433379016282bc620fb92d5cf91acc32d4f6f05c9512b035",
-    "overseek-wc-plugin/README.md": "df90be3f67e0a5e5bb0eb391a679be84272af44a25eaee1251f692eadb645770",
+    "overseek-wc-plugin/README.md": "2031f01f71e9881b191cf5bc16dd11dd29858a2d296a59a1252f0b07d2bdfbd6",
     "overseek-wc-plugin/assets/admin-tabs.js": "2a046d7fd07d9cc1f38a1d9611cb069aa1d1da8006ccaf14b11499dc1c461512",
     "overseek-wc-plugin/assets/admin.css": "e17f9ed43a0d1279e931322f8a80c9ff4bbf1500ba64c7b4d2b68e455f66594c",
     "overseek-wc-plugin/assets/css/delivery-estimate.css": "8986b9bc4b606937c993bef0fe61e534b8ff4d846e2774309f01f1c2574216e5",

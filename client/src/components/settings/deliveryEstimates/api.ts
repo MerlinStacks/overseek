@@ -19,9 +19,9 @@ export class DeliverySettingsError extends Error {
 }
 
 /** GET and PUT use the same account scope and complete document contract. */
-export async function requestSettings(accountId: string, token: string, signal: AbortSignal, settings?: DeliverySettings): Promise<SettingsResponse> {
-    const response = await fetch('/api/delivery-estimates/settings', {
-        method: settings ? 'PUT' : 'GET', signal,
+export async function requestSettings(accountId: string, token: string, signal: AbortSignal, settings?: DeliverySettings, enable = false): Promise<SettingsResponse> {
+    const response = await fetch(`/api/delivery-estimates/${enable ? 'enable' : 'settings'}`, {
+        method: enable ? 'POST' : settings ? 'PUT' : 'GET', signal,
         headers: { Authorization: `Bearer ${token}`, 'X-Account-ID': accountId, ...(settings ? { 'Content-Type': 'application/json' } : {}) },
         ...(settings ? { body: JSON.stringify(settings) } : {}),
     });

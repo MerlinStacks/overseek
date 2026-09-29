@@ -48,6 +48,25 @@ describe('delivery API authorization and contract', () => {
         return instance;
     }
     const headers = { authorization: 'Bearer token', 'x-account-id': 'a' };
+    it('saves and queues enable in one authorized request without inventory permissions', async () => {
+        mocks.permission.mockImplementation(async (_u, _a, permission) => permission === 'manage_shipping_settings');
+        const server = await app();
+        const payload = { ...defaultSettings(), estimateMode: 'production' };
+        const response = await server.inject({ method: 'POST', url: '/api/delivery-estimates/enable', headers, payload });
+        expect(response.statusCode).toBe(202);
+        expect(mocks.save).toHaveBeenCalledWith('a', payload, true);
+        expect(response.headers['cache-control']).toBe('no-store');
+        mocks.save.mockClear();
+        mocks.feature.mockResolvedValue({ isEnabled: false });
+        expect((await server.inject({ method: 'POST', url: '/api/delivery-estimates/enable', headers, payload })).statusCode).toBe(403);
+        expect(mocks.save).not.toHaveBeenCalled();
+        mocks.feature.mockResolvedValue(null); mocks.permission.mockResolvedValue(false);
+        expect((await server.inject({ method: 'POST', url: '/api/delivery-estimates/enable', headers, payload })).statusCode).toBe(403);
+        expect(mocks.save).not.toHaveBeenCalled();
+        mocks.permission.mockResolvedValue(true);
+        expect((await server.inject({ method: 'POST', url: '/api/delivery-estimates/enable', headers, payload: {} })).statusCode).toBe(400);
+        expect(mocks.save).not.toHaveBeenCalled();
+    });
     it.each(['GET', 'POST'] as const)('allows feature-off input recovery %s with membership, permission and no-store', async method => {
         mocks.feature.mockResolvedValue({ isEnabled: false });
         inputs.list.mockResolvedValue({ schemaVersion: 1, items: [], nextCursor: null });

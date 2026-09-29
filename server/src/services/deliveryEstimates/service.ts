@@ -37,16 +37,24 @@ export class DeliveryEstimateService {
     }
 
     /** Replace the complete validated settings document for this account only. */
-    static async saveSettings(accountId: string, input: DeliverySettings) {
-        const settings = settingsSchema.parse(input);
+    static async saveSettings(accountId: string, input: DeliverySettings, enable = false) {
+        const settings = settingsSchema.parse(enable ? { ...input, estimateMode: 'production' } : input);
         await prisma.$transaction(async tx => {
             await lockDeliveryAccount(tx, accountId);
+            if (enable) {
+                const feature = await tx.accountFeature.findUnique({ where: { accountId_featureKey: { accountId, featureKey: 'DELIVERY_ESTIMATES' } } });
+                if (feature?.isEnabled === false) throw Object.assign(new Error('Delivery estimates are unavailable for this account.'), { statusCode: 403 });
+                const control = await tx.receiptAccount.findUnique({ where: { accountId } });
+                if (control?.receivingFrozen || control?.controlAction === 'cutover') {
+                    throw Object.assign(new Error('An inventory update is still in progress. Please try again once it finishes.'), { statusCode: 409 });
+                }
+            }
             const previous = settings.estimateMode === 'production' ? await tx.deliveryEstimateSettings.findUnique({ where: { accountId } }) : null;
             await tx.deliveryEstimateSettings.upsert({
                 where: { accountId }, create: { accountId, settings }, update: { settings },
             });
             await recordSettingsIntent(tx, accountId);
-            if (settings.estimateMode === 'production' && (previous?.settings as { estimateMode?: string } | null)?.estimateMode !== 'production') {
+            if (settings.estimateMode === 'production' && (enable || (previous?.settings as { estimateMode?: string } | null)?.estimateMode !== 'production')) {
                 // Publish existing timings automatically, using the bounded worker.
                 // Coalesce saves into an in-progress build and retain every source row.
                 await tx.deliverySyncAccount.updateMany({ where: { accountId, OR: [{ resyncRequested: false }, { buildFailed: true }] }, data: {
@@ -55,7 +63,15 @@ export class DeliveryEstimateService {
                     hasWork: true, nextAttemptAt: new Date(),
                 } });
             }
-            await requestSettingsRevalidation(tx, accountId);
+            if (enable) {
+                // Persist explicit on/off intent with the settings. The existing worker
+                // publishes and validates before activation, even after the page closes.
+                const activation = { desiredActive: true, revalidationRequested: true, controlAction: 'activate',
+                    controlPayload: Prisma.DbNull, controlAttempts: 0, controlError: null, controlNextAttemptAt: new Date() };
+                await tx.receiptAccount.upsert({ where: { accountId },
+                    create: { accountId, ...activation, controlRevision: 1n },
+                    update: { ...activation, controlRevision: { increment: 1 } } });
+            } else await requestSettingsRevalidation(tx, accountId);
         });
         return settings;
     }

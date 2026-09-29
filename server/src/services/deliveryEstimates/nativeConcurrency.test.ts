@@ -19,6 +19,7 @@ import { dispatchReceiptCascade } from './receiptCascade';
 import { deliveryReadiness, drainDeliveryControls, requestCutover, requestActivation } from './launch';
 import { FRESHNESS_PREREQUISITE_SQL } from './freshnessPrerequisite';
 import { defaultSettings } from './validation';
+import { DeliveryEstimateService } from './service';
 
 describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native delivery worker concurrency and finalization (actual Prisma SQL)', () => {
     let fixture: Awaited<ReturnType<typeof openNativeDeliveryDatabase>>;
@@ -47,6 +48,28 @@ describe.skipIf(!process.env.DELIVERY_FRESHNESS_TEST_DATABASE_URL)('native deliv
     }
     const receiptAck = (phase: string, op: any) => ({ schemaVersion: 1, operationId: op.operationId, sequence: op.sequence, stockOwnerWooId: op.stockOwnerWooId,
         guardActive: true, receiptSafety: 'unverified', state: phase === 'prepare' ? 'prepared' : 'applied', stockQuantity: phase === 'prepare' ? null : 12 });
+
+    it('atomically saves one-click enable, waits for publishing, and lets disable cancel it durably', async () => {
+        await db.exec(`ALTER TABLE "ReceiptAccount" ADD CONSTRAINT reject_test_enable CHECK (NOT "desiredActive")`);
+        await expect(DeliveryEstimateService.saveSettings('a', defaultSettings(), true)).rejects.toThrow();
+        expect(await m.client.deliveryEstimateSettings.count()).toBe(0);
+        expect(await m.client.deliveryInputSync.count()).toBe(0);
+        expect(await row('DeliverySyncAccount')).toMatchObject({ resyncRequested: false });
+        await db.exec(`ALTER TABLE "ReceiptAccount" DROP CONSTRAINT reject_test_enable`);
+        await DeliveryEstimateService.saveSettings('a', defaultSettings(), true);
+        expect(await row('ReceiptAccount')).toMatchObject({ desiredActive: true, active: false, controlAction: 'activate', revalidationRequested: true });
+        expect(await row('DeliverySyncAccount')).toMatchObject({ resyncRequested: true });
+        expect((await row('DeliveryEstimateSettings')).settings).toMatchObject({ estimateMode: 'production' });
+        await drainDeliveryControls();
+        expect(await row('ReceiptAccount')).toMatchObject({ active: false, desiredActive: true, controlAttempts: 0 });
+        expect(m.control).not.toHaveBeenCalled();
+        await requestActivation('a', false);
+        await DeliveryEstimateService.saveSettings('a', { ...defaultSettings(), estimateMode: 'production' });
+        expect(await row('ReceiptAccount')).toMatchObject({ desiredActive: false, revalidationRequested: false, controlAction: 'disable' });
+        await drainDeliveryControls();
+        expect(await row('ReceiptAccount')).toMatchObject({ active: false, desiredActive: false, controlAction: null });
+        expect(m.control).toHaveBeenCalledWith(expect.objectContaining({ action: 'disable' }), expect.any(Number));
+    });
 
     it('rejects missing cutover SQL before freeze but still finalizes explicit disable without the trigger', async () => {
         await db.exec(`ALTER TABLE "WooProduct" DISABLE TRIGGER delivery_product_write`);
