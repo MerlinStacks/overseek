@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeliveryEstimatesSettingsPage } from './DeliveryEstimatesSettingsPage';
 import { responseFixture } from '../components/settings/deliveryEstimates/fixtures.test-support';
@@ -69,6 +69,58 @@ describe('simple delivery settings', () => {
         expect(JSON.parse(enables[0][1].body)).toEqual({ ...data.settings, cutoffTime: '16:00', estimateMode: 'production' });
         expect(toggle()).toHaveAttribute('aria-checked', 'true');
         expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/sync'))).toBe(false);
+    });
+
+    it('shows Off for a confirmed inactive store despite exhausted background disable work', async () => {
+        readiness = readinessFixture({ work: { action: 'disable', attempts: 8, lastError: 'Connection failed', nextAttemptAt: null } });
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        expect(screen.getByText('Off')).toBeVisible();
+        expect(screen.queryByText('Turning off…')).not.toBeInTheDocument();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(toggle()).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('offers a disable-only retry when a failed turn-off is not confirmed', async () => {
+        readiness = readinessFixture({ active: true, work: { action: 'disable', attempts: 8, lastError: 'Connection failed', nextAttemptAt: null } });
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        expect(screen.getByText('Could not confirm estimates are off')).toBeVisible();
+        fireEvent.click(screen.getByRole('button', { name: 'Retry turning off' }));
+        await screen.findByText('Turning off…');
+        expect(fetchMock.mock.calls.filter(([, options]) => options.method === 'POST').map(([url]) => url)).toEqual(['/api/delivery-estimates/activation']);
+    });
+
+    it('saves separate production and transit holidays through the settings page', async () => {
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        fireEvent.click(screen.getByText('Holidays and closures (0)'));
+        const production = within(screen.getByRole('region', { name: 'Production closures' }));
+        const transit = within(screen.getByRole('region', { name: 'Transit closures' }));
+        const workDays = production.getAllByRole('button', { name: /No closure/ });
+        const transitDays = transit.getAllByRole('button', { name: /No closure/ });
+        const first = workDays[0].getAttribute('data-date');
+        const second = workDays[1].getAttribute('data-date');
+        fireEvent.click(workDays[0]);
+        fireEvent.click(transitDays[0]);
+        fireEvent.click(workDays[1]);
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+        await screen.findByText('Saved. Your store updates automatically.');
+        expect(JSON.parse(settingsRequest.mock.calls.at(-1)![1].body).closures).toEqual([
+            { date: first, scope: 'both' }, { date: second, scope: 'work' },
+        ]);
+    });
+
+    it('filters shipping methods by zone without losing edited timings', async () => {
+        data.settings.shippingMethods.push({ ...data.settings.shippingMethods[0], instanceId: 99, title: 'Express', zoneName: 'New Zealand' });
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        fireEvent.change(screen.getByLabelText('Find shipping methods'), { target: { value: 'new zealand' } });
+        expect(within(screen.getByRole('region', { name: 'Shipping methods' })).getAllByRole('checkbox')).toHaveLength(1);
+        fireEvent.change(screen.getByLabelText('Express maximum days'), { target: { value: '12' } });
+        fireEvent.change(screen.getByLabelText('Find shipping methods'), { target: { value: '' } });
+        expect(screen.getByLabelText('Express maximum days')).toHaveValue(12);
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+        await screen.findByText('Saved. Your store updates automatically.');
+        expect(JSON.parse(settingsRequest.mock.calls.at(-1)![1].body).shippingMethods).toEqual([
+            data.settings.shippingMethods[0], { ...data.settings.shippingMethods[1], maxTransitDays: 12 },
+        ]);
     });
 
     it('turns off with invalid unsaved settings, without saving or validating the draft', async () => {

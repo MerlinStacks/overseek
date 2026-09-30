@@ -80,8 +80,11 @@ export function DeliverySettingsForm({ accountId, token, canEdit, featureEnabled
     };
     const submit = (event: FormEvent) => { event.preventDefault(); void save(); };
     const settled = status && !status.work.action && !status.revalidationRequested && (requested === null || status.desiredActive === requested);
+    const failed = !!status?.work.action && status.work.attempts >= 8 && !!status.work.lastError;
+    const confirmedOff = !on && !status?.active && status?.plugin?.state.active === false;
     const statusText = !canRead ? 'Store status unavailable' : !status ? 'Checking your store…'
-        : !settled ? on ? 'Turning on…' : 'Turning off…' : status.active ? 'On' : on ? 'Finishing setup…' : 'Off';
+        : confirmedOff ? 'Off' : failed ? on ? 'Could not turn on' : 'Could not confirm estimates are off'
+        : !settled ? on ? 'Turning on…' : status.work.action === 'disable' ? 'Turning off…' : 'Off' : status.active ? 'On' : on ? 'Finishing setup…' : 'Off';
     const issue = status?.blockers.find(code => !['settings_not_synced_or_invalid', 'inputs_pending', 'no_eligible_configured_products', 'cutover_required'].includes(code));
     const help = issue === 'no_configured_products' ? 'Add production times to your products to show delivery dates.'
         : issue === 'no_supported_enabled_shipping_mapping' ? 'Enter shipping times for a supported method below.'
@@ -106,7 +109,10 @@ export function DeliverySettingsForm({ accountId, token, canEdit, featureEnabled
         {help && on && <p role="status" className="text-sm text-amber-800 dark:text-amber-300">{help}</p>}
         {errors.length > 0 && <div role="alert" className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{errors.map(error => <p key={error}>{error}</p>)}</div>}
         {launch.error && <p role="alert" className="text-sm">Could not check your store. <button type="button" className="underline" onClick={() => void launch.refresh()}>Try again</button></p>}
-        {status && status.work.attempts >= 8 && status.work.lastError && <p role="alert" className="text-sm">Your store could not apply the change. Please try turning estimates off and on again.</p>}
+        {failed && !confirmedOff && <div role="alert" className="text-sm">
+            <p>Your store could not confirm the change. Check the Overseek plugin connection, then retry.</p>
+            {canEdit && <button type="button" disabled={saving} className="mt-2 underline" onClick={() => void (on ? save(true) : disable())}>Retry {on ? 'turning on' : 'turning off'}</button>}
+        </div>}
         {loading && <p role="status">Loading delivery settings…</p>}
         {!settings && !loading && featureEnabled && canRead && <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry loading</button>}
         {settings && featureEnabled && canRead && <form onSubmit={submit} className="space-y-6 [&_label]:text-sm [&_input:not([type=checkbox])]:mt-1 [&_input:not([type=checkbox])]:block [&_input:not([type=checkbox])]:w-full [&_input:not([type=checkbox])]:rounded-lg [&_input:not([type=checkbox])]:border [&_input:not([type=checkbox])]:p-2 [&_input]:bg-white dark:[&_input]:bg-slate-900 [&_select]:mt-1 [&_select]:block [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:p-2 [&_select]:bg-white dark:[&_select]:bg-slate-900">

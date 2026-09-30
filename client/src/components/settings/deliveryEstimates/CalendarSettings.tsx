@@ -1,5 +1,6 @@
 import type { SettingsFieldsProps } from './types';
 import { useMemo } from 'react';
+import { HolidayCalendar } from './HolidayCalendar';
 
 // Include UTC and the saved identifier: Intl omits UTC and some valid legacy aliases.
 const supportedTimezones = (Intl as typeof Intl & { supportedValuesOf?: (key: 'timeZone') => string[] })
@@ -31,5 +32,12 @@ export function CalendarSettings({ settings, onChange }: SettingsFieldsProps) {
                 })} />{day}
             </label>)}</div>
         </fieldset>)}
+        <details className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+            <summary className="cursor-pointer text-sm font-medium">Holidays and closures ({settings.closures.length})</summary>
+            <p className="my-3 text-sm text-slate-500 dark:text-slate-400">Choose dates to exclude from production or transit time. Select a date in both calendars when both are closed.</p>
+            <div className="grid gap-4 lg:grid-cols-2">{(['work', 'transit'] as const).map(scope => <HolidayCalendar key={scope}
+                scope={scope} timezone={settings.timezone} closures={settings.closures}
+                onChange={closures => onChange({ ...settings, closures })} />)}</div>
+        </details>
     </section>;
 }

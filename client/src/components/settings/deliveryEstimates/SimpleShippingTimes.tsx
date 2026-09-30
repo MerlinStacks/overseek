@@ -12,6 +12,7 @@ export function SimpleShippingTimes({ accountId, token, canEdit, settings, onCha
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [attempt, setAttempt] = useState(0);
+    const [search, setSearch] = useState('');
     const [blank, setBlank] = useState<Set<string>>(new Set());
     const applyDiscovery = useEffectEvent((methods: Parameters<typeof mergeDiscoveredMethods>[1]) => {
         const merged = mergeDiscoveredMethods(settings, methods.filter(row => row.enabled && supported.has(row.methodId)));
@@ -48,12 +49,15 @@ export function SimpleShippingTimes({ accountId, token, canEdit, settings, onCha
         {loading && <p role="status" className="text-sm">Loading shipping methods…</p>}
         {error && <div role="alert" className="text-sm"><p>{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>Try again</button></div>}
         {!loading && !error && !settings.shippingMethods.length && <p className="text-sm">Add a shipping method in WooCommerce to get started.</p>}
-        <div className="space-y-3">{settings.shippingMethods.map((row, index) => {
+        {settings.shippingMethods.length > 0 && <label className="block">Find shipping methods<input type="search" value={search}
+            placeholder="Search by method or zone" onChange={event => setSearch(event.target.value)} /></label>}
+        <div role="region" aria-label="Shipping methods" tabIndex={0} className="max-h-96 space-y-2 overflow-y-auto overscroll-contain p-1">{settings.shippingMethods.map((row, index) => {
+            if (!`${row.title} ${row.zoneName}`.toLowerCase().includes(search.trim().toLowerCase())) return null;
             const key = methodKey(row);
             const providerWide = ['wbs', 'wbsng'].includes(row.methodId) && row.mappingKind !== 'exact_rate';
             const policy = providerWide ? { mappingKind: 'all_provider_rates' as const, allRatesConfirmed: true } : {};
             const unconfigured = blank.has(`${key}:minTransitDays`) || blank.has(`${key}:maxTransitDays`);
-            return <div key={`${row.methodId}:${row.instanceId}:${index}`} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
+            return <div key={`${row.methodId}:${row.instanceId}:${index}`} className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
                 <div className="min-w-0"><label className="flex items-center gap-2 font-medium">
                     <input type="checkbox" checked={row.enabled} disabled={unconfigured || !supported.has(row.methodId)} aria-label={`Show estimates for ${row.title}`}
                         onChange={event => update(index, { enabled: event.target.checked, ...(event.target.checked ? policy : {}) })} />
@@ -80,5 +84,6 @@ export function SimpleShippingTimes({ accountId, token, canEdit, settings, onCha
                 </label>)}<span className="pb-2 text-sm text-slate-500">days</span></div>
             </div>;
         })}</div>
+        {search.trim() && !settings.shippingMethods.some(row => `${row.title} ${row.zoneName}`.toLowerCase().includes(search.trim().toLowerCase())) && <p role="status" className="text-sm">No matching shipping methods.</p>}
     </section>;
 }
