@@ -194,9 +194,8 @@ describe('durable launch control', () => {
         expect(m.control).toMatchObject({ active: false, desiredActive: false, controlAction: null });
         expect(m.transport).toHaveBeenCalledWith(expect.objectContaining({ action: 'disable' }), expect.any(Number));
     });
-    it('prepares baseline and guarded mode with the old display active, but keeps readiness and activation blocked', async () => {
-        const blocker = 'deactivate_old_delivery_plugin:pi-edd/pi-edd.php';
-        m.plugin.blockers = [blocker];
+    it('prepares baseline and guarded mode and activates without requiring a recognised checkout', async () => {
+        m.plugin.presentation = 'unknown';
         await requestCutover('a', 'manager'); m.control.controlPayload = null;
         m.page = { id: 'product-1', wooId: 10 };
         await drainDeliveryControls();
@@ -207,18 +206,12 @@ describe('durable launch control', () => {
         expect(m.transport).toHaveBeenCalledWith(expect.objectContaining({ action: 'guarded' }), expect.any(Number));
         expect(m.control).toMatchObject({ cutoverState: 'guarded', active: false, receivingFrozen: false });
         readyStore();
-        expect((await deliveryReadiness('a')).blockers).toContain(blocker);
-        await expect(requestActivation('a', true)).rejects.toThrow(blocker);
-        Object.assign(m.control, { controlAction: 'activate', controlPayload: null, desiredActive: true, controlNextAttemptAt: new Date(0) });
-        await drainDeliveryControls();
-        expect(m.transport.mock.calls.some(call => call[0]?.action === 'activate')).toBe(false);
-        m.plugin.blockers = [];
         await requestActivation('a', true); m.control.controlPayload = null;
         await drainDeliveryControls();
         expect(m.control.active).toBe(true);
     });
-    it.each(['woocommerce_native_stock_management_required', 'guarded_receipts_native_stock_store_required', 'blocks_woocommerce_9_9_required'])('never waives %s during cutover coexistence', async blocker => {
-        m.plugin.blockers = ['deactivate_old_delivery_plugin:pi-edd/pi-edd.php', blocker];
+    it.each(['woocommerce_native_stock_management_required', 'guarded_receipts_native_stock_store_required', 'woocommerce_quote_cache_version_unsupported'])('never waives %s during cutover', async blocker => {
+        m.plugin.blockers = [blocker];
         await requestCutover('a', 'manager'); m.control.controlPayload = null;
         await drainDeliveryControls();
         expect(m.transport.mock.calls.some(call => call[0])).toBe(false);

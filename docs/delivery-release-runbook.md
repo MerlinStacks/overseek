@@ -311,11 +311,12 @@ Retain test results with this artifact's hash; installation alone is not certifi
    controlled switch. Confirm plugin health/account binding and discovery. Request
    `POST /api/delivery-estimates/sync`; inspect `GET /sync` and `GET /readiness` under
    the same API prefix. Settings/input ACKs are not activation ACKs. Resolve sync,
-   ownership and freshness errors; an old-plugin blocker is expected at this stage.
+   ownership and freshness errors. An old-plugin blocker means the companion plugin
+   still needs updating; current releases allow coexistence.
 6. **Private preparation with Pi still active:** pause receiving/unreceiving now,
    confirm legacy work drained and all pre-upgrade processes restarted. Keep Pi
    active and OverSeek delivery activation off during baseline/guarded preparation;
-   coexistence is allowed for these private steps, but still blocks activation. Submit:
+   coexistence is allowed during both preparation and activation. Submit:
 
    ```text
    POST /api/delivery-estimates/cutover
@@ -329,15 +330,12 @@ Retain test results with this artifact's hash; installation alone is not certifi
    queued work, not completion. Poll readiness until `mode:GUARDED`, epoch/control
    ACK agree, receiving is unfrozen, owners are certified and fresh verified inputs
    are rebuilt. Drain receipt **and cascade** work. Future ownership additions use
-   explicit `/certification`, not SQL edits or implicit baselines. While Pi remains
-   active, overall readiness may still be false due to its activation blocker.
+   explicit `/certification`, not SQL edits or implicit baselines.
    Require fresh verified inputs, current settings ACK, eligible configured targets,
    supported mappings, SQL prerequisites and resolved inventory/sync work before
    proceeding; do not deactivate Pi just to make private preparation succeed.
-7. **Controlled presentation switch, then activation.** Once verified inputs are
-   ready, manually deactivate Pi in WordPress and record its exact basename/version.
-   Never delete it or let an automation deactivate it. Refresh readiness after this
-   environment-fingerprint change. Require `ready:true`, no blockers, acknowledged
+7. **Activation.** Existing delivery plugins may remain active. Any optional display
+   changes are merchant-controlled. Require `ready:true`, no blockers, acknowledged
    current settings/inputs, `freshnessPrerequisite.ready:true`, eligible configured
    targets and supported shipping mappings. Review exclusions/warnings. Submit
    `POST /api/delivery-estimates/activation` with `{"active":true}`; poll until the

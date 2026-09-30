@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.0**.
+Current version: **2.25.1**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,10 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.1 - 2026-09-30
+
+- Delivery activation no longer requires recognised cart/checkout pages or Blocks pickup presentation. Existing delivery plugins can remain active.
 
 ### 2.25.0 - 2026-09-28
 - **Fixed:** Page/product views from full-page caches, with visit-time attribution and shared browser/CAPI event IDs.

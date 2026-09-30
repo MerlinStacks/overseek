@@ -40,18 +40,6 @@ final class OverSeek_Delivery_Control {
 	}
 	private static function invalidate(): void { update_option( 'overseek_delivery_environment_generation', wp_generate_uuid4(), false ); }
 
-	/** Readiness/control only. Classic on older Woo must be explicitly present on both pages. */
-	public static function presentation(): string {
-		$kinds = [];
-		foreach ( [ 'cart', 'checkout' ] as $kind ) {
-			$id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( $kind ) : (int) get_option( 'woocommerce_' . $kind . '_page_id', 0 );
-			$content = $id > 0 && 'publish' === get_post_status( $id ) ? get_post_field( 'post_content', $id ) : '';
-			$kinds[] = is_string( $content ) && has_block( 'woocommerce/' . $kind, $content ) ? 'blocks'
-				: ( is_string( $content ) && has_shortcode( $content, 'woocommerce_' . $kind ) ? 'classic' : 'unknown' );
-		}
-		return in_array( 'unknown', $kinds, true ) ? 'unknown' : ( in_array( 'blocks', $kinds, true ) ? 'blocks' : 'classic' );
-	}
-
 	/** Validate capabilities, rather than blocking unrelated plugins by name. */
 	public static function blockers(): array {
 		$blockers = [];
@@ -64,16 +52,8 @@ final class OverSeek_Delivery_Control {
 		try {
 			if ( ! ( new OverSeek_Receipt_Storage() )->native_transactions() ) { $blockers[] = 'transactional_native_stock_storage_required'; }
 		} catch ( Throwable $error ) { $blockers[] = 'transactional_native_stock_storage_required'; }
-		$presentation = self::presentation();
-		if ( 'unknown' === $presentation ) { $blockers[] = 'declare_classic_or_supported_blocks_checkout_pages'; }
-		if ( 'blocks' === $presentation && ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, '9.9', '<' ) ) ) { $blockers[] = 'blocks_woocommerce_9_9_required'; }
-		elseif ( 'classic' === $presentation && ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, '9.7', '<' ) ) ) { $blockers[] = 'classic_woocommerce_9_7_required'; }
-		elseif ( 'unknown' !== $presentation ) {
-			require_once __DIR__ . '/class-overseek-delivery-session-quotes.php';
-			if ( ! OverSeek_Delivery_Session_Quotes::supports_version( WC_VERSION ) ) { $blockers[] = 'woocommerce_quote_cache_version_unsupported'; }
-		}
-		$pickup = (array) get_option( 'woocommerce_pickup_location_settings', [] );
-		if ( 'blocks' === $presentation && in_array( $pickup['enabled'] ?? false, [ true, 'yes' ], true ) ) { $blockers[] = 'blocks_pickup_requires_verified_presentation'; }
+		require_once __DIR__ . '/class-overseek-delivery-session-quotes.php';
+		if ( defined( 'WC_VERSION' ) && ! OverSeek_Delivery_Session_Quotes::supports_version( WC_VERSION ) ) { $blockers[] = 'woocommerce_quote_cache_version_unsupported'; }
 		return $blockers;
 	}
 
@@ -93,7 +73,8 @@ final class OverSeek_Delivery_Control {
 	public function handle( WP_REST_Request $request ) {
 		$permission = ( new OverSeek_Delivery_Input_API() )->check_permission( $request );
 		if ( true !== $permission ) { return $permission; }
-		if ( 'GET' === $request->get_method() ) { return new WP_REST_Response( [ 'schemaVersion' => 1, 'protocolVersion' => 1, 'productionEstimates' => true, 'state' => self::state(), 'blockers' => self::blockers(), 'environmentFingerprint' => self::fingerprint(), 'presentation' => self::presentation(), 'wooVersion' => defined( 'WC_VERSION' ) ? WC_VERSION : null ], 200 ); }
+		// Retain the protocol field without inspecting cart/checkout page content.
+		if ( 'GET' === $request->get_method() ) { return new WP_REST_Response( [ 'schemaVersion' => 1, 'protocolVersion' => 1, 'productionEstimates' => true, 'state' => self::state(), 'blockers' => self::blockers(), 'environmentFingerprint' => self::fingerprint(), 'presentation' => 'unknown', 'wooVersion' => defined( 'WC_VERSION' ) ? WC_VERSION : null ], 200 ); }
 		$storage = new OverSeek_Receipt_Storage();
 		try {
 			$body = $request->get_json_params();
@@ -154,7 +135,7 @@ final class OverSeek_Delivery_Control {
 					$next['active'] = true;
 					$next['settingsRevision'] = $settings['revision'];
 					$next['environmentFingerprint'] = $fingerprint;
-					$next['presentation'] = self::presentation();
+					$next['presentation'] = 'unknown';
 				}
 			}
 			$result = ( new OverSeek_Delivery_Input_Storage() )->store( get_option( 'overseek_account_id', '' ), [ 'scope' => 'control', 'entityId' => 0, 'revision' => $body['revision'], 'payload' => $next ] );

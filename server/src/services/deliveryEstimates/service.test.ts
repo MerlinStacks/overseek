@@ -41,6 +41,14 @@ describe('local delivery persistence and tenant isolation', () => {
         await expect(DeliveryEstimateService.saveSettings('a', defaultSettings(), true)).rejects.toThrow('inventory update');
         expect(mocks.upsert).not.toHaveBeenCalled(); expect(mocks.launchUpsert).not.toHaveBeenCalled();
     });
+    it('only initializes or recovers product publication when re-enabling production estimates', async () => {
+        const settings = { ...defaultSettings(), estimateMode: 'production' as const };
+        mocks.settingsFind.mockResolvedValue({ settings });
+        await DeliveryEstimateService.saveSettings('a', settings, true);
+        expect(mocks.control).toHaveBeenCalledWith(expect.objectContaining({ where: {
+            accountId: 'a', OR: [{ resyncRequested: false, lastBuildAt: null }, { buildFailed: true }],
+        }, data: expect.objectContaining({ resyncRequested: true }) }));
+    });
     it('defaults only unconfigured accounts to simple mode', async () => {
         mocks.settingsFind.mockResolvedValue(null);
         expect(await DeliveryEstimateService.getSettings('a')).toEqual({ ...defaultSettings(), estimateMode: 'production' });

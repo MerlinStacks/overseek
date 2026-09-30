@@ -17,12 +17,13 @@ describe.skipIf(!hasFreshnessTestDatabase)('source-current dispatch selection (i
     beforeEach(async () => {
         m.db = await openFreshnessTestDatabase();
         await m.db.exec(`
-            CREATE TABLE "DeliverySyncAccount" ("accountId" text PRIMARY KEY, "inboundGeneration" int, "inboundCapabilityStatus" text, "inboundRequested" boolean);
+            CREATE TABLE "DeliverySyncAccount" ("accountId" text PRIMARY KEY, "inboundGeneration" int, "inboundCapabilityStatus" text, "inboundRequested" boolean,
+                "resyncRequested" boolean DEFAULT false, "resyncGeneration" int DEFAULT 0);
             CREATE TABLE "DeliveryInboundDirtyTarget" ("accountId" text, "wooId" int, PRIMARY KEY ("accountId", "wooId"));
             CREATE TABLE "DeliveryInputSync" (id text PRIMARY KEY, "accountId" text, scope text DEFAULT 'inbound', "entityId" int,
-                status text DEFAULT 'pending', "inboundGeneration" int DEFAULT 2, priority int DEFAULT 2,
+                status text DEFAULT 'pending', "inboundGeneration" int DEFAULT 2, "resyncGeneration" int DEFAULT 0, priority int DEFAULT 2,
                 "nextAttemptAt" timestamptz DEFAULT '2026-01-01', "leaseExpiresAt" timestamptz, payload jsonb DEFAULT '{"targets":[]}');
-            INSERT INTO "DeliverySyncAccount" VALUES ('a',2,'supported',true),('b',2,'supported',true);
+            INSERT INTO "DeliverySyncAccount" ("accountId","inboundGeneration","inboundCapabilityStatus","inboundRequested") VALUES ('a',2,'supported',true),('b',2,'supported',true);
             INSERT INTO "DeliveryInputSync" (id,"accountId","entityId") VALUES ('a1','a',1),('a2','a',2),('a3','a',3),('b1','b',1);
         `);
     });
@@ -54,5 +55,16 @@ describe.skipIf(!hasFreshnessTestDatabase)('source-current dispatch selection (i
         expect((await selectDeliveryInput('a'))?.id).toBe('settings');
         await m.db.exec(`UPDATE "DeliveryInputSync" SET status='synced' WHERE id='settings'`);
         expect(await selectDeliveryInput('a')).toBeUndefined();
+    });
+    it('streams settings then prepared products while stale snapshots wait for rebuilding', async () => {
+        await m.db.exec(`UPDATE "DeliverySyncAccount" SET "resyncRequested"=true,"resyncGeneration"=2 WHERE "accountId"='a';
+            INSERT INTO "DeliveryInputSync" (id,"accountId",scope,"entityId",priority,"resyncGeneration") VALUES
+            ('settings','a','settings',0,1,0),('old','a','product',10,2,1),('current','a','product',11,2,2);`);
+        expect((await selectDeliveryInput('a'))?.id).toBe('settings');
+        await m.db.exec(`UPDATE "DeliveryInputSync" SET status='synced' WHERE id='settings'`);
+        expect((await selectDeliveryInput('a'))?.id).toBe('current');
+        await m.db.exec(`UPDATE "DeliveryInputSync" SET status='synced' WHERE id='current'`);
+        expect(await selectDeliveryInput('a')).toBeUndefined();
+        expect((await selectDeliveryInput('b'))?.id).toBe('b1');
     });
 });

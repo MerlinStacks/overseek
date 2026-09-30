@@ -107,6 +107,10 @@ export function DeliverySettingsForm({ accountId, token, canEdit, featureEnabled
         {!featureEnabled && <p role="alert">Delivery estimates are unavailable for this account. Contact your account administrator.</p>}
         {!canRead && <p>You do not have permission to view delivery settings.</p>}
         {help && on && <p role="status" className="text-sm text-amber-800 dark:text-amber-300">{help}</p>}
+        {status?.estimateMode === 'production' && status.warnings.includes('production_products_not_synced') && <p role="status" className="text-sm text-slate-600 dark:text-slate-400">
+            {status.eligibleConfiguredCount !== undefined ? `${status.eligibleConfiguredCount} of ${status.configuredCount} product timings synced. ` : ''}
+            Remaining timings sync in the background. Estimates can appear for synced products once turned on.
+        </p>}
         {errors.length > 0 && <div role="alert" className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{errors.map(error => <p key={error}>{error}</p>)}</div>}
         {launch.error && <p role="alert" className="text-sm">Could not check your store. <button type="button" className="underline" onClick={() => void launch.refresh()}>Try again</button></p>}
         {failed && !confirmedOff && <div role="alert" className="text-sm">

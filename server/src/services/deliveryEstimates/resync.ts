@@ -42,7 +42,7 @@ export async function enqueueDeliveryResync(accountId: string) {
             capabilityStatus: 'unknown', capabilityExpiresAt: null, capabilityDetails: Prisma.DbNull, lastDiagnostic: Prisma.DbNull, lastError: null, hasWork: true, nextAttemptAt: new Date(),
             ...resetBuildFailure(),
         } });
-        // Settings are current immediately; transport remains gated until the build finishes.
+        // Settings send first; current-generation product pages stream during the build.
         await recordSettingsIntent(tx, accountId);
         return 'queued' as const;
     });

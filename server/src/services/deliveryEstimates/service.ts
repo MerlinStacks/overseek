@@ -56,8 +56,12 @@ export class DeliveryEstimateService {
             await recordSettingsIntent(tx, accountId);
             if (settings.estimateMode === 'production' && (enable || (previous?.settings as { estimateMode?: string } | null)?.estimateMode !== 'production')) {
                 // Publish existing timings automatically, using the bounded worker.
-                // Coalesce saves into an in-progress build and retain every source row.
-                await tx.deliverySyncAccount.updateMany({ where: { accountId, OR: [{ resyncRequested: false }, { buildFailed: true }] }, data: {
+                // Re-enabling an initialized production store reuses its outbox;
+                // normal product saves already publish incremental changes.
+                const initializedMode = (previous?.settings as { estimateMode?: string } | null)?.estimateMode === 'production';
+                await tx.deliverySyncAccount.updateMany({ where: { accountId, OR: [
+                    { resyncRequested: false, ...(initializedMode ? { lastBuildAt: null } : {}) }, { buildFailed: true },
+                ] }, data: {
                     resyncRequested: true, resyncGeneration: { increment: 1 }, resyncPhase: 'products', resyncCursor: null,
                     buildAttempts: 0, buildFailed: false, buildLastError: null, buildNextAttemptAt: new Date(), buildVersion: { increment: 1 },
                     hasWork: true, nextAttemptAt: new Date(),

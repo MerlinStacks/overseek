@@ -256,9 +256,9 @@ describe('durable delivery worker', () => {
         const claim = mocks.accountUpdate.mock.calls.find(([query]) => query.data.leaseToken && query.data.lastServedAt)![0];
         expect(claim.data.leaseExpiresAt.getTime() - claim.data.lastServedAt.getTime()).toBe(120_000);
     });
-    it('blocks account dispatch during a build and ignores a stale probe after explicit retry', async () => {
+    it('blocks stale products during a build and ignores a stale probe after explicit retry', async () => {
         const row = installAccountState({ resyncRequested: true });
-        await dispatchDeliveryInput(job);
+        await dispatchDeliveryInput({ ...job, scope: 'product', resyncGeneration: -1 });
         expect(mocks.woo).not.toHaveBeenCalled();
         row.resyncRequested = false;
         mocks.caps.mockImplementation(async () => {
@@ -269,6 +269,21 @@ describe('durable delivery worker', () => {
         await dispatchDeliveryInput(job);
         expect(row.capabilityStatus).toBe('unknown');
         expect(mocks.post).not.toHaveBeenCalled();
+    });
+    it('sends settings and prepared products before the catalogue rebuild completes', async () => {
+        const row = installAccountState({ resyncRequested: true, resyncGeneration: 2 });
+        await dispatchDeliveryInput(job);
+        mocks.post.mockResolvedValue({ ...ack, scope: 'product', entityId: 10 });
+        await dispatchDeliveryInput({ ...job, scope: 'product', entityId: 10, resyncGeneration: 2 });
+        expect(mocks.post).toHaveBeenCalledTimes(2);
+        expect(mocks.update.mock.calls.filter(([q]) => q.data.status === 'synced')).toHaveLength(2);
+        expect(row.resyncRequested).toBe(true);
+    });
+    it('retains an acknowledged configuration write when the build finishes during HTTP', async () => {
+        const row = installAccountState({ resyncRequested: true });
+        mocks.post.mockImplementation(async () => { row.resyncRequested = false; return ack; });
+        await dispatchDeliveryInput(job);
+        expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'synced' }) }));
     });
     it('losing an account lease cannot release or poison the replacement owner', async () => {
         const row = installAccountState();

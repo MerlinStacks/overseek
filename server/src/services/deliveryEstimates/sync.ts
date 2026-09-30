@@ -100,13 +100,18 @@ export async function dispatchDeliveryInput(candidate: DeliveryInputSync) {
     const token = randomUUID();
     // One transport owner per account (also the capability probe single-flight owner).
     const control = await prisma.deliverySyncAccount.findUnique({ where: { accountId: candidate.accountId } });
-    if (!control || control.resyncRequested || !['unknown', 'supported'].includes(control.capabilityStatus)) return;
+    if (!control || !['unknown', 'supported'].includes(control.capabilityStatus)) return;
+    // Publish prepared configuration pages immediately. Older product snapshots
+    // and inventory inputs still wait for the catalogue builder to catch up.
+    if (control.resyncRequested && candidate.scope !== 'settings' &&
+        (candidate.scope !== 'product' || candidate.resyncGeneration !== control.resyncGeneration)) return;
     if (candidate.scope === 'inbound' && control.inboundCapabilityStatus === 'plugin_update_required') return;
     const accountOwner = { accountId: candidate.accountId, leaseToken: token };
     const inboundFence = candidate.scope === 'inbound' ? { inboundGeneration: control.inboundGeneration } : {};
-    const accountVersion = { ...accountOwner, ...inboundFence, resyncGeneration: control.resyncGeneration, resyncRequested: false };
+    const buildFence = candidate.scope === 'inbound' ? { resyncRequested: false } : {};
+    const accountVersion = { ...accountOwner, ...inboundFence, resyncGeneration: control.resyncGeneration, ...buildFence };
     const accountClaim = await prisma.deliverySyncAccount.updateMany({
-        where: { accountId: candidate.accountId, resyncGeneration: control.resyncGeneration, resyncRequested: false,
+        where: { accountId: candidate.accountId, resyncGeneration: control.resyncGeneration, ...buildFence,
             ...inboundFence,
             capabilityStatus: control.capabilityStatus, capabilityExpiresAt: control.capabilityExpiresAt,
             OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }] },
@@ -258,8 +263,8 @@ export async function reconcileDeliveryDispatch(accountId: string) {
         await lockDeliveryAccount(tx, accountId);
         const control = await tx.deliverySyncAccount.findUnique({ where: { accountId } });
         const now = new Date();
-        if (!control || control.resyncRequested || (control.leaseExpiresAt && control.leaseExpiresAt > now)) return;
-        const recovered = await recoverStrandedInbound(tx, accountId, control);
+        if (!control || (control.leaseExpiresAt && control.leaseExpiresAt > now)) return;
+        const recovered = control.resyncRequested ? 0 : await recoverStrandedInbound(tx, accountId, control);
         // Use the same strict source predicate as dispatch, including when there is
         // no full pass. Dirty/stale rows wait for builders, not a hot transport loop.
         // A crashed row owner may outlive the account lease: retain its future wake.
@@ -267,13 +272,14 @@ export async function reconcileDeliveryDispatch(accountId: string) {
             SELECT GREATEST(i."nextAttemptAt", i."leaseExpiresAt") AS "nextAttemptAt"
             FROM "DeliveryInputSync" i JOIN "DeliverySyncAccount" c ON c."accountId" = i."accountId"
             WHERE i."accountId" = ${accountId} AND i.status = 'pending'
+              AND (NOT c."resyncRequested" OR i.scope = 'settings' OR (i.scope = 'product' AND i."resyncGeneration" = c."resyncGeneration"))
               AND (i.scope <> 'inbound' OR (c."inboundCapabilityStatus" <> 'plugin_update_required'
                 AND i."inboundGeneration" = c."inboundGeneration"
                 AND NOT EXISTS (SELECT 1 FROM "DeliveryInboundDirtyTarget" d WHERE d."accountId" = i."accountId" AND d."wooId" = i."entityId")))
             ORDER BY GREATEST(i."nextAttemptAt", i."leaseExpiresAt"), i.id LIMIT 1`;
         const nextAttemptAt = next?.nextAttemptAt ?? null;
         await tx.deliverySyncAccount.updateMany({ where: { accountId, leaseToken: control.leaseToken, leaseExpiresAt: control.leaseExpiresAt,
-            resyncGeneration: control.resyncGeneration, inboundGeneration: control.inboundGeneration,
+            resyncGeneration: control.resyncGeneration, resyncRequested: control.resyncRequested, inboundGeneration: control.inboundGeneration,
             inboundVersion: control.inboundVersion + (recovered ? 1 : 0),
         }, data: { hasWork: !!nextAttemptAt, lastServedAt: now, ...(nextAttemptAt ? { nextAttemptAt } : {}) } });
     });
@@ -310,6 +316,7 @@ export async function selectDeliveryInput(accountId: string) {
         JOIN "DeliverySyncAccount" c ON c."accountId" = i."accountId"
         WHERE i."accountId" = ${accountId} AND i.status = 'pending'
           AND i."nextAttemptAt" <= NOW() AND (i."leaseExpiresAt" IS NULL OR i."leaseExpiresAt" <= NOW())
+          AND (NOT c."resyncRequested" OR i.scope = 'settings' OR (i.scope = 'product' AND i."resyncGeneration" = c."resyncGeneration"))
           AND (i.scope <> 'inbound' OR (c."inboundCapabilityStatus" <> 'plugin_update_required'
             AND i."inboundGeneration" = c."inboundGeneration"
             AND NOT EXISTS (SELECT 1 FROM "DeliveryInboundDirtyTarget" d WHERE d."accountId" = i."accountId" AND d."wooId" = i."entityId")))
@@ -318,18 +325,21 @@ export async function selectDeliveryInput(accountId: string) {
 }
 
 /** Fair account scheduling with a total job budget, including repeat rounds for small stores. */
-export async function drainDeliveryInputs(limit = 10) {
+export async function drainDeliveryInputs(limit = 25) {
     await drainDeliveryResyncs();
     await recoverStrandedDeliveryInputs();
     await drainInboundBuilds();
     for (let budget = Math.min(25, Math.max(1, limit)); budget > 0;) {
         const now = new Date();
         const accounts = await prisma.deliverySyncAccount.findMany({ where: {
-            hasWork: true, resyncRequested: false, capabilityStatus: { in: ['unknown', 'supported'] }, nextAttemptAt: { lte: now },
+            hasWork: true, capabilityStatus: { in: ['unknown', 'supported'] }, nextAttemptAt: { lte: now },
             OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }],
             // An inbound-only rebuilding/parked account must not monopolize the oldest
             // dispatch slots while configuration work on other accounts waits.
             AND: [{ OR: [
+                { resyncRequested: false },
+                { account: { deliveryInputSyncs: { some: { scope: { in: ['settings', 'product'] }, status: 'pending', nextAttemptAt: { lte: now } } } } },
+            ] }, { OR: [
                 { inboundCapabilityStatus: { not: 'plugin_update_required' } },
                 { account: { deliveryInputSyncs: { some: { scope: { not: 'inbound' }, status: 'pending', nextAttemptAt: { lte: now } } } } },
             ] }],

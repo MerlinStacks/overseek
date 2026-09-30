@@ -192,9 +192,8 @@ describe('Delivery launch contract', () => {
         expect(JSON.parse(posts()[0][1].body)).toEqual({ active: false });
     });
 
-    it('allows private preparation while the old Pi plugin alone blocks storefront activation', async () => {
-        const pi = 'deactivate_old_delivery_plugin:pi-delivery/pi.php';
-        readiness.plugin!.blockers = [pi]; readiness.blockers = ['cutover_required', pi];
+    it('allows preparation without recognising the checkout layout', async () => {
+        readiness.plugin!.presentation = 'unknown';
         render(<DeliveryLaunchPanel {...props} />); await loaded(); confirmCutover();
         expect(activate()).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Queue / resume cutover' }));

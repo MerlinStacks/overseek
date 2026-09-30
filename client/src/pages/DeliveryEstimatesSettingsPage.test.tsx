@@ -79,6 +79,13 @@ describe('simple delivery settings', () => {
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
         expect(toggle()).toHaveAttribute('aria-checked', 'false');
     });
+    it('shows product sync progress without requiring the whole catalogue to finish', async () => {
+        readiness = readinessFixture({ estimateMode: 'production', eligibleConfiguredCount: 139, configuredCount: 739,
+            warnings: ['production_products_not_synced'] });
+        render(<DeliveryEstimatesSettingsPage />); await loaded();
+        expect(screen.getByText(/139 of 739 product timings synced/)).toBeVisible();
+        expect(toggle()).toBeEnabled();
+    });
 
     it('offers a disable-only retry when a failed turn-off is not confirmed', async () => {
         readiness = readinessFixture({ active: true, work: { action: 'disable', attempts: 8, lastError: 'Connection failed', nextAttemptAt: null } });

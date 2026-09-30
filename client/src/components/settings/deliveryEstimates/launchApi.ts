@@ -21,6 +21,7 @@ export interface DeliveryReadiness {
     unresolvedLegacyJobs: number;
     pendingInputs: number;
     configuredCount: number;
+    eligibleConfiguredCount?: number;
     freshness: { stale: number; unverified: number };
     providerSupport: { supportedMethodIds: string[]; configuredSupported: number };
     sync: { capability: string; inboundCapability: string; resyncRequested: boolean; inboundRequested: boolean; lastError: string | null };
@@ -136,18 +137,17 @@ export function preparationBlockReason(data: DeliveryReadiness | null): string |
     const plugin = data.plugin;
     if (!plugin || plugin.schemaVersion !== 1 || plugin.protocolVersion !== 1 || !Array.isArray(plugin.blockers)
         || !plugin.blockers.every(code => typeof code === 'string') || typeof plugin.wooVersion !== 'string'
-        || !/^[a-f0-9]{64}$/.test(plugin.environmentFingerprint ?? '') || !['classic', 'blocks'].includes(plugin.presentation ?? '')
+        || !/^[a-f0-9]{64}$/.test(plugin.environmentFingerprint ?? '') || !['classic', 'blocks', 'unknown'].includes(plugin.presentation ?? '')
         || !plugin.state || !Number.isInteger(plugin.state.revision) || typeof plugin.state.active !== 'boolean'
         || typeof plugin.state.mode !== 'string' || !['legacy', 'baseline', 'guarded'].includes(plugin.state.mode.toLowerCase())
         || !(plugin.state.epoch === null || typeof plugin.state.epoch === 'string')) {
-        return 'Preparation unavailable: update or reconnect the companion plugin and obtain a valid Woo/presentation diagnostic before freezing receiving.';
+        return 'Preparation unavailable: update or reconnect the companion plugin and obtain a valid Woo diagnostic before freezing receiving.';
     }
     if (data.freshnessPrerequisite?.ready !== true || data.blockers.includes('freshness_sql_prerequisite_missing')) {
         return 'Preparation unavailable: the server must verify the delivery SQL prerequisites. Ask your deployment operator to resolve the diagnostic, then refresh.';
     }
     if (data.inventoryCompatibility?.ready !== true) return 'Preparation unavailable: resolve the inventory compatibility diagnostic, then refresh.';
-    const incompatible = [...plugin.blockers, ...data.blockers.filter(code => !preparationWorkflowBlockers.has(code))]
-        .find(code => !code.startsWith('deactivate_old_delivery_plugin:'));
+    const incompatible = [...plugin.blockers, ...data.blockers.filter(code => !preparationWorkflowBlockers.has(code))][0];
     if (incompatible) return `Preparation unavailable: resolve ${incompatible} before freezing or resuming receiving. Inventory review remains available below.`;
     if (data.unresolvedLegacyJobs !== 0 || data.unresolvedReceipts !== 0) return 'Resolve pending legacy review, receipts and BOM follow-up below before preparing cutover.';
     const safeResume = isCutoverRecovery(data) && data.actions?.resumeCutover === '/api/delivery-estimates/cutover';
@@ -164,7 +164,7 @@ const guidance: Record<string, string> = {
     plugin_control_unavailable_or_upgrade_required: 'Update the Overseek Woo companion plugin and check the store connection, then refresh readiness.',
     woocommerce_8_required: 'Upgrade WooCommerce to version 8 or newer.',
     blocks_woocommerce_9_9_required: 'Upgrade WooCommerce to 9.9 or newer for Blocks cart or checkout pages.',
-    declare_classic_or_supported_blocks_checkout_pages: 'Overseek could not recognise your WooCommerce cart or checkout layout. Check the assigned pages in WooCommerce settings and that your checkout integration is supported. Delivery estimates attach to shipping methods automatically; do not add an Overseek shortcode or block to these pages.',
+    declare_classic_or_supported_blocks_checkout_pages: 'Update the Overseek WooCommerce plugin. Checkout layout recognition is no longer required to enable estimates.',
     blocks_pickup_requires_verified_presentation: 'Verify supported Blocks pickup presentation before launch; review pickup configuration in WooCommerce.',
     feature_disabled: 'Ask a super admin to enable Delivery Estimates for this account. Disable and receipt recovery remain available.',
     cutover_required: 'Pause receiving, drain legacy work and restart pre-upgrade workers, then queue cutover below.',

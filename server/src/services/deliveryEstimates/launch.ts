@@ -281,12 +281,9 @@ export async function dispatchDeliveryControl(candidate: ReceiptAccount, deadlin
                 return;
             }
             const plugin = candidate.controlAction === 'disable' ? null : pluginSchema.parse(await woo.deliveryControl(undefined, Math.max(1, deadline - Date.now())));
-            // Private cutover preparation stays inactive, so the merchant may retain
-            // the old display until inputs are ready. No other compatibility waiver.
-            const preparation = candidate.controlAction === 'cutover' && (!candidate.controlPayload || ['baseline', 'guarded'].includes(String(object(candidate.controlPayload).action)));
             const activationSettings = candidate.controlAction === 'activate' ? await prisma.deliveryInputSync.findUnique({ where: { accountId_scope_entityId: { accountId: candidate.accountId, scope: 'settings', entityId: 0 } } }) : null;
             const simple = candidate.controlAction === 'activate' && productionSettings(activationSettings?.payload);
-            const pluginBlockers = (plugin?.blockers ?? []).filter(blocker => !(preparation && blocker.startsWith('deactivate_old_delivery_plugin:')) && !(simple && inventoryPluginBlockers.has(blocker)));
+            const pluginBlockers = (plugin?.blockers ?? []).filter(blocker => !(simple && inventoryPluginBlockers.has(blocker)));
             if (pluginBlockers.length) {
                 if (candidate.revalidationRequested) { await waitForReadiness('Automatic revalidation waiting: ' + pluginBlockers.join(', ')); return; }
                 throw new LaunchConflict(pluginBlockers.join(', '));
