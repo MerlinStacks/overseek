@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { requireAuthFastify } from '../../middleware/auth';
+import { Logger } from '../../utils/logger';
 import { PermissionService } from '../../services/PermissionService';
 import { GuardedReceiptError } from '../../services/deliveryEstimates/receipts';
 import { deleteWriteOff, finalizeWriteOff, getWriteOff, listWriteOffs, saveWriteOff, writeOffBodySchema, writeOffProducts, writeOffQuerySchema } from '../../services/StockWriteOffService';
@@ -18,7 +19,10 @@ export const stockWriteOffRoutes: FastifyPluginAsync = async fastify => {
         if (error instanceof GuardedReceiptError) return reply.code(409).send({ error: error.message });
         const status = (error as { statusCode?: number }).statusCode;
         if (status && status < 500) return reply.code(status).send({ error: (error as Error).message });
-        request.log.error({ err: error }, 'Stock write-off request failed');
+        Logger.error('Stock write-off request failed', {
+            error, requestId: request.id, accountId: request.accountId,
+            method: request.method, route: request.routeOptions.url,
+        });
         return reply.code(500).send({ error: 'Stock write-off request failed' });
     });
     const id = (params: unknown) => z.object({ id: z.string().min(1).max(100) }).parse(params).id;

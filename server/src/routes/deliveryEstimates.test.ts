@@ -5,6 +5,8 @@ const launch = vi.hoisted(() => ({ readiness: vi.fn(), activation: vi.fn(), cuto
 const legacy = vi.hoisted(() => ({ list: vi.fn(), observe: vi.fn(), reconcile: vi.fn() }));
 const inventory = vi.hoisted(() => ({ cycles: vi.fn(), cascade: vi.fn(), reversal: vi.fn() }));
 const inputs = vi.hoisted(() => ({ list: vi.fn(), retry: vi.fn() }));
+const logging = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }));
+vi.mock('../utils/logger', () => ({ Logger: logging }));
 vi.mock('../services/deliveryEstimates/inputRecovery', async original => ({ ...await original<typeof import('../services/deliveryEstimates/inputRecovery')>(), listDeliveryInputs: inputs.list, retryDeliveryInput: inputs.retry }));
 vi.mock('../services/deliveryEstimates/receiptCascade', () => ({ retryReceiptCascade: inventory.cascade }));
 vi.mock('../services/deliveryEstimates/legacyRecovery', async original => ({ ...await original<typeof import('../services/deliveryEstimates/legacyRecovery')>(), listLegacyReceipts: legacy.list, observeLegacyReceipt: legacy.observe, requestLegacyResolution: legacy.reconcile, requestLegacyPoReversalReview: inventory.reversal }));
@@ -48,6 +50,16 @@ describe('delivery API authorization and contract', () => {
         return instance;
     }
     const headers = { authorization: 'Bearer token', 'x-account-id': 'a' };
+    it('logs enable failures through the application logger when Fastify logging is disabled', async () => {
+        const error = new Error('Database transaction failed');
+        mocks.save.mockRejectedValueOnce(error);
+        const response = await (await app()).inject({ method: 'POST', url: '/api/delivery-estimates/enable', headers, payload: defaultSettings() });
+        expect(response.statusCode).toBe(500);
+        expect(response.json()).toEqual({ error: 'Unable to process delivery estimates' });
+        expect(logging.error).toHaveBeenCalledWith('Delivery estimates request failed', {
+            error, requestId: expect.any(String), accountId: 'a', method: 'POST', route: '/api/delivery-estimates/enable',
+        });
+    });
     it('saves and queues enable in one authorized request without inventory permissions', async () => {
         mocks.permission.mockImplementation(async (_u, _a, permission) => permission === 'manage_shipping_settings');
         const server = await app();

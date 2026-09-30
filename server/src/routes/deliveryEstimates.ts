@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { requireAuthFastify } from '../middleware/auth';
+import { Logger } from '../utils/logger';
 import { PermissionService } from '../services/PermissionService';
 import { isAccountFeatureEnabled } from '../utils/accountFeatures';
 import { DeliveryEstimateService, DeliveryResourceNotFound } from '../services/deliveryEstimates/service';
@@ -40,7 +41,12 @@ export default async function deliveryEstimateRoutes(fastify: FastifyInstance) {
         if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number' && error.statusCode < 500) {
             return reply.code(error.statusCode).send({ error: error.message });
         }
-        request.log.error({ err: error }, 'Delivery estimates request failed');
+        // Fastify's built-in logger is disabled; use the application logger so
+        // database/transaction failures remain visible in production logs.
+        Logger.error('Delivery estimates request failed', {
+            error, requestId: request.id, accountId: request.accountId,
+            method: request.method, route: request.routeOptions.url,
+        });
         return reply.code(500).send({ error: 'Unable to process delivery estimates' });
     });
     fastify.get('/shipping-methods', async (request, reply) => {
