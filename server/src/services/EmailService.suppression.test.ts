@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockEmailAccountFindFirst = vi.fn();
 const mockEmailSettingsUpsert = vi.fn();
@@ -32,6 +32,10 @@ vi.mock('../utils/logger', () => ({
 import { EmailService } from './EmailService';
 
 describe('EmailService unsubscribe suppression', () => {
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         mockEmailAccountFindFirst.mockResolvedValue({
@@ -127,7 +131,7 @@ describe('EmailService unsubscribe suppression', () => {
     });
 
     it('adds RFC 8058 headers and resolves global and list unsubscribe URLs for marketing email', async () => {
-        process.env.API_URL = 'https://api.example.com';
+        vi.stubEnv('API_URL', 'https://api.example.com');
         mockEmailUnsubscribeFindFirst.mockResolvedValueOnce(null);
         const service = new EmailService();
         const sendMail = vi.fn().mockResolvedValue({ messageId: 'message-4' });
@@ -154,6 +158,41 @@ describe('EmailService unsubscribe suppression', () => {
         expect(mail.html).toMatch(/href="https:\/\/api\.example\.com\/api\/email\/unsubscribe\/[0-9a-f-]+"/);
         expect(mail.html).toMatch(/href="https:\/\/api\.example\.com\/api\/email\/unsubscribe-list\/[0-9a-f-]+\/list-1"/);
 
-        delete process.env.API_URL;
     });
+
+    it.each(['MARKETING', 'TRANSACTIONAL'] as const)(
+        'resolves shared footer links in %s mail without click-tracking them',
+        async (category) => {
+            vi.stubEnv('API_URL', 'https://api.example.com');
+            mockEmailUnsubscribeFindFirst.mockResolvedValue(null);
+            const service = new EmailService();
+            const sendMail = vi.fn().mockResolvedValue({ messageId: 'footer-message' });
+            vi.spyOn(service, 'createTransporter').mockResolvedValue({ sendMail, close: vi.fn() } as any);
+
+            await service.sendEmail(
+                'account-1', 'email-account-1', 'customer@example.com', 'Store update',
+                '<a href="https://{{unsubscribe_url}}/">Unsubscribe</a>' +
+                '<a href="https://%7B%7Bunsubscribe_url%7D%7D">Encoded unsubscribe</a>' +
+                '<a href="https://{{preferences_url}}">Manage subscriptions</a>' +
+                '<a href="{{unsubscribe_list_url}}">List fallback</a>' +
+                '<a href="https://store.example.com">Shop</a>',
+                undefined, { source: 'AUTOMATION', category }
+            );
+
+            const mail = sendMail.mock.calls[0][0];
+            const log = mockEmailLogCreate.mock.calls[0][0].data;
+            const preferenceUrl = `https://api.example.com/api/email/unsubscribe/${log.trackingId}`;
+            for (const label of ['Unsubscribe', 'Encoded unsubscribe', 'Manage subscriptions', 'List fallback']) {
+                expect(mail.html).toContain(`href="${preferenceUrl}">${label}</a>`);
+            }
+            expect(mail.html).not.toMatch(/\{\{|%7B|https:\/\/https:/i);
+            expect(mail.html).toContain(`/api/email/click/${log.trackingId}?url=https%3A%2F%2Fstore.example.com`);
+            if (category === 'TRANSACTIONAL') {
+                expect(mail.headers).toBeUndefined();
+                expect(mockEmailUnsubscribeFindFirst).not.toHaveBeenCalled();
+            } else {
+                expect(mail.headers['List-Unsubscribe']).toBe(`<${preferenceUrl}>`);
+            }
+        }
+    );
 });

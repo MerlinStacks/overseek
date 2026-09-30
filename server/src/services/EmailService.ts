@@ -176,7 +176,8 @@ export class EmailService {
     }
 
     private buildPreferencesUrl(trackingId: string): string {
-        return `${this.buildApiBaseUrl()}/api/email/preferences/${trackingId}`;
+        // The unsubscribe GET route renders the preference centre; preferences GET is JSON.
+        return this.buildUnsubscribeHeaderUrl(trackingId);
     }
 
     private buildListUnsubscribeUrl(trackingId: string, listId: string): string {
@@ -396,20 +397,24 @@ export class EmailService {
         // Generate tracking ID for read receipts
         const trackingId = crypto.randomUUID();
         const trackingPixelUrl = `${this.buildApiBaseUrl()}/api/email/track/${trackingId}.png`;
-        const htmlWithClickTracking = this.injectClickTracking(html, trackingId);
+        // Editors may URL-encode braces or prepend a protocol to link placeholders.
+        // Canonicalize before click tracking so these links remain untracked.
+        const normalizedHtml = html.replace(
+            /(?:https?:\/\/)?(?:\{\{|%7B%7B)\s*(unsubscribe_url|unsubscribe_list_url|preferences_url)\s*(?:\}\}|%7D%7D)\/?/gi,
+            (_match, tag) => `{{${tag.toLowerCase()}}}`
+        );
+        const htmlWithClickTracking = this.injectClickTracking(normalizedHtml, trackingId);
 
         // Inject tracking pixel
         const htmlWithTracking = htmlWithClickTracking.includes('</body>')
             ? htmlWithClickTracking.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" /></body>`)
             : `${htmlWithClickTracking}<img src="${trackingPixelUrl}" width="1" height="1" style="display:none" alt="" />`;
 
-        const unsubscribeUrl = emailCategory === 'MARKETING'
-            ? this.buildUnsubscribeHeaderUrl(trackingId)
-            : null;
-        const preferencesUrl = emailCategory === 'MARKETING'
-            ? this.buildPreferencesUrl(trackingId)
-            : null;
-        const listUnsubscribeUrl = emailCategory === 'MARKETING' && options?.listId
+        // Shared footers also appear in transactional mail. Resolve their links,
+        // while reserving automatic one-click unsubscribe headers for marketing.
+        const unsubscribeUrl = this.buildUnsubscribeHeaderUrl(trackingId);
+        const preferencesUrl = this.buildPreferencesUrl(trackingId);
+        const listUnsubscribeUrl = options?.listId
             ? this.buildListUnsubscribeUrl(trackingId, options.listId)
             : null;
 
@@ -447,7 +452,7 @@ export class EmailService {
             try {
                 const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithMergeTagUrls, attachments, {
                     ...options,
-                    unsubscribeUrl: unsubscribeUrl || undefined
+                    unsubscribeUrl: emailCategory === 'MARKETING' ? unsubscribeUrl : undefined
                 });
                 
                 await prisma.emailLog.create({
@@ -511,7 +516,7 @@ export class EmailService {
                 subject,
                 html: htmlWithMergeTagUrls,
                 attachments,
-                headers: unsubscribeUrl
+                headers: emailCategory === 'MARKETING'
                     ? {
                         'List-Unsubscribe': `<${unsubscribeUrl}>`,
                         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
