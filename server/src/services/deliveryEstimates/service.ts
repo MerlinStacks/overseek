@@ -59,8 +59,10 @@ export class DeliveryEstimateService {
                 // Re-enabling an initialized production store reuses its outbox;
                 // normal product saves already publish incremental changes.
                 const initializedMode = (previous?.settings as { estimateMode?: string } | null)?.estimateMode === 'production';
+                // Generation zero means no full product sync has been requested.
+                // lastBuildAt is non-null from row creation and only tracks fairness.
                 await tx.deliverySyncAccount.updateMany({ where: { accountId, OR: [
-                    { resyncRequested: false, ...(initializedMode ? { lastBuildAt: null } : {}) }, { buildFailed: true },
+                    { resyncRequested: false, ...(initializedMode ? { resyncGeneration: 0 } : {}) }, { buildFailed: true },
                 ] }, data: {
                     resyncRequested: true, resyncGeneration: { increment: 1 }, resyncPhase: 'products', resyncCursor: null,
                     buildAttempts: 0, buildFailed: false, buildLastError: null, buildNextAttemptAt: new Date(), buildVersion: { increment: 1 },
