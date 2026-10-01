@@ -540,7 +540,9 @@ export class WooService {
             queryStringAuth: !['capabilities', 'shipping-methods'].includes(resource),
             axiosConfig: {
                 ...this.axiosConfig,
-                headers: { 'X-Overseek-Account-Id': this.accountId },
+                // The Woo client shallowly replaces its headers with axiosConfig.headers.
+                // Preserve JSON headers or WordPress get_json_params() sees no body.
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json;charset=utf-8', 'X-Overseek-Account-Id': this.accountId },
                 timeout: Math.max(1, Math.min(10_000, Math.trunc(timeoutMs))),
                 signal: AbortSignal.timeout(Math.max(1, Math.min(10_000, Math.trunc(timeoutMs)))),
                 maxRedirects: 0,

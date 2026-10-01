@@ -32,7 +32,7 @@ describe('delivery discovery transport and response validation', () => {
         expect(mocks.post).toHaveBeenCalledExactlyOnceWith('delivery-estimates/inputs', input);
         expect(mocks.options).toHaveBeenLastCalledWith(expect.objectContaining({
             consumerKey: 'key-a', consumerSecret: 'secret-a', version: 'overseek/v1',
-            axiosConfig: expect.objectContaining({ headers: { 'X-Overseek-Account-Id': 'a' }, timeout: 10000, signal: expect.any(AbortSignal), maxRedirects: 0 }),
+            axiosConfig: expect.objectContaining({ headers: { Accept: 'application/json', 'Content-Type': 'application/json;charset=utf-8', 'X-Overseek-Account-Id': 'a' }, timeout: 10000, signal: expect.any(AbortSignal), maxRedirects: 0 }),
         }));
     });
     it('uses tenant credentials and context for sequential authenticated bounded GETs', async () => {
@@ -51,7 +51,7 @@ describe('delivery discovery transport and response validation', () => {
         mocks.get.mockResolvedValueOnce({ data: caps }).mockResolvedValueOnce({ data: discovery });
         await discoverShippingMethods('tenant-b');
         expect(mocks.options).toHaveBeenLastCalledWith(expect.objectContaining({ consumerKey: 'key-tenant-b', consumerSecret: 'secret-tenant-b',
-            axiosConfig: expect.objectContaining({ headers: { 'X-Overseek-Account-Id': 'tenant-b' } }) }));
+            axiosConfig: expect.objectContaining({ headers: { Accept: 'application/json', 'Content-Type': 'application/json;charset=utf-8', 'X-Overseek-Account-Id': 'tenant-b' } }) }));
     });
     it.each(['capabilities', 'shipping-methods'])('maps old plugin 404 at %s without retry', async resource => {
         mocks.get.mockReset();
