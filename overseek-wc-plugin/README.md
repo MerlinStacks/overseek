@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.1**.
+Current version: **2.25.2**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,11 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.2 - 2026-10-01
+
+- Identify the rejected field or processing stage in delivery activation errors, without returning submitted values.
+- Add regression coverage for production activation with null epoch/cursor and field-specific rejection diagnostics.
 
 ### 2.25.1 - 2026-09-30
 

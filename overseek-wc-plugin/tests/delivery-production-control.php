@@ -23,4 +23,26 @@ $storage->store('account-A', ['scope' => 'settings', 'entityId' => 0, 'revision'
 same(OverSeek_Delivery_Storefront_Gate::is_active(), false);
 $command['revision'] = 2; $command['settingsRevision'] = 2;
 error_is($handler->handle(new WP_REST_Request(json_encode($command))), 'overseek_control_conflict', 409);
+// Replay the production incident's exact JSONB command shape (including null cursor/epoch).
+$settings['settings']['estimateMode'] = 'production';
+$storage->store('account-A', ['scope' => 'settings', 'entityId' => 0, 'revision' => 24, 'payload' => $settings]);
+$command = json_decode('{"epoch":null,"action":"activate","cursor":null,"owners":[],"revision":8,"estimateMode":"production","schemaVersion":1,"settingsRevision":24}', true);
+$response = $handler->handle(new WP_REST_Request(json_encode($command)));
+same($response instanceof WP_REST_Response, true);
+same($response->data['revision'], 8);
+same(OverSeek_Delivery_Storefront_Gate::is_active(), true);
+foreach ([
+    ['schemaVersion', '1', 'schemaVersion'],
+    ['revision', '9', 'revision'],
+    ['action', 'SECRET', 'action'],
+    ['estimateMode', 'SECRET', 'estimateMode'],
+    ['owners', ['SECRET'], 'owners'],
+    ['estimateMode', null, 'epoch'],
+] as [$field, $value, $expected]) {
+    $invalid = array_replace($command, ['revision' => 9], [$field => $value]);
+    $error = $handler->handle(new WP_REST_Request(json_encode($invalid)));
+    error_is($error, 'overseek_control_invalid', 400);
+    same(str_starts_with($error->message, 'Invalid launch control: ' . $expected), true);
+    same($handler->handle(new WP_REST_Request(json_encode($command)))->data['revision'], 8);
+}
 fwrite(STDOUT, "Production-only activation preserves receipt mode and enforces settings-mode agreement.\n");

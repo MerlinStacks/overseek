@@ -98,9 +98,9 @@ export function DeliverySettingsForm({ accountId, token, canEdit, featureEnabled
             {canEdit && canRead && !launch.error && <button type="button" role="switch" aria-checked={on} aria-label="Delivery estimates"
                 disabled={saving || (!on && (loading || !settings || blocked || !featureEnabled || !canRead || !status))}
                 onClick={() => void (on ? disable() : save(true))}
-                className={`inline-flex min-h-11 items-center gap-3 rounded-full px-4 py-2 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 ${on ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
-                <span aria-hidden="true" className={`relative h-6 w-10 rounded-full ${on ? 'bg-indigo-400' : 'bg-slate-400'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${on ? 'translate-x-5' : 'translate-x-1'}`} /></span>
-                {on ? 'Turn off' : 'Turn on'}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-3 whitespace-nowrap rounded-full px-4 py-2 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 ${on ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
+                <span aria-hidden="true" className={`relative block h-6 w-10 shrink-0 rounded-full ${on ? 'bg-indigo-400' : 'bg-slate-400'}`}><span className={`absolute left-0 top-1 h-4 w-4 rounded-full bg-white transition-transform ${on ? 'translate-x-5' : 'translate-x-1'}`} /></span>
+                <span>{on ? 'Turn off' : 'Turn on'}</span>
             </button>}
             {canEdit && (!canRead || launch.error) && <button type="button" disabled={saving} onClick={() => void disable()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-600">Turn off estimates</button>}
         </section>

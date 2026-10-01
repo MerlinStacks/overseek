@@ -76,38 +76,54 @@ final class OverSeek_Delivery_Control {
 		// Retain the protocol field without inspecting cart/checkout page content.
 		if ( 'GET' === $request->get_method() ) { return new WP_REST_Response( [ 'schemaVersion' => 1, 'protocolVersion' => 1, 'productionEstimates' => true, 'state' => self::state(), 'blockers' => self::blockers(), 'environmentFingerprint' => self::fingerprint(), 'presentation' => 'unknown', 'wooVersion' => defined( 'WC_VERSION' ) ? WC_VERSION : null ], 200 ); }
 		$storage = new OverSeek_Receipt_Storage();
+		$stage = 'request body';
 		try {
 			$body = $request->get_json_params();
-			if ( strlen( $request->get_body() ) > 65536 || 1 !== ( $body['schemaVersion'] ?? null ) || ! is_int( $body['revision'] ?? null ) || $body['revision'] < 1 || $body['revision'] > 9007199254740991 || ! in_array( $body['action'] ?? null, [ 'baseline', 'guarded', 'activate', 'disable' ], true ) ) { throw new InvalidArgumentException(); }
+			if ( ! is_array( $body ) || strlen( $request->get_body() ) > 65536 ) { throw new InvalidArgumentException(); }
+			$stage = 'schemaVersion (expected integer 1; received ' . gettype( $body['schemaVersion'] ?? null ) . ')';
+			if ( 1 !== ( $body['schemaVersion'] ?? null ) ) { throw new InvalidArgumentException(); }
+			$stage = 'revision (expected positive safe integer; received ' . gettype( $body['revision'] ?? null ) . ')';
+			if ( ! is_int( $body['revision'] ?? null ) || $body['revision'] < 1 || $body['revision'] > 9007199254740991 ) { throw new InvalidArgumentException(); }
+			$stage = 'action (expected baseline, guarded, activate or disable)';
+			if ( ! in_array( $body['action'] ?? null, [ 'baseline', 'guarded', 'activate', 'disable' ], true ) ) { throw new InvalidArgumentException(); }
 			$action = $body['action'];
 			$production = 'activate' === $action && 'production' === ( $body['estimateMode'] ?? null );
+			$stage = 'estimateMode (only production activation accepts this field)';
 			if ( isset( $body['estimateMode'] ) && ! $production ) { throw new InvalidArgumentException(); }
 			$owners = $body['owners'] ?? [];
+			$stage = 'owners (expected an array of at most 1001 positive safe integers)';
 			if ( ! is_array( $owners ) || count( $owners ) > 1001 ) { throw new InvalidArgumentException(); }
 			foreach ( $owners as $owner ) { if ( ! is_int( $owner ) || $owner < 1 || $owner > 9007199254740991 ) { throw new InvalidArgumentException(); } }
+			$stage = 'control locking';
 			if ( ! $storage->lock_owners( array_merge( [ 0 ], $owners ) ) ) { throw new RuntimeException( 'Control busy; retry.' ); }
 			$permission = ( new OverSeek_Delivery_Input_API() )->check_permission( $request );
 			if ( true !== $permission ) { return $permission; }
+			$stage = 'stored control state';
 			$current = self::state();
 			if ( $body['revision'] < $current['revision'] ) { throw new DomainException( 'Control revision superseded.' ); }
+			$stage = 'command identity';
 			$identity = OverSeek_Receipt_Storage::request_identity( $body );
 			if ( $body['revision'] === $current['revision'] ) {
 				if ( ( $current['identity'] ?? null ) !== $identity ) { throw new DomainException( 'Control identity conflict.' ); }
 				// Recheck capabilities even when retrying an acknowledged activation.
 				if ( 'activate' === $action ) {
+					$stage = 'activation prerequisites';
 					$blockers = self::activation_blockers( $production );
 					if ( $blockers ) { throw new DomainException( implode( ', ', $blockers ) ); }
 				}
 				return new WP_REST_Response( [ 'schemaVersion' => 1, 'revision' => $current['revision'], 'state' => $current ], 200 );
 			}
 			$epoch = $body['epoch'] ?? null;
+			$stage = 'epoch (required for inventory commands; production activation must include estimateMode=production)';
 			if ( 'disable' !== $action && ! $production && ( ! is_string( $epoch ) || ! preg_match( '/\A[A-Za-z0-9_-]{1,64}\z/', $epoch ) ) ) { throw new InvalidArgumentException(); }
+			$stage = 'environment validation';
 			$fingerprint = self::fingerprint();
 			$blockers = 'disable' === $action ? [] : self::activation_blockers( $production );
 			if ( $blockers ) { throw new DomainException( implode( ', ', $blockers ) ); }
 			if ( 'disable' !== $action && $fingerprint !== self::fingerprint() ) { throw new DomainException( 'Environment changed during validation; retry.' ); }
 			$next = [ 'epoch' => $current['epoch'], 'mode' => $current['mode'], 'active' => false, 'identity' => $identity ];
 			if ( 'baseline' === $action ) {
+				$stage = 'inventory baseline';
 				if ( $current['epoch'] && $current['epoch'] !== $epoch ) { throw new DomainException( 'Epoch conflict.' ); }
 				require_once __DIR__ . '/class-overseek-receipt-write-observer.php';
 				require_once __DIR__ . '/class-overseek-receipt-validation.php';
@@ -128,6 +144,7 @@ final class OverSeek_Delivery_Control {
 				if ( ! $production && ( $current['epoch'] !== $epoch || ! in_array( $current['mode'], [ 'baseline', 'guarded' ], true ) ) ) { throw new DomainException( 'Baseline required.' ); }
 				if ( ! $production ) { $next['mode'] = 'guarded'; }
 				if ( 'activate' === $action ) {
+					$stage = 'activation settings';
 					$settings = ( new OverSeek_Delivery_Input_Storage() )->read_settings();
 					if ( ! $settings || true !== ( $settings['payload']['enabled'] ?? null ) || $settings['revision'] !== ( $body['settingsRevision'] ?? null ) ) { throw new DomainException( 'Settings synchronization required.' ); }
 					if ( $production !== ( 'production' === ( $settings['payload']['settings']['estimateMode'] ?? null ) ) ) { throw new DomainException( 'Estimate mode changed; synchronize settings.' ); }
@@ -138,12 +155,14 @@ final class OverSeek_Delivery_Control {
 					$next['presentation'] = 'unknown';
 				}
 			}
+			$stage = 'control persistence';
 			$result = ( new OverSeek_Delivery_Input_Storage() )->store( get_option( 'overseek_account_id', '' ), [ 'scope' => 'control', 'entityId' => 0, 'revision' => $body['revision'], 'payload' => $next ] );
 			if ( is_wp_error( $result ) ) { return $result; }
 			// Previously cached pages may have omitted the delivery placeholder entirely.
+			$stage = 'page cache invalidation';
 			if ( class_exists( 'OverSeek_Cache' ) ) { OverSeek_Cache::request_purge( 'delivery_control' ); }
 			return new WP_REST_Response( [ 'schemaVersion' => 1, 'revision' => $body['revision'], 'state' => self::state() ], 200 );
-		} catch ( InvalidArgumentException $error ) { return new WP_Error( 'overseek_control_invalid', 'Invalid launch control.', [ 'status' => 400 ] );
+		} catch ( InvalidArgumentException $error ) { return new WP_Error( 'overseek_control_invalid', 'Invalid launch control: ' . $stage . '.', [ 'status' => 400 ] );
 		} catch ( Throwable $error ) { return new WP_Error( 'overseek_control_conflict', $error->getMessage() ?: 'Launch control unavailable.', [ 'status' => 409 ] );
 		} finally { $storage->close(); }
 	}

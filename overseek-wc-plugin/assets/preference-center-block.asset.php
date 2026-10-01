@@ -12,5 +12,5 @@ return [
 		'wp-components',
 		'wp-element',
 	],
-	'version'      => defined( 'OVERSEEK_WC_VERSION' ) ? OVERSEEK_WC_VERSION : '2.25.1',
+	'version'      => defined( 'OVERSEEK_WC_VERSION' ) ? OVERSEEK_WC_VERSION : '2.25.2',
 ];
