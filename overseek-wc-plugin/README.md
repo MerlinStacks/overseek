@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.2**.
+Current version: **2.25.3**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,12 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.3 - 2026-10-12
+
+- Preserve recipient-specific List-Unsubscribe and one-click headers through the email relay.
+- Send the supplied plain-text alternative alongside HTML, with a unique Message-ID returned to Overseek.
+- Scope PHPMailer changes to the relay send so subsequent WordPress emails retain their own content.
 
 ### 2.25.2 - 2026-10-01
 

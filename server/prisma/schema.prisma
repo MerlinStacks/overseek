@@ -153,6 +153,7 @@ model Account {
   emailAccounts EmailAccount[]
   emailSettings EmailSettings?
   emailLogs     EmailLog[]
+  emailSendAttempts EmailSendAttempt[]
   smsLogs       SmsLog[]
   SyncState     SyncState[]
   SyncLog       SyncLog[]
@@ -2624,7 +2625,7 @@ model EmailLog {
   to             String
   subject        String
   
-  status         String   // SUCCESS, FAILED, PENDING_RETRY
+  status         String   // QUEUED, SENDING, SUCCESS, FAILED, UNKNOWN, PENDING_RETRY, SKIPPED, BOUNCED, COMPLAINED
   errorMessage   String?  @db.Text
   errorCode      String?  // SMTP error code if available
   
@@ -2633,6 +2634,8 @@ model EmailLog {
   sourceId       String?  // e.g. automationId, reportScheduleId
   
   messageId      String?  // SMTP message ID on success
+  idempotencyKey String?  // Stable logical send key; retries reuse this row
+  lastAttemptAt  DateTime? // Atomic quota reservation, before contacting transport
   
   // Email tracking (read receipts)
   trackingId     String?  @unique  // UUID for tracking pixel
@@ -2652,12 +2655,28 @@ model EmailLog {
   account        Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
   emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
   trackingEvents MessageTrackingEvent[]
+  sendAttempts   EmailSendAttempt[]
   
   @@index([accountId, createdAt])
+  @@unique([accountId, idempotencyKey])
+  @@index([accountId, lastAttemptAt])
   @@index([emailAccountId])
   @@index([trackingId])
   @@index([status, canRetry]) // For finding retryable failed emails
   @@index([emailBodyExpiresAt])
+}
+
+// Each transport attempt consumes capacity, including retries of the same email.
+model EmailSendAttempt {
+  id         String @id @default(uuid())
+  accountId  String
+  emailLogId String
+  createdAt  DateTime @default(now())
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  emailLog   EmailLog @relation(fields: [emailLogId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([emailLogId])
 }
 
 model MessageTrackingEvent {

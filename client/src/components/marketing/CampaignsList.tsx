@@ -221,9 +221,9 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
         const counts = {
             all: campaigns.length,
             scheduled: campaigns.filter((item) => item.status === 'SCHEDULED').length,
-            ongoing: campaigns.filter((item) => item.status === 'SENDING').length,
+            ongoing: campaigns.filter((item) => ['SENDING', 'DEFERRED'].includes(item.status)).length,
             completed: campaigns.filter((item) => item.status === 'SENT').length,
-            paused: campaigns.filter((item) => item.status === 'PAUSED').length,
+            paused: campaigns.filter((item) => ['PAUSED', 'PARTIAL'].includes(item.status)).length,
             cancelled: campaigns.filter((item) => item.status === 'CANCELLED').length
         };
 
@@ -243,9 +243,9 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
             const statusMatch =
                 activeTab === 'all' ||
                 (activeTab === 'scheduled' && item.status === 'SCHEDULED') ||
-                (activeTab === 'ongoing' && item.status === 'SENDING') ||
+                (activeTab === 'ongoing' && ['SENDING', 'DEFERRED'].includes(item.status)) ||
                 (activeTab === 'completed' && item.status === 'SENT') ||
-                (activeTab === 'paused' && item.status === 'PAUSED') ||
+                (activeTab === 'paused' && ['PAUSED', 'PARTIAL'].includes(item.status)) ||
                 (activeTab === 'cancelled' && item.status === 'CANCELLED');
 
             const queryMatch =
@@ -404,6 +404,8 @@ export function CampaignsList({ onEdit }: { onEdit: (id: string, name: string, s
     function getStatusPill(status: string) {
         if (status === 'SENT') return 'bg-emerald-100 text-emerald-700';
         if (status === 'SENDING') return 'bg-blue-100 text-blue-700';
+        if (status === 'DEFERRED') return 'bg-blue-100 text-blue-700';
+        if (status === 'PARTIAL') return 'bg-orange-100 text-orange-700';
         if (status === 'SCHEDULED') return 'bg-amber-100 text-amber-700';
         if (status === 'DRAFT') return 'bg-yellow-100 text-yellow-700';
         if (status === 'PAUSED') return 'bg-orange-100 text-orange-700';

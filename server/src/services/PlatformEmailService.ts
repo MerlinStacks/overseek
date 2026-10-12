@@ -18,6 +18,7 @@ interface SmtpConfig {
     fromEmail: string;
     fromName: string;
     secure: boolean;
+    fromAddress?: string;
 }
 
 /**
@@ -36,6 +37,18 @@ export class PlatformEmailService {
             });
 
             if (!record || !record.credentials) {
+                // Preserve environment-only installations while preferring the admin vault.
+                if (process.env.SMTP_HOST) {
+                    const port = Number.parseInt(process.env.SMTP_PORT || '587', 10);
+                    return {
+                        host: process.env.SMTP_HOST, port,
+                        username: process.env.SMTP_USER || '', password: process.env.SMTP_PASS || '',
+                        fromEmail: process.env.CONTACT_EMAIL || 'no-reply@localhost',
+                        fromName: process.env.APP_NAME || 'Commerce Platform',
+                        fromAddress: process.env.SMTP_FROM,
+                        secure: port === 465
+                    };
+                }
                 return null;
             }
 
@@ -64,6 +77,10 @@ export class PlatformEmailService {
             host: config.host,
             port: config.port,
             secure: config.secure,
+            requireTLS: !config.secure,
+            connectionTimeout: 10_000,
+            greetingTimeout: 10_000,
+            socketTimeout: 30_000,
             auth: {
                 user: config.username,
                 pass: config.password
@@ -133,18 +150,17 @@ export class PlatformEmailService {
             };
         }
 
+        let transporter: Transporter | undefined;
         try {
-            const transporter = this.createTransporter(config);
+            transporter = this.createTransporter(config);
 
             const info = await transporter.sendMail({
-                from: `"${config.fromName}" <${config.fromEmail}>`,
+                from: config.fromAddress || { name: config.fromName, address: config.fromEmail },
                 to,
                 subject,
                 html,
                 text: options?.textContent
             });
-            transporter.close();
-
             Logger.info('Platform email sent', { messageId: info.messageId, to });
 
             return {
@@ -157,6 +173,8 @@ export class PlatformEmailService {
                 success: false,
                 error: error.message || 'Failed to send email'
             };
+        } finally {
+            try { transporter?.close(); } catch { /* preserve send outcome */ }
         }
     }
 }

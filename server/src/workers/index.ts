@@ -7,7 +7,8 @@ import { ReviewSync } from '../services/sync/ReviewSync';
 import { PageSync } from '../services/sync/PageSync';
 import { BlogPostSync } from '../services/sync/BlogPostSync';
 import { EventBus, EVENTS } from '../services/events';
-import { Worker } from 'bullmq';
+import { Worker, DelayedError } from 'bullmq';
+import { EmailDeferredError } from '../services/emailSendLifecycle';
 import { automationEngine } from '../services/AutomationEngine';
 import { MarketingService } from '../services/MarketingService';
 import { normalizeOrderStatus } from '../constants/orderStatus';
@@ -93,7 +94,14 @@ export async function startWorkers() {
             return;
         }
 
-        await marketingService.sendCampaign(campaignId, accountId);
+        try {
+            await marketingService.sendCampaign(campaignId, accountId);
+        } catch (error) {
+            if (!(error instanceof EmailDeferredError)) throw error;
+            await job.moveToDelayed(error.retryAt.getTime(), job.token);
+            // Deferral is not a failed attempt and must not exhaust job retries.
+            throw new DelayedError();
+        }
     }));
 
     activeWorkers.push(QueueFactory.createWorker(QUEUES.FEED_OPTIMIZE, async (job) => {

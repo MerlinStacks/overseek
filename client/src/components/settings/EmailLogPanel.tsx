@@ -10,7 +10,7 @@ interface EmailLog {
     id: string;
     to: string;
     subject: string;
-    status: 'SUCCESS' | 'FAILED' | 'BOUNCED' | 'COMPLAINED' | 'SKIPPED' | 'RETRIED' | 'PENDING_RETRY';
+    status: 'SUCCESS' | 'FAILED' | 'BOUNCED' | 'COMPLAINED' | 'SKIPPED' | 'RETRIED' | 'PENDING_RETRY' | 'QUEUED' | 'SENDING' | 'UNKNOWN';
     errorMessage?: string;
     errorCode?: string;
     source?: string;
@@ -167,14 +167,16 @@ export function EmailLogPanel() {
         if (status === 'COMPLAINED') {
             return <ShieldAlert size={18} className="text-orange-600 flex-shrink-0" />;
         }
-        if (status === 'PENDING_RETRY') {
+        if (['PENDING_RETRY', 'QUEUED', 'SENDING'].includes(status)) {
             return <Clock3 size={18} className="text-blue-500 flex-shrink-0" />;
         }
+        if (status === 'UNKNOWN') return <AlertTriangle size={18} className="text-amber-500 flex-shrink-0" />;
         return <XCircle size={18} className="text-red-500 flex-shrink-0" />;
     };
 
     const getStatusLabel = (status: EmailLog['status']) => {
         if (status === 'PENDING_RETRY') return 'QUEUED';
+        if (status === 'UNKNOWN') return 'DELIVERY UNKNOWN';
         return status;
     };
 
@@ -295,7 +297,7 @@ export function EmailLogPanel() {
 
     const totalPages = Math.ceil(total / limit);
     const currentPage = Math.floor(offset / limit) + 1;
-    const queuedCount = logs.filter((log) => log.status === 'PENDING_RETRY').length;
+    const queuedCount = logs.filter((log) => ['PENDING_RETRY', 'QUEUED'].includes(log.status)).length;
 
     if (isLoading && logs.length === 0) {
         return (
@@ -420,7 +422,7 @@ export function EmailLogPanel() {
                                                 {getSourceLabel(log.source)}
                                             </span>
                                         )}
-                                        {log.status === 'PENDING_RETRY' && (
+                                        {['PENDING_RETRY', 'QUEUED'].includes(log.status) && (
                                             <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
                                                 Queued
                                             </span>

@@ -499,8 +499,10 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 accountId,
                 currency: account?.currency || 'USD',
                 linkTriggerUrl: normalizedStoreUrl,
-                preferencesUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/my-account/edit-account/` : '',
-                unsubscribeUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/?unsubscribe=1` : ''
+                // Keep recipient-specific placeholders for EmailService to resolve
+                // after allocating the tracking ID, just like a live flow send.
+                preferencesUrl: '{{preferences_url}}',
+                unsubscribeUrl: '{{unsubscribe_url}}'
             };
 
             const resolvedSubject = resolveMergeTags(subject, testContext);
@@ -519,7 +521,11 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             );
 
             if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
-                return reply.code(409).send({ success: false, skipped: true, reason: 'reason' in result ? result.reason : 'email_skipped' });
+                const reason = 'reason' in result ? result.reason : 'email_skipped';
+                const error = reason === 'unsubscribed_all' || reason === 'unsubscribed_marketing'
+                    ? 'Test email not sent: this recipient has unsubscribed from marketing emails. Use another test address or restore their subscription if appropriate.'
+                    : `Test email not sent (${reason}).`;
+                return reply.code(409).send({ success: false, skipped: true, reason, error });
             }
 
             Logger.info('Test email sent', { to, subject: subject.substring(0, 50), accountId });

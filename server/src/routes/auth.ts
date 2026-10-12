@@ -7,6 +7,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { hashPassword, comparePassword } from '../utils/auth';
 import { requireAuthFastify } from '../middleware/auth';
 import { SecurityService } from '../services/SecurityService';
+import { platformEmailService } from '../services/PlatformEmailService';
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { PermissionService } from '../services/PermissionService';
@@ -490,24 +491,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             // browser history, server logs, and referrer headers.
             const resetLink = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
 
-            if (process.env.SMTP_HOST) {
-                const nodemailer = require('nodemailer');
-                const transporter = nodemailer.createTransport({
-                    host: process.env.SMTP_HOST,
-                    port: parseInt(process.env.SMTP_PORT || '587', 10),
-                    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-                });
-
-                await transporter.sendMail({
-                    from: process.env.SMTP_FROM || `"${process.env.APP_NAME || 'Commerce Platform'} Security" <${process.env.CONTACT_EMAIL || 'no-reply@localhost'}>`,
-                    to: email,
-                    subject: 'Password Reset Request',
-                    html: `<p>You requested a password reset. Click <a href="${resetLink}">here</a> to reset your password.</p>`
-                });
-                transporter.close();
-            } else {
-                Logger.debug(`Password Reset Link generated (SMTP not configured, link not sent)`);
-            }
+            const sent = await platformEmailService.sendPlatformEmail(
+                email, 'Password Reset Request',
+                `<p>You requested a password reset. Click <a href="${resetLink}">here</a> to reset your password.</p>`,
+                { textContent: `You requested a password reset. Reset your password: ${resetLink}` }
+            );
+            if (!sent.success) Logger.error('Password reset email could not be sent', { userId: user.id, error: sent.error });
 
             return { message: 'If an account exists, a reset link has been sent.' };
         } catch (error) {

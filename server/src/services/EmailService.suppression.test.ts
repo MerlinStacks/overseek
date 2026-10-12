@@ -12,12 +12,19 @@ vi.mock('../utils/prisma', () => ({
         emailSettings: { upsert: (...args: any[]) => mockEmailSettingsUpsert(...args) },
         emailLog: {
             count: (...args: any[]) => mockEmailLogCount(...args),
-            create: (...args: any[]) => mockEmailLogCreate(...args)
+            create: (...args: any[]) => mockEmailLogCreate(...args),
+            update: vi.fn().mockResolvedValue({}),
+            findUnique: vi.fn().mockResolvedValue(null)
         },
         emailUnsubscribe: {
             findFirst: (...args: any[]) => mockEmailUnsubscribeFindFirst(...args)
         }
     }
+}));
+
+vi.mock('./emailSendLifecycle', async (importOriginal) => ({
+    ...await importOriginal<typeof import('./emailSendLifecycle')>(),
+    reserveEmailSend: vi.fn().mockResolvedValue(null)
 }));
 
 vi.mock('../utils/logger', () => ({
@@ -52,8 +59,52 @@ describe('EmailService unsubscribe suppression', () => {
             maxSendPerSecond: 1
         });
         mockEmailLogCount.mockResolvedValue(0);
-        mockEmailLogCreate.mockResolvedValue({ id: 'log-1' });
+        mockEmailLogCreate.mockResolvedValue({ id: 'log-1', retryCount: 0, maxRetries: 3 });
         mockEmailUnsubscribeFindFirst.mockResolvedValue({ id: 'unsubscribe-1', scope: 'ALL' });
+    });
+
+    it.each(['MARKETING', 'ALL'] as const)('sends an explicit marketing test despite a %s opt-out', async (scope) => {
+        mockEmailUnsubscribeFindFirst.mockResolvedValue({ id: 'unsubscribe-1', scope });
+        const service = new EmailService();
+        const sendMail = vi.fn().mockResolvedValue({ messageId: 'test-message' });
+        vi.spyOn(service, 'createTransporter').mockResolvedValue({ sendMail, close: vi.fn() } as any);
+
+        const result = await service.sendEmail(
+            'account-1', 'email-account-1', 'customer@example.com', 'Preview', '<p>Test email.</p>',
+            undefined, { source: 'TEST', category: 'MARKETING' }
+        );
+
+        expect(mockEmailUnsubscribeFindFirst).not.toHaveBeenCalled();
+        expect(sendMail).toHaveBeenCalledOnce();
+        expect(result).toMatchObject({ messageId: 'test-message' });
+        expect(mockEmailLogCreate).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ source: 'TEST' })
+        }));
+    });
+
+    it.each([
+        ['CAMPAIGN', 'MARKETING'], ['CAMPAIGN', 'ALL'],
+        ['AUTOMATION', 'MARKETING'], ['AUTOMATION', 'ALL'],
+        [undefined, 'MARKETING'], [undefined, 'ALL']
+    ])('suppresses %s audience email for a %s opt-out', async (source, scope) => {
+        mockEmailUnsubscribeFindFirst.mockResolvedValue({ id: 'unsubscribe-1', scope });
+        const service = new EmailService();
+        const transporter = vi.spyOn(service, 'createTransporter');
+
+        const result = await service.sendEmail(
+            'account-1', 'email-account-1', 'customer@example.com', 'Offers', '<p>Marketing email.</p>',
+            undefined, { source, category: 'MARKETING' }
+        );
+
+        expect(mockEmailUnsubscribeFindFirst).toHaveBeenCalledWith({
+            where: {
+                accountId: 'account-1', email: { equals: 'customer@example.com', mode: 'insensitive' },
+                scope: { in: ['MARKETING', 'ALL'] }
+            },
+            select: { id: true, scope: true }
+        });
+        expect(result).toEqual({ skipped: true, reason: `unsubscribed_${scope!.toLowerCase()}` });
+        expect(transporter).not.toHaveBeenCalled();
     });
 
     it('sends a direct inbox reply when the recipient opted out of all email', async () => {

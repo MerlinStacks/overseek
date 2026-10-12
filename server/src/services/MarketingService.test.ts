@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MarketingService } from './MarketingService';
+import { EmailDeferredError } from './emailSendLifecycle';
 
 // Define mocks using vi.hoisted to allow access inside vi.mock factory
 const mocks = vi.hoisted(() => ({
@@ -111,6 +112,7 @@ describe('MarketingService Optimization', () => {
         mocks.prisma.marketingCampaign.update.mockResolvedValue({});
         mocks.prisma.account.findFirst.mockResolvedValue({ wooUrl: 'https://shop.test', domain: null, currency: 'GBP' });
         mocks.prisma.wooProduct.findMany.mockResolvedValue([]);
+        mocks.emailService.sendEmail.mockReset().mockResolvedValue({ messageId: 'message' });
     });
 
     it('should fetch customers in batches using pagination (Optimized)', async () => {
@@ -198,6 +200,27 @@ describe('MarketingService Optimization', () => {
 
         expect(mocks.segmentService.getSegmentCount).toHaveBeenCalledWith(accountId, segmentId);
         expect(mocks.segmentService.iterateCustomersInSegment).toHaveBeenCalledWith(accountId, segmentId, 1000);
+    });
+
+    it('defers a campaign instead of skipping the remaining recipients at quota exhaustion', async () => {
+        mocks.prisma.marketingCampaign.findFirst.mockResolvedValue({ id: 'campaign', subject: 'Hello', content: '<p>Body</p>' });
+        mocks.prisma.wooCustomer.count.mockResolvedValue(2);
+        mocks.prisma.wooCustomer.findMany.mockResolvedValue([{ id: '1', email: 'one@test.com' }, { id: '2', email: 'two@test.com' }]);
+        const retryAt = new Date(Date.now() + 86_400_000);
+        mocks.emailService.sendEmail.mockResolvedValueOnce({ messageId: 'one' }).mockRejectedValueOnce(new EmailDeferredError(retryAt));
+        await expect(marketingService.sendCampaign('campaign', 'account')).rejects.toBeInstanceOf(EmailDeferredError);
+        expect(mocks.prisma.marketingCampaign.update).toHaveBeenLastCalledWith({ where: { id: 'campaign' }, data: { status: 'DEFERRED', sentCount: 1, scheduledAt: retryAt } });
+        expect(mocks.emailService.sendEmail.mock.calls[1][6]).toMatchObject({ idempotencyKey: 'campaign:campaign:two@test.com' });
+    });
+
+    it('records partial delivery instead of declaring a campaign fully sent', async () => {
+        mocks.prisma.marketingCampaign.findFirst.mockResolvedValue({ id: 'campaign', subject: 'Hello', content: '<p>Body</p>' });
+        mocks.prisma.wooCustomer.count.mockResolvedValue(2);
+        mocks.prisma.wooCustomer.findMany.mockResolvedValue([{ id: '1', email: 'one@test.com' }, { id: '2', email: 'two@test.com' }]);
+        mocks.emailService.sendEmail.mockResolvedValueOnce({ messageId: 'one', deduplicated: true }).mockRejectedValueOnce(new Error('Mailbox unavailable'));
+        await marketingService.sendCampaign('campaign', 'account');
+        expect(mocks.prisma.marketingCampaign.update).toHaveBeenLastCalledWith({ where: { id: 'campaign' }, data: { status: 'PARTIAL', sentCount: 1 } });
+        expect(mocks.campaignTrackingService.trackSend).not.toHaveBeenCalled();
     });
 
     it('counts completed flows only when a contact action completed', async () => {

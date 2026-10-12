@@ -108,6 +108,28 @@ describe('marketing automation status route', () => {
         expect(sendEmail.mock.calls[0][4]).toEqual(present ? expect.stringContaining('Estimated delivery') : '<p>Hello</p>');
     });
 
+    it('preserves preference placeholders for recipient-specific resolution by the sender', async () => {
+        vi.mocked(prisma.account.findFirst).mockResolvedValue({ wooUrl: 'https://shop.test' } as any);
+        const response = await app.inject({ method: 'POST', url: '/api/marketing/test-email', payload: {
+            to: 'test@example.com', subject: 'Hello', orderId: null,
+            content: '<a href="https://{{unsubscribe_url}}">Unsubscribe</a><a href="https://%7B%7Bpreferences_url%7D%7D">Preferences</a>'
+        } });
+        expect(response.statusCode).toBe(200);
+        expect(sendEmail.mock.calls[0][4]).toContain('{{unsubscribe_url}}');
+        expect(sendEmail.mock.calls[0][4]).toContain('{{preferences_url}}');
+        expect(sendEmail.mock.calls[0][4]).not.toContain('shop.test');
+        expect(sendEmail.mock.calls[0][6]).toMatchObject({ category: 'MARKETING' });
+    });
+
+    it('explains unsubscribe suppression for a test send', async () => {
+        sendEmail.mockResolvedValueOnce({ skipped: true, reason: 'unsubscribed_all' });
+        const response = await app.inject({ method: 'POST', url: '/api/marketing/test-email', payload: {
+            to: 'test@example.com', subject: 'Hello', content: '<p>Hello</p>', orderId: null
+        } });
+        expect(response.statusCode).toBe(409);
+        expect(response.json()).toMatchObject({ reason: 'unsubscribed_all', error: expect.stringContaining('has unsubscribed') });
+    });
+
     it('pins the selected internal order in the current tenant even when a newer order exists', async () => {
         const snapshot = snapshotFixture();
         const changedSnapshot = { ...snapshot, delivery: { min: '2026-10-01', max: '2026-10-02' } };

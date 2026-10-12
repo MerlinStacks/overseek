@@ -1026,6 +1026,18 @@ class OverSeek_API {
 			$headers[] = 'References: ' . sanitize_text_field( $params['references'] );
 		}
 
+		// Only the marketing sender supplies these recipient-specific headers.
+		if ( ! empty( $params['list_unsubscribe'] ) && is_string( $params['list_unsubscribe'] ) ) {
+			$unsubscribe_url = $params['list_unsubscribe'];
+			if ( preg_match( '/[\r\n<>]/', $unsubscribe_url ) || ! filter_var( $unsubscribe_url, FILTER_VALIDATE_URL ) || 'https' !== wp_parse_url( $unsubscribe_url, PHP_URL_SCHEME ) ) {
+				return new WP_REST_Response( [ 'success' => false, 'error' => 'Invalid unsubscribe URL' ], 400 );
+			}
+			$headers[] = 'List-Unsubscribe: <' . $unsubscribe_url . '>';
+			if ( isset( $params['list_unsubscribe_post'] ) && 'List-Unsubscribe=One-Click' === $params['list_unsubscribe_post'] ) {
+				$headers[] = 'List-Unsubscribe-Post: List-Unsubscribe=One-Click';
+			}
+		}
+
 		// Test mode - validate authentication without sending email.
 		if ( ! empty( $params['test_mode'] ) && filter_var( $params['test_mode'], FILTER_VALIDATE_BOOLEAN ) ) {
 			return new WP_REST_Response( [
@@ -1041,10 +1053,28 @@ class OverSeek_API {
 			$attachment_paths = $this->prepare_attachments( $params['attachments'] );
 		}
 
+		// wp_mail has no AltBody argument. Set it after SMTP plugins initialise
+		// PHPMailer, and remove the hook even when sending throws.
+		$text = isset( $params['text'] ) && is_string( $params['text'] ) ? $params['text'] : '';
+		$host = wp_parse_url( home_url(), PHP_URL_HOST );
+		$message_id = sprintf( '<%s.%s@%s>', bin2hex( random_bytes( 16 ) ), time(), $host ?: 'localhost' );
+		$mailer_state = null;
+		$configure_message = static function ( $mailer ) use ( $text, $message_id, &$mailer_state ) {
+			$mailer_state = [ $mailer, $mailer->AltBody, $mailer->MessageID ];
+			$mailer->AltBody = $text;
+			$mailer->MessageID = $message_id;
+		};
+		add_action( 'phpmailer_init', $configure_message, PHP_INT_MAX );
 		try {
 			// Send via wp_mail (with attachments if any).
 			$sent = wp_mail( $to, $subject, $html, $headers, $attachment_paths );
 		} finally {
+			remove_action( 'phpmailer_init', $configure_message, PHP_INT_MAX );
+			// WordPress can reuse this PHPMailer instance for subsequent emails.
+			if ( null !== $mailer_state ) {
+				$mailer_state[0]->AltBody = $mailer_state[1];
+				$mailer_state[0]->MessageID = $mailer_state[2];
+			}
 			// Cleanup temp attachment files.
 			foreach ( $attachment_paths as $path ) {
 				if ( is_string( $path ) && file_exists( $path ) ) {
@@ -1054,10 +1084,7 @@ class OverSeek_API {
 		}
 
 		if ( $sent ) {
-			// Generate a pseudo message ID for tracking.
-			$random_bytes = bin2hex( random_bytes( 8 ) );
-			$host = wp_parse_url( home_url(), PHP_URL_HOST );
-			$message_id = sprintf( '<%s.%s@%s>', $random_bytes, time(), $host ?: 'localhost' );
+			// Return the same message ID assigned to the outgoing MIME message.
 			
 			return new WP_REST_Response( [
 				'success'    => true,

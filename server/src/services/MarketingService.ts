@@ -11,6 +11,7 @@ import { prisma } from '../utils/prisma';
 import { SegmentService } from './SegmentService';
 import { loadDynamicEmailProducts, resolveMergeTags, resolveMergeTagsWithDynamicProducts } from './MergeTagResolver';
 import { EmailService } from './EmailService';
+import { EmailDeferredError } from './emailSendLifecycle';
 import { getDefaultEmailAccount } from '../utils/getDefaultEmailAccount';
 import { campaignTrackingService } from './CampaignTrackingService';
 import { automationAnalyticsService } from './AutomationAnalyticsService';
@@ -220,8 +221,8 @@ export class MarketingService {
             store_url: normalizedStoreUrl,
             accountId,
             currency: account?.currency || 'USD',
-            preferencesUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/my-account/edit-account/` : '',
-            unsubscribeUrl: normalizedStoreUrl ? `${normalizedStoreUrl.replace(/\/$/, '')}/?unsubscribe=1` : ''
+            preferencesUrl: '{{preferences_url}}',
+            unsubscribeUrl: '{{unsubscribe_url}}'
         };
 
         const result = await this.emailService.sendEmail(
@@ -245,6 +246,7 @@ export class MarketingService {
     async sendCampaign(campaignId: string, accountId: string) {
         const campaign = await this.getCampaign(campaignId, accountId);
         if (!campaign) throw new Error('Campaign not found');
+        if (campaign.status === 'SENT') return { success: true, count: campaign.sentCount };
         if (!campaign.subject?.trim() || !campaign.content?.trim()) {
             throw new Error('Campaign must have subject and content before sending');
         }
@@ -287,7 +289,7 @@ export class MarketingService {
 
         await prisma.marketingCampaign.update({
             where: { id: campaignId },
-            data: { status: 'SENDING', sentAt: new Date(), recipientsCount: totalRecipients }
+            data: { status: 'SENDING', sentAt: campaign.sentAt || new Date(), recipientsCount: totalRecipients, scheduledAt: null }
         });
 
         let processedCount = 0;
@@ -295,6 +297,7 @@ export class MarketingService {
         let failedCount = 0;
         let skippedCount = 0;
         const BATCH_SIZE = 1000;
+        const seenRecipients = new Set<string>();
         const dynamicProducts = campaign.content.includes('{{new_products')
             ? await loadDynamicEmailProducts(accountId)
             : undefined;
@@ -303,6 +306,9 @@ export class MarketingService {
             for (const customer of customers) {
                 const recipientEmail = customer.email?.trim();
                 if (!recipientEmail) continue;
+                const recipientKey = recipientEmail.toLowerCase();
+                if (seenRecipients.has(recipientKey)) continue;
+                seenRecipients.add(recipientKey);
 
                 processedCount++;
                 try {
@@ -324,7 +330,10 @@ export class MarketingService {
                         subject,
                         content,
                         undefined,
-                        { source: 'CAMPAIGN', sourceId: campaignId, listId: campaign.listId || undefined }
+                        {
+                            source: 'CAMPAIGN', sourceId: campaignId, listId: campaign.listId || undefined,
+                            idempotencyKey: `campaign:${campaignId}:${recipientEmail.toLowerCase()}`
+                        }
                     );
 
                     if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
@@ -333,8 +342,15 @@ export class MarketingService {
                     }
 
                     sentCount++;
-                    await campaignTrackingService.trackSend(accountId, campaignId, 'broadcast', recipientEmail);
+                    if (!('deduplicated' in result && result.deduplicated)) {
+                        try {
+                            await campaignTrackingService.trackSend(accountId, campaignId, 'broadcast', recipientEmail);
+                        } catch (error) {
+                            Logger.error('Campaign email accepted but analytics failed', { campaignId, recipientEmail, error });
+                        }
+                    }
                 } catch (error) {
+                    if (error instanceof EmailDeferredError) throw error;
                     failedCount++;
                     Logger.error('Error sending campaign email', {
                         campaignId,
@@ -398,10 +414,23 @@ export class MarketingService {
                 }
             }
         } catch (err) {
+            if (err instanceof EmailDeferredError) {
+                await prisma.marketingCampaign.update({
+                    where: { id: campaignId },
+                    data: { status: 'DEFERRED', sentCount, scheduledAt: err.retryAt }
+                });
+                throw err;
+            }
             Logger.error('Error sending campaign', err);
+            // Let the durable job retry audience/persistence failures. Stable send
+            // keys prevent re-delivering recipients completed before the failure.
+            await prisma.marketingCampaign.update({
+                where: { id: campaignId }, data: { status: sentCount > 0 ? 'PARTIAL' : 'FAILED', sentCount }
+            });
+            throw err;
         }
 
-        const finalStatus = sentCount > 0 ? 'SENT' : 'FAILED';
+        const finalStatus = sentCount > 0 ? (failedCount > 0 ? 'PARTIAL' : 'SENT') : 'FAILED';
         await prisma.marketingCampaign.update({
             where: { id: campaignId },
             data: { status: finalStatus, sentCount }
@@ -498,7 +527,7 @@ export class MarketingService {
             throw new Error('Campaign not found');
         }
 
-        if (campaign.status === 'SENDING') {
+        if (['SENDING', 'DEFERRED'].includes(campaign.status)) {
             return { queued: false, reason: 'already_sending' as const };
         }
 

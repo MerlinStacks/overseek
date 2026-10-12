@@ -16,6 +16,22 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { getAttachmentUrl } from '../utils/attachmentUrl';
+import { ensureEmailDocument, emailPlainText } from '../utils/emailContent';
+import { classifySendFailure, EmailDeferredError, reserveEmailSend } from './emailSendLifecycle';
+
+interface EmailSendOptions {
+    source?: string;
+    sourceId?: string;
+    inReplyTo?: string;
+    references?: string;
+    category?: 'MARKETING' | 'TRANSACTIONAL';
+    isInboxReply?: boolean;
+    fromName?: string;
+    fromEmail?: string;
+    replyToEmail?: string;
+    listId?: string;
+    idempotencyKey?: string;
+}
 
 const attachmentsDir = path.join(__dirname, '../../uploads/attachments');
 if (!fs.existsSync(attachmentsDir)) {
@@ -57,12 +73,17 @@ export class EmailService {
         return new Date(Date.now() + this.getSentBodyRetentionDays() * 24 * 60 * 60 * 1000);
     }
 
-    private buildStoredSentBodyPayload(html: string, options?: { category?: 'MARKETING' | 'TRANSACTIONAL' }): Prisma.InputJsonValue {
+    private buildStoredSentBodyPayload(html: string, options?: EmailSendOptions, canonicalHtml?: string, attachments?: any[]): Prisma.InputJsonValue {
         const maxChars = this.getSentBodyMaxChars();
         const truncated = html.length > maxChars;
         return {
             html: truncated ? html.slice(0, maxChars) : html,
-            type: 'sent_body_preview',
+            type: 'send_payload_v2',
+            canonicalHtml: canonicalHtml || html,
+            attachments: JSON.parse(JSON.stringify(attachments || [], (_key, value) =>
+                value?.type === 'Buffer' && Array.isArray(value.data)
+                    ? { storedBuffer: Buffer.from(value.data).toString('base64') } : value)),
+            options: JSON.parse(JSON.stringify(options || {})),
             truncated,
             originalLength: html.length,
             storedAt: new Date().toISOString(),
@@ -90,19 +111,6 @@ export class EmailService {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
-    private async getEmailSettings(accountId: string) {
-        return prisma.emailSettings.upsert({
-            where: { accountId },
-            update: {},
-            create: {
-                accountId,
-                bounceTrackingEnabled: false,
-                maxSendPerSecond: 1,
-                maxSendPerDay: 6000,
-            },
-        });
-    }
-
     private getMarketingPressureCapConfig() {
         const maxPerWindow = Number.parseInt(process.env.MARKETING_PRESSURE_MAX_SENDS || '3', 10);
         const windowHours = Number.parseInt(process.env.MARKETING_PRESSURE_WINDOW_HOURS || '24', 10);
@@ -128,7 +136,7 @@ export class EmailService {
                 to: { equals: to, mode: 'insensitive' },
                 status: { in: ['SUCCESS', 'RETRIED'] },
                 source: { in: ['AUTOMATION', 'CAMPAIGN'] },
-                createdAt: { gte: windowStart }
+                lastAttemptAt: { gte: windowStart }
             }
         });
 
@@ -184,51 +192,6 @@ export class EmailService {
         return `${this.buildApiBaseUrl()}/api/email/unsubscribe-list/${trackingId}/${listId}`;
     }
 
-    private async enforceSendingLimits(accountId: string): Promise<{ allowed: boolean; reason?: string }> {
-        const settings = await this.getEmailSettings(accountId);
-
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-
-        const sentToday = await prisma.emailLog.count({
-            where: {
-                accountId,
-                status: 'SUCCESS',
-                createdAt: { gte: startOfDay },
-            },
-        });
-
-        if (sentToday >= settings.maxSendPerDay) {
-            return {
-                allowed: false,
-                reason: `Daily send quota reached (${settings.maxSendPerDay}/day)`,
-            };
-        }
-
-        const maxWaitCycles = 20;
-        for (let cycle = 0; cycle < maxWaitCycles; cycle++) {
-            const windowStart = new Date(Date.now() - 1000);
-            const sentLastSecond = await prisma.emailLog.count({
-                where: {
-                    accountId,
-                    status: 'SUCCESS',
-                    createdAt: { gte: windowStart },
-                },
-            });
-
-            if (sentLastSecond < settings.maxSendPerSecond) {
-                return { allowed: true };
-            }
-
-            await this.wait(100);
-        }
-
-        return {
-            allowed: false,
-            reason: `Per-second send rate exceeded (${settings.maxSendPerSecond}/sec)`
-        };
-    }
-
     private shouldRejectUnauthorizedTls(): boolean {
         const allowInsecure = process.env.ALLOW_INSECURE_TLS === 'true';
         if (allowInsecure && process.env.NODE_ENV !== 'production') {
@@ -278,73 +241,62 @@ export class EmailService {
      * Send email via SMTP or HTTP relay.
      * 
      * Prioritizes HTTP relay if configured (for SMTP-blocked environments),
-     * falls back to direct SMTP otherwise.
+     * uses direct SMTP otherwise. Ambiguous relay failures never fall back.
      */
     async sendEmail(
+        accountId: string, emailAccountId: string, to: string, subject: string,
+        html: string, attachments?: any[], options?: EmailSendOptions
+    ) {
+        return this.sendEmailAttempt(accountId, emailAccountId, to, subject, html, attachments, options);
+    }
+
+    private async sendEmailAttempt(
         accountId: string,
         emailAccountId: string,
         to: string,
         subject: string,
         html: string,
         attachments?: any[],
-        options?: {
-            source?: string;
-            sourceId?: string;
-            inReplyTo?: string;
-            references?: string;
-            category?: 'MARKETING' | 'TRANSACTIONAL';
-            isInboxReply?: boolean;
-            fromName?: string;
-            fromEmail?: string;
-            replyToEmail?: string;
-            listId?: string;
-        }
+        options?: EmailSendOptions,
+        retryLogId?: string
     ) {
+        const existing = !retryLogId && options?.idempotencyKey
+            ? await prisma.emailLog.findUnique({ where: { accountId_idempotencyKey: { accountId, idempotencyKey: options.idempotencyKey } } })
+            : null;
+        if (existing && existing.status !== 'QUEUED') {
+            if (['SUCCESS', 'RETRIED', 'BOUNCED', 'COMPLAINED'].includes(existing.status)) {
+                return { messageId: existing.messageId || undefined, deduplicated: true };
+            }
+            if (existing.status === 'SKIPPED') return { skipped: true, reason: existing.errorMessage || 'previously_skipped' };
+            throw new Error(`Email already attempted (${existing.status}); use the email log retry action if available`);
+        }
+        // Queued sends retain the original content even if a campaign is edited later.
+        if (existing) {
+            const stored = existing.emailPayload as any;
+            html = stored.canonicalHtml;
+            attachments = this.restoreAttachments(stored.attachments);
+            options = stored.options;
+            subject = existing.subject;
+            emailAccountId = existing.emailAccountId;
+            to = existing.to;
+        }
+        const writeSkipped = (data: any) => retryLogId || existing
+            ? prisma.emailLog.updateMany({ where: { id: retryLogId || existing!.id, status: { in: ['QUEUED', 'PENDING_RETRY'] } }, data })
+            : prisma.emailLog.create({ data: { ...data, idempotencyKey: options?.idempotencyKey } });
         const emailAccount = await prisma.emailAccount.findFirst({
             where: { id: emailAccountId, accountId }
         });
 
         if (!emailAccount) {
-            await prisma.emailLog.create({
-                data: {
-                    accountId,
-                    emailAccountId,
-                    to,
-                    subject,
-                    status: 'FAILED',
-                    errorMessage: 'Email account not found',
-                    source: options?.source,
-                    sourceId: options?.sourceId
-                }
-            });
             throw new Error("Email account not found");
         }
 
         const emailCategory = options?.category || 'MARKETING';
 
         if (emailCategory === 'MARKETING') {
-            const limitCheck = await this.enforceSendingLimits(accountId);
-            if (!limitCheck.allowed) {
-                await prisma.emailLog.create({
-                    data: {
-                        accountId,
-                        emailAccountId,
-                        to,
-                        subject,
-                        status: 'SKIPPED',
-                        errorMessage: limitCheck.reason || 'Email sending blocked by account limits',
-                        source: options?.source,
-                        sourceId: options?.sourceId,
-                        canRetry: false
-                    }
-                });
-                return { skipped: true, reason: 'account_sending_limit_reached' };
-            }
-
             const pressureCheck = await this.enforceMarketingPressureCap(accountId, to, options?.source);
             if (!pressureCheck.allowed) {
-                await prisma.emailLog.create({
-                    data: {
+                await writeSkipped({
                         accountId,
                         emailAccountId,
                         to,
@@ -354,13 +306,14 @@ export class EmailService {
                         source: options?.source,
                         sourceId: options?.sourceId,
                         canRetry: false
-                    }
                 });
                 return { skipped: true, reason: 'contact_pressure_cap_reached' };
             }
         }
 
-        const unsubscribe = emailCategory === 'MARKETING'
+        // Explicit editor previews are operator-requested tests, not audience sends.
+        // Keep their category for rendering, but do not require a subscription.
+        const unsubscribe = emailCategory === 'MARKETING' && options?.source !== 'TEST'
             ? await prisma.emailUnsubscribe.findFirst({
                 where: {
                     accountId,
@@ -371,8 +324,7 @@ export class EmailService {
             })
             : null;
         if (unsubscribe) {
-            await prisma.emailLog.create({
-                data: {
+            await writeSkipped({
                     accountId,
                     emailAccountId,
                     to,
@@ -382,7 +334,6 @@ export class EmailService {
                     source: options?.source,
                     sourceId: options?.sourceId,
                     canRetry: false
-                }
             });
             Logger.info('Skipping email to unsubscribed recipient', {
                 accountId,
@@ -399,7 +350,7 @@ export class EmailService {
         const trackingPixelUrl = `${this.buildApiBaseUrl()}/api/email/track/${trackingId}.png`;
         // Editors may URL-encode braces or prepend a protocol to link placeholders.
         // Canonicalize before click tracking so these links remain untracked.
-        const normalizedHtml = html.replace(
+        const normalizedHtml = ensureEmailDocument(html).replace(
             /(?:https?:\/\/)?(?:\{\{|%7B%7B)\s*(unsubscribe_url|unsubscribe_list_url|preferences_url)\s*(?:\}\}|%7D%7D)\/?/gi,
             (_match, tag) => `{{${tag.toLowerCase()}}}`
         );
@@ -447,143 +398,102 @@ export class EmailService {
         const senderEmail = overrideFromEmail || emailAccount.email;
         const senderName = overrideFromName || emailAccount.name;
 
-        // Try HTTP relay first if configured
-        if (emailAccount.relayEndpoint && emailAccount.relayApiKey) {
-            try {
-                const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithMergeTagUrls, attachments, {
-                    ...options,
-                    unsubscribeUrl: emailCategory === 'MARKETING' ? unsubscribeUrl : undefined
-                });
-                
-                await prisma.emailLog.create({
-                    data: {
-                        accountId,
-                        emailAccountId,
-                        to,
-                        subject,
-                        status: 'SUCCESS',
-                        messageId: result.message_id,
-                        trackingId,
-                        source: options?.source,
-                        sourceId: options?.sourceId,
-                        canRetry: false,
-                        emailPayload: this.buildStoredSentBodyPayload(htmlWithMergeTagUrls, { category: emailCategory }),
-                        emailBodyExpiresAt: this.getSentBodyExpiresAt()
-                    }
-                });
-
-                Logger.info(`Sent email via HTTP relay`, { messageId: result.message_id, to, trackingId });
-                return { messageId: result.message_id };
-            } catch (relayError: any) {
-                Logger.warn(`HTTP relay failed, falling back to SMTP`, { to, error: relayError.message });
-                // Fall through to SMTP if relay fails and SMTP is configured
-                if (!emailAccount.smtpEnabled) {
-                    await prisma.emailLog.create({
-                        data: {
-                            accountId,
-                            emailAccountId,
-                            to,
-                            subject,
-                            status: 'FAILED',
-                            errorMessage: `Relay failed: ${relayError.message}`,
-                            source: options?.source,
-                            sourceId: options?.sourceId,
-                            canRetry: true,
-                            emailPayload: {
-                                html: htmlWithMergeTagUrls,
-                                attachments: attachments || [],
-                                options: options || {}
-                            }
-                        }
-                    });
-                    throw new Error(`HTTP relay failed: ${relayError.message}`);
-                }
-            }
-        }
-
-        // Use direct SMTP
-        if (!emailAccount.smtpEnabled) {
+        const useRelay = Boolean(emailAccount.relayEndpoint && emailAccount.relayApiKey);
+        if (!useRelay && !emailAccount.smtpEnabled) {
             throw new Error("Neither HTTP relay nor SMTP is configured for this account");
         }
 
+        const payload = this.buildStoredSentBodyPayload(htmlWithMergeTagUrls, options, html, attachments);
+        // Persist before any transport side effect. A stale SENDING row is intentionally
+        // not automatically retried: delivery may have happened before the worker died.
+        const log = retryLogId
+            ? await prisma.emailLog.findFirstOrThrow({ where: { id: retryLogId, accountId } })
+            : existing ||
+            await prisma.emailLog.create({ data: {
+                accountId, emailAccountId, to, subject, trackingId,
+                status: 'QUEUED', canRetry: false,
+                source: options?.source, sourceId: options?.sourceId,
+                idempotencyKey: options?.idempotencyKey,
+                emailPayload: payload, emailBodyExpiresAt: this.getSentBodyExpiresAt()
+            } });
+        let retryAt: Date | null = null;
+        for (let cycle = 0; cycle < 20; cycle++) {
+            retryAt = await reserveEmailSend(accountId, log.id, emailCategory === 'MARKETING');
+            if (!retryAt) break;
+            if (retryAt.getTime() - Date.now() > 2000) break;
+            await this.wait(100);
+        }
+        if (retryAt) {
+            // Campaign jobs resume keyed QUEUED rows. Unkeyed callers have no
+            // resumable job, so expose their unsent message through manual retry.
+            if (!options?.idempotencyKey && !retryLogId) {
+                await prisma.emailLog.update({ where: { id: log.id }, data: {
+                    status: 'FAILED', canRetry: true,
+                    errorMessage: `Sending limit reached; retry after ${retryAt.toISOString()}`
+                } });
+            }
+            throw new EmailDeferredError(retryAt);
+        }
+        await prisma.emailLog.update({ where: { id: log.id }, data: {
+            trackingId, emailPayload: payload, emailBodyExpiresAt: this.getSentBodyExpiresAt()
+        } });
+
         let transporter: Awaited<ReturnType<typeof this.createTransporter>> | null = null;
+        let info: any;
         try {
-            transporter = await this.createTransporter(emailAccount);
-
-            const mailOptions: any = {
-                from: `"${senderName}" <${senderEmail}>`,
-                to,
-                subject,
-                html: htmlWithMergeTagUrls,
-                attachments,
-                headers: emailCategory === 'MARKETING'
-                    ? {
-                        'List-Unsubscribe': `<${unsubscribeUrl}>`,
-                        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
-                    }
-                    : undefined
-            };
-
-            if (options?.inReplyTo) {
-                mailOptions.inReplyTo = options.inReplyTo;
+            if (useRelay) {
+                const result = await this.sendViaHttpRelay(emailAccount, accountId, to, subject, htmlWithMergeTagUrls, attachments, {
+                    ...options, unsubscribeUrl: emailCategory === 'MARKETING' ? unsubscribeUrl : undefined,
+                    idempotencyKey: log.id
+                });
+                info = { messageId: result.message_id };
+            } else {
+                transporter = await this.createTransporter(emailAccount);
+                info = await transporter.sendMail({
+                    from: { name: senderName, address: senderEmail },
+                    to, subject, html: htmlWithMergeTagUrls, text: emailPlainText(htmlWithMergeTagUrls), attachments,
+                    inReplyTo: options?.inReplyTo,
+                    references: options?.references,
+                    replyTo: replyToEmail,
+                    headers: emailCategory === 'MARKETING'
+                        ? {
+                            'List-Unsubscribe': `<${unsubscribeUrl}>`,
+                            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+                        }
+                        : undefined
+                });
             }
-            if (options?.references) {
-                mailOptions.references = options.references;
-            }
-            if (replyToEmail) {
-                mailOptions.replyTo = replyToEmail;
-            }
-
-            const info = await transporter.sendMail(mailOptions);
-            transporter.close();
-
-            await prisma.emailLog.create({
-                data: {
-                    accountId,
-                    emailAccountId,
-                    to,
-                    subject,
-                    status: 'SUCCESS',
-                    messageId: info.messageId,
-                    trackingId,
-                    source: options?.source,
-                    sourceId: options?.sourceId,
-                    canRetry: false,
-                    emailPayload: this.buildStoredSentBodyPayload(htmlWithMergeTagUrls, { category: emailCategory }),
-                    emailBodyExpiresAt: this.getSentBodyExpiresAt()
-                }
-            });
-
-            Logger.info(`Sent email with tracking`, { messageId: info.messageId, to, trackingId });
-            return info;
         } catch (error: any) {
-            // Why: transporter.close() was only called on success.
-            // Leaking the connection on error causes TCP socket exhaustion.
-            try { transporter?.close(); } catch { /* ignore close errors */ }
-
-            await prisma.emailLog.create({
+            const failure = classifySendFailure(error);
+            await prisma.emailLog.update({
+                where: { id: log.id },
                 data: {
-                    accountId,
-                    emailAccountId,
-                    to,
-                    subject,
-                    status: 'FAILED',
+                    ...failure,
+                    canRetry: failure.canRetry && log.retryCount < log.maxRetries,
                     errorMessage: error.message,
-                    errorCode: error.code || error.responseCode,
-                    source: options?.source,
-                    sourceId: options?.sourceId,
-                    canRetry: true,
-                    emailPayload: {
-                        html: htmlWithMergeTagUrls,
-                        attachments: attachments || [],
-                        options: options || {}
-                    }
+                    errorCode: String(error.code || error.responseCode || '')
                 }
             });
-
             Logger.error(`Failed to send email`, { to, error: error.message });
             throw error;
+        } finally {
+            try { transporter?.close(); } catch { /* delivery outcome is independent of cleanup */ }
         }
+        // A persistence failure after acceptance must never trigger another transport.
+        try {
+            await prisma.emailLog.update({ where: { id: log.id }, data: {
+                status: 'SUCCESS', messageId: info.messageId, canRetry: false,
+                errorMessage: null, errorCode: null
+            } });
+        } catch (error) {
+            Logger.error('Email accepted but success log could not be saved; do not automatically retry', { emailLogId: log.id, messageId: info.messageId, error });
+        }
+        return info;
+    }
+
+    private restoreAttachments(attachments: any[] = []): any[] {
+        return JSON.parse(JSON.stringify(attachments), (_key, value) =>
+            value?.storedBuffer ? Buffer.from(value.storedBuffer, 'base64') : value);
     }
 
     /**
@@ -616,34 +526,36 @@ export class EmailService {
             return { success: false, error: 'Maximum retry attempts reached' };
         }
 
-        const payload = emailLog.emailPayload as { html?: string; attachments?: any[]; options?: any } | null;
+        const payload = emailLog.emailPayload as { html?: string; canonicalHtml?: string; attachments?: any[]; options?: any } | null;
         if (!payload || !payload.html) {
             return { success: false, error: 'No stored payload for retry' };
         }
 
         // Update retry attempt tracking
-        await prisma.emailLog.update({
-            where: { id: emailLogId },
+        const claim = await prisma.emailLog.updateMany({
+            where: { id: emailLogId, accountId, status: 'FAILED', canRetry: true, retryCount: emailLog.retryCount },
             data: {
                 retryCount: { increment: 1 },
                 lastRetryAt: new Date(),
                 status: 'PENDING_RETRY'
             }
         });
+        if (claim.count !== 1) return { success: false, error: 'Email retry already claimed' };
 
         try {
-            const result = await this.sendEmail(
+            const result = await this.sendEmailAttempt(
                 accountId,
                 emailLog.emailAccountId,
                 emailLog.to,
                 emailLog.subject,
-                this.prepareStoredHtmlForResend(payload.html),
-                payload.attachments,
+                payload.canonicalHtml || this.prepareStoredHtmlForResend(payload.html),
+                this.restoreAttachments(payload.attachments),
                 {
                     source: emailLog.source || undefined,
                     sourceId: emailLog.sourceId || undefined,
                     ...payload.options
-                }
+                },
+                emailLogId
             );
 
             if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
@@ -659,19 +571,16 @@ export class EmailService {
                 return { success: false, error: reason };
             }
 
-            // Mark original as superseded (can't retry again)
-            await prisma.emailLog.update({
-                where: { id: emailLogId },
-                data: { canRetry: false, status: 'RETRIED' }
-            });
-
             return { success: true, messageId: result.messageId };
         } catch (error: any) {
-            // Update status back to FAILED if retry fails
-            await prisma.emailLog.update({
-                where: { id: emailLogId },
+            // Only release pre-transport claims. Never turn SENDING/UNKNOWN back
+            // into retryable after a transport or persistence failure.
+            await prisma.emailLog.updateMany({
+                where: { id: emailLogId, accountId, status: 'PENDING_RETRY' },
                 data: {
                     status: 'FAILED',
+                    canRetry: error instanceof EmailDeferredError || emailLog.retryCount + 1 < emailLog.maxRetries,
+                    ...(error instanceof EmailDeferredError ? { retryCount: { decrement: 1 } } : {}),
                     errorMessage: `Retry ${emailLog.retryCount + 1} failed: ${error.message}`
                 }
             });
@@ -681,7 +590,7 @@ export class EmailService {
     }
 
     /**
-     * Resend a logged email using its stored body preview.
+     * Resend using the canonical payload, with preview fallback for legacy logs.
      *
      * Creates a new EmailLog entry for the resend; the original log is left intact.
      */
@@ -694,13 +603,16 @@ export class EmailService {
         if (!emailLog) {
             return { success: false, error: 'Email log not found' };
         }
+        if (['QUEUED', 'SENDING', 'PENDING_RETRY'].includes(emailLog.status)) {
+            return { success: false, error: 'Email is still queued or in progress' };
+        }
 
-        const payload = emailLog.emailPayload as { html?: string; attachments?: any[]; options?: any; category?: 'MARKETING' | 'TRANSACTIONAL'; truncated?: boolean } | null;
+        const payload = emailLog.emailPayload as { html?: string; canonicalHtml?: string; attachments?: any[]; options?: any; category?: 'MARKETING' | 'TRANSACTIONAL'; truncated?: boolean } | null;
         if (!payload || typeof payload.html !== 'string') {
             return { success: false, error: 'Stored email body is not available for resend' };
         }
 
-        if (payload.truncated === true) {
+        if (payload.truncated === true && !payload.canonicalHtml) {
             return { success: false, error: 'Stored email body is truncated and cannot be resent safely' };
         }
 
@@ -710,10 +622,11 @@ export class EmailService {
                 emailLog.emailAccountId,
                 emailLog.to,
                 emailLog.subject,
-                payload.html,
-                Array.isArray(payload.attachments) ? payload.attachments : [],
+                payload.canonicalHtml || this.prepareStoredHtmlForResend(payload.html),
+                this.restoreAttachments(payload.attachments),
                 {
                     ...payload.options,
+                    idempotencyKey: undefined,
                     source: emailLog.source || undefined,
                     sourceId: emailLog.sourceId || undefined,
                     category: payload.category || payload.options?.category || 'MARKETING'
@@ -752,6 +665,7 @@ export class EmailService {
             fromName?: string;
             fromEmail?: string;
             replyToEmail?: string;
+            idempotencyKey?: string;
         }
     ): Promise<{ success: boolean; message_id: string }> {
         if (!emailAccount.relayEndpoint || !emailAccount.relayApiKey) {
@@ -807,6 +721,7 @@ export class EmailService {
             to,
             subject,
             html,
+            text: emailPlainText(html),
             from_name: options?.fromName?.trim() || emailAccount.name,
             from_email: options?.fromEmail?.trim() || emailAccount.email,
             reply_to: options?.replyToEmail?.trim() || undefined,
@@ -818,27 +733,35 @@ export class EmailService {
             attachments: base64Attachments.length > 0 ? base64Attachments : undefined
         };
 
-        const response = await fetch(emailAccount.relayEndpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Relay-Key': decryptedApiKey
-            },
-            body: JSON.stringify(payload)
-        });
+        try {
+            const response = await fetch(emailAccount.relayEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Relay-Key': decryptedApiKey,
+                    'Idempotency-Key': options?.idempotencyKey || crypto.randomUUID()
+                },
+                signal: AbortSignal.timeout(30_000),
+                body: JSON.stringify(payload)
+            });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Relay request failed: ${response.status} - ${errorText}`);
+            if (!response.ok) {
+                throw new Error(`Relay request failed: ${response.status}`);
+            }
+
+            const result = await safeRelayJson(response, emailAccount.relayEndpoint);
+
+            if (!result.success) {
+                throw new Error(result.error || 'Relay returned unsuccessful response');
+            }
+
+            return result;
+        } catch (error: any) {
+            // The relay may have delivered before its response was lost, malformed,
+            // or replaced by a proxy error. Never fall back or blindly retry.
+            error.deliveryUnknown = true;
+            throw error;
         }
-
-        const result = await safeRelayJson(response, emailAccount.relayEndpoint);
-
-        if (!result.success) {
-            throw new Error(result.error || 'Relay returned unsuccessful response');
-        }
-
-        return result;
     }
 
     /**
