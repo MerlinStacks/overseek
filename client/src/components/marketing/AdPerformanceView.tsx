@@ -20,9 +20,12 @@ interface AdAccount {
 export function AdPerformanceView() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const [accounts, setAccounts] = useState<AdAccount[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+    const [accountError, setAccountError] = useState<string | null>(null);
+    const [retry, setRetry] = useState(0);
 
     /**
      * Initiate OAuth for reconnecting an expired ad account.
@@ -49,32 +52,43 @@ export function AdPerformanceView() {
         }
     }, [currentAccount, token]);
 
-    const fetchAccounts = useCallback(async () => {
-        if (!currentAccount) return;
-        try {
-            const res = await fetch('/api/ads', {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-            });
-            const data = await res.json();
-            // Filter out accounts with pending setup
-            const activeAccounts = Array.isArray(data)
-                ? data.filter((acc: AdAccount) => acc.externalId !== 'PENDING_SETUP')
-                : [];
-            setAccounts(activeAccounts);
-            // Auto-select first account if none selected
-            if (activeAccounts.length > 0 && !selectedAccountId) {
-                setSelectedAccountId(activeAccounts[0].id);
-            }
-        } catch (err) {
-            Logger.error('Failed to fetch ad accounts:', { error: err });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount, selectedAccountId, token]);
-
     useEffect(() => {
-        fetchAccounts();
-    }, [fetchAccounts]);
+        const controller = new AbortController();
+        setIsLoading(true);
+        setAccounts([]);
+        setSelectedAccountId(null);
+        setAccountError(null);
+        if (!accountId || !token) {
+            setIsLoading(false);
+            return;
+        }
+        async function fetchAccounts() {
+            try {
+                const res = await fetch('/api/ads', {
+                    headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': accountId! },
+                    signal: controller.signal
+                });
+                if (!res.ok) throw new Error('Failed to load ad accounts');
+                const data = await res.json();
+                const activeAccounts = Array.isArray(data)
+                    ? data.filter((acc: AdAccount) => acc.externalId !== 'PENDING_SETUP')
+                    : [];
+                if (controller.signal.aborted) return;
+                setAccounts(activeAccounts);
+                if (activeAccounts.length > 0) {
+                    setSelectedAccountId(activeAccounts[0].id);
+                }
+            } catch (err) {
+                if (controller.signal.aborted) return;
+                setAccountError('Ad accounts could not be loaded. Please retry.');
+                Logger.error('Failed to fetch ad accounts:', { error: err });
+            } finally {
+                if (!controller.signal.aborted) setIsLoading(false);
+            }
+        }
+        void fetchAccounts();
+        return () => controller.abort();
+    }, [accountId, token, retry]);
 
     if (isLoading) {
         return (
@@ -82,6 +96,10 @@ export function AdPerformanceView() {
                 <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
             </div>
         );
+    }
+
+    if (accountError) {
+        return <div role="alert" className="p-4 rounded-lg bg-red-50 text-red-700">{accountError} <button onClick={() => setRetry(value => value + 1)} className="underline ml-2">Retry</button></div>;
     }
 
     if (accounts.length === 0) {
@@ -145,7 +163,9 @@ export function AdPerformanceView() {
             {/* Campaign breakdown for selected account */}
             {selectedAccount && (
                 <GoogleAdsCampaigns
+                    key={selectedAccount.id}
                     adAccountId={selectedAccount.id}
+                    platform={selectedAccount.platform}
                     accountName={selectedAccount.name}
                     onBack={() => { }} // No back behavior needed in sub-tab mode
                     hideBackButton

@@ -21,7 +21,7 @@ const GRAPH_API_BASE = `https://graph.facebook.com/${API_VERSION}`;
 async function safeFetchJson(response: Response, context: string): Promise<any> {
     const contentType = response.headers.get('content-type') || '';
 
-    if (!response.ok || !contentType.includes('application/json')) {
+    if (!contentType.includes('application/json')) {
         // Read body as text so we can log it without crashing
         const bodySnippet = (await response.text()).substring(0, 200);
         Logger.warn(`[MetaAds] Non-JSON response in ${context}`, {
@@ -34,10 +34,14 @@ async function safeFetchJson(response: Response, context: string): Promise<any> 
         );
     }
 
-    return response.json();
+    const data = await response.json() as any;
+    if (!response.ok || data.error) {
+        throw new Error(data.error?.message || `Meta API returned HTTP ${response.status} during ${context}`);
+    }
+    return data;
 }
 
-function buildMetaUrl(path: string, params: Record<string, string | number | boolean> = {}): string {
+export function buildMetaUrl(path: string, params: Record<string, string | number | boolean> = {}): string {
     const url = new URL(`${GRAPH_API_BASE}/${path.replace(/^\//, '')}`);
     for (const [key, value] of Object.entries(params)) {
         url.searchParams.set(key, String(value));
@@ -48,7 +52,26 @@ function buildMetaUrl(path: string, params: Record<string, string | number | boo
 function metaFetch(url: string, accessToken: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers || {});
     headers.set('Authorization', `Bearer ${accessToken}`);
-    return fetch(url, { ...init, headers });
+    return fetch(url, { ...init, headers, signal: init.signal || AbortSignal.timeout(30_000) });
+}
+
+/** Follow cursors on our own Graph endpoint, never a token-bearing paging URL. */
+export async function fetchAllMetaRows(url: string, accessToken: string): Promise<any[]> {
+    const rows: any[] = [];
+    const seen = new Set<string>();
+    let next: string | undefined = url;
+    while (next) {
+        const data = await safeFetchJson(await metaFetch(next, accessToken), 'paginated insights');
+        rows.push(...(data.data || []));
+        const cursor = data.paging?.next && data.paging?.cursors?.after;
+        if (!cursor) break;
+        if (seen.has(cursor)) throw new Error('Meta returned a repeated pagination cursor');
+        seen.add(cursor);
+        const page = new URL(url);
+        page.searchParams.set('after', cursor);
+        next = page.toString();
+    }
+    return rows;
 }
 
 /**
@@ -168,6 +191,13 @@ export class MetaAdsService {
      * Uses Facebook Graph API to retrieve campaign breakdown.
      */
     static async getCampaignInsights(adAccountId: string, days: number = 30): Promise<CampaignInsight[]> {
+        return this.getEntityInsights(adAccountId, days, 'campaign');
+    }
+
+    /** Entity IDs come from account-scoped insights, not arbitrary Graph object paths. */
+    static async getEntityInsights(
+        adAccountId: string, days: number, level: 'campaign' | 'adset' | 'ad', parentId?: string
+    ): Promise<CampaignInsight[]> {
         const adAccount = await prisma.adAccount.findUnique({
             where: { id: adAccountId }
         });
@@ -181,27 +211,28 @@ export class MetaAdsService {
         // Calculate date range
         const endDate = new Date();
         const startDate = new Date();
-        startDate.setDate(endDate.getDate() - days);
+        startDate.setDate(endDate.getDate() - (days - 1));
 
-        // Fetch campaigns with insights - only ACTIVE campaigns
-        const fields = 'campaign_id,campaign_name,spend,impressions,clicks,actions,action_values';
+        const fields = `${level}_id,${level}_name,spend,impressions,clicks,actions,action_values`;
         const timeRange = JSON.stringify({
             since: formatDateISO(startDate),
             until: formatDateISO(endDate)
         });
-        const filtering = JSON.stringify([{ field: 'campaign.effective_status', operator: 'IN', value: ['ACTIVE'] }]);
-        const url = buildMetaUrl(`${actId}/insights`, { fields, level: 'campaign', time_range: timeRange, filtering });
+        const params: Record<string, string | number> = { fields, level, time_range: timeRange, limit: 100 };
+        if (parentId) {
+            params.filtering = JSON.stringify([{ field: `${level === 'adset' ? 'campaign' : 'adset'}.id`, operator: 'IN', value: [parentId] }]);
+        }
+        const url = buildMetaUrl(`${actId}/insights`, params);
 
         try {
-            const response = await metaFetch(url, adAccount.accessToken);
-            const data = await safeFetchJson(response, 'getCampaignInsights');
-
-            if (data.error) {
-                Logger.error('Meta API Error (campaigns)', { error: data.error });
-                throw new Error(data.error.message);
-            }
-
-            const campaigns: CampaignInsight[] = (data.data || []).map((row: any) => {
+            const [rows, entities] = await Promise.all([
+                fetchAllMetaRows(url, adAccount.accessToken),
+                fetchAllMetaRows(buildMetaUrl(`${actId}/${level === 'campaign' ? 'campaigns' : level === 'adset' ? 'adsets' : 'ads'}`, {
+                    fields: 'id,effective_status', limit: 100
+                }), adAccount.accessToken)
+            ]);
+            const statuses = new Map(entities.map(entity => [entity.id, entity.effective_status]));
+            const campaigns: CampaignInsight[] = rows.map((row: any) => {
                 const spend = parseFloat(row.spend || '0');
                 const impressions = parseInt(row.impressions || '0');
                 const clicks = parseInt(row.clicks || '0');
@@ -234,9 +265,9 @@ export class MetaAdsService {
                 const cpa = conversions > 0 ? spend / conversions : 0;
 
                 return {
-                    campaignId: row.campaign_id || '',
-                    campaignName: row.campaign_name || 'Unknown Campaign',
-                    status: 'ACTIVE', // Graph API doesn't return status in insights
+                    campaignId: row[`${level}_id`] || '',
+                    campaignName: row[`${level}_name`] || 'Unknown',
+                    status: statuses.get(row[`${level}_id`]) || 'UNKNOWN',
                     spend,
                     impressions,
                     clicks,
@@ -277,7 +308,7 @@ export class MetaAdsService {
 
         const endDate = new Date();
         const startDate = new Date();
-        startDate.setDate(endDate.getDate() - days);
+        startDate.setDate(endDate.getDate() - (days - 1));
 
         const fields = 'spend,impressions,clicks,actions,action_values';
         const timeRange = JSON.stringify({
@@ -287,15 +318,8 @@ export class MetaAdsService {
         const url = buildMetaUrl(`${actId}/insights`, { fields, time_increment: 1, time_range: timeRange });
 
         try {
-            const response = await metaFetch(url, adAccount.accessToken);
-            const data = await safeFetchJson(response, 'getDailyTrends');
-
-            if (data.error) {
-                Logger.error('Meta API Error (trends)', { error: data.error });
-                throw new Error(data.error.message);
-            }
-
-            return (data.data || []).map((row: any) => {
+            const rows = await fetchAllMetaRows(url, adAccount.accessToken);
+            return rows.map((row: any) => {
                 let conversions = 0;
                 let conversionsValue = 0;
 

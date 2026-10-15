@@ -7,17 +7,9 @@
 
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
-
-async function safeMetaJson(response: Response, accountId: string): Promise<any> {
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-        const bodySnippet = (await response.text()).slice(0, 200);
-        Logger.warn('[CreativeFatigueAdvisor] Meta returned non-JSON response', { accountId, status: response.status, contentType, bodySnippet });
-        return null;
-    }
-
-    return response.json();
-}
+import { buildMetaUrl, fetchAllMetaRows } from '../../ads/MetaAdsService';
+import { assessCreativeFatigue } from '../../ads/MetaCreativeService';
+import { formatDateISO } from '../../ads/types';
 
 /**
  * Detect stale ad creatives in Meta campaigns.
@@ -44,49 +36,19 @@ export async function processCreativeFatigue(
                     ? adAccount.externalId
                     : `act_${adAccount.externalId}`;
 
-                // Fetch ads with creation date and frequency
-                const fields = 'ad_name,created_time,frequency';
-                const url = `https://graph.facebook.com/v18.0/${actId}/ads?fields=${encodeURIComponent(fields)}&effective_status=${encodeURIComponent("['ACTIVE']")}&limit=50`;
-
-                const response = await fetch(url, {
-                    headers: { Authorization: `Bearer ${adAccount.accessToken}` }
-                });
-                const data = await safeMetaJson(response, accountId);
-
-                if (!response.ok || data?.error || !data?.data) continue;
-
-                const now = new Date();
-                const staleAds: { name: string; age: number }[] = [];
-                let highFrequencyCount = 0;
-
-                for (const ad of data.data) {
-                    const createdDate = new Date(ad.created_time);
-                    const ageInDays = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
-                    const frequency = parseFloat(ad.frequency || '0');
-
-                    if (ageInDays > 45) {
-                        staleAds.push({ name: ad.ad_name, age: ageInDays });
-                    }
-                    if (frequency > 5) {
-                        highFrequencyCount++;
-                    }
-                }
-
-                if (staleAds.length > 0) {
-                    const oldestAds = staleAds.sort((a, b) => b.age - a.age).slice(0, 2);
-                    const names = oldestAds.map(a => `"${a.name}" (${a.age} days)`).join(', ');
-                    suggestions.push(
-                        `🎨 **Creative Fatigue - Meta**: ${staleAds.length} ad(s) have been running 45+ days: ${names}. ` +
-                        `Consider refreshing creatives to maintain performance.`
-                    );
-                }
-
-                if (highFrequencyCount > 0) {
-                    suggestions.push(
-                        `👥 **Frequency Alert - Meta**: ${highFrequencyCount} ad(s) have frequency >5. ` +
-                        `Your audience is seeing ads repeatedly. Consider expanding targeting or pausing high-frequency ads.`
-                    );
-                }
+                const date = (offset: number) => { const value = new Date(); value.setUTCDate(value.getUTCDate() - offset); return formatDateISO(value); };
+                const insights = (since: string, until: string) => fetchAllMetaRows(buildMetaUrl(`${actId}/insights`, {
+                    fields: 'ad_id,ad_name,spend,impressions,clicks,actions,action_values,frequency', level: 'ad',
+                    time_range: JSON.stringify({ since, until }), limit: 100
+                }), adAccount.accessToken!);
+                const [recent, previous] = await Promise.all([insights(date(7), date(1)), insights(date(14), date(8))]);
+                const priorByAd = new Map(previous.map(row => [row.ad_id, row]));
+                const flagged = recent.filter(row => assessCreativeFatigue([row], priorByAd.has(row.ad_id) ? [priorByAd.get(row.ad_id)] : [], true).status === 'potential_fatigue');
+                if (flagged.length) suggestions.push(
+                    `🎨 **Potential Creative Fatigue - Meta (${adAccount.name || 'Ad account'})**: ${flagged.length} ad(s) show repeated exposure and deteriorating performance across two complete weeks: ` +
+                    `${flagged.slice(0, 2).map(row => `"${row.ad_name}"`).join(', ')}. ` +
+                    'This is a heuristic, not proof. Review targeting, placements, budget and creative before changing live ads.'
+                );
 
             } catch (_err) {
                 Logger.debug('Failed to fetch Meta ads for fatigue check', { id: adAccount.id });

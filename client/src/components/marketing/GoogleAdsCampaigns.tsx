@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { Logger } from '../../utils/logger';
 import { useAuth } from '../../context/AuthContext';
@@ -17,11 +17,10 @@ import {
     Lightbulb,
     ChevronDown,
     ChevronUp,
-    MessageCirclePlus,
     AlertCircle
 } from 'lucide-react';
-import { AdContextModal } from './AdContextModal';
 import { CampaignProductsPanel } from './CampaignProductsPanel';
+import { MetaAdsDrilldown } from './MetaAdsDrilldown';
 import { formatCurrency, formatCompact } from '../../utils/format';
 
 interface CampaignInsight {
@@ -57,6 +56,7 @@ interface SuggestionsPayload {
 }
 
 interface GoogleAdsCampaignsProps {
+    platform?: string;
     adAccountId: string;
     accountName: string;
     onBack: () => void;
@@ -65,9 +65,10 @@ interface GoogleAdsCampaignsProps {
     onReconnect?: () => void;
 }
 
-export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackButton, onReconnect }: GoogleAdsCampaignsProps) {
+export function GoogleAdsCampaigns({ adAccountId, accountName, platform = 'GOOGLE', onBack, hideBackButton, onReconnect }: GoogleAdsCampaignsProps) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const accountId = currentAccount?.id;
     const [campaigns, setCampaigns] = useState<CampaignInsight[]>([]);
     const [trends, setTrends] = useState<DailyTrend[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -80,23 +81,32 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
     const [suggestions, setSuggestions] = useState<SuggestionsPayload | null>(null);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(true);
-    const [showContextModal, setShowContextModal] = useState(false);
+    const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+    const [trendError, setTrendError] = useState(false);
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('ALL');
 
     // Expanded campaigns for product view
     const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
+    const dataRequest = useRef(0);
+    const suggestionsRequest = useRef(0);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (signal?: AbortSignal) => {
+        const request = ++dataRequest.current;
         setIsLoading(true);
         setError(null);
+        setCampaigns([]);
+        setTrends([]);
+        setTrendError(false);
         try {
             const headers = {
                 'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount?.id || ''
+                'X-Account-ID': accountId || ''
             };
 
             const [campaignsRes, trendsRes] = await Promise.all([
-                fetch(`/api/ads/${adAccountId}/campaigns?days=${days}`, { headers }),
-                fetch(`/api/ads/${adAccountId}/trends?days=${days}`, { headers })
+                fetch(`/api/ads/${adAccountId}/campaigns?days=${days}`, { headers, signal }),
+                fetch(`/api/ads/${adAccountId}/trends?days=${days}`, { headers, signal })
             ]);
 
             if (!campaignsRes.ok) {
@@ -107,41 +117,52 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
             const campaignsData = await campaignsRes.json();
             const trendsData = trendsRes.ok ? await trendsRes.json() : [];
 
+            if (signal?.aborted || request !== dataRequest.current) return;
+            setTrendError(!trendsRes.ok);
             setCampaigns(campaignsData);
             setTrends(trendsData);
         } catch (err: unknown) {
+            if (signal?.aborted || request !== dataRequest.current) return;
             const message = err instanceof Error ? err.message : 'Failed to load campaigns';
             setError(message);
         } finally {
-            setIsLoading(false);
+            if (!signal?.aborted && request === dataRequest.current) setIsLoading(false);
         }
-    }, [adAccountId, currentAccount?.id, days, token]);
+    }, [adAccountId, accountId, days, token]);
 
-    const fetchSuggestions = useCallback(async () => {
+    const fetchSuggestions = useCallback(async (signal?: AbortSignal) => {
+        const request = ++suggestionsRequest.current;
         setLoadingSuggestions(true);
+        setSuggestions(null);
+        setSuggestionsError(null);
         try {
             const headers = {
                 'Authorization': `Bearer ${token}`,
-                'X-Account-ID': currentAccount?.id || ''
+                'X-Account-ID': accountId || ''
             };
-            const res = await fetch(`/api/ads/${adAccountId}/analysis`, { headers });
-            if (res.ok) {
-                const data = await res.json();
-                setSuggestions(data);
-            }
+            const res = await fetch(`/api/ads/${adAccountId}/analysis?days=${days}`, { headers, signal });
+            if (!res.ok) throw new Error('Recommendations could not be loaded. Please retry.');
+            const data = await res.json();
+            if (!signal?.aborted && request === suggestionsRequest.current) setSuggestions(data);
         } catch (err) {
+            if (signal?.aborted || request !== suggestionsRequest.current) return;
+            setSuggestionsError('Recommendations could not be loaded. Please retry.');
             Logger.error('Failed to fetch suggestions', { error: err });
         } finally {
-            setLoadingSuggestions(false);
+            if (!signal?.aborted && request === suggestionsRequest.current) setLoadingSuggestions(false);
         }
-    }, [adAccountId, currentAccount?.id, token]);
+    }, [adAccountId, accountId, days, token]);
 
     useEffect(() => {
-        fetchData();
+        const controller = new AbortController();
+        fetchData(controller.signal);
+        return () => { controller.abort(); dataRequest.current++; };
     }, [fetchData]);
 
     useEffect(() => {
-        fetchSuggestions();
+        const controller = new AbortController();
+        fetchSuggestions(controller.signal);
+        return () => { controller.abort(); suggestionsRequest.current++; };
     }, [fetchSuggestions]);
 
     function handleSort(column: keyof CampaignInsight) {
@@ -153,7 +174,19 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
         }
     }
 
-    const sortedCampaigns = [...campaigns].sort((a, b) => {
+    function toggleCampaign(campaignId: string) {
+        setExpandedCampaigns(previous => {
+            const next = new Set(previous);
+            if (next.has(campaignId)) next.delete(campaignId);
+            else next.add(campaignId);
+            return next;
+        });
+    }
+
+    const sortedCampaigns = campaigns.filter(c =>
+        c.campaignName.toLowerCase().includes(search.toLowerCase()) &&
+        (statusFilter === 'ALL' || c.status === statusFilter)
+    ).sort((a, b) => {
         const aVal = a[sortBy];
         const bVal = b[sortBy];
         if (typeof aVal === 'number' && typeof bVal === 'number') {
@@ -202,6 +235,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                 </div>
                 <div className="flex items-center gap-3">
                     <select
+                        aria-label="Reporting period"
                         value={days}
                         onChange={(e) => setDays(Number(e.target.value))}
                         className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
@@ -213,7 +247,8 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                         <option value={90}>Last 90 days</option>
                     </select>
                     <button
-                        onClick={fetchData}
+                        onClick={() => { void fetchData(); void fetchSuggestions(); }}
+                        aria-label="Refresh performance"
                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
                     >
                         <RefreshCw size={18} />
@@ -242,7 +277,8 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                 </div>
             )}
 
-            {/* AI Suggestions Panel - at top for prominence */}
+            {!error && <>
+            {/* Recommendations are scoped to the selected account and reporting period. */}
             <div className="bg-linear-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 shadow-xs overflow-hidden">
                 <div className="p-4 flex items-center justify-between">
                     <button
@@ -253,20 +289,13 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                             <Lightbulb size={20} className="text-white" />
                         </div>
                         <div className="text-left">
-                            <h3 className="font-semibold text-gray-900">AI Optimization Suggestions</h3>
-                            <p className="text-sm text-gray-600">Smart recommendations based on your campaign data</p>
+                            <h3 className="font-semibold text-gray-900">Performance Recommendations</h3>
+                            <p className="text-sm text-gray-600">Rule-based insights for {accountName} · Last {days} days</p>
                         </div>
                     </button>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setShowContextModal(true)}
-                            className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
-                            title="Add business context"
-                        >
-                            <MessageCirclePlus size={18} />
-                        </button>
-                        <button
-                            onClick={fetchSuggestions}
+                            onClick={() => void fetchSuggestions()}
                             disabled={loadingSuggestions}
                             className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors disabled:opacity-50"
                             title="Refresh suggestions"
@@ -311,22 +340,17 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                     </div>
                 )}
 
-                {showSuggestions && !suggestions && !loadingSuggestions && (
+                {showSuggestions && loadingSuggestions && <p className="px-4 pb-4 text-sm text-gray-500" role="status">Loading recommendations...</p>}
+                {showSuggestions && suggestionsError && <p className="px-4 pb-4 text-sm text-red-600" role="alert">{suggestionsError}</p>}
+                {showSuggestions && !suggestionsError && !loadingSuggestions && !suggestions?.suggestions?.length && (
                     <div className="px-4 pb-4">
                         <p className="text-gray-500 text-sm">No suggestions available. Try refreshing the data.</p>
                     </div>
                 )}
             </div>
 
-            {/* Context Modal */}
-            <AdContextModal
-                isOpen={showContextModal}
-                onClose={() => setShowContextModal(false)}
-                onSaved={fetchSuggestions}
-            />
-
             {/* Summary Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-4">
                 <div className="bg-white p-4 rounded-xl border shadow-xs">
                     <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
                         <DollarSign size={14} />
@@ -357,11 +381,19 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                 <div className="bg-white p-4 rounded-xl border shadow-xs">
                     <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
                         <Target size={14} />
-                        Conversions
+                        {platform === 'META' ? 'Purchases' : 'Conversions'}
                     </div>
                     <div className="text-2xl font-bold text-gray-900">
                         {formatNumber(totals.conversions)}
                     </div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border shadow-xs">
+                    <div className="text-gray-500 text-xs uppercase mb-1">{platform === 'META' ? 'Purchase Revenue' : 'Conversion Value'}</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(totals.conversionsValue, campaigns[0]?.currency)}</div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border shadow-xs">
+                    <div className="text-gray-500 text-xs uppercase mb-1">{platform === 'META' ? 'Cost per Purchase' : 'Cost per Conversion'}</div>
+                    <div className="text-2xl font-bold text-gray-900">{totals.conversions > 0 ? formatCurrency(totals.spend / totals.conversions, campaigns[0]?.currency) : '—'}</div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border shadow-xs">
                     <div className="flex items-center gap-2 text-gray-500 text-xs uppercase mb-1">
@@ -375,6 +407,14 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
             </div>
 
             {/* Campaigns Table */}
+            <div className="flex flex-wrap items-center gap-3">
+                <input aria-label="Search campaigns" placeholder="Search campaigns..." value={search} onChange={e => setSearch(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" />
+                <select aria-label="Filter campaign status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+                    <option value="ALL">All statuses</option>
+                    {[...new Set(campaigns.map(c => c.status))].sort().map(status => <option key={status} value={status}>{status}</option>)}
+                </select>
+                <span className="text-sm text-gray-500">{sortedCampaigns.length} of {campaigns.length} campaigns · Totals include all returned campaigns{platform === 'META' ? ' with reporting activity · Current delivery status' : ''}</span>
+            </div>
             <div className="bg-white rounded-xl border shadow-xs overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full">
@@ -420,21 +460,23 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                                     <Fragment key={campaign.campaignId}>
                                         <tr
                                             className={`hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-blue-50' : ''}`}
-                                            onClick={() => {
-                                                const newExpanded = new Set(expandedCampaigns);
-                                                if (isExpanded) {
-                                                    newExpanded.delete(campaign.campaignId);
-                                                } else {
-                                                    newExpanded.add(campaign.campaignId);
-                                                }
-                                                setExpandedCampaigns(newExpanded);
-                                            }}
+                                            onClick={() => toggleCampaign(campaign.campaignId)}
                                         >
                                             <td className="px-2 py-3 text-gray-400">
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Expand ${campaign.campaignName}`}
+                                                    aria-expanded={isExpanded}
+                                                    onClick={event => {
+                                                        event.stopPropagation();
+                                                        toggleCampaign(campaign.campaignId);
+                                                    }}
+                                                >
                                                 <ChevronRight
                                                     size={16}
                                                     className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                                                 />
+                                                </button>
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="font-medium text-gray-900 truncate max-w-xs" title={campaign.campaignName}>
@@ -442,7 +484,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 text-xs rounded-full ${campaign.status === 'ENABLED'
+                                                <span className={`px-2 py-1 text-xs rounded-full ${['ENABLED', 'ACTIVE'].includes(campaign.status)
                                                     ? 'bg-green-100 text-green-800'
                                                     : 'bg-gray-100 text-gray-600'
                                                     }`}>
@@ -479,11 +521,11 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                                         {isExpanded && (
                                             <tr key={`${campaign.campaignId}-products`}>
                                                 <td colSpan={10} className="p-0">
-                                                    <CampaignProductsPanel
+                                                    {platform === 'META' ? <MetaAdsDrilldown adAccountId={adAccountId} parentId={campaign.campaignId} level="adset" days={days} /> : <CampaignProductsPanel
                                                         adAccountId={adAccountId}
                                                         campaignId={campaign.campaignId}
                                                         days={days}
-                                                    />
+                                                    />}
                                                 </td>
                                             </tr>
                                         )}
@@ -496,6 +538,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
             </div>
 
             {/* Daily Trend Chart (Simple Bar Chart) */}
+            {trendError && <p role="alert" className="text-sm text-amber-700">Daily trends could not be loaded. Campaign metrics are still available; refresh to retry.</p>}
             {trends.length > 0 && (
                 <div className="bg-white rounded-xl border shadow-xs p-6">
                     <h3 className="text-lg font-semibold mb-4">Daily Spend Trend</h3>
@@ -524,7 +567,7 @@ export function GoogleAdsCampaigns({ adAccountId, accountName, onBack, hideBackB
                     </div>
                 </div>
             )}
+            </>}
         </div>
     );
 }
-

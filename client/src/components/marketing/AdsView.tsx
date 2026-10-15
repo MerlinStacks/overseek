@@ -367,7 +367,9 @@ export function AdsView({ onSelectAccount }: AdsViewProps = {}) {
             {/* Campaign Breakdown View */}
             {selectedAccount ? (
                 <GoogleAdsCampaigns
+                    key={selectedAccount.id}
                     adAccountId={selectedAccount.id}
+                    platform={selectedAccount.platform}
                     accountName={selectedAccount.name}
                     onBack={() => setSelectedAccount(null)}
                 />

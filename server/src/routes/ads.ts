@@ -7,6 +7,7 @@
 
 import { FastifyPluginAsync } from 'fastify';
 import { AdsService } from '../services/ads';
+import { MetaAdsService } from '../services/ads/MetaAdsService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
@@ -14,6 +15,7 @@ import { adsActionsRoutes } from './ads/actions';
 import { adCopyRoutes } from './ads/copy';
 import intelligenceRoutes from './ads/intelligence';
 import { getAdsAccountIdOrReply, parsePositiveInt } from './ads/routeHelpers';
+import { creativeRoutes } from './ads/creatives';
 
 interface AdAccountBody {
     platform?: string;
@@ -83,7 +85,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
     };
 
     const parseDaysQuery = (request: { query: { days?: string } }, fallback: number = 30) =>
-        parsePositiveInt(request.query.days, fallback);
+        Math.min(parsePositiveInt(request.query.days, fallback), 365);
 
     const parseDaysAndLimitQuery = (
         request: { query: { days?: string; limit?: string } },
@@ -119,6 +121,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Register action sub-routes
     await fastify.register(adsActionsRoutes);
+    await fastify.register(creativeRoutes);
 
     // Register ad copy generation routes
     await fastify.register(adCopyRoutes, { prefix: '/copy' });
@@ -360,6 +363,28 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // Meta drill-down remains scoped to the connected account at every level.
+    fastify.get<{
+        Params: { adAccountId: string };
+        Querystring: { level?: string; parentId?: string; days?: string };
+    }>('/:adAccountId/meta-entities', async (request, reply) => {
+        try {
+            const resolved = await resolveAdAccountFromParamsOrReply(request, reply);
+            if (!resolved) return;
+            if (resolved.adAccount.platform !== 'META') {
+                return reply.code(400).send({ error: 'This endpoint requires a Meta Ads account' });
+            }
+            const { level, parentId } = request.query;
+            if ((level !== 'adset' && level !== 'ad') || !parentId || !/^\d+$/.test(parentId)) {
+                return reply.code(400).send({ error: 'A valid level (adset or ad) and numeric parentId are required' });
+            }
+            return await MetaAdsService.getEntityInsights(resolved.adAccountId, parseDaysQuery(request), level, parentId);
+        } catch (error: any) {
+            Logger.error('Failed to fetch Meta drill-down', { error });
+            return reply.code(500).send({ error: error.message });
+        }
+    });
+
     // GET /api/ads/:adAccountId/shopping-products
     fastify.get<{ Params: { adAccountId: string } }>('/:adAccountId/shopping-products', async (request, reply) => {
         try {
@@ -431,13 +456,24 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
     // GET /api/ads/:adAccountId/analysis
     fastify.get<{ Params: { adAccountId: string } }>('/:adAccountId/analysis', async (request, reply) => {
         try {
-            const accountId = getAdsAccountIdOrReply(request, reply);
-            if (!accountId) return;
-
-            const { AdsTools } = await import('../services/tools/AdsTools');
-            const suggestions = await AdsTools.getAdOptimizationSuggestions(accountId);
-
-            return suggestions;
+            const resolved = await resolveAdAccountFromParamsOrReply(request, reply);
+            if (!resolved) return;
+            const days = parseDaysQuery(request);
+            const campaigns = await runByPlatformOrReply(resolved.adAccount, {
+                google: () => AdsService.getGoogleCampaignInsights(resolved.adAccountId, days),
+                meta: () => AdsService.getMetaCampaignInsights(resolved.adAccountId, days),
+                unsupportedMessage: 'Analysis not supported for platform'
+            }, reply);
+            if (!campaigns) return;
+            const { RecommendationEngine } = await import('../services/tools/knowledge/RecommendationEngine');
+            const recommendations = RecommendationEngine.generateFromCampaigns(
+                campaigns, resolved.adAccount.platform === 'META' ? 'meta' : 'google'
+            );
+            return {
+                suggestions: recommendations.slice(0, 5).map(rec => `${rec.campaignName ? `${rec.campaignName}: ` : ''}${rec.text}`),
+                scope: { adAccountId: resolved.adAccountId, days },
+                source: 'knowledge_base'
+            };
         } catch (error: any) {
             Logger.error('Failed to fetch ad analysis', { error });
             return reply.code(500).send({ error: error.message });
