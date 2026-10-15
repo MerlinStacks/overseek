@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, MessageCircle as Facebook, Globe, Camera as Instagram, Loader2, Music2, Search, CirclePlay as Youtube } from 'lucide-react';
+import { ArrowDown, ArrowUp, Download, MessageCircle as Facebook, Globe, Camera as Instagram, Loader2, Music2, Search, CirclePlay as Youtube } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
 
 interface ReportsTableProps {
     data: ReportsTableRow[];
     loading: boolean;
     activeView: string;
+    dateRange?: string;
 }
 
 interface ReportsTableRow {
@@ -55,7 +56,7 @@ const ChannelIcon = ({ channel }: { channel?: string }) => {
     return <Globe className={`${className} text-gray-500`} />;
 };
 
-export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) => {
+export const ReportsTable = ({ data, loading, activeView, dateRange = 'today' }: ReportsTableProps) => {
     const [pageFilter, setPageFilter] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('sessions');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -130,6 +131,37 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
         });
     }, [data, pageFilter, isPages, isChannels, isCampaigns, sortKey, sortDirection]);
 
+    const exportPages = () => {
+        if (!isPages || loading || visibleData.length === 0) return;
+
+        // Quote every cell and neutralize spreadsheet formulas in visitor-controlled text.
+        const csvCell = (value: string | number) => {
+            const text = String(value);
+            const safe = /^[\s]*[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
+            return `"${safe.replace(/"/g, '""')}"`;
+        };
+        const rows = [
+            ['Page URL', 'Title', 'Views', 'Entries', 'Exits', 'Exit %'],
+            ...visibleData.map(row => [
+                row.url ?? '', row.title || 'Untitled', row.views ?? 0,
+                row.entries ?? 0, row.exits ?? 0, `${(row.exitRate ?? 0).toFixed(2)}%`,
+            ]),
+        ];
+        const csv = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `pages_${dateRange}_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        try {
+            link.click();
+        } finally {
+            link.remove();
+            // Allow the browser to start the download before releasing the object URL.
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+    };
+
     if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto text-blue-500" /></div>;
 
     const columnCount = () => {
@@ -146,8 +178,8 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
         <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
             {/* Search/Filter for Pages view */}
             {isPages && (
-                <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-                    <div className="relative max-w-md">
+                <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="relative w-full max-w-md">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <input
                             type="text"
@@ -164,6 +196,15 @@ export const ReportsTable = ({ data, loading, activeView }: ReportsTableProps) =
                             </span>
                         )}
                     </div>
+                    <button
+                        type="button"
+                        onClick={exportPages}
+                        disabled={visibleData.length === 0}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <Download size={16} />
+                        Export CSV
+                    </button>
                 </div>
             )}
             <table className="w-full text-left text-sm">

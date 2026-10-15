@@ -59,6 +59,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
     const { currentAccount } = useAccount();
     const [flows, setFlows] = useState<FlowRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [period, setPeriod] = useState('all');
 
     // Create Modal - simplified: name only
     const [showCreate, setShowCreate] = useState(false);
@@ -77,7 +78,8 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         if (!currentAccount) return;
         setIsLoading(true);
         try {
-            const res = await fetch('/api/marketing/automations', {
+            const query = period === 'all' ? '' : `?days=${period}`;
+            const res = await fetch(`/api/marketing/automations${query}`, {
                 signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -87,6 +89,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
             if (signal?.aborted) return;
             if (res.ok) {
                 const data = await res.json();
+                if (signal?.aborted) return;
                 if (Array.isArray(data)) setFlows(data as FlowRecord[]);
                 else setFlows([]);
             } else {
@@ -100,7 +103,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
         } finally {
             if (!signal?.aborted) setIsLoading(false);
         }
-    }, [currentAccount, token]);
+    }, [currentAccount, token, period]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -230,7 +233,21 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
     return (
         <>
             <div className="space-y-3">
-                <div className="flex justify-end">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                        Time period
+                        <select
+                            value={period}
+                            onChange={event => setPeriod(event.target.value)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
+                        >
+                            <option value="all">All time</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="365">Last year</option>
+                        </select>
+                    </label>
                     <button
                         onClick={() => setShowCreate(true)}
                         className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
@@ -238,6 +255,9 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                         <Plus size={16} /> New Flow
                     </button>
                 </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Revenue and completed/failed activity are recorded within the selected period. Active/holding contacts entered within it.
+                </p>
 
                 {showCreate && (
                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
@@ -287,7 +307,7 @@ export function AutomationsList({ onEdit }: { onEdit: (id: string, name: string)
                                         </td>
                                         <td className="px-3 py-1.5 align-middle">
                                             <div className="flex flex-wrap items-center gap-1.5">
-                                                <MetricPill icon={<Circle size={12} />} label="Active in flow" value={flow.metrics?.activeInFlow || flow.enrollments?.length || 0} />
+                                                <MetricPill icon={<Circle size={12} />} label="Active in flow" value={flow.metrics?.activeInFlow ?? flow.enrollments?.length ?? 0} />
                                                 <MetricPill icon={<Pause size={12} />} label="Holding until next step" value={flow.metrics?.pausedInFlow || 0} />
                                                 <MetricPill icon={<CheckCircle2 size={12} />} label="Completed flow" value={flow.metrics?.completedInFlow || 0} />
                                                 <MetricPill icon={<XCircle size={12} />} label="Failed flow events" value={flow.metrics?.failedInFlow || 0} />

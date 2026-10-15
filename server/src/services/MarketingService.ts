@@ -579,7 +579,7 @@ export class MarketingService {
     // Automations
     // -------------------
 
-    async listAutomations(accountId: string) {
+    async listAutomations(accountId: string, days?: number) {
         const automations = await prisma.marketingAutomation.findMany({
             where: { accountId },
             orderBy: { createdAt: 'desc' }
@@ -607,11 +607,13 @@ export class MarketingService {
         }
 
         const now = new Date();
-        const [enrollmentGroups, holdingGroups, completedActionEvents, failedActionEvents, goalGroups] = await Promise.all([
+        const createdAt = days ? { gte: new Date(now.getTime() - days * 86_400_000), lte: now } : undefined;
+        const [enrollmentGroups, holdingGroups, completedActionEvents, failedActionEvents, goalEvents, purchaseEvents] = await Promise.all([
             prisma.automationEnrollment.groupBy({
                 by: ['automationId', 'status'],
                 where: {
                     accountId,
+                    enteredAt: createdAt,
                     automationId: { in: automationIds }
                 },
                 _count: true
@@ -622,6 +624,7 @@ export class MarketingService {
                     accountId,
                     automationId: { in: automationIds },
                     status: 'ACTIVE',
+                    enteredAt: createdAt,
                     nextRunAt: { gt: now }
                 },
                 _count: true
@@ -631,6 +634,7 @@ export class MarketingService {
                     accountId,
                     automationId: { in: automationIds },
                     eventType: 'NODE_EXECUTED',
+                    createdAt,
                     enrollment: { status: 'COMPLETED' },
                     NOT: [
                         { outcome: { contains: 'SKIPPED', mode: 'insensitive' } },
@@ -651,6 +655,7 @@ export class MarketingService {
                     accountId,
                     automationId: { in: automationIds },
                     eventType: 'NODE_EXECUTED',
+                    createdAt,
                     outcome: { contains: 'FAILED', mode: 'insensitive' },
                     NOT: { outcome: { contains: 'SKIPPED', mode: 'insensitive' } }
                 },
@@ -660,13 +665,25 @@ export class MarketingService {
                     metadata: true
                 }
             }),
-            prisma.automationGoalEvent.groupBy({
-                by: ['automationId'],
+            prisma.automationGoalEvent.findMany({
                 where: {
                     accountId,
-                    automationId: { in: automationIds }
+                    automationId: { in: automationIds },
+                    createdAt,
+                    revenue: { not: null }
                 },
-                _sum: { revenue: true }
+                select: { automationId: true, orderId: true, revenue: true }
+            }),
+            prisma.campaignEvent.findMany({
+                where: {
+                    accountId,
+                    campaignId: { in: automationIds },
+                    campaignType: 'automation',
+                    eventType: 'purchase',
+                    createdAt,
+                    revenue: { not: null }
+                },
+                select: { campaignId: true, orderId: true, revenue: true }
             })
         ]);
 
@@ -719,8 +736,20 @@ export class MarketingService {
         }
 
         const revenueStats = new Map<string, number>();
-        for (const group of goalGroups) {
-            revenueStats.set(group.automationId, Number(group._sum.revenue || 0));
+        const countedOrders = new Map<string, Set<string>>();
+        // Email attribution is authoritative; goal events supplement orders not tracked there.
+        const addRevenue = (automationId: string, orderId: string | null, revenue: unknown) => {
+            const orders = countedOrders.get(automationId) || new Set<string>();
+            if (orderId && orders.has(orderId)) return;
+            if (orderId) orders.add(orderId);
+            countedOrders.set(automationId, orders);
+            revenueStats.set(automationId, (revenueStats.get(automationId) || 0) + Number(revenue || 0));
+        };
+        for (const event of purchaseEvents) {
+            if (event.campaignId) addRevenue(event.campaignId, event.orderId, event.revenue);
+        }
+        for (const event of goalEvents) {
+            addRevenue(event.automationId, event.orderId, event.revenue);
         }
 
         return automations.map((automation) => {

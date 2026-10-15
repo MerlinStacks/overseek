@@ -102,6 +102,17 @@ export const createSmsRoutes = (chatService: ChatService) => async (fastify: Fas
         }
     });
     
+    // Inbox agents need availability, not settings-management access or credentials.
+    fastify.get('/capabilities', { preHandler: requireAuthFastify }, async (request, reply) => {
+        const accountId = request.accountId;
+        if (!accountId) return reply.status(400).send({ error: 'Missing account ID' });
+
+        const settings = await TwilioService.getSettings(accountId);
+        return {
+            canSendSms: Boolean(settings?.enabled && settings.accountSid && settings.authToken && settings.fromNumber)
+        };
+    });
+
     // Get SMS Settings
     fastify.get('/settings', { preHandler: requireAuthFastify }, async (request, reply) => {
         const accountId = request.accountId;

@@ -43,7 +43,10 @@ const mocks = vi.hoisted(() => ({
             findMany: vi.fn(),
         },
         automationGoalEvent: {
-            groupBy: vi.fn(),
+            findMany: vi.fn().mockResolvedValue([]),
+        },
+        campaignEvent: {
+            findMany: vi.fn().mockResolvedValue([]),
         }
     },
     emailService: {
@@ -279,7 +282,7 @@ describe('MarketingService Optimization', () => {
                 }
             ])
             .mockResolvedValueOnce([]);
-        mocks.prisma.automationGoalEvent.groupBy.mockResolvedValue([]);
+        mocks.prisma.automationGoalEvent.findMany.mockResolvedValue([]);
 
         const result = await marketingService.listAutomations('acc-1');
 
@@ -295,6 +298,64 @@ describe('MarketingService Optimization', () => {
                 ]
             })
         }));
+    });
+
+    it('combines email purchase attribution and goals once per flow/order', async () => {
+        mocks.prisma.marketingAutomation.findMany.mockResolvedValue([
+            { id: 'flow-1' }, { id: 'flow-2' }, { id: 'empty-flow' }
+        ]);
+        mocks.prisma.automationEnrollment.groupBy.mockResolvedValue([]);
+        mocks.prisma.automationRunEvent.findMany.mockResolvedValue([]);
+        mocks.prisma.campaignEvent.findMany.mockResolvedValueOnce([
+            { campaignId: 'flow-1', orderId: 'order-1', revenue: 100 },
+            { campaignId: 'flow-1', orderId: 'order-1', revenue: 100 },
+            { campaignId: 'flow-1', orderId: 'order-2', revenue: 50 },
+            { campaignId: 'flow-1', orderId: null, revenue: 5 }
+        ]);
+        mocks.prisma.automationGoalEvent.findMany.mockResolvedValueOnce([
+            { automationId: 'flow-1', orderId: 'order-1', revenue: '100.00' },
+            { automationId: 'flow-1', orderId: 'order-3', revenue: '25.50' },
+            { automationId: 'flow-1', orderId: 'order-3', revenue: '25.50' },
+            { automationId: 'flow-1', orderId: null, revenue: '10.00' },
+            { automationId: 'flow-2', orderId: 'order-1', revenue: '100.00' }
+        ]);
+
+        const result = await marketingService.listAutomations('acc-1');
+
+        expect(result.map(flow => flow.metrics.revenue)).toEqual([190.5, 100, 0]);
+        expect(mocks.prisma.campaignEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: {
+                accountId: 'acc-1', campaignId: { in: ['flow-1', 'flow-2', 'empty-flow'] },
+                campaignType: 'automation', eventType: 'purchase', createdAt: undefined,
+                revenue: { not: null }
+            }
+        }));
+    });
+
+    it('filters activity and revenue by period without hiding older flows', async () => {
+        mocks.prisma.marketingAutomation.findMany.mockResolvedValue([{ id: 'flow-1' }]);
+        mocks.prisma.automationEnrollment.groupBy.mockResolvedValue([]);
+        mocks.prisma.automationRunEvent.findMany.mockResolvedValue([]);
+        const before = Date.now();
+        const result = await marketingService.listAutomations('acc-1', 30);
+        const range = mocks.prisma.campaignEvent.findMany.mock.calls.at(-1)![0].where.createdAt;
+
+        expect(range.gte.getTime()).toBeGreaterThanOrEqual(before - 30 * 86_400_000);
+        expect(range.lte.getTime()).toBeLessThanOrEqual(Date.now());
+        expect(range.lte.getTime() - range.gte.getTime()).toBe(30 * 86_400_000);
+        expect(mocks.prisma.marketingAutomation.findMany).toHaveBeenLastCalledWith({
+            where: { accountId: 'acc-1' }, orderBy: { createdAt: 'desc' }
+        });
+        for (const call of mocks.prisma.automationEnrollment.groupBy.mock.calls.slice(-2)) {
+            expect(call[0].where).toMatchObject({ accountId: 'acc-1', enteredAt: range });
+        }
+        for (const call of mocks.prisma.automationRunEvent.findMany.mock.calls.slice(-2)) {
+            expect(call[0].where).toMatchObject({ accountId: 'acc-1', createdAt: range });
+        }
+        expect(mocks.prisma.automationGoalEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ accountId: 'acc-1', createdAt: range })
+        }));
+        expect(result).toHaveLength(1);
     });
 
     it('loads dynamic products once for the whole campaign', async () => {

@@ -124,24 +124,28 @@ export function NewEmailModal({
     }, [currentAccount, token]);
 
     useEffect(() => {
-        const fetchSmsSettings = async () => {
+        let cancelled = false;
+        setSmsEnabled(false);
+        setComposeMode('EMAIL');
+        const fetchSmsCapabilities = async () => {
             if (!currentAccount || !token) return;
             try {
-                const res = await fetch('/api/sms/settings', {
+                const res = await fetch('/api/sms/capabilities', {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'x-account-id': currentAccount.id
                     }
                 });
                 if (!res.ok) return;
-                const settings = await res.json() as { enabled?: boolean; accountSid?: string; authToken?: string; fromNumber?: string };
-                setSmsEnabled(Boolean(settings.enabled && settings.accountSid && settings.authToken && settings.fromNumber));
+                const capabilities = await res.json() as { canSendSms?: boolean };
+                if (!cancelled) setSmsEnabled(capabilities.canSendSms === true);
             } catch (err) {
-                Logger.error('Failed to fetch SMS settings for composer', { error: err });
+                Logger.error('Failed to fetch SMS capabilities for composer', { error: err });
             }
         };
-        fetchSmsSettings();
-    }, [currentAccount, token]);
+        fetchSmsCapabilities();
+        return () => { cancelled = true; };
+    }, [currentAccount?.id, token]);
 
     // Get user's email signature
     const signature = user?.emailSignature || '';

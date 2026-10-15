@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../utils/prisma';
 import { snapshotFixture, snapshotMetadata } from '../services/deliveryEstimates/__tests__/snapshotFixture';
 
-const { mockSetAutomationEnabled, sendEmail } = vi.hoisted(() => ({
+const { mockSetAutomationEnabled, mockListAutomations, sendEmail } = vi.hoisted(() => ({
     mockSetAutomationEnabled: vi.fn(),
+    mockListAutomations: vi.fn().mockResolvedValue([]),
     sendEmail: vi.fn().mockResolvedValue({ messageId: 'test-message' }),
 }));
 vi.mock('../services/EmailService', () => ({ EmailService: class { sendEmail = sendEmail; } }));
@@ -24,7 +25,7 @@ vi.mock('../services/MarketingService', () => {
         updateCampaign = vi.fn();
         deleteCampaign = vi.fn();
         sendTestEmail = vi.fn();
-        listAutomations = vi.fn();
+        listAutomations = mockListAutomations;
         upsertAutomation = vi.fn();
         getAutomation = vi.fn();
         setAutomationEnabled = mockSetAutomationEnabled;
@@ -73,6 +74,20 @@ describe('marketing automation status route', () => {
     afterEach(async () => {
         await app.close();
         vi.clearAllMocks();
+    });
+
+    it.each([undefined, '7', '30', '365'])('passes the optional period to flow metrics (%s)', async days => {
+        const res = await app.inject({
+            method: 'GET', url: `/api/marketing/automations${days ? `?days=${days}` : ''}`
+        });
+        expect(res.statusCode).toBe(200);
+        expect(mockListAutomations).toHaveBeenCalledWith('acct-1', days ? Number(days) : undefined);
+    });
+
+    it.each(['0', '-1', '1.5', '366', 'nope', 'Infinity', ''])('rejects invalid flow periods (%s)', async days => {
+        const res = await app.inject({ method: 'GET', url: `/api/marketing/automations?days=${days}` });
+        expect(res.statusCode).toBe(400);
+        expect(mockListAutomations).not.toHaveBeenCalled();
     });
 
     it('updates automation status when payload is valid', async () => {

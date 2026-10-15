@@ -247,6 +247,7 @@ export function LiveAnalyticsPage() {
                         data={reportData}
                         loading={loadingReport}
                         activeView={activeView}
+                        dateRange={dateRange}
                     />
                 )}
             </main>

@@ -231,9 +231,13 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Automations
-    fastify.get('/automations', async (request, reply) => {
+    fastify.get<{ Querystring: { days?: string } }>('/automations', async (request, reply) => {
+        const days = request.query.days === undefined ? undefined : Number(request.query.days);
+        if (days !== undefined && (!Number.isInteger(days) || days < 1 || days > 365)) {
+            return reply.code(400).send({ error: 'days must be an integer between 1 and 365' });
+        }
         try {
-            const automations = await service.listAutomations(getAccountId(request));
+            const automations = await service.listAutomations(getAccountId(request), days);
             return automations;
         } catch (e) {
             return sendInternalError(reply, e, 'Marketing route failed');
