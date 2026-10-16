@@ -1,6 +1,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
-import { REVENUE_STATUSES } from '../../constants/orderStatus';
+import { getDateRangeForDays } from '../../utils/dateRange';
+import { getRevenueSettings, orderRevenue, revenueStatusFilter } from '../../utils/revenue';
 
 interface AOVPoint {
     date: string;
@@ -16,21 +17,25 @@ interface AOVComparison {
 }
 
 export class AOVService {
-    async getAOVTrend(accountId: string, days: number = 30): Promise<AOVPoint[]> {
+    async getAOVTrend(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney'): Promise<AOVPoint[]> {
         try {
-            const endDate = new Date();
-            const startDate = new Date();
-            startDate.setDate(startDate.getDate() - days);
+            const settings = await getRevenueSettings(accountId, timezone);
+            timezone = settings.timezone;
+            const { startDate, endDate } = getDateRangeForDays(days, timezone);
+            const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'
+            });
 
             const orders = await prisma.wooOrder.findMany({
                 where: {
                     accountId,
-                    status: { in: REVENUE_STATUSES },
+                    status: revenueStatusFilter,
                     dateCreated: { gte: startDate, lte: endDate }
                 },
                 select: {
                     dateCreated: true,
-                    total: true
+                    total: true,
+                    rawData: true
                 },
                 orderBy: { dateCreated: 'asc' }
             });
@@ -38,9 +43,9 @@ export class AOVService {
             const dailyMap = new Map<string, { total: number; count: number }>();
 
             for (const order of orders) {
-                const dateKey = order.dateCreated.toISOString().split('T')[0];
+                const dateKey = dateFormatter.format(order.dateCreated);
                 const existing = dailyMap.get(dateKey) || { total: 0, count: 0 };
-                existing.total += Number(order.total) || 0;
+                existing.total += orderRevenue(order, settings.taxInclusive);
                 existing.count++;
                 dailyMap.set(dateKey, existing);
             }
@@ -58,37 +63,39 @@ export class AOVService {
         }
     }
 
-    async getAOVComparison(accountId: string, days: number = 30): Promise<AOVComparison> {
+    async getAOVComparison(accountId: string, days: number = 30, timezone: string = 'Australia/Sydney'): Promise<AOVComparison> {
         try {
-            const now = new Date();
-            const currentStart = new Date();
-            currentStart.setDate(currentStart.getDate() - days);
-
-            const previousEnd = new Date(currentStart);
-            const previousStart = new Date(previousEnd);
-            previousStart.setDate(previousStart.getDate() - days);
+            const settings = await getRevenueSettings(accountId, timezone);
+            timezone = settings.timezone;
+            const { startDate: currentStart, endDate: now } = getDateRangeForDays(days, timezone);
+            // Yesterday compares with the preceding calendar day; other ranges
+            // compare with the immediately preceding, equally sized window.
+            const previousEnd = new Date(currentStart.getTime() - 1);
+            const previousStart = days === -1
+                ? getDateRangeForDays(-1, timezone, currentStart).startDate
+                : new Date(currentStart.getTime() - (now.getTime() - currentStart.getTime()));
 
             const [currentOrders, previousOrders] = await Promise.all([
                 prisma.wooOrder.findMany({
                     where: {
                         accountId,
-                        status: { in: REVENUE_STATUSES },
+                        status: revenueStatusFilter,
                         dateCreated: { gte: currentStart, lte: now }
                     },
-                    select: { total: true }
+                    select: { total: true, rawData: true }
                 }),
                 prisma.wooOrder.findMany({
                     where: {
                         accountId,
-                        status: { in: REVENUE_STATUSES },
+                        status: revenueStatusFilter,
                         dateCreated: { gte: previousStart, lte: previousEnd }
                     },
-                    select: { total: true }
+                    select: { total: true, rawData: true }
                 })
             ]);
 
-            const currentRevenue = currentOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-            const previousRevenue = previousOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+            const currentRevenue = currentOrders.reduce((sum, o) => sum + orderRevenue(o, settings.taxInclusive), 0);
+            const previousRevenue = previousOrders.reduce((sum, o) => sum + orderRevenue(o, settings.taxInclusive), 0);
 
             const current = currentOrders.length > 0 ? Math.round((currentRevenue / currentOrders.length) * 100) / 100 : 0;
             const previous = previousOrders.length > 0 ? Math.round((previousRevenue / previousOrders.length) * 100) / 100 : 0;

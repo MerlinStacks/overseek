@@ -28,7 +28,7 @@ vi.mock('../services/AnalyticsService', () => ({
     },
 }));
 vi.mock('../services/analytics/CLVService', () => ({ clvService: {} }));
-vi.mock('../services/analytics/AOVService', () => ({ aovService: {} }));
+vi.mock('../services/analytics/AOVService', () => ({ aovService: { getAOVTrend: vi.fn(), getAOVComparison: vi.fn() } }));
 vi.mock('../services/analytics/cro', () => ({ CROAnalytics: {} }));
 vi.mock('../services/analytics/geography', () => ({ GeographyAnalytics: {} }));
 vi.mock('../services/analytics/abtesting', () => ({ abTestingService: {} }));
@@ -46,6 +46,7 @@ vi.mock('./cohorts', () => ({ default: async () => undefined }));
 import analyticsRoutes from './analytics';
 import { PermissionService } from '../services/PermissionService';
 import { AnalyticsService } from '../services/AnalyticsService';
+import { aovService } from '../services/analytics/AOVService';
 
 describe('analytics route permissions', () => {
     let app: ReturnType<typeof Fastify>;
@@ -59,6 +60,21 @@ describe('analytics route permissions', () => {
     afterEach(async () => {
         await app.close();
         vi.clearAllMocks();
+    });
+
+    it.each([-1, 1, 7, 30, 90, 365])('preserves AOV preset %i and timezone on both endpoints', async days => {
+        vi.mocked(PermissionService.hasAnyPermission).mockResolvedValue(true);
+        vi.mocked(aovService.getAOVTrend).mockResolvedValue([]);
+        vi.mocked(aovService.getAOVComparison).mockResolvedValue({} as any);
+        for (const path of ['aov-trend', 'aov-trend/comparison']) {
+            const res = await app.inject({
+                method: 'GET', url: `/api/analytics/${path}?days=${days}`,
+                headers: { 'x-account-id': 'acct-1', 'x-timezone': 'Pacific/Auckland' }
+            });
+            expect(res.statusCode).toBe(200);
+        }
+        expect(aovService.getAOVTrend).toHaveBeenCalledWith('acct-1', days, 'Pacific/Auckland');
+        expect(aovService.getAOVComparison).toHaveBeenCalledWith('acct-1', days, 'Pacific/Auckland');
     });
 
     it('denies analytics endpoints before invoking handlers when permission is missing', async () => {

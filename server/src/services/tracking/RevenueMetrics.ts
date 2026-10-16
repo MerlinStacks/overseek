@@ -8,6 +8,7 @@
 import { prisma } from '../../utils/prisma';
 import { getDateRangeForDays } from '../../utils/dateRange';
 import { getPayloadWooOrderId } from '../../utils/orderIds';
+import { getRevenueSettings, orderRevenue, revenueStatusFilter } from '../../utils/revenue';
 
 interface TrackingDateRange {
     startDate: Date;
@@ -24,14 +25,15 @@ export async function getRevenue(accountId: string, days: number = 30, timezone:
     // Cap days to prevent unbounded queries, but preserve special values (-1 = yesterday)
     const MAX_DAYS = 365;
     const effectiveDays = days === -1 ? -1 : Math.min(Math.max(days, 1), MAX_DAYS);
-    const { startDate, endDate } = dateRange || getDateRangeForDays(effectiveDays, timezone);
+    const settings = await getRevenueSettings(accountId, timezone);
+    const { startDate, endDate } = dateRange || getDateRangeForDays(effectiveDays, settings.timezone);
 
     // Primary source: WooCommerce orders
     const orders = await prisma.wooOrder.findMany({
         where: {
             accountId,
             dateCreated: { gte: startDate, lte: endDate },
-            status: { in: ['completed', 'processing'] }
+            status: revenueStatusFilter
         },
         select: { wooId: true, total: true, rawData: true }
     });
@@ -78,7 +80,7 @@ export async function getRevenue(accountId: string, days: number = 30, timezone:
     const revenueByDevice = new Map<string, number>();
 
     for (const order of orders) {
-        const total = parseFloat(String(order.total)) || 0;
+        const total = orderRevenue(order, settings.taxInclusive);
         totalRevenue += total;
 
         const attribution = orderAttributionMap.get(order.wooId);

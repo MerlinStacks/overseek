@@ -17,7 +17,7 @@ interface TrackingDateRange {
  * Get search analytics: top queries.
  * Handles both 'search' events AND pageview events with page_type='search'.
  */
-export async function getSearches(accountId: string, days: number = 30, dateRange?: TrackingDateRange) {
+export async function getSearches(accountId: string, days: number = 30, dateRange?: TrackingDateRange, limit: number = 20) {
     const { startDate, endDate } = dateRange || getDateRangeForDays(days);
 
     const events = await prisma.analyticsEvent.findMany({
@@ -34,13 +34,11 @@ export async function getSearches(accountId: string, days: number = 30, dateRang
 
     for (const event of events) {
         const payload = event.payload as any;
-        let query = '';
+        if (event.type !== 'search' && !(event.type === 'pageview' && payload?.page_type === 'search')) continue;
 
-        if (event.type === 'search') {
-            query = (payload?.searchQuery || payload?.term || '').toLowerCase().trim();
-        } else if (event.type === 'pageview' && payload?.page_type === 'search') {
-            query = (payload?.searchQuery || '').toLowerCase().trim();
-        }
+        const query = [payload?.searchQuery, payload?.term, payload?.query]
+            .find(value => typeof value === 'string' && value.trim())
+            ?.toLowerCase().trim() || '';
 
         if (query) {
             queryCounts.set(query, (queryCounts.get(query) || 0) + 1);
@@ -52,7 +50,7 @@ export async function getSearches(accountId: string, days: number = 30, dateRang
         topQueries: Array.from(queryCounts.entries())
             .map(([query, count]) => ({ query, count }))
             .sort((a, b) => b.count - a.count)
-            .slice(0, 20),
+            .slice(0, limit),
         totalSearches: searchCount
     };
 }

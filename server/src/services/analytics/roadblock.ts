@@ -5,6 +5,7 @@
 
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { pageVisitCtes } from './pageVisits';
 
 interface RoadblockPage {
     url: string;
@@ -29,101 +30,56 @@ export class RoadblockAnalytics {
         minExitRate: number = 30
     ): Promise<RoadblockPage[]> {
         try {
-            const dateFilter: any = {};
-            if (startDate) {
-                dateFilter.gte = new Date(startDate);
-            }
-            if (endDate) {
-                dateFilter.lte = new Date(endDate);
-            }
+            const start = startDate ? new Date(startDate) : new Date(0);
+            const end = endDate ? new Date(endDate) : new Date();
+            const rows = await prisma.$queryRaw<Array<{
+                url: string; pageTitle: string | null; totalVisits: bigint; exits: bigint;
+                avgCartValue: unknown; potentialRevenueLost: unknown;
+            }>>`
+                ${pageVisitCtes(accountId, start, end)}, CartAmounts AS (
+                    SELECT visit_key, id, "createdAt",
+                        CASE WHEN type IN ('purchase', 'checkout_success') THEN '0'
+                        ELSE COALESCE(payload->>'cartTotal', payload->>'total',
+                            payload->>'value', payload->>'price', payload->>'amount') END AS amount
+                    FROM VisitActivity
+                    WHERE type IN ('add_to_cart', 'remove_from_cart', 'update_cart',
+                        'cart_view', 'checkout_view', 'checkout_start', 'purchase', 'checkout_success')
+                ), ExitCarts AS (
+                    -- Snapshot within this visit, never the visitor's present-day cart.
+                    SELECT DISTINCT ON (visit_key) visit_key, amount::numeric AS value
+                    FROM CartAmounts
+                    WHERE amount ~ '^[0-9]+([.][0-9]+)?$'
+                    ORDER BY visit_key, "createdAt" DESC, id DESC
+                ), InactiveVisits AS (
+                    SELECT visit_key FROM VisitActivity
+                    GROUP BY visit_key
+                    HAVING MAX("createdAt") <= NOW() - INTERVAL '30 minutes'
+                )
+                SELECT v.url, t."pageTitle", COUNT(DISTINCT v.visit_key) AS "totalVisits",
+                    COUNT(*) FILTER (WHERE v.exit_rank = 1 AND i.visit_key IS NOT NULL) AS exits,
+                    COALESCE(AVG(c.value) FILTER (WHERE v.exit_rank = 1
+                        AND i.visit_key IS NOT NULL AND c.value > 0), 0) AS "avgCartValue",
+                    COALESCE(SUM(c.value) FILTER (WHERE v.exit_rank = 1
+                        AND i.visit_key IS NOT NULL AND c.value > 0), 0) AS "potentialRevenueLost"
+                FROM RankedVisits v
+                LEFT JOIN PageTitles t ON t.url = v.url
+                LEFT JOIN ExitCarts c ON c.visit_key = v.visit_key
+                LEFT JOIN InactiveVisits i ON i.visit_key = v.visit_key
+                GROUP BY v.url, t."pageTitle"
+            `;
 
-            // Get all exit events (last pageview before session goes inactive)
-            // We identify exits by finding the last page view event per session
-            // Why take: 5000: without a cap, large accounts can load 22K+ sessions
-            // into memory, causing OOM and Prisma bind-parameter overflows.
-            const sessions = await prisma.analyticsSession.findMany({
-                where: {
-                    accountId,
-                    ...(Object.keys(dateFilter).length > 0 && { lastActiveAt: dateFilter })
-                },
-                include: {
-                    events: {
-                        orderBy: { createdAt: 'desc' },
-                        take: 1,
-                        where: { type: 'pageview' }
-                    }
-                },
-                orderBy: { lastActiveAt: 'desc' },
-                take: 5000
-            });
-
-            // Group by exit page URL
-            const pageStats = new Map<string, {
-                url: string;
-                pageTitle: string;
-                totalVisits: number;
-                exits: number;
-                cartValues: number[];
-            }>();
-
-            for (const session of sessions) {
-                if (session.events.length === 0) continue;
-
-                const lastEvent = session.events[0];
-                const url = normalizeUrl(lastEvent.url);
-                const cartValue = Number(session.cartValue) || 0;
-
-                if (!pageStats.has(url)) {
-                    pageStats.set(url, {
-                        url,
-                        pageTitle: lastEvent.pageTitle || url,
-                        totalVisits: 0,
-                        exits: 0,
-                        cartValues: []
-                    });
-                }
-
-                const stats = pageStats.get(url)!;
-                stats.totalVisits++;
-                stats.exits++;
-
-                if (cartValue > 0) {
-                    stats.cartValues.push(cartValue);
-                }
-            }
-
-            // Calculate exit rates and filter
-            const roadblocks: RoadblockPage[] = [];
-
-            for (const [url, stats] of pageStats) {
-                const exitRate = stats.totalVisits > 0
-                    ? (stats.exits / stats.totalVisits) * 100
-                    : 0;
-
-                const avgCartValue = stats.cartValues.length > 0
-                    ? stats.cartValues.reduce((a, b) => a + b, 0) / stats.cartValues.length
-                    : 0;
-
-                const potentialRevenueLost = stats.cartValues.reduce((a, b) => a + b, 0);
-
-                // Only include pages with meaningful exit rates and potential revenue loss
-                if (exitRate >= minExitRate && potentialRevenueLost > 0) {
-                    roadblocks.push({
-                        url,
-                        pageTitle: stats.pageTitle,
-                        totalVisits: stats.totalVisits,
-                        exits: stats.exits,
-                        exitRate: Math.round(exitRate * 10) / 10,
-                        avgCartValue: Math.round(avgCartValue * 100) / 100,
-                        potentialRevenueLost: Math.round(potentialRevenueLost * 100) / 100
-                    });
-                }
-            }
-
-            // Sort by potential revenue lost (descending)
-            roadblocks.sort((a, b) => b.potentialRevenueLost - a.potentialRevenueLost);
-
-            return roadblocks.slice(0, 50);
+            return rows.map(row => ({
+                url: row.url,
+                pageTitle: row.pageTitle || row.url,
+                totalVisits: Number(row.totalVisits),
+                exits: Number(row.exits),
+                exitRate: row.totalVisits ? Number(row.exits) / Number(row.totalVisits) * 100 : 0,
+                avgCartValue: Math.round(Number(row.avgCartValue) * 100) / 100,
+                potentialRevenueLost: Math.round(Number(row.potentialRevenueLost) * 100) / 100,
+            })).filter(row => row.exitRate >= minExitRate && row.potentialRevenueLost > 0)
+                .map(row => ({ ...row, exitRate: Math.round(row.exitRate * 10) / 10 }))
+                .sort((a, b) => b.potentialRevenueLost - a.potentialRevenueLost)
+                .slice(0, 50);
         } catch (error) {
             Logger.error('Roadblock Analytics Error', { error });
             return [];
@@ -202,23 +158,5 @@ export class RoadblockAnalytics {
             Logger.error('Drop-off Funnel Error', { error });
             return { funnel: [], overallConversionRate: 0 };
         }
-    }
-}
-
-/**
- * Normalize URL by removing query params and trailing slashes for grouping
- */
-function normalizeUrl(url: string): string {
-    try {
-        const parsed = new URL(url);
-        // Keep path only, remove query string
-        let path = parsed.pathname;
-        // Remove trailing slash unless it's the root
-        if (path.length > 1 && path.endsWith('/')) {
-            path = path.slice(0, -1);
-        }
-        return path;
-    } catch {
-        return url;
     }
 }

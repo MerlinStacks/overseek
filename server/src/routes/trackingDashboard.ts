@@ -48,7 +48,7 @@ const trackingDashboardRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const parsedDays = parseInt(query.days || `${fallbackDays}`, 10);
-        const days = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : fallbackDays;
+        const days = Number.isFinite(parsedDays) && (parsedDays > 0 || parsedDays === -1) ? parsedDays : fallbackDays;
         return { days: Math.min(days, MAX_LOOKBACK_DAYS) };
     };
 

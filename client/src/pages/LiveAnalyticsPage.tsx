@@ -108,43 +108,12 @@ export function LiveAnalyticsPage() {
 
             if (viewId === 'pages') {
                 const headers = { Authorization: `Bearer ${token}`, 'x-account-id': currentAccount.id };
-                const [pagesRes, entryRes, exitRes] = await Promise.all([
-                    fetch(`/api/analytics/behaviour/pages?startDate=${range.startDate}&endDate=${range.endDate}`, { headers }),
-                    fetch(`/api/analytics/behaviour/entry?startDate=${range.startDate}&endDate=${range.endDate}`, { headers }),
-                    fetch(`/api/analytics/behaviour/exit?startDate=${range.startDate}&endDate=${range.endDate}`, { headers }),
-                ]);
-
-                const [pagesData, entryData, exitData] = await Promise.all([
-                    pagesRes.ok ? pagesRes.json() : [],
-                    entryRes.ok ? entryRes.json() : [],
-                    exitRes.ok ? exitRes.json() : [],
-                ]) as [ReportRow[], ReportRow[], ReportRow[]];
-
-                const combined = new Map<string, ReportRow>();
-                const getUrl = (row: ReportRow) => typeof row.url === 'string' ? row.url : '';
-
-                pagesData.forEach(row => {
-                    const url = getUrl(row);
-                    if (!url) return;
-                    combined.set(url, { url, title: row.title, views: row.views ?? 0, entries: 0, exits: 0 });
-                });
-
-                entryData.forEach(row => {
-                    const url = getUrl(row);
-                    if (!url) return;
-                    combined.set(url, { url, title: combined.get(url)?.title, views: combined.get(url)?.views ?? 0, entries: row.entries ?? 0, exits: combined.get(url)?.exits ?? 0 });
-                });
-
-                exitData.forEach(row => {
-                    const url = getUrl(row);
-                    if (!url) return;
-                    combined.set(url, { url, title: combined.get(url)?.title, views: combined.get(url)?.views ?? 0, entries: combined.get(url)?.entries ?? 0, exits: row.exits ?? 0 });
-                });
-
-                setReportData(Array.from(combined.values(), row => ({
-                    ...row,
-                    exitRate: row.views ? ((row.exits ?? 0) / row.views) * 100 : 0,
-                })));
+                // The API aggregates titles and every metric from the same page visits.
+                // Merging independently limited reports fabricated zero-view, untitled rows.
+                const pagesRes = await fetch(`/api/analytics/behaviour/pages?startDate=${range.startDate}&endDate=${range.endDate}`, { headers });
+                if (!pagesRes.ok) throw new Error('Failed to fetch pages report');
+                const pagesData: unknown = await pagesRes.json();
+                setReportData(Array.isArray(pagesData) ? pagesData as ReportRow[] : []);
                 return;
             }
 

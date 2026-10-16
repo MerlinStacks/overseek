@@ -107,6 +107,18 @@ describe('tracking dashboard permissions and date windows', () => {
         );
     });
 
+    it.each([-1, 1, 7, 30, 90, 365])('preserves the revenue preset %i and timezone', async days => {
+        vi.mocked(PermissionService.hasAnyPermission).mockResolvedValue(true);
+        vi.mocked(TrackingService.getRevenue).mockResolvedValue({} as any);
+        const res = await app.inject({
+            method: 'GET',
+            url: `/api/tracking/revenue?days=${days}`,
+            headers: { 'x-account-id': 'acct-1', 'x-timezone': 'Pacific/Auckland' }
+        });
+        expect(res.statusCode).toBe(200);
+        expect(TrackingService.getRevenue).toHaveBeenCalledWith('acct-1', days, 'Pacific/Auckland', undefined);
+    });
+
     it('returns newest carts with flow send and recovery status', async () => {
         vi.mocked(PermissionService.hasAnyPermission).mockResolvedValue(true);
         prismaMocks.analyticsSession.findMany.mockResolvedValue([{

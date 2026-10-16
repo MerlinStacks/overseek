@@ -20,6 +20,7 @@ import { automationEnrollmentService } from '../AutomationEnrollmentService';
 import { Logger } from '../../utils/logger';
 import { getPayloadWooOrderId, getPayloadWooOrderIdString } from '../../utils/orderIds';
 import { isConversionEvent, resolveConversionEventDate } from './conversionUtils';
+import { currentPageUpdate, isTrackablePageUrl, PAGE_VIEW_TYPES } from './pageTracking';
 
 const UAParser = require('ua-parser-js');
 
@@ -129,6 +130,12 @@ export async function processEvent(data: TrackingEventPayload) {
 async function processEventOnce(data: TrackingEventPayload) {
     const payload = data.payload && typeof data.payload === 'object' ? data.payload as Record<string, any> : {};
 
+    // Apply the same non-page exclusions to every specialized page event.
+    // Cart/conversion actions still flow through even when sent by AJAX.
+    if (PAGE_VIEW_TYPES.includes(data.type) && !isTrackablePageUrl(data.url)) {
+        return null;
+    }
+
     // Filter out bots/crawlers - they shouldn't be tracked
     if (data.userAgent && isBot(data.userAgent)) {
         // Fire-and-forget: log for dashboard visibility, never blocks the response
@@ -144,35 +151,14 @@ async function processEventOnce(data: TrackingEventPayload) {
     }
 
     // Filter out WordPress admin/login traffic (crawler bots probing admin endpoints)
-    const wpAdminPatterns = ['/wp-admin/', '/wp-login.php'];
+    const wpAdminPatterns = ['/wp-login.php'];
     const urlLower = (data.url || '').toLowerCase();
     const referrerLower = (data.referrer || '').toLowerCase();
-    if (wpAdminPatterns.some(p => urlLower.includes(p) || referrerLower.includes(p))) {
+    // admin-ajax.php may carry legitimate cart/conversion actions.
+    const isAdminDocument = (url: string) => url.includes('/wp-admin/') && !url.split('?')[0].endsWith('/admin-ajax.php');
+    if (wpAdminPatterns.some(p => urlLower.includes(p) || referrerLower.includes(p))
+        || isAdminDocument(urlLower) || isAdminDocument(referrerLower)) {
         return null; // Silently skip wp-admin traffic
-    }
-
-    // Filter out non-page URLs for pageview events (e.g. static assets)
-    // These should not be tracked as page views
-    if (data.type === 'pageview' && data.url) {
-        const urlPath = data.url.toLowerCase();
-        // Common static asset extensions that shouldn't be tracked as page views
-        const staticAssetExtensions = [
-            '.js', '.css', '.map',
-            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico', '.bmp', '.avif',
-            '.woff', '.woff2', '.ttf', '.eot', '.otf',
-            '.mp4', '.webm', '.mp3', '.ogg', '.wav',
-            '.pdf', '.doc', '.docx', '.xls', '.xlsx',
-            '.zip', '.tar', '.gz', '.rar',
-            '.xml', '.json'
-        ];
-
-        // Check if URL ends with a static asset extension (ignore query strings)
-        const pathWithoutQuery = urlPath.split('?')[0];
-        const isStaticAsset = staticAssetExtensions.some(ext => pathWithoutQuery.endsWith(ext));
-
-        if (isStaticAsset) {
-            return null; // Silently skip static asset requests
-        }
     }
 
     // 1. Resolve GeoIP if IP is provided
@@ -193,7 +179,7 @@ async function processEventOnce(data: TrackingEventPayload) {
 
     const sessionPayload: any = {
         lastActiveAt: new Date(),
-        currentPath: data.url
+        ...currentPageUpdate(data.type, data.url)
     };
 
     // Mask IP before storing for privacy (hide last octet for IPv4, last 80 bits for IPv6)
@@ -434,8 +420,7 @@ async function processEventOnce(data: TrackingEventPayload) {
     // Increment visit count for page-based events
     // Includes standard pageview plus specialized page events (product_view, cart_view, checkout_view)
     // which are sent instead of pageview for richer analytics data
-    const pageViewTypes = ['pageview', 'product_view', 'cart_view', 'checkout_view'];
-    const isPageView = pageViewTypes.includes(data.type);
+    const isPageView = PAGE_VIEW_TYPES.includes(data.type);
     sessionPayload.totalVisits = (existingSession?.totalVisits || 0) + (isPageView ? 1 : 0);
 
     // Upsert session

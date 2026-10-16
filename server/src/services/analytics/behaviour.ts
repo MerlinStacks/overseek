@@ -1,33 +1,39 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
+import { pageVisitCtes } from './pageVisits';
+import { pageEventFilter } from '../tracking/pageTracking';
+import { getSearches } from '../tracking/EngagementMetrics';
 
 export class BehaviourAnalytics {
 
     /**
-     * Get Top Pages (Behaviour)
+     * Get pages with matching view, entry and exit metrics for the reporting period.
      */
     static async getBehaviourPages(accountId: string, startDate?: string, endDate?: string) {
         try {
             const start = startDate ? new Date(startDate) : new Date(0);
             const end = endDate ? new Date(endDate) : new Date();
 
-            const pages = await prisma.$queryRaw`
-                SELECT e.url as url, e."pageTitle", COUNT(e.id) as views
-                FROM "AnalyticsEvent" e
-                JOIN "AnalyticsSession" s ON e."sessionId" = s.id
-                WHERE s."accountId" = ${accountId}
-                AND e."createdAt" >= ${start}
-                AND e."createdAt" <= ${end}
-                AND e.type = 'pageview'
-                GROUP BY e.url, e."pageTitle"
-                ORDER BY views DESC
-                LIMIT 50
+            const pages = await prisma.$queryRaw<Array<{
+                url: string; pageTitle: string | null; views: bigint; entries: bigint; exits: bigint;
+            }>>`
+                ${pageVisitCtes(accountId, start, end)}
+                SELECT v.url, t."pageTitle", COUNT(*) AS views,
+                    COUNT(*) FILTER (WHERE v.entry_rank = 1) AS entries,
+                    COUNT(*) FILTER (WHERE v.exit_rank = 1) AS exits
+                FROM RankedVisits v
+                LEFT JOIN PageTitles t ON t.url = v.url
+                GROUP BY v.url, t."pageTitle"
+                ORDER BY views DESC, v.url
             `;
 
-            return (pages as any[]).map(p => ({
+            return pages.map(p => ({
                 url: p.url,
                 title: p.pageTitle || 'Untitled',
-                views: Number(p.views)
+                views: Number(p.views),
+                entries: Number(p.entries),
+                exits: Number(p.exits),
+                exitRate: p.views ? Number(p.exits) / Number(p.views) * 100 : 0,
             }));
 
         } catch (error) {
@@ -44,22 +50,16 @@ export class BehaviourAnalytics {
             const start = startDate ? new Date(startDate) : new Date(0);
             const end = endDate ? new Date(endDate) : new Date();
 
-            const terms = await prisma.$queryRaw`
-                SELECT COALESCE(payload->>'query', payload->>'term') as term, COUNT(e.id) as searches
-                FROM "AnalyticsEvent" e
-                JOIN "AnalyticsSession" s ON e."sessionId" = s.id
-                WHERE s."accountId" = ${accountId}
-                AND e."createdAt" >= ${start}
-                AND e."createdAt" <= ${end}
-                AND e.type = 'search'
-                GROUP BY term
-                ORDER BY searches DESC
-                LIMIT 50
-             `;
+            // Use the overview's aggregation so both reports recognize the same
+            // search payloads and search-results pageviews, excluding empty terms.
+            const { topQueries } = await getSearches(accountId, 30, {
+                startDate: start,
+                endDate: end,
+            }, 50);
 
-            return (terms as any[]).map(t => ({
-                term: t.term,
-                searches: Number(t.searches)
+            return topQueries.map(t => ({
+                term: t.query,
+                searches: t.count
             }));
         } catch (error) {
             Logger.error('Analytics Search Error', { error });
@@ -76,17 +76,10 @@ export class BehaviourAnalytics {
             const end = endDate ? new Date(endDate) : new Date();
 
             const entries = await prisma.$queryRaw`
-                WITH FirstEvents AS (
-                    SELECT DISTINCT ON (e."sessionId") e.url, e."sessionId"
-                    FROM "AnalyticsEvent" e
-                    JOIN "AnalyticsSession" s ON e."sessionId" = s.id
-                    WHERE s."accountId" = ${accountId}
-                    AND s."createdAt" >= ${start}
-                    AND s."createdAt" <= ${end}
-                    ORDER BY e."sessionId", e."createdAt" ASC
-                )
-                SELECT url, COUNT("sessionId") as entries
-                FROM FirstEvents
+                ${pageVisitCtes(accountId, start, end)}
+                SELECT url, COUNT(*) as entries
+                FROM RankedVisits
+                WHERE entry_rank = 1
                 GROUP BY url
                 ORDER BY entries DESC
                 LIMIT 50
@@ -112,17 +105,10 @@ export class BehaviourAnalytics {
             const end = endDate ? new Date(endDate) : new Date();
 
             const exits = await prisma.$queryRaw`
-               WITH LastEvents AS (
-                   SELECT DISTINCT ON (e."sessionId") e.url, e."sessionId"
-                   FROM "AnalyticsEvent" e
-                   JOIN "AnalyticsSession" s ON e."sessionId" = s.id
-                   WHERE s."accountId" = ${accountId}
-                   AND s."createdAt" >= ${start}
-                   AND s."createdAt" <= ${end}
-                   ORDER BY e."sessionId", e."createdAt" DESC
-               )
-               SELECT url, COUNT("sessionId") as exits
-               FROM LastEvents
+               ${pageVisitCtes(accountId, start, end)}
+               SELECT url, COUNT(*) as exits
+               FROM RankedVisits
+               WHERE exit_rank = 1
                GROUP BY url
                ORDER BY exits DESC
                LIMIT 50
@@ -182,6 +168,7 @@ export class BehaviourAnalytics {
                     JOIN "AnalyticsSession" s ON e."sessionId" = s.id
                     WHERE s."accountId" = ${accountId}
                     AND e."createdAt" >= ${sevenDaysAgo}
+                    AND ${pageEventFilter}
                     AND e.type IN ('pageview', 'product_view')
                     AND regexp_replace(split_part(e.url, '?', 1), '^https?://[^/]+', '') IN (${normalizedPath}, ${pathWithSlash})
                 `,
@@ -191,6 +178,7 @@ export class BehaviourAnalytics {
                     JOIN "AnalyticsSession" s ON e."sessionId" = s.id
                     WHERE s."accountId" = ${accountId}
                     AND e."createdAt" >= ${thirtyDaysAgo}
+                    AND ${pageEventFilter}
                     AND e.type IN ('pageview', 'product_view')
                     AND regexp_replace(split_part(e.url, '?', 1), '^https?://[^/]+', '') IN (${normalizedPath}, ${pathWithSlash})
                 `

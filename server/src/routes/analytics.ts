@@ -423,8 +423,9 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { days?: string };
-            const days = Math.min(parsePositiveInt(query.days, 30), 365);
-            return await aovService.getAOVTrend(accountId, days);
+            const days = query.days === '-1' ? -1 : Math.min(parsePositiveInt(query.days, 30), 365);
+            const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
+            return await aovService.getAOVTrend(accountId, days, timezone);
         } catch (e: any) {
             Logger.error('AOV Trend Error', { error: e });
             return reply.code(500).send({ error: e.message });
@@ -435,8 +436,9 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const accountId = request.accountId!;
             const query = request.query as { days?: string };
-            const days = Math.min(parsePositiveInt(query.days, 30), 365);
-            return await aovService.getAOVComparison(accountId, days);
+            const days = query.days === '-1' ? -1 : Math.min(parsePositiveInt(query.days, 30), 365);
+            const timezone = (request.headers['x-timezone'] as string) || 'Australia/Sydney';
+            return await aovService.getAOVComparison(accountId, days, timezone);
         } catch (e: any) {
             Logger.error('AOV Comparison Error', { error: e });
             return reply.code(500).send({ error: e.message });
