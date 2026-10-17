@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MessageBubble } from './MessageBubble';
 
@@ -17,6 +17,18 @@ function renderMessage(content: string, senderType: 'CUSTOMER' | 'AGENT' = 'CUST
 }
 
 describe('MessageBubble attachments', () => {
+    it('offers a download when an image preview cannot be decoded or loaded', () => {
+        renderMessage('[Attachment: 053 dexter (1).webp](/uploads/attachments/053 dexter (1).webp)');
+        fireEvent.error(screen.getByRole('img', { name: 'Attachment: 053 dexter (1).webp' }));
+        const link = screen.getByRole('link', { name: 'Attachment: 053 dexter (1).webp' });
+        expect(link).toHaveAttribute('download');
+        expect(decodeURIComponent(new URL(link.getAttribute('href')!).pathname)).toBe('/uploads/attachments/053 dexter (1).webp');
+    });
+
+    it('does not hide customer files with signature-like filenames', () => {
+        renderMessage('[logo.png](/uploads/attachments/logo.png)');
+        expect(screen.getByRole('img', { name: 'logo.png' })).toBeInTheDocument();
+    });
     it.each(['no glass (outlined)-02.svg', 'artwork (1).svg', 'artwork (final (2)).svg', '100% artwork.svg'])('preserves the full legacy download path for %s', (filename) => {
         renderMessage(`Please check this artwork.\n\n[Attachment: ${filename}](/uploads/attachments/123-${filename})`);
         const link = screen.getByRole('link', { name: `Attachment: ${filename}` });

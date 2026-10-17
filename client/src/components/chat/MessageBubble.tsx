@@ -154,9 +154,6 @@ export const MessageBubble = memo(function MessageBubble({
                 else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image';
 
                 const filename = text || url.split('/').pop() || 'file';
-                const isSignatureLikeFilename = (name: string) => /^(logo|signature|sig|banner|brand|header|footer|icon|avatar|divider|spacer|separator|bullet|pixel|tracker|tracking|beacon|dot|arrow)\d*[-_]?\w*\.(png|jpe?g|gif|webp|bmp)$/i.test(name);
-                if (type === 'image' && isSignatureLikeFilename(filename)) continue;
-
                 attachmentsList.push({ type, url, filename });
             }
         }

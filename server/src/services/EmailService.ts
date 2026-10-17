@@ -14,8 +14,7 @@ import { Logger } from '../utils/logger';
 import { decrypt } from '../utils/encryption';
 import crypto from 'crypto';
 import fs from 'fs';
-import path from 'path';
-import { getAttachmentUrl } from '../utils/attachmentUrl';
+import { storeIncomingAttachments } from './incomingAttachments';
 import { ensureEmailDocument, emailPlainText } from '../utils/emailContent';
 import { classifySendFailure, EmailDeferredError, reserveEmailSend } from './emailSendLifecycle';
 
@@ -31,11 +30,6 @@ interface EmailSendOptions {
     replyToEmail?: string;
     listId?: string;
     idempotencyKey?: string;
-}
-
-const attachmentsDir = path.join(__dirname, '../../uploads/attachments');
-if (!fs.existsSync(attachmentsDir)) {
-    fs.mkdirSync(attachmentsDir, { recursive: true });
 }
 
 async function safeRelayJson(response: Response, endpoint: string): Promise<any> {
@@ -967,10 +961,6 @@ export class EmailService {
                             continue;
                         }
 
-                        // Store UID for marking as seen AFTER the loop
-                        // NOTE: imapflow docs warn that calling messageFlagsAdd inside fetch loop causes DEADLOCK
-                        processedUids.push(message.uid);
-
                         const parsed: ParsedMail = await simpleParser(source, { skipImageLinks: true });
 
                         const subject = parsed.subject || '(No Subject)';
@@ -987,112 +977,8 @@ export class EmailService {
                             references = parsed.references.join(' ');
                         }
 
-                        let html = parsed.html || false;
+                        const { html, attachments: processedAttachments } = storeIncomingAttachments(parsed);
                         const text = parsed.text || '';
-                        const processedAttachments: Array<{ filename: string; url: string; type: string }> = [];
-
-                        // Process attachments
-                        if (parsed.attachments && parsed.attachments.length > 0) {
-                            for (const attachment of parsed.attachments) {
-                                let isInline = false;
-                                let isSignatureImage = false;
-
-                                // Handle inline images
-                                if (html && attachment.contentId && attachment.content && attachment.contentType) {
-                                    const cid = attachment.contentId.replace(/^<|>$/g, '');
-                                    // Only treat as inline if it's actually referenced in the HTML
-                                    if (html.includes(`cid:${cid}`)) {
-                                        const extensionFromName = attachment.filename?.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
-                                        const extensionFromType = attachment.contentType.split('/')[1]?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
-                                        const extension = extensionFromName || extensionFromType;
-                                        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-                                        const filename = `${uniqueSuffix}-inline-${cid.replace(/[^a-zA-Z0-9_-]/g, '') || 'image'}.${extension}`;
-                                        const filePath = path.join(attachmentsDir, filename);
-                                        fs.writeFileSync(filePath, attachment.content);
-                                        const inlineUrl = getAttachmentUrl(filename);
-                                        html = html.split(`cid:${cid}`).join(inlineUrl);
-                                        isInline = true;
-                                    }
-                                }
-
-                                // Detect signature images that shouldn't appear as attachments:
-                                // - marked as "related" by mailparser (embedded in HTML context)
-                                // - inline disposition + small size (logos, social icons)
-                                // - inline disposition + generic name (image001.png, etc.)
-                                // - signature-like orphaned CID: has a content-id but is NOT referenced in the HTML
-                                // - tiny images < 1.5 KB (tracking pixels, 1x1 spacers)
-                                // - known signature/logo filename patterns
-                                if (!isInline && attachment.contentType?.startsWith('image/')) {
-                                    const isRelated = (attachment as any).related === true;
-                                    const isInlineDisposition = (attachment as any).contentDisposition === 'inline';
-                                    const attachSize = attachment.size ?? attachment.content?.length ?? 0;
-                                    const isSmall = attachSize > 0 && attachSize < 30000;
-                                    const isTinyPixel = attachSize > 0 && attachSize < 1500;
-                                    const hasGenericName = !attachment.filename ||
-                                        /^image\d{0,3}\.\w+$/i.test(attachment.filename);
-
-                                    // Orphaned CID: content-id exists but is not referenced anywhere in HTML.
-                                    // Some clients add CIDs to real image attachments, so only treat this
-                                    // as a signature signal when the part is related/inline.
-                                    const rawCid = attachment.contentId?.replace(/^<|>$/g, '') ?? '';
-                                    const hasOrphanedCid = !!(
-                                        rawCid &&
-                                        html &&
-                                        !html.includes(`cid:${rawCid}`) &&
-                                        (isRelated || isInlineDisposition)
-                                    );
-
-                                    // Common signature / branding filenames
-                                    const hasSignatureFilename = !!attachment.filename &&
-                                        /^(logo|signature|sig|banner|brand|header|footer|icon|avatar|divider|spacer|separator|bullet|pixel|tracker|tracking|beacon|dot|arrow)\d*[-_]?\w*\.(png|jpe?g|gif|webp|bmp)$/i.test(attachment.filename);
-
-                                    const isOrphanedSignatureImage = hasOrphanedCid && (isRelated || isSmall || hasGenericName || hasSignatureFilename);
-
-                                    const reason =
-                                        isRelated ? 'related' :
-                                        isTinyPixel ? 'tinyPixel' :
-                                        isOrphanedSignatureImage ? 'orphanedCid' :
-                                        hasSignatureFilename ? 'signatureFilename' :
-                                        'inlineSmall';
-
-                                    if (
-                                        isRelated ||
-                                        isTinyPixel ||
-                                        isOrphanedSignatureImage ||
-                                        hasSignatureFilename ||
-                                        (isInlineDisposition && (isSmall || hasGenericName))
-                                    ) {
-                                        isSignatureImage = true;
-                                        Logger.info('[checkEmails] Skipping signature image', {
-                                            filename: attachment.filename,
-                                            disposition: (attachment as any).contentDisposition,
-                                            related: (attachment as any).related,
-                                            size: attachSize,
-                                            reason
-                                        });
-                                    }
-                                }
-
-                                // Handle regular attachments (or unreferenced inline ones)
-                                if (!isInline && !isSignatureImage && attachment.filename && attachment.content) {
-                                    try {
-                                        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-                                        const filename = uniqueSuffix + '-' + attachment.filename;
-                                        const filePath = path.join(attachmentsDir, filename);
-
-                                        fs.writeFileSync(filePath, attachment.content);
-
-                                        processedAttachments.push({
-                                            filename: attachment.filename,
-                                            url: getAttachmentUrl(filename),
-                                            type: attachment.contentType || 'application/octet-stream'
-                                        });
-                                    } catch (err) {
-                                        Logger.error('[checkEmails] Failed to save attachment', { filename: attachment.filename, error: err });
-                                    }
-                                }
-                            }
-                        }
 
                         Logger.info(`[checkEmails] Processing email`, { fromEmail, subject, hasHtml: !!html, attachments: processedAttachments.length });
 
@@ -1110,6 +996,9 @@ export class EmailService {
                         });
 
                         Logger.info(`[checkEmails] Emitted EMAIL.RECEIVED event`, { fromEmail, subject });
+                        // Leave messages unread for retry if parsing or file storage failed.
+                        // Flag updates must happen outside the IMAP fetch loop to avoid deadlocks.
+                        processedUids.push(message.uid);
                     } catch (msgError: any) {
                         Logger.error('[checkEmails] Error processing individual message', {
                             messageUid: message.uid,

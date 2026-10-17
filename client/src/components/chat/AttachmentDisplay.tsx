@@ -5,6 +5,7 @@
 import { FileText, Download, Image as ImageIcon, File, Eye, Paperclip } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { getSafeHref } from '../../utils/url';
+import { useState } from 'react';
 
 interface AttachmentInfo {
     type: 'image' | 'pdf' | 'document' | 'file';
@@ -42,6 +43,7 @@ interface AttachmentGalleryProps {
  * Renders a gallery of file attachments as compact pills.
  */
 export function AttachmentGallery({ attachments, onImageClick }: AttachmentGalleryProps) {
+    const [failedPreviews, setFailedPreviews] = useState<Set<string>>(() => new Set());
     // Inline images are already rendered in the message HTML body — skip them here.
     const visibleAttachments = attachments.filter(a => !a.isInline);
 
@@ -50,7 +52,7 @@ export function AttachmentGallery({ attachments, onImageClick }: AttachmentGalle
     return (
         <div className="flex flex-wrap gap-2 mt-2">
             {visibleAttachments.map((attachment, idx) => (
-                attachment.type === 'image' && attachment.url ? (
+                attachment.type === 'image' && attachment.url && !failedPreviews.has(attachment.url) ? (
                     // Image thumbnail pill
                     <button
                         key={idx}
@@ -61,6 +63,7 @@ export function AttachmentGallery({ attachments, onImageClick }: AttachmentGalle
                             src={attachment.url}
                             alt={attachment.filename}
                             className="w-6 h-6 object-cover rounded-full ring-1 ring-gray-200"
+                            onError={() => setFailedPreviews(previous => new Set(previous).add(attachment.url))}
                         />
                         <span className="text-xs text-gray-600 max-w-[100px] truncate group-hover:text-gray-900">
                             {attachment.filename}
