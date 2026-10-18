@@ -39,8 +39,10 @@ export function audienceIdentifiers(profiles: AdvertisingProfile[], platform: st
             // Google requires a complete name/country/postcode address identifier.
             const postcode = typeof billing.postcode === 'string' ? billing.postcode.trim().toLowerCase() : '';
             if (typeof first === 'string' && first.trim() && typeof last === 'string' && last.trim() && /^[A-Z]{2}$/.test(country) && postcode) {
-                row.firstName = hash(first);
-                row.lastName = hash(last);
+                // Data Manager address names must be lowercase and punctuation-free before hashing.
+                const normalizeName = (name: string) => platform === 'GOOGLE' ? name.replace(/[^\p{L}\p{N}\s]/gu, '').trim().toLowerCase() : name;
+                row.firstName = hash(normalizeName(first));
+                row.lastName = hash(normalizeName(last));
                 row.country = country;
                 row.postalCode = postcode;
             }

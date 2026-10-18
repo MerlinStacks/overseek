@@ -24,6 +24,7 @@ export function describeAudienceRejection(platform: string, status: number, body
     const candidates: unknown[] = [error?.error_user_title, error?.error_user_msg || error?.message];
     if (Array.isArray(error?.details)) {
         for (const detail of error.details.slice(0, 3)) {
+            if (typeof detail?.reason === 'string' && /^[A-Z][A-Z0-9_]{0,150}$/.test(detail.reason)) candidates.push(detail.reason);
             if (Array.isArray(detail?.errors)) {
                 for (const item of detail.errors.slice(0, 3)) {
                     candidates.push(item?.message);

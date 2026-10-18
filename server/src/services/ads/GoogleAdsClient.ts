@@ -474,6 +474,18 @@ export async function createGoogleAdsRestConfig(adAccountId: string): Promise<Go
     };
 }
 
+/** Data Manager uses the same OAuth client but no Google Ads developer token. */
+export async function createGoogleDataManagerConfig(adAccountId: string) {
+    const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } });
+    if (!account || account.platform !== 'GOOGLE' || !account.refreshToken || !account.externalId) throw new Error('Invalid Google Ad Account');
+    const customerId = account.externalId.replace(/-/g, '');
+    if (!/^\d+$/.test(customerId)) throw new Error('Invalid Google customer ID');
+    const credentials = await getCredentials('GOOGLE_ADS');
+    const loginCustomerId = credentials?.loginCustomerId?.replace(/-/g, '');
+    if (loginCustomerId && !/^\d+$/.test(loginCustomerId)) throw new Error('Invalid Google manager ID');
+    return { customerId, loginCustomerId, accessToken: await ensureGoogleAdsAccessToken(account) };
+}
+
 /**
  * Parse Google Ads API errors into user-friendly messages.
  */

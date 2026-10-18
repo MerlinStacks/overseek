@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AudienceSyncService, audienceEmailHashes } from './AudienceSyncService';
 import { audienceIdentifiers } from './audienceIdentifiers';
 
-const mocks = vi.hoisted(() => ({ find: vi.fn(), update: vi.fn(), updateMany: vi.fn(), exports: vi.fn(), segment: vi.fn(), subscribers: vi.fn(), create: vi.fn(), upload: vi.fn(), remove: vi.fn(), google: vi.fn(), add: vi.fn(), warn: vi.fn() }));
+const mocks = vi.hoisted(() => ({ find: vi.fn(), update: vi.fn(), updateMany: vi.fn(), exports: vi.fn(), segment: vi.fn(), subscribers: vi.fn(), create: vi.fn(), upload: vi.fn(), remove: vi.fn(), google: vi.fn(), add: vi.fn(), warn: vi.fn(), dataManager: vi.fn() }));
 vi.mock('../../utils/prisma', () => ({ prisma: { audienceSync: { findFirst: mocks.find, update: mocks.update, updateMany: mocks.updateMany } } }));
 vi.mock('../SegmentService', () => ({ segmentService: { getExportableCustomers: mocks.exports, getSegment: mocks.segment } }));
 vi.mock('./AdvertisingSubscriberService', () => ({ getAdvertisingSubscribers: mocks.subscribers }));
 vi.mock('../queue/QueueFactory', () => ({ QueueFactory: { createQueue: () => ({ add: mocks.add }) } }));
 vi.mock('./MetaAdsService', () => ({ MetaAdsService: { createCustomAudience: mocks.create, uploadCustomAudienceMembers: mocks.upload, removeCustomAudienceMembers: mocks.remove } }));
 vi.mock('./GoogleAdsClient', () => ({ createGoogleAdsRestConfig: mocks.google }));
+vi.mock('./GoogleDataManagerAudienceService', () => ({ GoogleDataManagerAudienceService: { sync: mocks.dataManager }, GoogleDataManagerError: class extends Error {} }));
 vi.mock('../../utils/logger', () => ({ Logger: { warn: mocks.warn } }));
 
 describe('Automatic advertising audience sync', () => {
@@ -63,21 +64,16 @@ describe('Automatic advertising audience sync', () => {
         expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }));
     });
 
-    it('creates Google lists and limits user-data mutations to ten operations with explicit consent', async () => {
+    it('routes Google customer lists exclusively through Data Manager, preserving enhanced/subscriber evaluation', async () => {
         mocks.find.mockResolvedValue({ ...sync, platform: 'GOOGLE', externalId: null, syncedEmailHashes: [], adAccount: { accountId: 'tenant', platform: 'GOOGLE' } });
         mocks.exports.mockResolvedValue({ emails: Array.from({ length: 23 }, (_, i) => `customer${i}@example.com`) });
-        mocks.google.mockResolvedValue({ customerId: '123', accessToken: 'secret', developerToken: 'dev' });
-        const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
-        fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ resourceName: 'customers/123/userLists/456' }] }) });
+        const fetch = vi.fn();
         vi.stubGlobal('fetch', fetch);
         await AudienceSyncService.sync('tenant', 'sync');
-        expect(fetch).toHaveBeenCalledTimes(4);
-        expect(fetch.mock.calls[0][0]).toBe('https://googleads.googleapis.com/v24/customers/123/userLists:mutate');
-        for (const [url] of fetch.mock.calls.slice(1)) expect(url).toBe('https://googleads.googleapis.com/v24/customers/123:uploadUserData');
-        const uploads = fetch.mock.calls.slice(1).map(call => JSON.parse(call[1].body));
-        expect(uploads.map(body => body.operations.length)).toEqual([10, 10, 3]);
-        expect(uploads[0].customerMatchUserListMetadata).toEqual({ userList: 'customers/123/userLists/456', consent: { adUserData: 'GRANTED', adPersonalization: 'GRANTED' } });
-        expect(uploads[0].operations[0].create.userIdentifiers[0].hashedEmail).toMatch(/^[a-f0-9]{64}$/);
+        expect(fetch).not.toHaveBeenCalled();
+        expect(mocks.google).not.toHaveBeenCalled();
+        expect(mocks.dataManager.mock.calls[0][1]).toHaveLength(23);
+        expect(mocks.dataManager.mock.calls[0][1][0].email).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it('normalizes Google Gmail dots, trims, lowercases and deduplicates', () => {
@@ -94,46 +90,32 @@ describe('Automatic advertising audience sync', () => {
         expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: { syncedIdentifiers: [], syncedEmailHashes: [] } }));
     });
 
-    it('bounds enhanced Google uploads by both operation and identifier limits', async () => {
+    it('passes enhanced Google profiles to Data Manager without raw contact details', async () => {
         mocks.find.mockResolvedValue({ ...sync, platform: 'GOOGLE', syncedEmailHashes: [], enhancedMatching: true, adAccount: { accountId: 'tenant', platform: 'GOOGLE' } });
         mocks.exports.mockResolvedValue({ emails: [], profiles: Array.from({ length: 13 }, (_, i) => ({
             email: `customer${i}@example.com`, firstName: 'Jane', lastName: 'Doe', rawData: { billing: { phone: '+61412345678', country: 'AU', postcode: '2000' } },
         })) });
-        mocks.google.mockResolvedValue({ customerId: '123', accessToken: 'secret', developerToken: 'dev' });
         const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
         vi.stubGlobal('fetch', fetch);
         await AudienceSyncService.sync('tenant', 'sync');
-        const uploads = fetch.mock.calls.map(call => JSON.parse(call[1].body));
-        expect(uploads.map(body => body.operations.length)).toEqual([6, 6, 1]);
-        expect(uploads.every(body => body.operations.flatMap((op: any) => op.create.userIdentifiers).length <= 20)).toBe(true);
-        expect(fetch.mock.calls.every(call => call[0] === 'https://googleads.googleapis.com/v24/customers/123:uploadUserData')).toBe(true);
+        expect(fetch).not.toHaveBeenCalled();
+        expect(mocks.dataManager.mock.calls[0][1]).toHaveLength(13);
+        expect(mocks.dataManager.mock.calls[0][1][0]).toMatchObject({ email: expect.stringMatching(/^[a-f0-9]{64}$/), phone: expect.stringMatching(/^[a-f0-9]{64}$/), firstName: expect.stringMatching(/^[a-f0-9]{64}$/), country: 'AU', postalCode: '2000' });
     });
 
-    it('uses the documented customer-level action for removals too, without recreating an existing list', async () => {
+    it('passes existing Google list IDs and empty membership to Data Manager for removals', async () => {
         mocks.find.mockResolvedValue({ ...sync, platform: 'GOOGLE', externalId: 'customers/123/userLists/456', adAccount: { accountId: 'tenant', platform: 'GOOGLE' } });
         mocks.exports.mockResolvedValue({ emails: [] });
-        mocks.google.mockResolvedValue({ customerId: '123', accessToken: 'secret', developerToken: 'dev', loginCustomerId: '789' });
-        const fetch = vi.fn().mockImplementation(async (url, request) => {
-            if (url !== 'https://googleads.googleapis.com/v24/customers/123:uploadUserData') return { ok: false, status: 404, json: async () => ({ error: { message: 'Unknown endpoint' } }) };
-            expect(JSON.parse(request.body).operations[0].remove).toBeDefined();
-            return { ok: true, status: 200, json: async () => ({ receivedOperationsCount: 1 }) };
-        });
+        const fetch = vi.fn();
         vi.stubGlobal('fetch', fetch);
         await AudienceSyncService.sync('tenant', 'sync');
-        expect(fetch).toHaveBeenCalledOnce();
-        expect(fetch.mock.calls[0][1].headers['login-customer-id']).toBe('789');
-        expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'SYNCED', memberCount: 0 }) }));
+        expect(fetch).not.toHaveBeenCalled();
+        expect(mocks.dataManager).toHaveBeenCalledWith(expect.objectContaining({ externalId: 'customers/123/userLists/456' }), []);
     });
 
-    it('retains sanitised Google rejection details and symbolic codes without advancing the snapshot', async () => {
+    it('passes through sanitised Data Manager errors without advancing the snapshot', async () => {
         mocks.find.mockResolvedValue({ ...sync, platform: 'GOOGLE', syncedEmailHashes: [], externalId: 'customers/123/userLists/456', adAccount: { accountId: 'tenant', platform: 'GOOGLE' } });
-        mocks.google.mockResolvedValue({ customerId: '123', accessToken: 'oauth-secret', developerToken: 'dev-secret' });
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: {
-            code: 403, message: 'Permission denied; Bearer oauth-secret', details: [{ errors: [{
-                message: 'Customer Match is not enabled for this account', errorCode: { authorizationError: 'CUSTOMER_NOT_ENABLED' },
-                trigger: { stringValue: 'private-payload' }
-            }] }]
-        } }) }));
+        mocks.dataManager.mockRejectedValue(new (await import('./GoogleDataManagerAudienceService')).GoogleDataManagerError('Data Manager: Google rejected audience sync (HTTP 403; code 403). authorizationError: CUSTOMER_NOT_ENABLED. Stage: uploading audience members.'));
         await expect(AudienceSyncService.sync('tenant', 'sync')).rejects.toThrow('Audience sync failed');
         const detail = mocks.updateMany.mock.calls.at(-1)![0].data.lastError;
         expect(detail).toContain('Google rejected audience sync (HTTP 403; code 403)');
@@ -147,16 +129,14 @@ describe('Automatic advertising audience sync', () => {
 
     it('reports Google list-creation rejections separately from membership upload failures', async () => {
         mocks.find.mockResolvedValue({ ...sync, platform: 'GOOGLE', externalId: null, syncedEmailHashes: [], adAccount: { accountId: 'tenant', platform: 'GOOGLE' } });
-        mocks.google.mockResolvedValue({ customerId: '123', accessToken: 'secret', developerToken: 'dev' });
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: { code: 400, message: 'Invalid user list argument' } }) }));
+        mocks.dataManager.mockRejectedValue(new (await import('./GoogleDataManagerAudienceService')).GoogleDataManagerError('Data Manager: Stage: creating the customer list'));
         await expect(AudienceSyncService.sync('tenant', 'sync')).rejects.toThrow('Audience sync failed');
         expect(mocks.updateMany.mock.calls.at(-1)![0].data.lastError).toContain('Stage: creating the customer list');
     });
 
-    it('does not mark membership as acknowledged if Google reports fewer operations received', async () => {
+    it('does not mark membership as acknowledged if Data Manager cannot confirm the batch', async () => {
         mocks.find.mockResolvedValue({ ...sync, platform: 'GOOGLE', syncedEmailHashes: [], adAccount: { accountId: 'tenant', platform: 'GOOGLE' } });
-        mocks.google.mockResolvedValue({ customerId: '123', accessToken: 'secret', developerToken: 'dev' });
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ receivedOperationsCount: 0 }) }));
+        mocks.dataManager.mockRejectedValue(new (await import('./GoogleDataManagerAudienceService')).GoogleDataManagerError('Data Manager did not acknowledge all audience operations'));
         await expect(AudienceSyncService.sync('tenant', 'sync')).rejects.toThrow('Audience sync failed');
         expect(mocks.updateMany.mock.calls.at(-1)![0].data.lastError).toContain('did not acknowledge all audience operations');
         expect(mocks.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ syncedIdentifiers: expect.anything() }) }));
@@ -164,8 +144,7 @@ describe('Automatic advertising audience sync', () => {
 
     it('keeps HTTP status for non-JSON errors and never retains the response body', async () => {
         mocks.find.mockResolvedValue({ ...sync, platform: 'GOOGLE', syncedEmailHashes: [], adAccount: { accountId: 'tenant', platform: 'GOOGLE' } });
-        mocks.google.mockResolvedValue({ customerId: '123', accessToken: 'secret', developerToken: 'dev' });
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => { throw new Error('HTML with private-payload'); } }));
+        mocks.dataManager.mockRejectedValue(new (await import('./GoogleDataManagerAudienceService')).GoogleDataManagerError('Google Data Manager returned HTTP 404 without readable diagnostics.'));
         await expect(AudienceSyncService.sync('tenant', 'sync')).rejects.toThrow('Audience sync failed');
         expect(mocks.updateMany.mock.calls.at(-1)![0].data.lastError).toContain('HTTP 404');
         expect(JSON.stringify(mocks.updateMany.mock.calls)).not.toContain('private-payload');

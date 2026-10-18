@@ -2787,7 +2787,7 @@ model AudienceSync {
   externalId   String?  // Platform's audience ID after creation
   audienceName String   // Name on the platform
   
-  status       String   @default("PENDING") // 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED' | 'PAUSED'
+  status       String   @default("PENDING") // PENDING | SYNCING | PROCESSING | SYNCED | FAILED | PAUSED
   lastSyncAt   DateTime?
   lastError    String?  @db.Text
   memberCount  Int?     // Submitted identifiers, not platform-matched users
@@ -2798,6 +2798,7 @@ model AudienceSync {
   includeSubscribers Boolean @default(false) // Explicit advertising-only expansion
   enhancedMatching Boolean @default(false) // Requires renewed consent attestation
   lastFullRefreshAt DateTime? // Membership refresh independent of five-minute deltas
+  googleDataManagerState Json? // Durable hashed batch plan and asynchronous request ID
   lastAttemptAt DateTime?
   
   // Lookalike settings (if derived)

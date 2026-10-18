@@ -96,13 +96,14 @@ export class GoogleAdsAuth {
 
         const { clientId } = creds;
 
-        const scopes = ['https://www.googleapis.com/auth/adwords'];
+        const scopes = ['https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/datamanager'];
 
         const params = new URLSearchParams({
             client_id: clientId,
             redirect_uri: redirectUri,
             response_type: 'code',
             scope: scopes.join(' '),
+            include_granted_scopes: 'true',
             access_type: 'offline',
             prompt: 'consent',
             state
