@@ -84,6 +84,9 @@ jobs:
         with:
           node-version: '22.23.1'
 
+      - name: Test purchase links and checkout activity deduplication
+        run: php overseek-wc-plugin/tests/purchase-links.php
+
       - name: Test local delivery calculations and discovery contract
         run: |
           php overseek-wc-plugin/tests/delivery-engine.php

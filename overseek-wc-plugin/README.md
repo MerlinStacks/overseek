@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.6**.
+Current version: **2.25.7**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,13 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.7 - 2026-10-18
+
+- Link purchases to WooCommerce's order-received URL, including custom endpoints and the order key, instead of the Blocks Store API processing URL.
+- Suppress identical checkout-start events within 30 minutes across Blocks updates, checkout email capture and classic submission when a WooCommerce session is available. Changed emails/cart details and checkouts after a successfully tracked purchase remain eligible.
+- Count cart and checkout page views only for document requests, not background fetches, AJAX, REST requests or prefetches. Genuine page visits remain visible.
+- Preserve both classic and Blocks checkout support and the SLDevs updater. Existing visitor-log entries are not rewritten.
 
 ### 2.25.6 - 2026-10-18
 

@@ -343,6 +343,25 @@ class OverSeek_Server_Tracking
             return;
         }
 
+        // All checkout capture paths share the Woo session. Request-local flags
+        // cannot deduplicate Blocks updates or the separate email-capture AJAX call.
+        $checkout_session = null;
+        $checkout_signature = '';
+        if ('checkout_start' === $type && function_exists('WC') && WC() && WC()->session) {
+            $checkout_session = WC()->session;
+            $checkout_signature = hash('sha256', wp_json_encode(array(
+                'email' => strtolower(trim((string) ($payload['email'] ?? ''))),
+                'items' => $payload['items'] ?? array(),
+                'total' => $payload['total'] ?? null,
+                'currency' => $payload['currency'] ?? '',
+            )));
+            $previous = $checkout_session->get('overseek_checkout_start', array());
+            if (is_array($previous) && ($previous['signature'] ?? '') === $checkout_signature
+                && time() - (int) ($previous['at'] ?? 0) < 1800) {
+                return;
+            }
+        }
+
         if ('purchase' === $type && !empty($payload['eventId'])) {
             foreach ($this->event_queue as $queued_event) {
                 if ('purchase' === ($queued_event['type'] ?? '') && ($queued_event['payload']['eventId'] ?? '') === $payload['eventId']) {
@@ -409,6 +428,9 @@ class OverSeek_Server_Tracking
         }
 
         $this->event_queue[] = $data;
+        if ($checkout_session) {
+            $checkout_session->set('overseek_checkout_start', array('signature' => $checkout_signature, 'at' => time()));
+        }
     }
 
     /**
@@ -512,7 +534,8 @@ class OverSeek_Server_Tracking
             'store_api_checkout',
             $this->get_pixel_meta_config()
         );
-        $this->queue_event('checkout_start', $payload);
+        $checkout_url = function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/checkout/');
+        $this->queue_event('checkout_start', $payload, false, $checkout_url);
 
         return $result;
     }
@@ -866,13 +889,18 @@ class OverSeek_Server_Tracking
         $event_id = OverSeek_Tracking_Event_Builder::ensure_order_event_id($order);
         $payload = OverSeek_Tracking_Event_Builder::build_purchase_payload($order, (int) $order_id, $event_id, $meta_config);
 
-        $this->queue_event('purchase', $payload);
+        // Blocks purchases run inside the Store API, not on the thank-you page.
+        // Use WooCommerce's URL builder to preserve custom endpoints and the order key.
+        $this->queue_event('purchase', $payload, false, $order->get_checkout_order_received_url());
         $results = $this->flush_event_queue();
 
         // Mark as tracked only after the blocking purchase request succeeds.
         if (!empty($results[$event_id])) {
             $order->update_meta_data('_overseek_tracked', true);
             $order->save();
+            if (function_exists('WC') && WC() && WC()->session) {
+                WC()->session->__unset('overseek_checkout_start');
+            }
         }
     }
 
@@ -995,6 +1023,10 @@ class OverSeek_Server_Tracking
      */
     public function track_cart_view()
     {
+        if (!OverSeek_Tracking_Guard_Utils::is_document_view_request()) {
+            return;
+        }
+
         // Guard: Prevent duplicate tracking if hook fires multiple times
         if ($this->cart_view_tracked) {
             return;
@@ -1018,6 +1050,10 @@ class OverSeek_Server_Tracking
      */
     public function track_checkout_view()
     {
+        if (!OverSeek_Tracking_Guard_Utils::is_document_view_request()) {
+            return;
+        }
+
         // Guard: Prevent duplicate tracking if hook fires multiple times
         if ($this->checkout_view_tracked) {
             return;

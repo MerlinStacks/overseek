@@ -1,0 +1,26 @@
+OverSeek Integration for WooCommerce 2.25.7
+Released: 2026-10-18
+
+Live Visitor Log and checkout tracking fixes:
+- Purchase links now use WooCommerce's customer-facing order-received URL,
+  including custom checkout endpoints and the order key. Blocks purchases no
+  longer link to the Store API endpoint that returns a missing-nonce error.
+- Identical checkout-start events are suppressed for 30 minutes within the
+  WooCommerce session across Blocks updates, email capture and classic checkout.
+  Changed emails or cart details remain eligible, and a successfully tracked
+  purchase resets the duplicate check for the next checkout.
+- Background fetches, AJAX, REST requests and prefetches no longer count as cart
+  or checkout page views. Genuine document visits remain visible.
+- Classic and Blocks checkout remain supported. SLDevs updates and existing
+  automatic-update preferences are preserved.
+
+Requirements: WordPress 6.4+, PHP 8.1+, WooCommerce (plugin header minimum 7.0;
+Blocks checkout requires 8.0+), and a running OverSeek server.
+
+Upgrade the existing overseek-wc-plugin folder in place; do not uninstall first.
+Purge separately managed page caches/CDNs as needed. Delivery estimates may
+require readiness revalidation after the version change. Check fresh classic
+and Blocks checkout events on staging before production deployment.
+Existing visitor-log links and duplicate historical events are not rewritten.
+This release does not deploy the OverSeek backend or change the backend
+deployment requirements documented for 2.25.6.
