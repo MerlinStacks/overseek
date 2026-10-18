@@ -19,7 +19,7 @@ function isSecretField(key: string): boolean {
 const REQUIRED_FIELDS: Record<string, string[]> = {
     meta: ['pixelId', 'accessToken'],
     tiktok: ['pixelCode', 'accessToken'],
-    google: ['customerId', 'conversionActionId'],
+    google: ['customerId'],
     pinterest: ['adAccountId', 'accessToken'],
     ga4: ['measurementId', 'apiSecret'],
     snapchat: ['pixelId', 'accessToken'],
@@ -30,7 +30,7 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
 const STRING_FIELDS: Record<string, string[]> = {
     meta: ['pixelId', 'accessToken', 'testEventCode', 'contentIdFormat', 'contentIdPrefix', 'contentIdSuffix'],
     tiktok: ['pixelCode', 'accessToken'],
-    google: ['conversionId', 'conversionLabel', 'conversionLabelPurchase', 'conversionLabelAddToCart', 'conversionLabelBeginCheckout', 'conversionLabelViewItem', 'customerId', 'conversionActionId', 'conversionActionIdAddToCart', 'conversionActionIdBeginCheckout', 'conversionActionIdViewItem', 'merchantId', 'feedCountry', 'feedLanguage'],
+    google: ['conversionId', 'conversionLabel', 'conversionLabelPurchase', 'conversionLabelAddToCart', 'conversionLabelBeginCheckout', 'conversionLabelViewItem', 'customerId', 'conversionActionId', 'purchaseUploadActionId', 'conversionActionIdAddToCart', 'conversionActionIdBeginCheckout', 'conversionActionIdViewItem', 'merchantId', 'feedCountry', 'feedLanguage'],
     pinterest: ['tagId', 'adAccountId', 'accessToken'],
     ga4: ['measurementId', 'apiSecret'],
     snapchat: ['pixelId', 'accessToken'],
@@ -149,6 +149,15 @@ export function validateCapiConfig(platform: string, enabled: unknown, config: u
     }
     if (platform === 'google' && typeof config.customerId === 'string' && config.customerId && !/^\d{3}-?\d{3}-?\d{4}$/.test(config.customerId)) {
         errors.push('customerId must be a 10 digit Google Ads customer ID');
+    }
+    if (platform === 'google') {
+        if (enabled === true && !(typeof config.conversionActionId === 'string' && config.conversionActionId.trim()) && !(typeof config.purchaseUploadActionId === 'string' && config.purchaseUploadActionId.trim())) {
+            errors.push('A purchase enhancement action or independent purchase import action is required');
+        }
+        if (config.purchaseUploadActionId) {
+            if (!/^\d+$/.test(String(config.purchaseUploadActionId))) errors.push('purchaseUploadActionId must contain only digits');
+            if (config.purchaseUploadActionId === config.conversionActionId) errors.push('The purchase import action must differ from the website enhancement action');
+        }
     }
 
     return errors;

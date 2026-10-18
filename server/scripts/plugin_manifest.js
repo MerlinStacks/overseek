@@ -5,9 +5,17 @@ const roots = new Set(['includes', 'assets', 'blocks', 'templates', 'languages']
 const topFiles = new Set(['overseek-integration.php', 'uninstall.php', 'README.md']);
 const forbidden = /^(?:tests?|__tests__|test[-_]?fixtures?|fixtures?|stubs|native|docs?|scripts?|commands?|node_modules|vendor|secrets?|credentials?|temp|tmp|coverage)$/i;
 const extensions = new Set(['.php', '.js', '.css', '.json', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.mo', '.po', '.pot']);
+// Pinned updater dependencies and license are runtime files, not development vendor tooling.
+const updaterRuntime = new Set([
+    'includes/plugin-update-checker/license.txt',
+    'includes/plugin-update-checker/vendor/Parsedown.php',
+    'includes/plugin-update-checker/vendor/ParsedownModern.php',
+    'includes/plugin-update-checker/vendor/PucReadmeParser.php',
+]);
 
 /** Only runtime roots and asset formats ship; developer tooling is never copied. */
 function isRuntimeFile(relative) {
+    if (updaterRuntime.has(relative)) return true;
     const parts = relative.split('/');
     if (parts.some(part => part.startsWith('.') || forbidden.test(part))) return false;
     if (topFiles.has(relative)) return true;
@@ -24,7 +32,7 @@ function manifest(source) {
             const relative = prefix + entry.name;
             if (entry.isSymbolicLink()) throw new Error(`Refusing plugin symlink: ${relative}`);
             if (entry.isDirectory()) {
-                if (entry.name.startsWith('.') || forbidden.test(entry.name)) excluded.push(relative + '/');
+                if (entry.name.startsWith('.') || (forbidden.test(entry.name) && relative !== 'includes/plugin-update-checker/vendor')) excluded.push(relative + '/');
                 else walk(path.join(dir, entry.name), relative + '/');
             } else (isRuntimeFile(relative) ? included : excluded).push(relative);
         }

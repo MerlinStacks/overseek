@@ -350,7 +350,7 @@ class OverSeek_Pixel_Ecommerce_Events {
 		}
 
 		$total    = (float) $order->get_total();
-		$currency = $order->get_currency();
+		$currency = strtoupper( trim( (string) $order->get_currency() ) );
 		$event_id = $order->get_meta( '_overseek_event_id' );
 		if ( empty( $event_id ) ) {
 			$event_id = wp_generate_uuid4();
@@ -359,13 +359,19 @@ class OverSeek_Pixel_Ecommerce_Events {
 		}
 
 		$meta_total = $total;
+		$meta_value_valid = is_numeric( $order->get_total() ) && is_finite( $total ) && $total >= 0;
 		if ( ! empty( $config['meta']['excludeShipping'] ) ) {
-			$meta_total -= (float) $order->get_shipping_total();
+			$shipping = $order->get_shipping_total();
+			$meta_value_valid = $meta_value_valid && is_numeric( $shipping ) && is_finite( (float) $shipping ) && (float) $shipping >= 0;
+			$meta_total = round( $meta_total - (float) $shipping, 2 );
 		}
 		if ( ! empty( $config['meta']['excludeTax'] ) ) {
-			$meta_total -= (float) $order->get_total_tax();
+			$tax = $order->get_total_tax();
+			$meta_value_valid = $meta_value_valid && is_numeric( $tax ) && is_finite( (float) $tax ) && (float) $tax >= 0;
+			$meta_total = round( $meta_total - (float) $tax, 2 );
 		}
-		$meta_total = max( 0, round( $meta_total, 2 ) );
+		$meta_value_valid = $meta_value_valid && is_finite( $meta_total ) && $meta_total >= 0;
+		$meta_total = round( $meta_total, 2 );
 
 		$items = array();
 		foreach ( $order->get_items() as $item ) {
@@ -382,7 +388,7 @@ class OverSeek_Pixel_Ecommerce_Events {
 		}
 
 		$js = '';
-		if ( self::is_platform_event_enabled( $config, 'meta', 'purchase' ) ) {
+		if ( self::is_platform_event_enabled( $config, 'meta', 'purchase' ) && $meta_value_valid && preg_match( '/^[A-Z]{3}$/', $currency ) && array_key_exists( $currency, get_woocommerce_currencies() ) ) {
 			$content_ids = array_column( $items, 'id' );
 			$js         .= "fbq('track','Purchase'," . wp_json_encode(
 				array(

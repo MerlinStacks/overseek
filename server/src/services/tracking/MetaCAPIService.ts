@@ -23,6 +23,33 @@ const GRAPH_API_BASE = `https://graph.facebook.com/${API_VERSION}`;
 const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 
+const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
+
+/** Do not turn missing values, booleans or formatted prices into zero revenue. */
+function monetaryAmount(raw: unknown): number | undefined {
+    if (typeof raw !== 'number' && (typeof raw !== 'string' || !/^\d+(?:\.\d+)?$/.test(raw.trim()))) return undefined;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function addedItemsValue(payload: Record<string, any>): number | undefined {
+    if (payload.price !== undefined) {
+        const price = monetaryAmount(payload.price);
+        const quantity = monetaryAmount(payload.quantity ?? 1);
+        return price !== undefined && quantity !== undefined && quantity > 0 ? price * quantity : undefined;
+    }
+    if (!Array.isArray(payload.items) || payload.items.length === 0) return undefined;
+    let total = 0;
+    for (const item of payload.items) {
+        if (!item || typeof item !== 'object') return undefined;
+        const price = monetaryAmount(item.price);
+        const quantity = monetaryAmount(item.quantity ?? 1);
+        if (price === undefined || quantity === undefined || quantity <= 0) return undefined;
+        total += price * quantity;
+    }
+    return total;
+}
+
 /**
  * Normalise an IP address by stripping IPv6-mapped prefix.
  * Docker/Node often reports IPs as `::ffff:10.0.0.1` which looks
@@ -95,6 +122,13 @@ export class MetaCAPIService implements ConversionPlatformService {
             userData.fbc = `fb.1.${occurrenceDate.getTime()}.${userData.clickId}`;
         }
         const payload = this.buildPayload(eventName, eventId, data, userData, config, occurrenceDate, testEventCode);
+        if (eventName === 'Purchase' && (payload.data[0].custom_data?.value === undefined || !payload.data[0].custom_data?.currency)) {
+            // Retain a visible failure rather than send malformed revenue or invent a default.
+            const deliveryId = await this.logDelivery(accountId, eventName, eventId, payload);
+            await this.markDelivery(deliveryId, 'FAILED', null, null, 0, 'NON_RETRYABLE: Purchase requires a valid non-negative total and ISO currency; check total, shipping and tax.');
+            Logger.warn('[MetaCAPI] Invalid purchase value or currency', { accountId, eventId });
+            return;
+        }
         const payloadUserData = payload.data?.[0]?.user_data || {};
 
         if (!this.hasSufficientMatchData(payloadUserData)) {
@@ -181,15 +215,24 @@ export class MetaCAPIService implements ConversionPlatformService {
         if (data.payload) {
             const customData: Record<string, any> = {};
 
-            if (data.payload.total !== undefined) {
-                let value = Number(data.payload.total);
-                if (config.excludeShipping) value -= Number(data.payload.shipping || 0);
-                if (config.excludeTax) value -= Number(data.payload.tax || 0);
-                customData.value = Math.max(0, Math.round(value * 100) / 100);
+            // AddToCart describes the added items, not the entire cart's (possibly stale) total.
+            let value = data.type === 'add_to_cart'
+                ? addedItemsValue(data.payload)
+                : monetaryAmount(data.payload.total);
+            if (data.type === 'purchase') {
+                for (const [enabled, field] of [[config.excludeShipping, 'shipping'], [config.excludeTax, 'tax']] as const) {
+                    if (!enabled) continue;
+                    const deduction = monetaryAmount(data.payload[field] === undefined ? 0 : data.payload[field]);
+                    value = value !== undefined && deduction !== undefined
+                        ? (Math.round(value * 100) - Math.round(deduction * 100)) / 100
+                        : undefined;
+                }
             }
-            if (data.payload.currency) {
-                customData.currency = data.payload.currency;
+            if (value !== undefined && Number.isFinite(value) && value >= 0 && Number.isFinite(value * 100)) {
+                customData.value = Math.round(value * 100) / 100;
             }
+            const currency = typeof data.payload.currency === 'string' ? data.payload.currency.trim().toUpperCase() : '';
+            if (CURRENCIES.has(currency)) customData.currency = currency;
             const orderId = getPayloadWooOrderIdString(data.payload);
             if (orderId) {
                 customData.order_id = orderId;

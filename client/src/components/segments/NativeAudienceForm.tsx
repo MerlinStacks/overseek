@@ -18,15 +18,17 @@ const COUNTRIES = [
 ];
 const inputClass = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
 
-export function NativeAudienceForm({ destinations, onCreated, onCancel }: {
+export function NativeAudienceForm({ destinations, onCreated, onCancel, initialKind = 'WEBSITE', asSegment = false }: {
     destinations: AdAudienceDestination[];
     onCreated: () => void;
     onCancel: () => void;
+    initialKind?: 'WEBSITE' | 'LOOKALIKE';
+    asSegment?: boolean;
 }) {
     const api = useApi();
     const toast = useToast();
     const [adAccountId, setAdAccountId] = useState('');
-    const [kind, setKind] = useState('WEBSITE');
+    const [kind, setKind] = useState<string>(initialKind);
     const [name, setName] = useState('');
     const [pixelId, setPixelId] = useState('');
     const [event, setEvent] = useState('PageView');
@@ -75,7 +77,7 @@ export function NativeAudienceForm({ destinations, onCreated, onCancel }: {
                 urlContains, retentionDays: Number(retentionDays), excludePurchasers, exclusionDays: Number(exclusionDays)
             } : { sourceType: selectedSource!.type, sourceId: selectedSource!.id, country, percent: Number(percent) };
             const result = await api.post<{ status: string }>('/api/segments/native-audiences', { adAccountId, kind, name: name.trim(), consentConfirmed, definition });
-            toast.success(result.status === 'CREATED' ? 'This audience already exists in Overseek' : 'Audience request saved. Check its creation status below.');
+            toast.success(result.status === 'CREATED' ? 'This audience already exists in Overseek' : asSegment ? 'Segment saved. Check its platform creation status in Segments.' : 'Audience request saved. Check its creation status below.');
             onCreated();
         } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not create audience'); }
         finally { setBusy(false); }
@@ -85,20 +87,20 @@ export function NativeAudienceForm({ destinations, onCreated, onCancel }: {
         <fieldset disabled={busy} className="space-y-4 disabled:opacity-70">
             <label className="block font-medium">Advertising account
                 <select className={inputClass} value={adAccountId} onChange={e => {
-                    setAdAccountId(e.target.value); setPixelId(''); setSource(''); setKind('WEBSITE'); setTagConfirmed(false); setConsentConfirmed(false);
+                    setAdAccountId(e.target.value); setPixelId(''); setSource(''); setKind(initialKind === 'LOOKALIKE' && destinations.find(item => item.id === e.target.value)?.platform === 'META' ? 'LOOKALIKE' : 'WEBSITE'); setTagConfirmed(false); setConsentConfirmed(false);
                 }}>
                     <option value="">Choose a connected account</option>
                     {destinations.map(item => <option key={item.id} value={item.id}>{item.platform} · {item.name || item.externalId}</option>)}
                 </select>
             </label>
             {destination && <>
-                <label className="block font-medium">Audience type
+                <label className="block font-medium">{asSegment ? 'Segment type' : 'Audience type'}
                     <select className={inputClass} value={kind} onChange={e => setKind(e.target.value)}>
                         <option value="WEBSITE">Website retargeting</option>
                         {meta && <option value="LOOKALIKE">Meta lookalike</option>}
                     </select>
                 </label>
-                <label className="block font-medium">Audience name
+                <label className="block font-medium">{asSegment ? 'Segment name' : 'Audience name'}
                     <input required maxLength={200} className={inputClass} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Checkout visitors · 14 days" />
                 </label>
                 {loadingSources && <p>Loading accessible sources…</p>}
@@ -173,7 +175,7 @@ export function NativeAudienceForm({ destinations, onCreated, onCancel }: {
         <p className="text-xs">This creates an audience definition only. Membership refreshes within the platform; campaigns and budgets are not changed. Availability can take time and minimum sizes apply.</p>
         <div className="flex justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
             <button type="button" onClick={onCancel} disabled={busy} className="rounded-lg px-4 py-2">Cancel</button>
-            <button type="submit" disabled={busy || !valid} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-50">{busy && <Loader2 size={16} className="animate-spin" />}Create audience</button>
+            <button type="submit" disabled={busy || !valid} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-50">{busy && <Loader2 size={16} className="animate-spin" />}{asSegment ? 'Create segment' : 'Create audience'}</button>
         </div>
     </form>;
 }

@@ -3,11 +3,13 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import crypto from 'crypto';
 import { rollingFields, validateCriteria } from './segments/criteria';
+import { behaviourPredicate } from './segments/behaviourPredicate';
 
 interface SegmentRule {
     field: string;
     operator: string;
     value: any;
+    campaignId?: string;
 }
 
 interface SegmentCriteria {
@@ -31,11 +33,19 @@ interface PreviewFilterGroup {
  * Contains both raw and SHA256-hashed identifiers for ad platform uploads.
  */
 export interface ExportableCustomerData {
+    profiles?: AdvertisingProfile[];
     emails: string[];
     phones: string[];
     hashedEmails: string[];
     hashedPhones: string[];
     totalCount: number;
+}
+
+export interface AdvertisingProfile {
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    rawData?: unknown;
 }
 
 export class SegmentService {
@@ -173,7 +183,7 @@ export class SegmentService {
             where: { accountId },
             orderBy: { createdAt: 'desc' },
             include: {
-                audienceSyncs: { select: { id: true, platform: true, audienceName: true, status: true, lastSyncAt: true, lastError: true, memberCount: true, autoSyncEnabled: true } },
+                audienceSyncs: { select: { id: true, platform: true, audienceName: true, status: true, lastSyncAt: true, lastError: true, memberCount: true, autoSyncEnabled: true, includeSubscribers: true, enhancedMatching: true } },
                 _count: {
                     select: { campaigns: true }
                 }
@@ -346,6 +356,8 @@ export class SegmentService {
             where: whereClause,
             select: {
                 email: true,
+                firstName: true,
+                lastName: true,
                 rawData: true
             }
         });
@@ -381,6 +393,7 @@ export class SegmentService {
         }
 
         return {
+            profiles: customers,
             emails,
             phones,
             hashedEmails,
@@ -454,23 +467,7 @@ export class SegmentService {
     }
 
     private async mapRollingRule(accountId: string, rule: SegmentRule): Promise<Prisma.WooCustomerWhereInput> {
-        const now = new Date();
-        const cutoff = new Date(now.getTime() - Number(rule.value) * 86400000);
-        // Match registered customers by Woo ID, and guest orders by billing email.
-        const orderIdentity = Prisma.sql`(o."wooCustomerId" = c."wooId" AND c."wooId" > 0 OR lower(trim(o."billingEmail")) = lower(trim(c.email)) AND trim(c.email) <> '')`;
-        const purchase = Prisma.sql`EXISTS (SELECT 1 FROM "WooOrder" o WHERE o."accountId" = c."accountId" AND ${orderIdentity} AND o.status IN ('processing', 'completed') AND o."dateCreated" >= ${cutoff} AND o."dateCreated" <= ${now})`;
-        let predicate = rule.field === 'notPurchasedWithinDays' ? Prisma.sql`NOT ${purchase}` : purchase;
-        if (rule.field === 'abandonedCartWithinDays') {
-            const inactive = new Date(now.getTime() - 30 * 60000);
-            predicate = Prisma.sql`EXISTS (
-                SELECT 1 FROM "AnalyticsSession" s
-                WHERE s."accountId" = c."accountId"
-                AND (s."wooCustomerId" = c."wooId" AND c."wooId" > 0 OR lower(trim(s.email)) = lower(trim(c.email)) AND trim(c.email) <> '')
-                AND s."cartValue" > 0 AND s."lastActiveAt" >= ${cutoff} AND s."lastActiveAt" <= ${inactive}
-                AND NOT EXISTS (SELECT 1 FROM "WooOrder" o WHERE o."accountId" = c."accountId" AND ${orderIdentity} AND o.status IN ('processing', 'completed') AND o."dateCreated" >= s."lastActiveAt")
-                AND NOT EXISTS (SELECT 1 FROM "AnalyticsEvent" e WHERE e."sessionId" = s.id AND e.type = 'purchase' AND e."occurredAt" >= s."lastActiveAt")
-            )`;
-        }
+        const predicate = behaviourPredicate(rule);
         const customers = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`SELECT c.id FROM "WooCustomer" c WHERE c."accountId" = ${accountId} AND ${predicate}`);
         return { id: { in: customers.map(customer => customer.id) } };
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getEmailDesignWarnings, sanitizeEmailHtml, sanitizeEmailPaste } from './emailHtml';
+import { getEmailDesignWarnings, sanitizeEmailHtml, sanitizeEmailLayoutHtml, sanitizeEmailPaste } from './emailHtml';
 
 describe('emailHtml', () => {
     it('removes unsafe tags, handlers, and javascript links', () => {
@@ -18,6 +18,15 @@ describe('emailHtml', () => {
         const result = sanitizeEmailPaste('', 'Line one\nLine two\n\nNext');
 
         expect(result).toBe('<p>Line one<br>Line two</p><p>Next</p>');
+    });
+
+    it('keeps imported email layout while removing executable content', () => {
+        const result = sanitizeEmailLayoutHtml('<style>body{display:none}</style><table width="100%"><tr><td style="padding:12px"><img src="https://shop.test/logo.png" onerror="bad()">{{cart.itemsTable}}</td></tr></table><script>bad()</script>');
+        expect(result).toContain('<table width="100%">');
+        expect(result).toContain('<td style="padding:12px">');
+        expect(result).toContain('<img src="https://shop.test/logo.png">');
+        expect(result).toContain('{{cart.itemsTable}}');
+        expect(result).not.toMatch(/<style|<script|onerror|bad\(/);
     });
 
     it('reports common designer edge cases', () => {

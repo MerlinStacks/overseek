@@ -31,4 +31,16 @@ describe('Ecommerce segment builder', () => {
             { field: 'notPurchasedWithinDays', operator: 'within', value: '90' }
         ] });
     });
+
+    it('saves email engagement with a rolling window, source ID and purchase exclusion', () => {
+        const save = vi.fn();
+        render(<SegmentBuilder onSave={save} onCancel={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Email clickers, no purchase' }));
+        fireEvent.change(screen.getByLabelText('Email source ID'), { target: { value: 'campaign-1' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save Segment' }));
+        expect(save).toHaveBeenCalledWith({ type: 'AND', rules: [
+            { field: 'emailClickedWithinDays', operator: 'within', value: '30', campaignId: 'campaign-1' },
+            { field: 'notPurchasedWithinDays', operator: 'within', value: '30' },
+        ] });
+    });
 });

@@ -2694,6 +2694,7 @@ model MessageTrackingEvent {
   createdAt DateTime @default(now())
   
   @@index([emailLogId])
+  @@index([emailLogId, eventType, createdAt])
 }
 
 /// Tracks email unsubscribes per account.
@@ -2793,6 +2794,10 @@ model AudienceSync {
   autoSyncEnabled Boolean @default(false)
   consentConfirmedAt DateTime?
   syncedEmailHashes Json @default("[]")
+  syncedIdentifiers Json @default("[]") // Acknowledged hashed matching rows, including removal data
+  includeSubscribers Boolean @default(false) // Explicit advertising-only expansion
+  enhancedMatching Boolean @default(false) // Requires renewed consent attestation
+  lastFullRefreshAt DateTime? // Membership refresh independent of five-minute deltas
   lastAttemptAt DateTime?
   
   // Lookalike settings (if derived)

@@ -447,18 +447,19 @@ class OverSeek_Pixels {
     function makeEid(){
         return (window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():'os_'+Date.now().toString(36)+Math.random().toString(36).slice(2,10));
     }
-    function ensureButtonEid(btn){
+    function ensureButtonEid(btn,fresh){
         var b=jQuery(btn);
-        var eid=b.attr('data-overseek-event-id')||b.attr('data-os-eid')||'';
+        var eid=fresh?'':b.attr('data-overseek-event-id')||b.attr('data-os-eid')||'';
         if(!eid){
             eid=makeEid();
             b.attr('data-overseek-event-id',eid);
             b.attr('data-os-eid',eid);
+            // WooCommerce reads .data() when building its AJAX request.
+            b.data('overseek_event_id',eid);
         }
         var href=b.attr('href')||'';
-        if(href && href.indexOf('overseek_event_id=')===-1){
-            var sep=href.indexOf('?')===-1?'?':'&';
-            b.attr('href',href+sep+'overseek_event_id='+encodeURIComponent(eid));
+        if(href){
+            try{var url=new URL(href,window.location.href);url.searchParams.set('overseek_event_id',eid);b.attr('href',url.toString());}catch(e){}
         }
         return eid;
     }
@@ -474,14 +475,20 @@ class OverSeek_Pixels {
         if(p.twitter&&window.overseekAdvertisingConsentGranted&&window.twq) twq('event',p.twitter,{value:value,currency:currency,num_items:1,conversion_id:eid});
     }
     jQuery(document).on('click','.add_to_cart_button, .ajax_add_to_cart',function(){
-        ensureButtonEid(this);
+        // AJAX IDs are assigned before POST below, not after Woo's click handler.
+        if(!jQuery(this).hasClass('ajax_add_to_cart')) ensureButtonEid(this,true);
+    });
+    jQuery(document.body).on('adding_to_cart',function(e,btn,data){
+        var eid=ensureButtonEid(btn,true);
+        data.overseek_event_id=eid;
     });
     jQuery(document.body).on('added_to_cart',function(e,fragments,cart_hash,btn){
         var eid=btn?ensureButtonEid(btn):makeEid();
         var name=btn&&btn.data('product_name')||'';
         var id=btn&&(btn.attr('data-overseek-content-id')||btn.data('product_id'))||'';
         var price=btn&&btn.data('product_price')||0;
-        fireATC(name,String(id),parseFloat(price)||0,'{$this->get_currency_code()}',eid);
+        var quantity=btn&&btn.data('quantity')||1;
+        fireATC(name,String(id),(parseFloat(price)||0)*(parseFloat(quantity)||1),'{$this->get_currency_code()}',eid);
     });
     jQuery('form.variations_form')
         .on('found_variation',function(e,variation){
@@ -494,13 +501,14 @@ class OverSeek_Pixels {
     jQuery('form.cart').on('submit',function(){
         var form=jQuery(this);
         var eidInput=form.find('input[name="overseek_event_id"]');
-        var eid=eidInput.val()||makeEid();
+        var eid=makeEid();
         if(!eidInput.length){eidInput=jQuery('<input/>',{type:'hidden',name:'overseek_event_id'});form.append(eidInput);}
         eidInput.val(eid);
         var name=form.closest('.product').find('.product_title').text()||'';
         var id=form.find('input[name=overseek_content_id]').val()||form.find('input[name=product_id],button[name=add-to-cart]').val()||'';
         var price=form.closest('.product').find('.price ins .amount, .price > .amount').first().text().replace(/[^0-9.]/g,'')||0;
-        fireATC(name.trim(),String(id),parseFloat(price)||0,'{$this->get_currency_code()}',String(eid));
+        var quantity=parseFloat(form.find('input[name=quantity]').val())||1;
+        fireATC(name.trim(),String(id),(parseFloat(price)||0)*quantity,'{$this->get_currency_code()}',String(eid));
     });
 })();
 JS;

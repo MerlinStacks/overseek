@@ -32,7 +32,7 @@ import { renderDeliveryEstimateEmailBlock } from '@overseek/core';
 import { PreviewOrderContext } from './PreviewOrderContext';
 import { EMAIL_MERGE_TAGS, type MergeTagDefinition } from './mergeTags';
 import { LTR_TEXT_STYLE, sanitizeBidiText } from '../textInputBidi';
-import { sanitizeEmailHtml, sanitizeEmailPaste, stripBidiControls } from '../../../utils/emailHtml';
+import { sanitizeEmailHtml, sanitizeEmailLayoutHtml, sanitizeEmailPaste, stripBidiControls } from '../../../utils/emailHtml';
 
 const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: string }> = [
     { id: 'customer', label: 'Customer' },
@@ -204,7 +204,7 @@ export function LiveBlock({ block, theme, onUpdate }: { block: EmailBlock; theme
         return <div style={{ padding: block.props.padding || '18px 0', textAlign: block.props.align || 'center', ...responsiveStyle }}><h3 style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 18, lineHeight: 1.35 }}>{block.props.heading || 'Track your order'}</h3><p style={{ margin: '0 0 14px', color: theme.mutedTextColor, lineHeight: 1.6 }}>{block.props.body || 'Your order is on its way. Use the button below to track it with Australia Post.'}</p>{block.props.showTrackingNumber !== false && <p style={{ margin: '0 0 14px', color: theme.mutedTextColor, fontSize: 13, lineHeight: 1.4 }}>Tracking number: <strong style={{ color: theme.textColor }}>{'{{order.trackingNumber}}'}</strong></p>}<span style={{ display: 'inline-block', background: theme.primaryColor, color: '#ffffff', borderRadius: theme.borderRadius, padding: '12px 20px', fontWeight: 700, fontSize: 14 }}>{block.props.buttonLabel || 'Track with AusPost'}</span></div>;
     }
     if (block.type === 'address') return <div style={{ padding: (block.props as { padding?: string }).padding || '12px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }}><h3 style={{ margin: '0 0 8px', color: theme.textColor, fontSize: 16 }}>{block.props.title}</h3><p style={{ margin: 0, color: theme.mutedTextColor, lineHeight: 1.6 }}>{block.props.source === 'shipping' ? '{{order.shippingAddress}}' : '{{order.billingAddress}}'}</p></div>;
-    return <div style={{ padding: (block.props as { padding?: string }).padding || '8px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }} dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(String(block.props.html || '')) }} />;
+    return <div style={{ padding: (block.props as { padding?: string }).padding || '8px 0', textAlign: (block.props as { align?: 'left' | 'center' | 'right' }).align || 'left', ...responsiveStyle }} dangerouslySetInnerHTML={{ __html: sanitizeEmailLayoutHtml(String(block.props.html || '')) }} />;
 }
 
 function EditableButtonBlock({ block, theme, onUpdate }: { block: Extract<EmailBlock, { type: 'button' }>; theme: EmailDesignTheme; onUpdate: (updater: (block: EmailBlock) => void) => void }) {

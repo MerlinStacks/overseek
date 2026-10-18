@@ -8,6 +8,7 @@
 import { prisma } from '../../utils/prisma';
 import { Logger } from '../../utils/logger';
 import { AdMetric, CampaignInsight, DailyTrend, getCredentials, formatDateISO } from './types';
+import { META_AUDIENCE_SCHEMA } from './audienceIdentifiers';
 
 /** Current Meta Graph API version */
 const API_VERSION = 'v24.0';
@@ -503,7 +504,8 @@ export class MetaAdsService {
     static async uploadCustomAudienceMembers(
         adAccountId: string,
         audienceId: string,
-        hashedEmails: string[]
+        hashedEmails: string[],
+        matchingRows?: string[][]
     ): Promise<{ numReceived: number; numInvalidEntries: number }> {
         const adAccount = await prisma.adAccount.findUnique({
             where: { id: adAccountId }
@@ -518,8 +520,8 @@ export class MetaAdsService {
         // Format data for Meta API
         const payload = {
             payload: {
-                schema: ['EMAIL'],
-                data: hashedEmails.map(email => [email])
+                schema: matchingRows ? META_AUDIENCE_SCHEMA : ['EMAIL'],
+                data: matchingRows || hashedEmails.map(email => [email])
             }
         };
 
@@ -553,12 +555,12 @@ export class MetaAdsService {
     }
 
     /** Remove expired segment members, including when the new segment is empty. */
-    static async removeCustomAudienceMembers(adAccountId: string, audienceId: string, hashedEmails: string[]): Promise<void> {
+    static async removeCustomAudienceMembers(adAccountId: string, audienceId: string, hashedEmails: string[], matchingRows?: string[][]): Promise<void> {
         const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } });
         if (!account || account.platform !== 'META' || !account.accessToken) throw new Error('Invalid Meta Ad Account');
         const response = await metaFetch(buildMetaUrl(`${audienceId}/users`), account.accessToken, {
             method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ payload: { schema: ['EMAIL'], data: hashedEmails.map(hash => [hash]) } })
+            body: JSON.stringify({ payload: { schema: matchingRows ? META_AUDIENCE_SCHEMA : ['EMAIL'], data: matchingRows || hashedEmails.map(hash => [hash]) } })
         });
         const result = await safeFetchJson(response, 'removeCustomAudienceMembers');
         if (!response.ok || result.error || result.num_invalid_entries > 0) throw new Error('Meta audience member removal failed');

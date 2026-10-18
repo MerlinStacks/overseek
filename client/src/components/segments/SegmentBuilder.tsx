@@ -7,6 +7,7 @@ export interface SegmentRule {
     field: string;
     operator: string;
     value: string;
+    campaignId?: string;
 }
 
 export interface SegmentCriteria {
@@ -22,6 +23,10 @@ interface SegmentBuilderProps {
 }
 
 const FIELDS = [
+    { label: 'Opened email in the last (days)', value: 'emailOpenedWithinDays', type: 'number' },
+    { label: 'Clicked email in the last (days)', value: 'emailClickedWithinDays', type: 'number' },
+    { label: 'No email opens in the last (days)', value: 'notEmailOpenedWithinDays', type: 'number' },
+    { label: 'No email clicks in the last (days)', value: 'notEmailClickedWithinDays', type: 'number' },
     { label: 'Purchased in the last (days)', value: 'purchasedWithinDays', type: 'number' },
     { label: 'No purchase in the last (days)', value: 'notPurchasedWithinDays', type: 'number' },
     { label: 'Abandoned cart in the last (days)', value: 'abandonedCartWithinDays', type: 'number' },
@@ -32,8 +37,11 @@ const FIELDS = [
     { label: 'Last Name', value: 'lastName', type: 'text' }
 ];
 
-const ROLLING_FIELDS = new Set(['purchasedWithinDays', 'notPurchasedWithinDays', 'abandonedCartWithinDays']);
+const ENGAGEMENT_FIELDS = new Set(['emailOpenedWithinDays', 'emailClickedWithinDays', 'notEmailOpenedWithinDays', 'notEmailClickedWithinDays']);
+const ROLLING_FIELDS = new Set(['purchasedWithinDays', 'notPurchasedWithinDays', 'abandonedCartWithinDays', ...ENGAGEMENT_FIELDS]);
 const PRESETS: { name: string; rules: SegmentRule[] }[] = [
+    { name: 'Email clickers, no purchase', rules: [{ field: 'emailClickedWithinDays', operator: 'within', value: '30' }, { field: 'notPurchasedWithinDays', operator: 'within', value: '30' }] },
+    { name: 'Inactive email audience', rules: [{ field: 'notEmailClickedWithinDays', operator: 'within', value: '90' }] },
     { name: 'Recent purchasers', rules: [{ field: 'purchasedWithinDays', operator: 'within', value: '30' }] },
     { name: 'Abandoned carts', rules: [{ field: 'abandonedCartWithinDays', operator: 'within', value: '7' }] },
     { name: 'Win-back customers', rules: [{ field: 'ordersCount', operator: 'gte', value: '1' }, { field: 'notPurchasedWithinDays', operator: 'within', value: '90' }] },
@@ -76,6 +84,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                 newRules[index].operator = allowedOperators[0] || '';
             }
             newRules[index].value = '';
+            delete newRules[index].campaignId;
         }
 
         setCriteria({ ...criteria, rules: newRules });
@@ -122,7 +131,8 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                     {PRESETS.map(preset => <button key={preset.name} type="button" onClick={() => setCriteria({ type: 'AND', rules: preset.rules.map(rule => ({ ...rule })) })} className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-indigo-700 dark:bg-slate-800 dark:text-indigo-200">{preset.name}</button>)}
                 </div>
                 <p className="mt-3">Presets replace the current rules. Day windows roll forward automatically. Purchases include processing/completed orders. Abandoned carts require 30 minutes of inactivity and exclude later purchases.</p>
-                <p className="mt-2">Only customers known to Overseek can match; anonymous visitors cannot be exported. Add an orders-count condition when excluding recent purchases to target past customers only.</p>
+                <p className="mt-2">Customer previews and email broadcasts include known customers. Advertising sync can optionally include subscribed list members without customer records. Anonymous visitors cannot be exported. Add an orders-count condition when excluding recent purchases to target past customers only.</p>
+                <p className="mt-2">Email rules use tracked opens/clicks, which may include privacy proxies and automated scanners. “No clicks/opens” also matches people with no tracked email history. Prefer clicks for engagement audiences.</p>
             </div>
 
             <div className="space-y-4">
@@ -168,6 +178,10 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                         >
                             <Trash2 size={16} />
                         </button>
+                        {ENGAGEMENT_FIELDS.has(rule.field) && <label className="text-xs text-gray-600 sm:col-span-4 dark:text-slate-300">
+                            Optional campaign / automation ID (blank = all tracked emails)
+                            <input aria-label="Email source ID" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:bg-slate-800" value={rule.campaignId || ''} maxLength={200} onChange={event => updateRule(index, { campaignId: event.target.value.trim() || undefined })} />
+                        </label>}
                     </div>
                 ))}
 

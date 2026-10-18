@@ -2,6 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { compileEmailDesignV2, createDefaultEmailDesignV2, createEmailDesignV2FromUnknown } from './emailDesignerV2';
 
 describe('emailDesignerV2', () => {
+    it('preserves embedded preview text when callers provide no override', () => {
+        const design = createDefaultEmailDesignV2({ previewText: 'Saved preview' });
+        expect(createEmailDesignV2FromUnknown(design, { previewText: undefined }).document.meta.previewText).toBe('Saved preview');
+        expect(createEmailDesignV2FromUnknown(design, { previewText: '' }).document.meta.previewText).toBe('');
+    });
+
+    it('compiles mobile reverse stacking without reversing desktop column order', () => {
+        const design = createDefaultEmailDesignV2();
+        design.document.sections[0].stackMode = 'reverse';
+        const html = compileEmailDesignV2(design);
+        expect(html).toContain('<tr class="os-mobile-stack-reverse">');
+        expect(html).toContain('flex-direction: column-reverse !important');
+        expect(html).not.toContain('display: table-header-group');
+    });
     it('uses the current flow subject instead of a stale embedded design title', () => {
         const design = createDefaultEmailDesignV2({
             title: 'Old subject',

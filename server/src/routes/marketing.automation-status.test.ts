@@ -145,6 +145,36 @@ describe('marketing automation status route', () => {
         expect(response.json()).toMatchObject({ reason: 'unsubscribed_all', error: expect.stringContaining('has unsubscribed') });
     });
 
+    it('fills cart tags in both preview and test using the same selected order', async () => {
+        vi.mocked(prisma.account.findFirst).mockResolvedValue({ wooUrl: 'https://shop.test', currency: 'AUD' } as any);
+        vi.mocked(prisma.wooOrder.findFirst).mockResolvedValue({
+            id: 'cart-order', number: '42', total: '75.00', currency: 'AUD',
+            rawData: { billing: { first_name: 'Emily' }, line_items: [{ name: 'Custom mug', quantity: 3, total: '75.00' }] },
+        } as any);
+        const content = '<p>Hello {{customer.firstName}}</p>{{cart.itemsTable}}<b>{{cart.total}} {{cart.currency}}</b><a href="{{cart.recoveryUrl}}">Return</a>';
+        const preview = await app.inject({ method: 'POST', url: '/api/marketing/preview-email', payload: { subject: 'Hello {{customer.firstName}}', content } });
+        expect(preview.statusCode).toBe(200);
+        expect(preview.json()).toMatchObject({ subject: 'Hello Emily', orderId: 'cart-order' });
+        expect(preview.json().html).toContain('Custom mug');
+        expect(preview.json().html).toContain('75.00');
+        expect(preview.json().html).toContain('https://shop.test/checkout/?recover_cart=preview');
+        expect(preview.json().html).not.toContain('{{');
+        expect(sendEmail).not.toHaveBeenCalled();
+        const test = await app.inject({ method: 'POST', url: '/api/marketing/test-email', payload: { to: 'test@example.com', subject: 'Hello {{customer.firstName}}', content, orderId: preview.json().orderId } });
+        expect(test.statusCode).toBe(200);
+        expect(sendEmail.mock.calls[0][4]).toBe(preview.json().html);
+    });
+
+    it('uses sample cart items when no order exists, without sending a preview', async () => {
+        vi.mocked(prisma.account.findFirst).mockResolvedValue({ wooUrl: 'https://shop.test' } as any);
+        vi.mocked(prisma.wooOrder.findFirst).mockResolvedValue(null);
+        const response = await app.inject({ method: 'POST', url: '/api/marketing/preview-email', payload: { content: '{{cart.itemsTable}} {{cart.total}} {{cart.currency}}' } });
+        expect(response.statusCode).toBe(200);
+        expect(response.json().html).toContain('Sample product');
+        expect(response.json().html).not.toContain('{{');
+        expect(sendEmail).not.toHaveBeenCalled();
+    });
+
     it('pins the selected internal order in the current tenant even when a newer order exists', async () => {
         const snapshot = snapshotFixture();
         const changedSnapshot = { ...snapshot, delivery: { min: '2026-10-01', max: '2026-10-02' } };

@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.3**.
+Current version: **2.25.6**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,26 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.6 - 2026-10-18
+
+- Give each classic AJAX add-to-cart operation a fresh event ID shared by its browser pixel and server request; rotate IDs on non-AJAX links and product forms too.
+- Stop unrelated cart additions from reusing the checkout event-ID cookie, and include quantity in browser add-to-cart values.
+- Normalize Purchase currency and suppress invalid Meta Purchase values instead of clamping inconsistent shipping/tax deductions to zero.
+- Retain SLDevs-hosted updates and bundled Plugin Update Checker v5.7 from the published 2.25.5 release.
+- Deploy the matching OverSeek backend for server-side value/currency validation, corrected AddToCart values and isolated Meta connection tests. Historical Meta diagnostics may take time to clear.
+
+### 2.25.5 - 2026-10-14
+
+- Publish a maintenance release through the SLDevs update feed with refreshed release notes and versioned assets.
+- Retain the bundled Plugin Update Checker v5.7 and existing WordPress automatic-update settings.
+- No additional plugin behaviour changes from 2.25.4; the mobile/PWA fixes belong to the OverSeek web application, not this plugin.
+
+### 2.25.4 - 2026-10-12
+
+- Add SLDevs-hosted WordPress updates and plugin-information support.
+- Bundle pinned Plugin Update Checker v5.7 with its runtime dependencies, translations and MIT license.
+- Register the updater even when WooCommerce is inactive, without enabling automatic installation.
 
 ### 2.25.3 - 2026-10-12
 

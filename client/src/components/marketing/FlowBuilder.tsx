@@ -1019,6 +1019,7 @@ const FlowBuilderContent: React.FC<Props> = ({ initialFlow, onFlowChange, onUndo
             {selectedNode && (
                 <NodeConfigPanel
                     key={selectedNode.id}
+                    storageScope={flowId ? `flow:${flowId}:node:${selectedNode.id}` : undefined}
                     node={selectedNode}
                     onClose={() => setSelectedNode(null)}
                     onUpdate={updateNodeData}

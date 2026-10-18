@@ -52,6 +52,19 @@ describe('Segment advertising routes', () => {
         expect(mocks.enqueue).toHaveBeenCalledWith('tenant', 'sync');
     });
 
+    it('defaults additional sharing off and persists explicitly confirmed options', async () => {
+        await app.inject({ method: 'POST', url: '/api/segments/segment/audiences', payload: { adAccountId: 'destination', consentConfirmed: true } });
+        expect(mocks.upsert).toHaveBeenLastCalledWith(expect.objectContaining({ create: expect.objectContaining({ includeSubscribers: false, enhancedMatching: false }) }));
+        await app.inject({ method: 'POST', url: '/api/segments/segment/audiences', payload: { adAccountId: 'destination', consentConfirmed: true, includeSubscribers: true, enhancedMatching: true } });
+        expect(mocks.upsert).toHaveBeenLastCalledWith(expect.objectContaining({ update: expect.objectContaining({ includeSubscribers: true, enhancedMatching: true, consentConfirmedAt: expect.any(Date) }) }));
+    });
+
+    it('rejects truthy non-boolean expansion options', async () => {
+        const response = await app.inject({ method: 'POST', url: '/api/segments/segment/audiences', payload: { adAccountId: 'destination', consentConfirmed: true, includeSubscribers: 'true' } });
+        expect(response.statusCode).toBe(400);
+        expect(mocks.upsert).not.toHaveBeenCalled();
+    });
+
     it('cannot pause or resume an audience belonging to another segment or tenant', async () => {
         mocks.findSync.mockResolvedValue(null);
         const response = await app.inject({ method: 'PATCH', url: '/api/segments/segment/audiences/foreign', payload: { enabled: false } });

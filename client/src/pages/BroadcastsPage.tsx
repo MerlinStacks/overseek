@@ -1,98 +1,30 @@
-import { useState } from 'react';
-import { Logger } from '../utils/logger';
 import { CampaignsList } from '../components/marketing/CampaignsList';
-import { useAuth } from '../context/AuthContext';
-import { useAccount } from '../context/AccountContext';
 import { MarketingEmailDesigner } from '../components/marketing/MarketingEmailDesigner';
-
-type EditorMode = 'email' | null;
-
-interface EditingItem {
-    id: string;
-    name: string;
-    subject?: string;
-    designJson?: unknown;
-    description?: string;
-}
+import { useCampaignEmailEditor } from '../components/marketing/useCampaignEmailEditor';
 
 export function BroadcastsPage() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-
-    // Editor State
-    const [editorMode, setEditorMode] = useState<EditorMode>(null);
-    const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
-    const [loadingEditorDesign, setLoadingEditorDesign] = useState(false);
-
-    const handleEditCampaign = async (id: string, name: string, subject?: string) => {
-        setEditingItem({ id, name, subject });
-        setEditorMode('email');
-
-        if (!currentAccount) return;
-        setLoadingEditorDesign(true);
-        try {
-            const response = await fetch(`/api/marketing/campaigns/${id}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                },
-            });
-            if (!response.ok) return;
-            const campaign = await response.json() as { designJson?: unknown; subject?: string; name?: string };
-            setEditingItem({
-                id,
-                name: campaign.name || name,
-                subject: campaign.subject || subject,
-                designJson: campaign.designJson,
-            });
-        } catch (error) {
-            Logger.error('Failed to load broadcast design', { error });
-        } finally {
-            setLoadingEditorDesign(false);
-        }
-    };
-
-    const handleCloseEditor = () => {
-        setEditorMode(null);
-        setEditingItem(null);
-    };
-
-    const handleSaveEmail = async (html: string, design: unknown, meta?: { subject: string; autosave?: boolean }) => {
-        if (!editingItem || !currentAccount) return;
-        try {
-            const response = await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                },
-                body: JSON.stringify({ content: html, designJson: design, subject: meta?.subject ?? editingItem.subject ?? '' })
-            });
-            if (!response.ok) throw new Error('Failed to save');
-            if (!meta?.autosave) alert('Design saved!');
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-            if (!meta?.autosave) alert('Failed to save');
-            throw err;
-        }
-    };
-
-    if (editorMode === 'email') {
+    const editor = useCampaignEmailEditor();
+    if (editor.isOpen) {
         return (
             <>
-                {loadingEditorDesign && (
-                    <div className="fixed inset-x-0 top-0 z-[70] bg-indigo-600 px-4 py-2 text-center text-sm font-medium text-white shadow-lg">
-                        Loading saved broadcast design...
+                {(editor.loading || editor.error) ? (
+                    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white dark:bg-slate-950 dark:text-white">
+                        <p role={editor.error ? 'alert' : 'status'}>{editor.error || 'Loading saved broadcast design...'}</p>
+                        {editor.error && <button onClick={() => editor.item && void editor.open(editor.item.id, editor.item.name, editor.item.subject)}>Retry</button>}
+                        <button onClick={editor.close}>Back to broadcasts</button>
                     </div>
-                )}
+                ) : (
                 <MarketingEmailDesigner
+                    key={editor.item?.id}
+                    storageScope={`campaign:${editor.item?.id}`}
+                    initialHtml={editor.item?.content}
                     previewOrderMode="none"
-                    initialDesign={editingItem?.designJson}
-                    initialSubject={editingItem?.subject}
-                    onSave={handleSaveEmail}
-                    onCancel={handleCloseEditor}
+                    initialDesign={editor.item?.designJson}
+                    initialSubject={editor.item?.subject}
+                    onSave={editor.save}
+                    onCancel={editor.close}
                 />
+                )}
             </>
         );
     }
@@ -105,7 +37,7 @@ export function BroadcastsPage() {
             </div>
 
             <div className="py-4">
-                <CampaignsList onEdit={handleEditCampaign} />
+                <CampaignsList onEdit={editor.open} />
             </div>
         </div>
     );

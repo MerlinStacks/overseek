@@ -39,6 +39,8 @@ All notable changes to this project will be documented in this file.
 - Isolated customer catalog viewer using rasterized pages and thumbnails without a public PDF, print, or download control
 
 ### Fixed
+- WooCommerce companion 2.25.6: repair Meta AddToCart browser/server event IDs, prevent checkout-ID reuse, include quantities in browser values, and validate browser Purchase values/currencies without fabricating zero revenue. Preserve the SLDevs updater from published 2.25.5.
+- Meta CAPI: reject malformed Purchase revenue with non-retryable delivery diagnostics, normalize currency, use added-item value rather than cart totals, and require a Meta Test Event Code for synthetic connection-test purchases. Deploy the backend alongside companion 2.25.6.
 - OOM crashes — replaced in-memory sync Sets with DB-based reconciliation
 - Circuit breaker added to SyncScheduler to prevent OOM retry storms
 - Memory leaks causing OOM kill (exit 137) after ~23h uptime

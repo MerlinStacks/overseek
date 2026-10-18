@@ -28,9 +28,14 @@ import { resolveDeliveryEstimateEmailTokens } from '@overseek/core';
 import { PaletteGrid } from './emailDesignerV2/PaletteGrid';
 import { ProductPicker } from './emailDesignerV2/ProductPicker';
 import { productToBlockProps } from './emailDesignerV2/productBlockProps';
-import { getEmailDesignWarnings, sanitizeEmailHtml } from '../../utils/emailHtml';
+import { getEmailDesignWarnings, sanitizeEmailHtml, sanitizeEmailLayoutHtml } from '../../utils/emailHtml';
+import { useEmailAutosave } from './emailDesignerV2/useEmailAutosave';
+import { useDesignHistory } from './emailDesignerV2/useDesignHistory';
 
 interface Props {
+    storageScope?: string;
+    emailCategory?: 'MARKETING' | 'TRANSACTIONAL';
+    onTestSent?: (html: string, design: unknown, meta: { subject: string; previewText: string }) => void;
     initialDesign?: unknown;
     initialSubject?: string;
     initialPreviewText?: string;
@@ -530,10 +535,10 @@ function isEmailSafeImageUrl(value: string): boolean {
     return /^(https?:|data:|cid:)/i.test(candidate);
 }
 
-export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initialPreviewText = '', previewOrderMode = 'latest', onSave, onCancel }: Props) {
+export function EmailDesignEditorV2({ initialDesign, initialSubject, initialPreviewText, storageScope, emailCategory = 'MARKETING', previewOrderMode = 'latest', onSave, onCancel, onTestSent }: Props) {
     const { token, user } = useAuth();
     const { currentAccount, refreshAccounts } = useAccount();
-    const [design, setDesign] = useState<EmailDesignV2Envelope>(() => {
+    const { design, setDesign, undo, redo, canUndo, canRedo } = useDesignHistory(() => {
         return createEmailDesignV2FromUnknown(initialDesign, {
             title: initialSubject,
             previewText: initialPreviewText,
@@ -549,10 +554,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [blockSearch, setBlockSearch] = useState('');
     const [previewDeviceId, setPreviewDeviceId] = useState<PreviewDeviceId>('desktop');
     const [previewSurface, setPreviewSurface] = useState<'canvas' | 'html'>('canvas');
-    const [saving, setSaving] = useState(false);
-    const [saveError, setSaveError] = useState(false);
-    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+    const [closing, setClosing] = useState(false);
     const [issues, setIssues] = useState<PreflightIssue[]>([]);
     const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
     const [savedSections, setSavedSections] = useState<SavedSectionPreset[]>([]);
@@ -565,6 +567,20 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const [previewMergeContext, setPreviewMergeContext] = useScopedEmailPreview<PreviewMergeContext>(currentAccount?.id, previewOrderMode, token);
 
     const html = useMemo(() => compileEmailDesignV2(design), [design]);
+    const storageSuffix = `${encodeURIComponent(currentAccount?.id || 'no-account')}:${encodeURIComponent(storageScope || 'session')}`;
+    // Unidentified editors keep history in memory only rather than mixing unrelated emails.
+    const historyStorageKey = storageScope ? `${HISTORY_STORAGE_KEY}:${storageSuffix}` : null;
+    const sectionsStorageKey = storageScope ? `${SAVED_SECTIONS_STORAGE_KEY}:${storageSuffix}` : null;
+    const recipientsStorageKey = `${RECENT_TEST_RECIPIENTS_KEY}:${encodeURIComponent(currentAccount?.id || 'no-account')}`;
+    const saveSnapshot = useCallback((nextDesign: EmailDesignV2Envelope) => {
+        const snapshot = { id: createEmailDesignId('snapshot'), createdAt: new Date().toISOString(), design: nextDesign };
+        setSnapshots((current) => {
+            const next = [snapshot, ...current].slice(0, MAX_HISTORY);
+            try { if (historyStorageKey) localStorage.setItem(historyStorageKey, JSON.stringify(next)); } catch { /* Best effort. */ }
+            return next;
+        });
+    }, [historyStorageKey]);
+    const { flush: persistLatestDesign, saving, saveError, hasUnsavedChanges, lastSavedAt } = useEmailAutosave(design, html, onSave, saveSnapshot);
     const mergedPreviewHtml = useMemo(() => (
         previewMergeContext ? applyPreviewMergeTags(html, previewMergeContext) : resolveDeliveryEstimateEmailTokens(html, null)
     ), [html, previewMergeContext]);
@@ -583,7 +599,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     const saveStatus = saving ? 'Autosaving...' : saveError ? 'Autosave failed' : hasUnsavedChanges ? 'Autosave pending' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString()}` : 'Ready';
     const previewDevice = PREVIEW_DEVICES.find((device) => device.id === previewDeviceId) || PREVIEW_DEVICES[0];
     const isMobilePreview = previewDevice.type === 'mobile';
-    const previewWidth = isMobilePreview ? previewDevice.width : Math.min(design.document.theme.contentWidth, previewDevice.width);
+    const previewWidth = previewDevice.width;
     const hideOnDesktop = selectedSection?.visibility === 'mobile';
     const hideOnMobile = selectedSection?.visibility === 'desktop';
 
@@ -726,39 +742,13 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         };
     }, [token, currentAccount, previewOrderMode, setPreviewMergeContext]);
 
-    const autosaveTimerRef = useRef<number | null>(null);
-    const latestDesignRef = useRef(design);
-    const latestHtmlRef = useRef(html);
-    const baselineDesignRef = useRef(JSON.stringify(design));
-    const autosaveInFlightRef = useRef(false);
-    const autosaveAgainRef = useRef(false);
-    const didMountRef = useRef(false);
-
     const setDirtyDesign = useCallback((updater: (draft: EmailDesignV2Envelope) => void) => {
         setDesign((current) => {
             const next = cloneDesign(current);
             updater(next);
-            setHasUnsavedChanges(true);
-            setSaveError(false);
             return next;
         });
-    }, []);
-
-    const saveSnapshot = useCallback((nextDesign: EmailDesignV2Envelope) => {
-        const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
-        let current: Snapshot[] = [];
-        if (raw) {
-            try {
-                const parsed = JSON.parse(raw) as Snapshot[];
-                current = Array.isArray(parsed) ? parsed : [];
-            } catch {
-                current = [];
-            }
-        }
-        const next = [{ id: createEmailDesignId('snapshot'), createdAt: new Date().toISOString(), design: nextDesign }, ...current].slice(0, MAX_HISTORY);
-        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(next));
-        setSnapshots(next);
-    }, []);
+    }, [setDesign]);
 
     const addStructurePreset = (widths: number[], insertIndex?: number) => {
         setDirtyDesign((draft) => {
@@ -929,7 +919,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         const nextPreset: SavedSectionPreset = { id: createEmailDesignId('section-preset'), name, section: cloneSectionWithFreshIds(selectedSection) };
         const next = [nextPreset, ...savedSections.filter((preset) => preset.name !== name)].slice(0, 12);
         setSavedSections(next);
-        localStorage.setItem(SAVED_SECTIONS_STORAGE_KEY, JSON.stringify(next));
+        try { if (sectionsStorageKey) localStorage.setItem(sectionsStorageKey, JSON.stringify(next)); } catch { /* Best effort. */ }
     };
 
     const insertSavedSectionPreset = (preset: SavedSectionPreset) => {
@@ -1075,6 +1065,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     };
 
     const applyStarterLayout = (type: 'promo' | 'product' | 'cart' | 'followup' | 'coupon' | 'review') => {
+        if (!window.confirm('Replace the entire email with this starter layout? You can undo this change.')) return;
         const logoUrl = brandLogoUrl;
         const heroCopy: Record<typeof type, string> = {
             promo: '<h2>Something new just landed</h2><p>Give customers a clear reason to click with a focused offer and one strong call to action.</p>',
@@ -1136,64 +1127,11 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
 
     const runChecklist = () => {
         setIssues([
-            ...evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory: design.document.meta.category || 'MARKETING' }),
+            ...evaluateEmailPreflight({ html, subject: design.document.meta.title, emailCategory }),
             ...designWarnings.map((warning) => ({ id: warning.id, severity: 'warning' as const, message: warning.message })),
         ]);
         setLeftSidebarMode('checklist');
     };
-
-    const persistLatestDesign = useCallback(async () => {
-        const nextDesign = latestDesignRef.current;
-        const serializedAtStart = JSON.stringify(nextDesign);
-        if (serializedAtStart === baselineDesignRef.current) return;
-
-        if (autosaveInFlightRef.current) {
-            autosaveAgainRef.current = true;
-            return;
-        }
-
-        autosaveInFlightRef.current = true;
-        setSaving(true);
-        setSaveError(false);
-
-        try {
-            await onSave(latestHtmlRef.current, nextDesign, {
-                subject: nextDesign.document.meta.title,
-                previewText: nextDesign.document.meta.previewText || '',
-                autosave: true,
-            });
-
-            try {
-                saveSnapshot(nextDesign);
-            } catch {
-                // Version history is best-effort and should not mark server autosave as failed.
-            }
-            baselineDesignRef.current = serializedAtStart;
-
-            if (JSON.stringify(latestDesignRef.current) === serializedAtStart) {
-                setHasUnsavedChanges(false);
-                setLastSavedAt(new Date());
-            } else {
-                setHasUnsavedChanges(true);
-                autosaveAgainRef.current = true;
-            }
-        } catch {
-            setSaveError(true);
-            setHasUnsavedChanges(true);
-        } finally {
-            autosaveInFlightRef.current = false;
-            setSaving(false);
-
-            if (autosaveAgainRef.current) {
-                autosaveAgainRef.current = false;
-                if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
-                autosaveTimerRef.current = window.setTimeout(() => {
-                    autosaveTimerRef.current = null;
-                    void persistLatestDesign();
-                }, 500);
-            }
-        }
-    }, [onSave, saveSnapshot]);
 
     const sendTestEmail = async () => {
         const recipient = testEmail.trim();
@@ -1214,6 +1152,8 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 },
                 body: JSON.stringify({
                     to: recipient,
+                    category: emailCategory,
+                    previewText: design.document.meta.previewText || '',
                     orderId: getPreviewTestOrderId(previewOrderMode, previewMergeContext),
                     subject: previewOrderMode === 'none'
                         ? resolveDeliveryEstimateEmailTokens(design.document.meta.title || 'Email Builder Test', null)
@@ -1230,9 +1170,10 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 return;
             }
             const nextRecipients = [recipient, ...recentRecipients.filter((item) => item !== recipient)].slice(0, MAX_TEST_RECIPIENTS);
-            localStorage.setItem(RECENT_TEST_RECIPIENTS_KEY, JSON.stringify(nextRecipients));
+            try { localStorage.setItem(recipientsStorageKey, JSON.stringify(nextRecipients)); } catch { /* Best effort. */ }
             setRecentRecipients(nextRecipients);
             setTestStatus(`Test email sent to ${recipient}.`);
+            onTestSent?.(html, design, { subject: design.document.meta.title, previewText: design.document.meta.previewText || '' });
         } catch {
             setTestStatus('Failed to send test email.');
         } finally {
@@ -1241,54 +1182,25 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
     };
 
     const handleClose = async () => {
-        if (autosaveTimerRef.current) {
-            window.clearTimeout(autosaveTimerRef.current);
-            autosaveTimerRef.current = null;
-        }
-
-        if (hasUnsavedChanges) {
-            await persistLatestDesign();
-        }
-
-        onCancel();
+        if (closing) return;
+        setClosing(true);
+        const saved = await persistLatestDesign();
+        if (saved) onCancel();
+        else setClosing(false);
     };
 
     useEffect(() => {
-        latestDesignRef.current = design;
-        latestHtmlRef.current = html;
-
-        if (!didMountRef.current) {
-            didMountRef.current = true;
-            baselineDesignRef.current = JSON.stringify(design);
-            return;
-        }
-
-        const serialized = JSON.stringify(design);
-        const dirty = serialized !== baselineDesignRef.current;
-        setHasUnsavedChanges(dirty);
-
-        if (autosaveTimerRef.current) {
-            window.clearTimeout(autosaveTimerRef.current);
-            autosaveTimerRef.current = null;
-        }
-
-        if (!dirty) return;
-
-        autosaveTimerRef.current = window.setTimeout(() => {
-            autosaveTimerRef.current = null;
-            void persistLatestDesign();
-        }, 1000);
-
-        return () => {
-            if (autosaveTimerRef.current) {
-                window.clearTimeout(autosaveTimerRef.current);
-                autosaveTimerRef.current = null;
-            }
-        };
-    }, [design, html, persistLatestDesign]);
-
-    useEffect(() => {
-        const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+        let raw: string | null = null;
+        let savedSectionsRaw: string | null = null;
+        let recipientRaw: string | null = null;
+        try {
+            raw = historyStorageKey ? localStorage.getItem(historyStorageKey) : null;
+            savedSectionsRaw = sectionsStorageKey ? localStorage.getItem(sectionsStorageKey) : null;
+            recipientRaw = localStorage.getItem(recipientsStorageKey);
+        } catch { /* Storage may be unavailable. Editing must still work. */ }
+        setSnapshots([]);
+        setSavedSections([]);
+        setRecentRecipients([]);
         if (raw) {
             try {
                 const parsed = JSON.parse(raw) as Snapshot[];
@@ -1297,7 +1209,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 setSnapshots([]);
             }
         }
-        const savedSectionsRaw = localStorage.getItem(SAVED_SECTIONS_STORAGE_KEY);
         if (savedSectionsRaw) {
             try {
                 const parsed = JSON.parse(savedSectionsRaw) as SavedSectionPreset[];
@@ -1306,7 +1217,6 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 setSavedSections([]);
             }
         }
-        const recipientRaw = localStorage.getItem(RECENT_TEST_RECIPIENTS_KEY);
         if (recipientRaw) {
             try {
                 const parsed = JSON.parse(recipientRaw) as string[];
@@ -1315,7 +1225,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                 setRecentRecipients([]);
             }
         }
-    }, []);
+    }, [historyStorageKey, sectionsStorageKey, recipientsStorageKey]);
 
     useEffect(() => {
         if (!token || !currentAccount) return;
@@ -1359,7 +1269,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
             }
             return changed ? next : current;
         });
-    }, [brandLogoUrl]);
+    }, [brandLogoUrl, setDesign]);
 
     useEffect(() => {
         if (!accountFooterHtml) return;
@@ -1378,7 +1288,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
             }
             return changed ? next : current;
         });
-    }, [accountFooterHtml]);
+    }, [accountFooterHtml, setDesign]);
 
     useEffect(() => {
         const handler = (event: BeforeUnloadEvent) => {
@@ -1389,6 +1299,24 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
         window.addEventListener('beforeunload', handler);
         return () => window.removeEventListener('beforeunload', handler);
     }, [hasUnsavedChanges]);
+
+    useEffect(() => {
+        const handler = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement | null;
+            // Preserve native text-editor undo; shortcuts outside fields control the design.
+            if (closing || target?.closest('input, textarea, [contenteditable="true"]')) return;
+            if (!(event.ctrlKey || event.metaKey)) return;
+            if (event.key.toLowerCase() === 'z') {
+                event.preventDefault();
+                if (event.shiftKey) redo(); else undo();
+            } else if (event.key.toLowerCase() === 'y') {
+                event.preventDefault();
+                redo();
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [undo, redo, closing]);
 
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/55 backdrop-blur-sm">
@@ -1442,10 +1370,17 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         <button onClick={runChecklist} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><ClipboardList size={16} />Checklist</button>
                         <button onClick={() => setLeftSidebarMode('history')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><History size={16} />History</button>
                         <button onClick={() => setLeftSidebarMode('test')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"><Send size={16} />Test</button>
-                        <button onClick={() => void handleClose()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{saving ? <Loader2 className="animate-spin" size={16} /> : <X size={16} />}Close</button>
+                        <button onClick={undo} disabled={!canUndo || closing} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">Undo</button>
+                        <button onClick={redo} disabled={!canRedo || closing} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">Redo</button>
+                        <button onClick={() => void handleClose()} disabled={closing} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{closing ? <Loader2 className="animate-spin" size={16} /> : <X size={16} />}Close</button>
                     </div>
                 </header>
 
+                {saveError && <div role="alert" className="flex items-center gap-3 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    <span>Could not save your email. Your changes are still open.</span>
+                    <button onClick={() => void persistLatestDesign()} className="rounded border px-3 py-1">Retry save</button>
+                    <button onClick={() => { if (window.confirm('Discard all unsaved email changes?')) onCancel(); }} className="rounded border px-3 py-1">Discard unsaved changes</button>
+                </div>}
                 <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[324px_1fr]">
                     <aside className="flex min-h-0 flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                         {leftSidebarMode === 'builder' && (
@@ -1642,7 +1577,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                         )}
 
                         {leftSidebarMode === 'checklist' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Preflight checklist" onClose={() => setLeftSidebarMode('builder')} /><ChecklistPanel issues={issues} groupedIssues={groupedIssues} /></div>}
-                        {leftSidebarMode === 'history' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Version history" onClose={() => setLeftSidebarMode('builder')} /><HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); setHasUnsavedChanges(true); }} /></div>}
+                        {leftSidebarMode === 'history' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Version history" onClose={() => setLeftSidebarMode('builder')} /><HistoryPanel snapshots={snapshots} onRestore={(snapshot) => { setDesign(cloneDesign(snapshot.design)); setSelectedSectionId(snapshot.design.document.sections[0]?.id || ''); setSelectedBlockId(null); }} /></div>}
                         {leftSidebarMode === 'test' && <div className="min-h-0 flex-1 overflow-auto p-4"><PanelHeader title="Send test email" onClose={() => setLeftSidebarMode('builder')} /><div className="space-y-3"><Field label="Recipient" value={testEmail} onChange={setTestEmail} type="email" />
                             {recentRecipients.length > 0 && <div className="flex flex-wrap gap-2">{recentRecipients.map((recipient) => <button key={recipient} onClick={() => setTestEmail(recipient)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:bg-slate-800 dark:text-slate-300">{recipient}</button>)}</div>}
                             {testStatus && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{testStatus}</p>}
@@ -1680,7 +1615,7 @@ export function EmailDesignEditorV2({ initialDesign, initialSubject = '', initia
                             </ErrorBoundary>
                         ) : (
                             <div className="mx-auto w-full rounded-3xl border border-slate-300 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-                                <div className="mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700" style={{ width: previewWidth, maxWidth: '100%' }}>
+                                <div className="mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700" style={{ width: previewWidth }}>
                                     <iframe
                                         title="Compiled email HTML preview"
                                         srcDoc={iframePreviewHtml}
@@ -2107,7 +2042,7 @@ function BlockEditor({ block, sections, selectedSectionId, onUpdate, onDelete, c
             {block.type === 'menu' && <LinkListEditor links={block.props.links} onChange={(links) => patchProps({ links })} />}
             {block.type === 'social' && <><SelectField label="Icon pack" value={block.props.iconSet || 'native'} options={SOCIAL_ICON_SETS} onChange={(value) => patchProps({ iconSet: value as SocialIconSet })} /><SelectField label="Default icon style" value={block.props.iconStyle || 'solid'} options={SOCIAL_ICON_STYLES} onChange={(value) => patchProps({ iconStyle: value as SocialIconStyle })} /><SocialLinksEditor links={block.props.links} onChange={(links) => patchProps({ links })} onSaveDefaults={() => onSaveSocialDefaults(block.props.links)} /></>}
             {block.type === 'footer' && <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">Footer content is managed in Settings &gt; Email and is locked in the designer.</div>}
-            {block.type === 'rawHtml' && <TextArea label="Raw HTML" value={block.props.html} onChange={(value) => patchProps({ html: sanitizeEmailHtml(value) })} />}
+            {block.type === 'rawHtml' && <TextArea label="Raw HTML" value={block.props.html} onChange={(value) => patchProps({ html: sanitizeEmailLayoutHtml(value) })} />}
         </div>
     );
 }

@@ -93,6 +93,7 @@ const PLATFORMS: PlatformDef[] = [
             { name: 'conversionLabelViewItem', label: 'View Item Label', type: 'text', placeholder: 'StUvWx...', help: 'Optional. Create a separate conversion action in Google Ads for product views.', section: 'pixel' },
             { name: 'customerId', label: 'Customer ID (for CAPI)', type: 'text', placeholder: '123-456-7890', section: 'capi' },
             { name: 'conversionActionId', label: 'Purchase Action ID', type: 'text', placeholder: '123456789', help: 'Web conversion action with Enhanced Conversions enabled. The browser tag must send the WooCommerce order ID as transaction_id.', section: 'capi' },
+            { name: 'purchaseUploadActionId', label: 'Independent Purchase Import Action ID', type: 'text', placeholder: 'Optional separate Import from clicks action ID', help: 'Creates server-side purchases even when the browser tag is missed. Takes precedence over the enhancement action above. Use an ENABLED Import from clicks (UPLOAD_CLICKS) action, with customer-data terms accepted. Start it as Secondary, validate real orders, then make only ONE purchase action Primary to avoid double-counting in bidding. This upload API requires an eligible existing developer token; newer integrations need Google Data Manager.', section: 'capi' },
             { name: 'conversionActionIdAddToCart', label: 'Add to Cart Action ID', type: 'text', placeholder: 'Leave blank for browser tracking', help: 'Optional API resource ID for a separate Import from clicks action. Leave blank when using the Add to Cart Label above.', section: 'capi' },
             { name: 'conversionActionIdBeginCheckout', label: 'Begin Checkout Action ID', type: 'text', placeholder: 'Leave blank for browser tracking', help: 'Optional API resource ID for a separate Import from clicks action. Leave blank when using the Begin Checkout Label above.', section: 'capi' },
             { name: 'conversionActionIdViewItem', label: 'View Item Action ID', type: 'text', placeholder: 'Leave blank for browser tracking', help: 'Optional API resource ID for a separate Import from clicks action. Leave blank when using the View Item Label above.', section: 'capi' },
@@ -513,7 +514,7 @@ export function CAPISettings() {
                                             className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors text-sm font-medium"
                                         >
                                             {testing === platform.key ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                                            Send Test Event
+                                            {platform.key === 'google' ? 'Check Google Configuration' : 'Send Test Event'}
                                         </button>
                                     )}
                                 </div>

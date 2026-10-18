@@ -3,7 +3,6 @@
  * Flows/Automations moved to dedicated FlowsPage.
  */
 import { useState, useEffect } from 'react';
-import { Logger } from '../utils/logger';
 import { useSearchParams } from 'react-router-dom';
 import { AdsView } from '../components/marketing/AdsView';
 import { AdPerformanceView } from '../components/marketing/AdPerformanceView';
@@ -12,27 +11,12 @@ import { AdIntelligencePanel } from '../components/marketing/AdIntelligencePanel
 import { Mail, Megaphone, BarChart2, Zap } from 'lucide-react';
 
 import { MarketingEmailDesigner } from '../components/marketing/MarketingEmailDesigner';
-import { useAuth } from '../context/AuthContext';
-import { useAccount } from '../context/AccountContext';
-import { useToast } from '../context/ToastContext';
+import { useCampaignEmailEditor } from '../components/marketing/useCampaignEmailEditor';
 import { useAccountFeature } from '../hooks/useAccountFeature';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
-type EditorMode = 'email' | null;
-
-
-interface EditingItem {
-    id: string;
-    name: string;
-    subject?: string;
-    designJson?: unknown;
-    description?: string;
-}
-
 export function MarketingPage() {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const toast = useToast();
+    const editor = useCampaignEmailEditor();
     const isAdTrackingEnabled = useAccountFeature('AD_TRACKING');
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -43,11 +27,6 @@ export function MarketingPage() {
     const [activeTab, setActiveTab] = useState<TabId>(
         tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'campaigns'
     );
-
-    // Editor State
-    const [editorMode, setEditorMode] = useState<EditorMode>(null);
-    const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
-    const [loadingEditorDesign, setLoadingEditorDesign] = useState(false);
 
     // Sync tab changes to URL
     useEffect(() => {
@@ -70,80 +49,27 @@ export function MarketingPage() {
         ...adTabs,
     ];
 
-    const handleEditCampaign = async (id: string, name: string, subject?: string) => {
-        setEditingItem({ id, name, subject });
-        setEditorMode('email');
-
-        if (!currentAccount) return;
-        setLoadingEditorDesign(true);
-        try {
-            const response = await fetch(`/api/marketing/campaigns/${id}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
-                },
-            });
-            if (!response.ok) return;
-            const campaign = await response.json() as { designJson?: unknown; subject?: string; name?: string };
-            setEditingItem({
-                id,
-                name: campaign.name || name,
-                subject: campaign.subject || subject,
-                designJson: campaign.designJson,
-            });
-        } catch (error) {
-            Logger.error('Failed to load campaign design', { error });
-            toast.error('Opened editor with a blank design because the saved design could not be loaded');
-        } finally {
-            setLoadingEditorDesign(false);
-        }
-    };
-
-
-
-    const handleCloseEditor = () => {
-        setEditorMode(null);
-        setEditingItem(null);
-    };
-
-    const handleSaveEmail = async (html: string, design: unknown, meta?: { subject: string; autosave?: boolean }) => {
-        if (!editingItem || !currentAccount) return;
-        try {
-            const response = await fetch(`/api/marketing/campaigns/${editingItem.id}`, {
-                method: 'PUT', // or PATCH
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id
-                },
-                body: JSON.stringify({ content: html, designJson: design, subject: meta?.subject ?? editingItem.subject ?? '' })
-            });
-            if (!response.ok) throw new Error('Failed to save design');
-            if (!meta?.autosave) toast.success('Design saved!');
-        } catch (err) {
-            Logger.error('An error occurred', { error: err });
-            if (!meta?.autosave) toast.error('Failed to save design');
-            throw err;
-        }
-    };
-
-
-
-    if (editorMode === 'email') {
+    if (editor.isOpen) {
         return (
             <>
-                {loadingEditorDesign && (
-                    <div className="fixed inset-x-0 top-0 z-[70] bg-indigo-600 px-4 py-2 text-center text-sm font-medium text-white shadow-lg">
-                        Loading saved campaign design...
+                {(editor.loading || editor.error) ? (
+                    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white dark:bg-slate-950 dark:text-white">
+                        <p role={editor.error ? 'alert' : 'status'}>{editor.error || 'Loading saved campaign design...'}</p>
+                        {editor.error && <button onClick={() => editor.item && void editor.open(editor.item.id, editor.item.name, editor.item.subject)}>Retry</button>}
+                        <button onClick={editor.close}>Back to campaigns</button>
                     </div>
-                )}
+                ) : (
                 <MarketingEmailDesigner
+                    key={editor.item?.id}
+                    storageScope={`campaign:${editor.item?.id}`}
+                    initialHtml={editor.item?.content}
                     previewOrderMode="none"
-                    initialDesign={editingItem?.designJson}
-                    initialSubject={editingItem?.subject}
-                    onSave={handleSaveEmail}
-                    onCancel={handleCloseEditor}
+                    initialDesign={editor.item?.designJson}
+                    initialSubject={editor.item?.subject}
+                    onSave={editor.save}
+                    onCancel={editor.close}
                 />
+                )}
             </>
         );
     }
@@ -179,7 +105,7 @@ export function MarketingPage() {
             </div>
 
             <div className="py-4">
-                {activeTab === 'campaigns' && <CampaignsList onEdit={handleEditCampaign} />}
+                {activeTab === 'campaigns' && <CampaignsList onEdit={editor.open} />}
                 {activeTab === 'performance' && (
                     <ErrorBoundary>
                         <AdPerformanceView />

@@ -9,6 +9,7 @@ import { TriggerConfig, ActionConfig, DelayConfig, ConditionConfig } from './nod
 import type { FlowIssue } from './flowValidation';
 
 interface NodeConfigPanelProps {
+    storageScope?: string;
     node: Node | null;
     onClose: () => void;
     onUpdate: (nodeId: string, data: NodeDataState) => void;
@@ -27,6 +28,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     onClose,
     onUpdate,
     onDelete,
+    storageScope,
     issues = []
 }) => {
     const initialData = { ...((node?.data as Record<string, unknown> | undefined) || {}) };
@@ -178,6 +180,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                     {/* Action-specific config */}
                     {node.type === 'action' && (
                         <ActionConfig
+                            storageScope={storageScope}
                             config={localData.config || {}}
                             onUpdate={updateConfig}
                             onUpdateMany={updateConfigPatch}

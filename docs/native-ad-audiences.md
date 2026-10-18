@@ -1,6 +1,8 @@
 # Website retargeting and Meta lookalikes
 
-Open **Audiences → Advertising → Create audience**. This is separate from a segment's customer-list export/sync panel.
+Open **Audiences → Segments → Create segment**, then choose **Website segment** or **Lookalike segment**. Customer, website and lookalike segments share one list, search and creation entry point; there is no separate Advertising tab. Existing website definitions, failed attempts and retry/reconciliation controls remain visible in Segments. Old `?tab=advertising` bookmarks redirect to Segments.
+
+Customer segments keep their existing rules, member previews and advertising export/sync panel. Platform-managed website/lookalike segments are labelled explicitly: their individual visitor membership cannot be previewed or used for email broadcasts. The underlying platform definitions and customer segment records remain unchanged; this UI consolidation needs no new database migration.
 
 ## Website audiences
 
@@ -36,7 +38,7 @@ Choose a Meta account, change the audience type to **Meta lookalike**, and selec
 
 Select a target country and 1%, 3% or 5% size. Current country options are AU, NZ, US, GB, CA, IE, DE, FR, ES, IT, NL, BE, AT, CH, SE, NO, DK, FI, SG and JP. Additional countries can be added as supported options later.
 
-Meta resolves and updates the lookalike from its source. Customer-list sources should remain on hourly sync for fresh seed data; paused uploads are marked in the source selector. Source size, country coverage, permissions and platform policy may prevent creation or serving. A source having an external ID is not a guarantee it meets Meta's minimum eligible/matched population.
+Meta resolves and updates the lookalike from its source. Customer-list sources should remain on automatic sync for fresh seed data; paused uploads are marked in the source selector. Source size, country coverage, permissions and platform policy may prevent creation or serving. A source having an external ID is not a guarantee it meets Meta's minimum eligible/matched population.
 
 Google's retired general Similar Audiences are not equivalent to Meta lookalikes. Google has campaign-specific expansion and Demand Gen lookalike features; this release does not create or configure those.
 
@@ -49,7 +51,11 @@ Google's retired general Similar Audiences are not equivalent to Meta lookalikes
 
 Remote names include a stable `[OS-<record-id>]` suffix for safe reconciliation. Identical normalized definitions in the same destination are deduplicated even if a different display name is entered. This prevents repeated clicks from creating another identical audience. A distinct event, source, window, country or lookalike size is a separate definition.
 
-The existing scheduler runs `create-native-ad-audience` jobs. Its hourly audience dispatcher also recovers pending dispatches and marks interrupted creations for review after 15 minutes. Created website audiences and lookalikes do not need hourly uploads.
+Failures now retain sanitised provider guidance, HTTP status, Meta code/subcode and the Meta support reference when available. They are also logged with the local audience/account IDs; credentials and raw provider responses are not retained. Older generic failure messages cannot be reconstructed: after deploying this change, use **Retry creation** on a `FAILED` record to get the new diagnostics. No new database migration is needed for this diagnostics fix.
+
+Meta creation uses URL-encoded form fields, with the website `rule` and `lookalike_spec` individually JSON-encoded. Modern website rules carry pixel IDs and retention windows inside each inclusion/exclusion operand; legacy top-level `pixel_id` and `retention_days` are not mixed into those requests.
+
+The existing scheduler runs `create-native-ad-audience` jobs. Its five-minute audience dispatcher also recovers pending dispatches and marks interrupted creations for review after 15 minutes. Created website audiences and lookalikes do not need membership uploads.
 
 Creating these definitions **does not change campaigns, targeting, exclusions or budgets**. Attach the audience to appropriate campaigns separately, checking platform expansion/Advantage+ settings. Definitions are creation-only in this release: manage subsequent edits, deletion, platform sizes and eligibility in the advertising platform. Deleting an ad connection locally does not delete its remote audiences.
 

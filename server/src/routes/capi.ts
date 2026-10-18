@@ -189,10 +189,19 @@ const capiRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: `Platform ${platform} is not configured` });
         }
 
+        // Synthetic purchases must never enter Meta's live revenue reporting.
+        if (platform === 'meta' && !String(decryptCapiConfig(feature.config).testEventCode || '').trim()) {
+            return reply.code(400).send({ error: 'Set the Meta Test Event Code from Events Manager before sending a test Purchase. No live event was sent.' });
+        }
+
         if (platform === 'google') {
-            return reply.code(400).send({
-                error: 'Google Enhanced Conversions cannot be tested with a synthetic purchase. It enhances a real Google Ads conversion and requires its matching transaction/click context.',
-            });
+            try {
+                const { GoogleEnhancedConversionsService } = await import('../services/tracking/GoogleEnhancedConversionsService');
+                const message = await new GoogleEnhancedConversionsService().validateConfiguration(accountId, decryptCapiConfig(feature.config));
+                return { success: true, message };
+            } catch (error) {
+                return reply.code(400).send({ error: error instanceof Error ? error.message : 'Google configuration check failed' });
+            }
         }
 
         // Send a test purchase event through the ConversionForwarder

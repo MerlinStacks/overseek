@@ -3,13 +3,17 @@ import { useState, useEffect, useCallback, type MouseEvent } from 'react';
 import { Logger } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
-import { Plus, Users, Edit2, Trash2, Search, Loader2 } from 'lucide-react';
+import { Plus, Users, Search, Loader2, RefreshCw, Globe, Copy } from 'lucide-react';
 import { SegmentBuilder, SegmentCriteria } from '../components/segments/SegmentBuilder';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
 import { useToast } from '../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
 import { SegmentAdvertising, type AudienceSync } from '../components/segments/SegmentAdvertising';
+import { PlatformSegmentCard } from '../components/segments/PlatformSegmentCard';
+import { usePlatformSegments } from '../components/segments/usePlatformSegments';
+import { NativeAudienceForm } from '../components/segments/NativeAudienceForm';
+import { CustomerSegmentCard } from '../components/segments/CustomerSegmentCard';
 
 interface Segment {
     id: string;
@@ -19,6 +23,7 @@ interface Segment {
     campaigns?: Array<Record<string, unknown>>;
     _count?: { campaigns: number };
     audienceSyncs?: AudienceSync[];
+    updatedAt?: string;
 }
 
 interface SegmentPreviewCustomer {
@@ -54,8 +59,16 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
     const [isDeleting, setIsDeleting] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [advertisingSegmentId, setAdvertisingSegmentId] = useState<string | null>(null);
+    const [createKind, setCreateKind] = useState<'choose' | 'WEBSITE' | 'LOOKALIKE' | null>(null);
+    const [countRefreshVersion, setCountRefreshVersion] = useState(0);
+    const platform = usePlatformSegments();
     const navigate = useNavigate();
     const toast = useToast();
+    const query = searchQuery.trim().toLowerCase();
+    const visibleCustomers = segments.filter(segment => `${segment.name} ${segment.description || ''} customer`.toLowerCase().includes(query));
+    const platformSegments = platform.data?.segments || [];
+    const visiblePlatformSegments = platformSegments.filter(segment => `${segment.name} ${segment.kind} ${segment.platform} ${segment.adAccount.name || ''}`.toLowerCase().includes(query));
+    const totalSegments = segments.length + platformSegments.length;
     const fetchSegments = useCallback(async () => {
         if (!currentAccount || !token) return;
         try {
@@ -288,6 +301,7 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                     <p className="text-sm text-gray-500">Manage customer groups for targeted marketing</p>
                 </div>}
                 <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                    <button onClick={() => { void fetchSegments(); void platform.refetch(); setCountRefreshVersion(version => version + 1); }} aria-label="Refresh segments" className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"><RefreshCw size={18} /></button>
                     <div className="relative sm:w-72">
                         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
@@ -298,11 +312,7 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                         />
                     </div>
                     <button
-                    onClick={() => {
-                        setSegmentName('');
-                        setSegmentDesc('');
-                        setIsCreating(true);
-                    }}
+                    onClick={() => setCreateKind('choose')}
                     className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white transition-colors hover:bg-indigo-700"
                 >
                     <Plus size={18} />
@@ -311,76 +321,29 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                 </div>
             </div>
 
+            <p className="text-sm text-gray-500">All your customer, website and lookalike segments in one place. Customer segments can be previewed and synced; website and lookalike membership is managed by the advertising platform.</p>
+            {platform.error && <p role="alert" className="text-sm text-red-600">Could not load website and lookalike segments: {platform.error.message} <button onClick={() => void platform.refetch()} className="font-medium underline">Retry</button></p>}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {segments.filter((segment) => `${segment.name} ${segment.description || ''}`.toLowerCase().includes(searchQuery.trim().toLowerCase())).map(segment => (
-                    <div key={segment.id} className={`bg-white p-5 rounded-xl border shadow-xs transition ${selectedSegment?.id === segment.id ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-gray-300 hover:shadow-md'}`}>
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
-                                <Users size={24} />
-                            </div>
-                            <div className="flex items-center gap-1 rounded-lg border border-gray-100 bg-white p-1 shadow-xs">
-                                <button
-                                    onClick={() => {
-                                        setSegmentName(segment.name);
-                                        setSegmentDesc(segment.description || '');
-                                        setEditingSegment(segment);
-                                    }}
-                                    title="Edit segment"
-                                    className="p-1.5 text-gray-500 hover:text-indigo-600 rounded-sm hover:bg-indigo-50"
-                                >
-                                    <Edit2 size={16} />
-                                </button>
-                                <button
-                                    onClick={() => setSegmentToDelete(segment)}
-                                    title="Delete segment"
-                                    className="p-1.5 text-gray-500 hover:text-red-600 rounded-sm hover:bg-red-50"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
-                        </div>
+                {visibleCustomers.map(segment => <CustomerSegmentCard key={segment.id} segment={segment} selected={selectedSegment?.id === segment.id} refreshVersion={countRefreshVersion}
+                    onEdit={() => { setSegmentName(segment.name); setSegmentDesc(segment.description || ''); setEditingSegment(segment); }}
+                    onDelete={() => setSegmentToDelete(segment)} onPreview={() => void handlePreview(segment)} onAdvertising={() => setAdvertisingSegmentId(segment.id)} />)}
 
-                        <h3 className="text-lg font-semibold text-gray-900 mb-1">{segment.name}</h3>
-                        <p className="text-sm text-gray-500 line-clamp-2 h-10 mb-4">{segment.description || 'No description'}</p>
+                {visiblePlatformSegments.map(segment => <PlatformSegmentCard key={`platform-${segment.id}`} segment={segment} busy={platform.busy} onRetry={platform.retry} onReconcile={platform.reconcile} />)}
 
-                        <div className="flex items-center gap-4 text-xs font-medium text-gray-500 border-t border-gray-100 pt-4">
-                            <span className="flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                                {segment.criteria?.type} Logic
-                            </span>
-                            <span>
-                                {segment.criteria?.rules?.length || 0} Conditions
-                            </span>
-                            <span>
-                                {segment._count?.campaigns || 0} Campaigns
-                            </span>
-                        </div>
-
-                        <button
-                            onClick={() => handlePreview(segment)}
-                            className="mt-4 w-full rounded-lg border border-indigo-200 bg-indigo-50 py-2 text-sm font-medium text-indigo-700 transition-colors hover:bg-indigo-100"
-                        >
-                            View Members
-                        </button>
-                        <button onClick={() => setAdvertisingSegmentId(segment.id)} className="mt-2 w-full rounded-lg border border-gray-200 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
-                            Advertising exports & sync{segment.audienceSyncs?.some(sync => sync.autoSyncEnabled) ? ' · Hourly' : ''}
-                        </button>
-                    </div>
-                ))}
-
-                {isLoading && (
+                {(isLoading || platform.isLoading) && (
                     <div className="col-span-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-16 text-sm text-gray-500">
                         <Loader2 size={18} className="animate-spin" /> Loading segments...
                     </div>
                 )}
 
-                {segments.length === 0 && !isLoading && (
+                {totalSegments === 0 && !isLoading && !platform.isLoading && !platform.error && (
                     <div className="col-span-full py-12 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
                         <Users size={48} className="mx-auto mb-4 opacity-50" />
                         <p className="text-lg font-medium text-gray-900">No segments yet</p>
                         <p className="text-sm mb-6">Create your first segment to start targeting customers.</p>
                         <button
-                            onClick={() => setIsCreating(true)}
+                            onClick={() => setCreateKind('choose')}
                             className="text-blue-600 hover:underline"
                         >
                             Create Segment
@@ -388,12 +351,33 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                     </div>
                 )}
 
-                {segments.length > 0 && !isLoading && segments.filter((segment) => `${segment.name} ${segment.description || ''}`.toLowerCase().includes(searchQuery.trim().toLowerCase())).length === 0 && (
+                {totalSegments > 0 && !isLoading && !platform.isLoading && visibleCustomers.length === 0 && visiblePlatformSegments.length === 0 && (
                     <div className="col-span-full rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 text-center text-sm text-gray-500">
                         No segments match “{searchQuery}”.
                     </div>
                 )}
             </div>
+            {platformSegments.length === 200 && <p className="text-xs text-gray-500">Showing the 200 most recent platform-managed segments. Additional definitions remain in the advertising platform.</p>}
+
+            <Modal isOpen={createKind !== null} onClose={() => setCreateKind(null)} title={createKind === 'choose' ? 'Create segment' : createKind === 'LOOKALIKE' ? 'Create lookalike segment' : 'Create website segment'} maxWidth="max-w-2xl">
+                {createKind === 'choose' ? <div className="space-y-3 text-sm">
+                    <p className="mb-4 text-gray-500">Choose how this segment’s membership is determined.</p>
+                    <button onClick={() => { setCreateKind(null); setSegmentName(''); setSegmentDesc(''); setIsCreating(true); }} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-slate-900">
+                        <Users className="shrink-0 text-indigo-600" size={22} /><span><strong className="block">Customer segment</strong>{' '}<span className="text-gray-500">Rules based on purchases, spend and engagement. Preview members, send emails and sync to Meta or Google.</span></span>
+                    </button>
+                    <button onClick={() => setCreateKind('WEBSITE')} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-slate-900">
+                        <Globe className="shrink-0 text-indigo-600" size={22} /><span><strong className="block">Website segment</strong>{' '}<span className="text-gray-500">Consented website visitors matched by Meta pixel events or Google URL rules. Membership updates in the platform.</span></span>
+                    </button>
+                    <button onClick={() => setCreateKind('LOOKALIKE')} className="flex w-full items-start gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-slate-900">
+                        <Copy className="shrink-0 text-indigo-600" size={22} /><span><strong className="block">Lookalike segment</strong>{' '}<span className="text-gray-500">Find similar people in Meta using a successfully synced customer segment or an existing website segment.</span></span>
+                    </button>
+                </div> : createKind && <>
+                    {!platform.data?.destinations.some(destination => createKind !== 'LOOKALIKE' || destination.platform === 'META') && <p className="mb-4 text-sm text-amber-700">{platform.isLoading ? 'Loading connected accounts…' : 'Connect an eligible advertising account in Settings first.'}</p>}
+                    <NativeAudienceForm key={`${currentAccount?.id}-${createKind}`} asSegment initialKind={createKind}
+                        destinations={(platform.data?.destinations || []).filter(destination => createKind !== 'LOOKALIKE' || destination.platform === 'META')}
+                        onCancel={() => setCreateKind('choose')} onCreated={() => { setCreateKind(null); void platform.refetch(); }} />
+                </>}
+            </Modal>
 
             {selectedSegment && (
                 <div className="bg-white border border-gray-200 rounded-xl shadow-xs">

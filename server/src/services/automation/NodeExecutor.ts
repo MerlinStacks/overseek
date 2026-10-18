@@ -19,6 +19,7 @@ import { WooService } from '../woo';
 import { FlowNode, NodeExecutionResult } from './types';
 import { renderTemplate } from './FlowNavigator';
 import crypto from 'crypto';
+import { appendEmailUtm } from '../../utils/emailUtm';
 
 export class NodeExecutor {
     private static readonly REVIEW_REQUEST_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -349,7 +350,15 @@ export class NodeExecutor {
                     ? applyPreviewText(body, previewText)
                     : `<p>Email Template: ${config.templateId}</p>`;
                 const reviewRequestMarker = this.buildReviewReplyMarker(finalBodyBase, context, enrollment.email);
-                const finalBody = reviewRequestMarker.html;
+                const resolveCampaignField = (value: unknown) => resolveMergeTags(renderTemplate(String(value || ''), context, { preserveUnknown: true }), context);
+                const finalBody = appendEmailUtm(reviewRequestMarker.html, {
+                    appendUtm: config.appendUtm,
+                    campaignSource: resolveCampaignField(config.campaignSource),
+                    campaignMedium: resolveCampaignField(config.campaignMedium),
+                    campaignName: resolveCampaignField(config.campaignName),
+                    campaignTerm: resolveCampaignField(config.campaignTerm),
+                    campaignContent: resolveCampaignField(config.campaignContent),
+                }, enrollment.automation.name || enrollment.automationId);
 
                 let skippedCount = 0;
                 let sentCount = 0;

@@ -26,6 +26,7 @@ export function EmailDropCanvas({ theme, previewWidth, isMobilePreview, sections
     const [dropTarget, setDropTarget] = useState<string | null>(null);
     const [sectionDropIndex, setSectionDropIndex] = useState<number | null>(null);
     const canvasStyle: CSSProperties = { background: theme.backgroundColor, fontFamily: theme.fontFamily, color: theme.textColor };
+    const isHidden = (visibility?: string) => isMobilePreview ? visibility === 'desktop' : visibility === 'mobile';
     const emailStyle: CSSProperties = { width: isMobilePreview ? previewWidth : '100%', maxWidth: isMobilePreview ? previewWidth : theme.contentWidth, background: theme.contentBackgroundColor, borderRadius: theme.borderRadius };
 
     const isStructureDrag = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('application/x-overseek-structure');
@@ -72,6 +73,8 @@ export function EmailDropCanvas({ theme, previewWidth, isMobilePreview, sections
         <div className={`mx-auto rounded-3xl p-4 shadow-2xl transition-all ${isMobilePreview ? 'border-[10px] border-slate-900 shadow-slate-900/30' : 'max-w-5xl'}`} style={{ ...canvasStyle, maxWidth: isMobilePreview ? previewWidth + 52 : undefined }}>
             <div className="mx-auto overflow-hidden shadow-xl" style={emailStyle}>
                 {sections.map((section, sectionIndex) => {
+                    if (isHidden(section.visibility)) return null;
+                    const stacked = isMobilePreview && section.stackMode !== 'none';
                     const radius = section.borderRadius || [0, 0, 0, 0];
                     const borderStyle = section.borderStyle || 'none';
                     const borderWidth = section.borderWidth || 0;
@@ -93,12 +96,12 @@ export function EmailDropCanvas({ theme, previewWidth, isMobilePreview, sections
                                 <div className="absolute right-2 top-2 z-20 hidden rounded-lg border border-slate-200 bg-white/95 p-1 shadow-lg group-hover/section:flex">
                                     <button type="button" title="Delete section" onClick={(event) => { event.stopPropagation(); onDeleteSection(section.id); }} disabled={sections.length <= 1} className="rounded-md p-1 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 size={14} /></button>
                                 </div>
-                                <div className="flex gap-3">
+                                <div className="flex" style={{ flexDirection: stacked ? section.stackMode === 'reverse' ? 'column-reverse' : 'column' : 'row' }}>
                                     {section.columns.map((column) => (
                                         <div
                                             key={column.id}
                                             style={{
-                                                width: `${column.width}%`,
+                                                width: stacked ? '100%' : `${column.width}%`,
                                                 background: column.backgroundColor || 'transparent',
                                                 padding: column.padding || '0',
                                                 alignSelf: column.verticalAlign === 'bottom' ? 'flex-end' : column.verticalAlign === 'middle' ? 'center' : 'stretch',
@@ -108,7 +111,7 @@ export function EmailDropCanvas({ theme, previewWidth, isMobilePreview, sections
                                             className="min-h-16 rounded-lg border border-dashed border-slate-200 p-2"
                                         >
                                             {column.blocks.length === 0 && <div className="flex min-h-16 items-center justify-center rounded-md text-xs text-slate-400">Drop here</div>}
-                                            {column.blocks.map((block, index) => (
+                                            {column.blocks.map((block, index) => !isHidden(block.visibility) && (
                                                 <div key={block.id} className="group/block relative" onDragOver={(event) => { if (isStructureDrag(event)) handleSectionDragOver(event, sectionIndex); else { event.preventDefault(); setDropTarget(`${column.id}:${index}`); } }} onDragLeave={() => setDropTarget(null)} onDrop={(event) => { if (event.dataTransfer.getData('application/x-overseek-structure')) handleSectionDrop(event, sectionIndex, section.id, column.id); else { setDropTarget(null); onDropOnSection(event, section.id, index, column.id); } }} onClick={(event) => { event.stopPropagation(); onSelectSection(section.id); onSelectBlock(block.id); onOpenSettings(); }}>
                                                     <div className={`h-1 rounded-full transition ${dropTarget === `${column.id}:${index}` ? 'bg-indigo-500' : 'bg-transparent'}`} />
                                                     <div className={`relative transition ${selectedBlockId === block.id ? 'ring-2 ring-indigo-500 ring-offset-2' : 'hover:ring-2 hover:ring-indigo-200 hover:ring-offset-2'}`}>

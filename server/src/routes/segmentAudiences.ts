@@ -10,11 +10,15 @@ export const segmentAudienceRoutes: FastifyPluginAsync = async fastify => {
         select: { id: true, name: true, platform: true, externalId: true }
     }));
 
-    fastify.post<{ Params: { id: string }; Body: { adAccountId?: string; consentConfirmed?: boolean } }>('/:id/audiences', async (request, reply) => {
+    fastify.post<{ Params: { id: string }; Body: { adAccountId?: string; consentConfirmed?: boolean; includeSubscribers?: boolean; enhancedMatching?: boolean } }>('/:id/audiences', async (request, reply) => {
         const accountId = request.accountId!;
         if (!request.body || typeof request.body.adAccountId !== 'string' || request.body.consentConfirmed !== true) {
             return reply.code(400).send({ error: 'Select a destination and confirm advertising consent for all segment members' });
         }
+        if (['includeSubscribers', 'enhancedMatching'].some(key => (request.body as any)[key] !== undefined && typeof (request.body as any)[key] !== 'boolean')) {
+            return reply.code(400).send({ error: 'Audience options must be booleans' });
+        }
+        const options = { includeSubscribers: request.body.includeSubscribers === true, enhancedMatching: request.body.enhancedMatching === true };
         const [segment, destination] = await Promise.all([
             segmentService.getSegment(request.params.id, accountId),
             prisma.adAccount.findFirst({ where: { id: request.body.adAccountId, accountId, platform: { in: ['META', 'GOOGLE'] } } })
@@ -22,8 +26,8 @@ export const segmentAudienceRoutes: FastifyPluginAsync = async fastify => {
         if (!segment || !destination) return reply.code(404).send({ error: 'Segment or destination not found' });
         const sync = await prisma.audienceSync.upsert({
             where: { accountId_segmentId_platform_adAccountId: { accountId, segmentId: segment.id, platform: destination.platform, adAccountId: destination.id } },
-            create: { accountId, segmentId: segment.id, adAccountId: destination.id, platform: destination.platform, audienceName: `Overseek - ${segment.name}`.slice(0, 200), autoSyncEnabled: true, consentConfirmedAt: new Date() },
-            update: { autoSyncEnabled: true, consentConfirmedAt: new Date(), status: 'PENDING', lastError: null }
+            create: { accountId, segmentId: segment.id, adAccountId: destination.id, platform: destination.platform, audienceName: `Overseek - ${segment.name}`.slice(0, 200), autoSyncEnabled: true, consentConfirmedAt: new Date(), ...options },
+            update: { autoSyncEnabled: true, consentConfirmedAt: new Date(), status: 'PENDING', lastError: null, ...options }
         });
         await AudienceSyncService.enqueue(accountId, sync.id);
         return reply.code(202).send({ id: sync.id });

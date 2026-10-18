@@ -619,7 +619,7 @@ class OverSeek_Server_Tracking
     public function track_add_to_cart($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data)
     {
         $product = $this->get_product_safely($variation_id ?: $product_id);
-        $request_event_id = $this->get_request_event_id();
+        $request_event_id = $this->get_request_event_id(false);
 
         $payload = OverSeek_Tracking_Event_Builder::build_add_to_cart_payload(
             (int) $product_id,
@@ -1089,7 +1089,7 @@ class OverSeek_Server_Tracking
     /**
      * Parse and validate inbound event ID from checkout/add-to-cart request params.
      */
-    private function get_request_event_id()
+    private function get_request_event_id(bool $allow_checkout_cookie = true)
     {
         $raw = OverSeek_Tracking_Request_Utils::get_request_param_value('overseek_event_id');
 
@@ -1097,7 +1097,7 @@ class OverSeek_Server_Tracking
             $raw = OverSeek_Tracking_Request_Utils::get_request_param_value('os_eid');
         }
 
-        if (empty($raw) && isset($_COOKIE['overseek_checkout_event_id'])) {
+        if ($allow_checkout_cookie && empty($raw) && isset($_COOKIE['overseek_checkout_event_id'])) {
             $raw = sanitize_text_field(wp_unslash((string) $_COOKIE['overseek_checkout_event_id']));
         }
 

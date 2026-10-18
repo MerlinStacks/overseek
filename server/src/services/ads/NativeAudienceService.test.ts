@@ -3,7 +3,7 @@ import { NativeAudienceService } from './NativeAudienceService';
 
 const mocks = vi.hoisted(() => ({
     destination: vi.fn(), find: vi.fn(), findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn(),
-    source: vi.fn(), sourceLists: vi.fn(), metaRows: vi.fn(), google: vi.fn(), add: vi.fn()
+    source: vi.fn(), sourceLists: vi.fn(), metaRows: vi.fn(), google: vi.fn(), add: vi.fn(), warn: vi.fn()
 }));
 vi.mock('../../utils/prisma', () => ({ prisma: {
     adAccount: { findFirst: mocks.destination },
@@ -13,6 +13,7 @@ vi.mock('../../utils/prisma', () => ({ prisma: {
 vi.mock('../queue/QueueFactory', () => ({ QueueFactory: { createQueue: () => ({ add: mocks.add }) } }));
 vi.mock('./MetaAdsService', () => ({ buildMetaUrl: (path: string) => `https://graph.facebook.com/v24.0/${path}`, fetchAllMetaRows: mocks.metaRows }));
 vi.mock('./GoogleAdsClient', () => ({ createGoogleAdsRestConfig: mocks.google }));
+vi.mock('../../utils/logger', () => ({ Logger: { warn: mocks.warn } }));
 
 describe('Platform-managed audience provisioning', () => {
     const definition = { pixelId: '123', event: 'AddToCart', retentionDays: 14, exclusionDays: 30, excludePurchasers: true };
@@ -54,10 +55,17 @@ describe('Platform-managed audience provisioning', () => {
         await NativeAudienceService.provision('tenant', 'native');
         const [url, request] = fetch.mock.calls[0];
         expect(url).toContain('act_456/customaudiences');
-        const payload = JSON.parse(request.body);
-        expect(payload).toMatchObject({ name: 'Cart additions [OS-native]', subtype: 'WEBSITE', pixel_id: '123', retention_days: 30 });
-        expect(payload.rule.exclusions.rules[0].filter.filters[0].value).toBe('Purchase');
-        expect(payload).not.toHaveProperty('payload');
+        expect(request.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+        const payload = new URLSearchParams(request.body);
+        expect(payload.get('name')).toBe('Cart additions [OS-native]');
+        expect(payload.get('subtype')).toBe('WEBSITE');
+        expect(payload.get('prefill')).toBe('1');
+        const rule = JSON.parse(payload.get('rule')!);
+        expect(rule.inclusions.rules[0]).toMatchObject({ event_sources: [{ type: 'pixel', id: '123' }], retention_seconds: 14 * 86400 });
+        expect(rule.exclusions.rules[0].filter.filters[0].value).toBe('Purchase');
+        expect(rule.exclusions.rules[0].retention_seconds).toBe(30 * 86400);
+        expect(payload.has('pixel_id')).toBe(false);
+        expect(payload.has('retention_days')).toBe(false);
         expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'native' }, data: { externalId: 'remote', status: 'CREATED', lastError: null } });
     });
     it('requires a locally managed seed in the same tenant and Meta ad account', async () => {
@@ -69,7 +77,10 @@ describe('Platform-managed audience provisioning', () => {
     it('creates Meta lookalikes with the resolved seed, ratio and country', async () => {
         mocks.find.mockResolvedValue({ ...audience, kind: 'LOOKALIKE', definition: { sourceType: 'CUSTOMER_LIST', sourceId: 'local-seed', country: 'AU', percent: 3 } });
         await NativeAudienceService.provision('tenant', 'native');
-        expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ subtype: 'LOOKALIKE', origin_audience_id: 'seed', lookalike_spec: { type: 'similarity', country: 'AU', ratio: 0.03 } });
+        const form = new URLSearchParams(fetch.mock.calls[0][1].body);
+        expect(form.get('subtype')).toBe('LOOKALIKE');
+        expect(form.get('origin_audience_id')).toBe('seed');
+        expect(JSON.parse(form.get('lookalike_spec')!)).toEqual({ type: 'similarity', country: 'AU', ratio: 0.03 });
     });
     it('does not claim Google supports this Meta lookalike workflow', async () => {
         mocks.destination.mockResolvedValue({ id: 'ads', platform: 'GOOGLE' });
@@ -101,10 +112,32 @@ describe('Platform-managed audience provisioning', () => {
         expect(mocks.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'NEEDS_REVIEW' }) }));
         expect(JSON.stringify(mocks.updateMany.mock.calls)).not.toContain('secret response');
     });
-    it('records definitive client rejections as retryable failures without retaining API responses', async () => {
-        fetch.mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: { message: 'private response' } }) });
+    it('retains a sanitised, actionable Meta rejection and codes without exposing credentials or full responses', async () => {
+        fetch.mockResolvedValue({ ok: false, status: 400, json: async () => ({
+            error: { message: 'Invalid parameter', code: 100, error_subcode: 123, error_user_title: 'Invalid rule', error_user_msg: 'rule must be a JSON-encoded string; token=secret', fbtrace_id: 'Trace_123', rawPayload: 'private response' },
+            request: { accessToken: 'secret' }
+        }) });
         await NativeAudienceService.provision('tenant', 'native');
+        const lastError = mocks.updateMany.mock.calls.at(-1)![0].data.lastError;
+        expect(lastError).toContain('HTTP 400; code 100; subcode 123');
+        expect(lastError).toContain('rule must be a JSON-encoded string');
+        expect(lastError).toContain('Trace_123');
+        expect(lastError).toContain('[redacted]');
         expect(mocks.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }));
+        expect(JSON.stringify(mocks.updateMany.mock.calls)).not.toContain('secret');
+        expect(JSON.stringify(mocks.updateMany.mock.calls)).not.toContain('private response');
+        expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain('secret');
+    });
+    it('reports a failed preflight specifically, without blaming unrelated Google remarketing tags', async () => {
+        mocks.metaRows.mockResolvedValue([]);
+        await NativeAudienceService.provision('tenant', 'native');
+        expect(fetch).not.toHaveBeenCalled();
+        expect(mocks.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: { status: 'FAILED', lastError: 'Pixel access is no longer available' } }));
+    });
+    it('retains HTTP status when the provider returns non-JSON rather than swallowing diagnostics', async () => {
+        fetch.mockResolvedValue({ ok: false, status: 403, json: async () => { throw new Error('HTML containing private response'); } });
+        await NativeAudienceService.provision('tenant', 'native');
+        expect(mocks.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: { status: 'FAILED', lastError: 'Meta returned HTTP 403 without a readable JSON response.' } }));
         expect(JSON.stringify(mocks.updateMany.mock.calls)).not.toContain('private response');
     });
     it('links an uncertain result only by its unique platform name, kind and destination', async () => {

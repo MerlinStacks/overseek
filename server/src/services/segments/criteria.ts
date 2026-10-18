@@ -2,6 +2,7 @@ export interface SegmentRule {
     field: string;
     operator: string;
     value: unknown;
+    campaignId?: string;
 }
 
 export interface SegmentCriteria {
@@ -9,7 +10,8 @@ export interface SegmentCriteria {
     rules: SegmentRule[];
 }
 
-export const rollingFields = ['purchasedWithinDays', 'notPurchasedWithinDays', 'abandonedCartWithinDays'];
+export const engagementFields = ['emailOpenedWithinDays', 'emailClickedWithinDays', 'notEmailOpenedWithinDays', 'notEmailClickedWithinDays'];
+export const rollingFields = ['purchasedWithinDays', 'notPurchasedWithinDays', 'abandonedCartWithinDays', ...engagementFields];
 
 export function validateCriteria(criteria: unknown): string | null {
     const input = criteria as SegmentCriteria;
@@ -18,6 +20,7 @@ export function validateCriteria(criteria: unknown): string | null {
     }
     for (const rule of input.rules) {
         if (!rule || typeof rule !== 'object') return 'Invalid segment rule';
+        if (rule.campaignId !== undefined && (!engagementFields.includes(rule.field) || typeof rule.campaignId !== 'string' || !rule.campaignId.trim() || rule.campaignId.length > 200)) return 'Invalid email campaign ID';
         if (rollingFields.includes(rule.field)) {
             const days = Number(rule.value);
             if (rule.operator !== 'within' || !Number.isInteger(days) || days < 1 || days > 3650) {

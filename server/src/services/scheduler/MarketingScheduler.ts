@@ -25,8 +25,12 @@ export class MarketingScheduler {
      * Register all marketing-related repeatable jobs
      */
     static async register() {
+        // Remove the former hourly repeat rather than running two dispatchers.
+        for (const job of await this.queue.getRepeatableJobs()) {
+            if (job.name === 'refresh-ad-audiences') await this.queue.removeRepeatableByKey(job.key);
+        }
         await this.queue.add('refresh-ad-audiences', {}, {
-            repeat: { pattern: '0 * * * *' }, jobId: 'refresh-ad-audiences-hourly'
+            repeat: { pattern: '*/5 * * * *' }, jobId: 'refresh-ad-audiences-5m'
         });
         // Ad Alerts (Every 4 hours)
         await this.queue.add('ad-alerts', {}, {

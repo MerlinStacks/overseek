@@ -209,6 +209,13 @@ describe('NodeExecutor email category', () => {
         );
     });
 
+    it('applies configured flow UTM parameters before sending and can disable them', async () => {
+        await executeEmailNode({ htmlContent: '<a href="https://store.test/shop?item=1">Shop</a>', campaignSource: 'newsletter', campaignMedium: 'email', campaignName: 'Welcome', campaignTerm: 'new', campaignContent: 'hero' });
+        expect(mocks.sendEmail.mock.calls[0][4]).toContain('item=1&amp;utm_source=newsletter&amp;utm_medium=email&amp;utm_campaign=Welcome&amp;utm_term=new&amp;utm_content=hero');
+        await executeEmailNode({ htmlContent: '<a href="https://store.test/shop">Shop</a>', appendUtm: false });
+        expect(mocks.sendEmail.mock.calls[1][4]).toBe('<a href="https://store.test/shop">Shop</a>');
+    });
+
     it('treats legacy isTransactional nodes as transactional', async () => {
         await executeEmailNode({ isTransactional: true });
 

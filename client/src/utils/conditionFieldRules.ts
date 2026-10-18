@@ -3,7 +3,7 @@ const BROADCAST_CONTACT_STATUS_FIELD = 'Contact Status';
 const DEFAULT_BROADCAST_OPERATORS = ['is', 'is not', 'contains', 'greater than', 'less than'] as const;
 const CONTACT_STATUS_OPERATORS = ['is', 'is not'] as const;
 
-const NUMERIC_SEGMENT_FIELDS = new Set(['totalSpent', 'ordersCount', 'purchasedWithinDays', 'notPurchasedWithinDays', 'abandonedCartWithinDays']);
+const NUMERIC_SEGMENT_FIELDS = new Set(['totalSpent', 'ordersCount', 'purchasedWithinDays', 'notPurchasedWithinDays', 'abandonedCartWithinDays', 'emailOpenedWithinDays', 'emailClickedWithinDays', 'notEmailOpenedWithinDays', 'notEmailClickedWithinDays']);
 
 export function isBroadcastContactStatusField(field: string): boolean {
     return field === BROADCAST_CONTACT_STATUS_FIELD;

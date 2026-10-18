@@ -4,6 +4,8 @@ import { QueueFactory } from '../queue/QueueFactory';
 import { buildMetaUrl, fetchAllMetaRows } from './MetaAdsService';
 import { createGoogleAdsRestConfig } from './GoogleAdsClient';
 import { buildGoogleWebsiteList, buildMetaWebsiteRule, LookalikeDefinition, WebsiteAudienceDefinition } from './nativeAudienceRules';
+import { describeAudienceRejection } from './nativeAudienceDiagnostics';
+import { Logger } from '../../utils/logger';
 
 export class NativeAudienceError extends Error {
     constructor(message: string, public statusCode = 400) { super(message); }
@@ -109,8 +111,11 @@ export class NativeAudienceService {
         if (!claim.count) return;
         let requestStarted = false;
         let rejected = false;
+        let failureDetail: string | undefined;
+        const secrets: string[] = [];
         try {
             const destination = await this.destination(accountId, audience.adAccountId);
+            secrets.push(destination.accessToken, destination.refreshToken || '');
             if (destination.platform !== audience.platform) throw new NativeAudienceError('Destination platform has changed');
             const definition = audience.definition as unknown as WebsiteAudienceDefinition & LookalikeDefinition;
             const name = this.platformName(audience);
@@ -127,21 +132,25 @@ export class NativeAudienceService {
                 } else {
                     const { pixels } = await this.sources(accountId, audience.adAccountId);
                     if (!pixels.some(pixel => pixel.id === definition.pixelId)) throw new NativeAudienceError('Pixel access is no longer available');
-                    payload = {
-                        name, subtype: 'WEBSITE', pixel_id: definition.pixelId,
-                        retention_days: Math.max(definition.retentionDays, definition.excludePurchasers ? definition.exclusionDays : 1),
-                        prefill: true, rule: buildMetaWebsiteRule(definition)
-                    };
+                    // Modern website rules carry their own pixel IDs and retention windows.
+                    // Do not mix the legacy top-level pixel/retention parameters with these rules.
+                    payload = { name, subtype: 'WEBSITE', prefill: '1', rule: buildMetaWebsiteRule(definition) };
                 }
+                // Meta documents rule/lookalike_spec as JSON-encoded form fields, not nested
+                // JSON request objects. Use its documented wire format for both audience types.
+                const form = new URLSearchParams(Object.entries(payload).map(([key, value]) => [
+                    key, typeof value === 'object' ? JSON.stringify(value) : String(value)
+                ]));
                 const actId = destination.externalId.startsWith('act_') ? destination.externalId : `act_${destination.externalId}`;
                 requestStarted = true;
                 response = await fetch(buildMetaUrl(`${actId}/customaudiences`), {
-                    method: 'POST', headers: { Authorization: `Bearer ${destination.accessToken}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload), signal: AbortSignal.timeout(30000)
+                    method: 'POST', headers: { Authorization: `Bearer ${destination.accessToken}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: form.toString(), signal: AbortSignal.timeout(30000)
                 });
             } else {
                 if (audience.kind !== 'WEBSITE') throw new NativeAudienceError('Unsupported Google audience type');
                 const google = await createGoogleAdsRestConfig(audience.adAccountId);
+                secrets.push(google.accessToken, google.developerToken);
                 requestStarted = true;
                 response = await fetch(`https://googleads.googleapis.com/v24/customers/${google.customerId}/userLists:mutate`, {
                     method: 'POST', headers: {
@@ -154,18 +163,30 @@ export class NativeAudienceService {
             }
             // Only an explicit client-error rejection is safe to recreate automatically/manual retry.
             rejected = response.status >= 400 && response.status < 500;
-            const result = await response.json() as any;
-            if (!response.ok || result.error || result.partialFailureError) throw new Error('Platform rejected creation');
+            let result: any;
+            try {
+                result = await response.json();
+            } catch {
+                failureDetail = `${audience.platform === 'META' ? 'Meta' : 'Google'} returned HTTP ${response.status} without a readable JSON response.`;
+                throw new Error('Unreadable platform response');
+            }
+            if (!response.ok || result?.error || result?.partialFailureError) {
+                failureDetail = describeAudienceRejection(audience.platform, response.status, result?.partialFailureError ? { error: result.partialFailureError } : result, secrets);
+                throw new Error('Platform rejected creation');
+            }
             const externalId = destination.platform === 'META' ? result.id : result.results?.[0]?.resourceName;
             if (typeof externalId !== 'string' || !externalId) throw new Error('No platform audience ID returned');
             await prisma.nativeAdAudience.update({ where: { id }, data: { externalId, status: 'CREATED', lastError: null } });
-        } catch {
+        } catch (error) {
             const uncertain = requestStarted && !rejected;
+            const detail = failureDetail || (!requestStarted && error instanceof NativeAudienceError ? error.message : undefined);
+            const lastError = uncertain
+                ? `Creation outcome is uncertain. Check the platform before creating another; no automatic duplicate will be created.${detail ? ` ${detail}` : ''}`
+                : detail || 'Creation failed before a platform result was available. Check the advertising connection and source access, then retry.';
+            Logger.warn('[NativeAudience] Creation failed', { accountId, audienceId: id, platform: audience.platform, uncertain, detail: lastError });
             await prisma.nativeAdAudience.updateMany({ where: { id, accountId, status: 'CREATING' }, data: {
                 status: uncertain ? 'NEEDS_REVIEW' : 'FAILED',
-                lastError: uncertain
-                    ? 'Creation outcome is uncertain. Check the platform for this audience before creating another; no automatic duplicate will be created.'
-                    : 'Creation failed. Check account/pixel access, customer-data terms, active remarketing tags, or lookalike source eligibility and size, then retry.'
+                lastError
             } });
         }
     }

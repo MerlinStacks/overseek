@@ -4,6 +4,9 @@ import { segmentService } from '../SegmentService';
 import { QueueFactory } from '../queue/QueueFactory';
 import { MetaAdsService } from './MetaAdsService';
 import { createGoogleAdsRestConfig } from './GoogleAdsClient';
+import { audienceIdentifiers, audienceIdentifierKey, googleAudienceIdentifiers, metaAudienceRows, type AudienceIdentifier } from './audienceIdentifiers';
+import { getAdvertisingSubscribers } from './AdvertisingSubscriberService';
+import type { SegmentCriteria } from '../segments/criteria';
 
 /** Only email hashes are sent; raw identifiers never enter queue payloads or logs. */
 export function audienceEmailHashes(emails: string[], platform: string): string[] {
@@ -48,8 +51,18 @@ export class AudienceSyncService {
         await prisma.audienceSync.update({ where: { id: sync.id }, data: { status: 'SYNCING', lastAttemptAt: new Date(), lastError: null } });
         try {
             const data = await segmentService.getExportableCustomers(accountId, sync.segmentId, true);
-            const desired = audienceEmailHashes(data.emails, sync.platform);
-            let applied = new Set((sync.syncedEmailHashes as string[]) || []);
+            let profiles = data.profiles || data.emails.map(email => ({ email }));
+            if (sync.includeSubscribers) {
+                const segment = await segmentService.getSegment(sync.segmentId, accountId);
+                if (!segment) throw new Error('Segment not found');
+                profiles = profiles.concat(await getAdvertisingSubscribers(accountId, segment.criteria as unknown as SegmentCriteria));
+            }
+            const desired = audienceIdentifiers(profiles, sync.platform, sync.enhancedMatching);
+            // Older audiences only have an email snapshot. Retain it for removals
+            // when migrating to richer identifiers; never strand old members.
+            const previous = (sync.syncedIdentifiers as unknown as AudienceIdentifier[]) || [];
+            const legacy = ((sync.syncedEmailHashes as string[]) || []).map(email => ({ email }));
+            const applied = new Map<string, AudienceIdentifier>((previous.length ? previous : legacy).map(row => [audienceIdentifierKey(row), row] as const));
             let externalId = sync.externalId;
             const google = sync.platform === 'GOOGLE' ? await createGoogleAdsRestConfig(sync.adAccountId) : null;
             const googleRequest = async (path: string, body: unknown): Promise<any> => {
@@ -83,20 +96,27 @@ export class AudienceSyncService {
                 if (!externalId) throw new Error('Platform did not return an audience ID');
                 await prisma.audienceSync.update({ where: { id: sync.id }, data: { externalId } });
             }
-            const wanted = new Set(desired);
-            const removals = [...applied].filter(hash => !wanted.has(hash));
-            // Refresh existing members too: Google Customer Match membership has an expiry.
-            for (const [action, hashes] of [['remove', removals], ['create', desired]] as const) {
-                const batchSize = sync.platform === 'META' ? 1000 : 10;
-                for (let offset = 0; offset < hashes.length; offset += batchSize) {
+            const wanted = new Set(desired.map(audienceIdentifierKey));
+            const removals = [...applied].filter(([key]) => !wanted.has(key)).map(([, row]) => row);
+            // Five-minute deltas must not re-upload the whole list every time.
+            // Refresh acknowledged membership daily to prevent platform expiry.
+            const fullRefresh = !sync.lastFullRefreshAt || Date.now() - sync.lastFullRefreshAt.getTime() >= 86400000;
+            const additions = fullRefresh ? desired : desired.filter(row => !applied.has(audienceIdentifierKey(row)));
+            for (const [action, rows] of [['remove', removals], ['create', additions]] as const) {
+                // UserDataService permits 10 operations and 20 identifiers/request.
+                const batchSize = sync.platform === 'META' ? 1000 : rows.some(row => Object.keys(row).some(key => key !== 'email')) ? 6 : 10;
+                for (let offset = 0; offset < rows.length; offset += batchSize) {
                     // Pausing stops further batches, without losing the last acknowledged snapshot.
                     const active = await prisma.audienceSync.findFirst({ where: { id: sync.id, accountId, autoSyncEnabled: true } });
                     if (!active) return;
-                    const batch = hashes.slice(offset, offset + batchSize);
+                    const batch = rows.slice(offset, offset + batchSize);
                     if (sync.platform === 'META') {
-                        if (action === 'remove') await MetaAdsService.removeCustomAudienceMembers(sync.adAccountId, externalId, batch);
+                        const emails = batch.map(row => row.email || '');
+                        const richer = batch.some(row => Object.keys(row).some(key => key !== 'email'));
+                        const args = [sync.adAccountId, externalId, emails, ...(richer ? [metaAudienceRows(batch)] : [])] as [string, string, string[], string[][]?];
+                        if (action === 'remove') await MetaAdsService.removeCustomAudienceMembers(...args);
                         else {
-                            const result = await MetaAdsService.uploadCustomAudienceMembers(sync.adAccountId, externalId, batch);
+                            const result = await MetaAdsService.uploadCustomAudienceMembers(...args);
                             if (result.numInvalidEntries > 0) throw new Error('Meta rejected audience identifiers. Check your customer email data.');
                         }
                     } else {
@@ -104,15 +124,19 @@ export class AudienceSyncService {
                             customerMatchUserListMetadata: {
                                 userList: externalId, consent: { adUserData: 'GRANTED', adPersonalization: 'GRANTED' }
                             },
-                            operations: batch.map(hash => ({ [action]: { userIdentifiers: [{ hashedEmail: hash }] } }))
+                            operations: batch.map(row => ({ [action]: { userIdentifiers: googleAudienceIdentifiers(row) } }))
                         });
                     }
-                    for (const hash of batch) action === 'remove' ? applied.delete(hash) : applied.add(hash);
-                    await prisma.audienceSync.update({ where: { id: sync.id }, data: { syncedEmailHashes: [...applied] } });
+                    for (const row of batch) action === 'remove' ? applied.delete(audienceIdentifierKey(row)) : applied.set(audienceIdentifierKey(row), row);
+                    await prisma.audienceSync.update({ where: { id: sync.id }, data: {
+                        syncedEmailHashes: [...new Set([...applied.values()].flatMap(row => row.email ? [row.email] : []))],
+                        syncedIdentifiers: [...applied.values()] as object[],
+                    } });
                 }
             }
             await prisma.audienceSync.updateMany({ where: { id: sync.id, accountId, autoSyncEnabled: true }, data: {
-                status: 'SYNCED', lastSyncAt: new Date(), lastError: null, memberCount: desired.length
+                status: 'SYNCED', lastSyncAt: new Date(), lastError: null, memberCount: desired.length,
+                ...(fullRefresh ? { lastFullRefreshAt: new Date() } : {})
             } });
         } catch (error) {
             await prisma.audienceSync.updateMany({ where: { id: sync.id, accountId, autoSyncEnabled: true }, data: {

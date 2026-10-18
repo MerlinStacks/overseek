@@ -92,6 +92,21 @@ const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    // Count matching customers without loading member profiles.
+    fastify.get<{ Params: { id: string } }>('/:id/count', async (request, reply) => {
+        const accountId = request.accountId!;
+        try {
+            const segment = await segmentService.getSegment(request.params.id, accountId);
+            if (!segment) return reply.code(404).send({ error: 'Segment not found' });
+            const count = await segmentService.getSegmentCount(accountId, request.params.id);
+            reply.header('Cache-Control', 'no-store');
+            return { count };
+        } catch (error) {
+            Logger.error('Failed to count segment customers', { accountId, segmentId: request.params.id, error });
+            return reply.code(500).send({ error: 'Failed to count segment customers' });
+        }
+    });
+
     // Preview Customers in Segment
     fastify.get<{ Params: { id: string }; Querystring: { page?: string; pageSize?: string; filters?: string } }>('/:id/preview', async (request, reply) => {
         try {

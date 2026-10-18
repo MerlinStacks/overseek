@@ -239,6 +239,78 @@ describe('MetaCAPIService', () => {
         expect(contents[0].id).toBe('OS-10-AU');
     });
 
+    it.each([undefined, null, '', ' ', 'not-a-price', '1,234.50', NaN, Infinity, -10, true])(
+        'does not send or retry a Purchase with invalid total %s', async total => {
+            await service.sendEvent(accountId, config, { ...purchaseData, payload: { ...purchaseData.payload, total } }, session);
+            expect(global.fetch).not.toHaveBeenCalled();
+            expect(prisma.conversionDelivery.update).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ status: 'FAILED', attempts: 0, lastError: expect.stringContaining('NON_RETRYABLE:') }),
+            }));
+        },
+    );
+
+    it.each([undefined, null, '', 'AU', 'Australian dollars', 'ZZZ', 123])(
+        'does not send a Purchase with invalid currency %s', async currency => {
+            await service.sendEvent(accountId, config, { ...purchaseData, payload: { ...purchaseData.payload, currency } }, session);
+            expect(global.fetch).not.toHaveBeenCalled();
+        },
+    );
+
+    it('normalizes a numeric string and currency without replacing legitimate zero revenue', async () => {
+        for (const total of ['42.50', 0]) {
+            await service.sendEvent(accountId, config, { ...purchaseData, payload: { ...purchaseData.payload, total, currency: ' aud ' } }, session);
+            const event = JSON.parse((global.fetch as any).mock.lastCall[1].body).data[0];
+            expect(event.custom_data).toMatchObject({ value: Number(total), currency: 'AUD' });
+        }
+    });
+
+    it.each(['bad', -1, Infinity, '', null])('rejects an invalid enabled shipping deduction %s', async shipping => {
+        await service.sendEvent(accountId, { ...config, excludeShipping: true }, {
+            ...purchaseData, payload: { ...purchaseData.payload, shipping },
+        }, session);
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('does not clamp inconsistent order deductions to a fabricated zero purchase value', async () => {
+        await service.sendEvent(accountId, { ...config, excludeShipping: true }, {
+            ...purchaseData, payload: { ...purchaseData.payload, total: 20, shipping: 30 },
+        }, session);
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('keeps a legitimate zero after decimal shipping and tax deductions', async () => {
+        await service.sendEvent(accountId, { ...config, excludeShipping: true, excludeTax: true }, {
+            ...purchaseData, payload: { ...purchaseData.payload, total: 0.3, shipping: 0.1, tax: 0.2 },
+        }, session);
+        expect(JSON.parse((global.fetch as any).mock.lastCall[1].body).data[0].custom_data.value).toBe(0);
+    });
+
+    it('uses added item price times quantity, not the cart total or purchase exclusions', async () => {
+        await service.sendEvent(accountId, { ...config, excludeShipping: true, excludeTax: true }, {
+            ...purchaseData, type: 'add_to_cart',
+            payload: { ...purchaseData.payload, total: 300, price: '12.50', quantity: 3, shipping: 5, tax: 10 },
+        }, session);
+        const event = JSON.parse((global.fetch as any).mock.lastCall[1].body).data[0];
+        expect(event.event_name).toBe('AddToCart');
+        expect(event.event_id).toBe(purchaseData.eventId);
+        expect(event.custom_data.value).toBe(37.5);
+    });
+
+    it('preserves different real order totals', async () => {
+        for (const total of [25, 79.95, 123.45]) {
+            await service.sendEvent(accountId, config, { ...purchaseData, payload: { ...purchaseData.payload, total } }, session);
+            expect(JSON.parse((global.fetch as any).mock.lastCall[1].body).data[0].custom_data.value).toBe(total);
+        }
+    });
+
+    it('supports item-only AddToCart payloads without substituting the cart total', async () => {
+        await service.sendEvent(accountId, config, {
+            ...purchaseData, type: 'add_to_cart',
+            payload: { ...purchaseData.payload, total: 300, items: [{ id: 1, price: '7.50', quantity: 2 }] },
+        }, session);
+        expect(JSON.parse((global.fetch as any).mock.lastCall[1].body).data[0].custom_data.value).toBe(15);
+    });
+
     it('should fall back to item id when sku is missing and format=sku', async () => {
         const noSkuData = {
             ...purchaseData,

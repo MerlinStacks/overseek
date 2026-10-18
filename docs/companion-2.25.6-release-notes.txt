@@ -1,0 +1,29 @@
+OverSeek Integration for WooCommerce 2.25.6
+Released: 2026-10-18
+
+Meta Pixel and Conversions API tracking fixes:
+- Fresh, matching browser/server IDs for classic AJAX AddToCart operations.
+- Rotate IDs on non-AJAX links and product forms; do not reuse checkout-cookie
+  IDs for unrelated cart additions.
+- Include quantity in browser AddToCart values.
+- Normalize Purchase currency and suppress invalid Meta purchase values instead
+  of fabricating zero revenue from inconsistent shipping/tax deductions.
+- Preserve SLDevs updates, pinned Plugin Update Checker v5.7 and administrator
+  choices for automatic updates.
+
+Deploy the matching OverSeek backend as well. Its companion changes validate
+server Purchase totals/currencies, record invalid purchases as non-retryable
+delivery failures, use added-item values instead of whole-cart totals, and
+require a Meta Test Event Code before sending synthetic connection tests.
+The plugin ZIP does not contain or deploy the OverSeek backend.
+
+Requirements: WordPress 6.4+, PHP 8.1+, WooCommerce (plugin header minimum 7.0;
+Blocks checkout requires 8.0+), and a running OverSeek server.
+
+Upgrade the existing overseek-wc-plugin folder in place; do not uninstall first.
+Version changes refresh supported page caches and configuration. Purge separately
+managed CDNs as needed. Delivery estimates may require readiness revalidation.
+Verify new events in Meta Test events and compare them with WooCommerce orders.
+These fixes do not repair historical events or guarantee that every coverage
+warning has the same cause. Other pixel integrations and custom cart flows may
+need separate investigation; Meta diagnostics can lag behind new valid events.

@@ -36,12 +36,23 @@ interface SendEmailNodeConfig {
 }
 
 interface SendEmailConfigProps {
+    storageScope?: string;
     config: SendEmailNodeConfig;
     onUpdate: (key: string, value: unknown) => void;
     onUpdateMany?: (updates: Record<string, unknown>) => void;
 }
 
 type MergeTagField = 'to' | 'subject' | 'previewText';
+
+function getEmailSetupRevision(config: SendEmailNodeConfig): string {
+    return JSON.stringify([
+        config.to || '{{customer.email}}', config.subject || '', config.previewText || '', config.htmlContent || '',
+        config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING'),
+        Boolean(config.overrideFrom), config.fromName || '', config.fromEmail || '', config.replyToEmail || '',
+        config.appendUtm !== false, config.campaignSource || '', config.campaignMedium || 'Email',
+        config.campaignName || '', config.campaignTerm || '', config.campaignContent || '',
+    ]);
+}
 
 const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: string }> = [
     { id: 'customer', label: 'Customer' },
@@ -53,14 +64,14 @@ const MERGE_TAG_CATEGORIES: Array<{ id: MergeTagDefinition['category']; label: s
     { id: 'general', label: 'General' },
 ];
 
-export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailConfigProps) {
+export function SendEmailConfig({ config, onUpdate, onUpdateMany, storageScope }: SendEmailConfigProps) {
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
     const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [showVisualBuilder, setShowVisualBuilder] = useState(false);
     const [showPreflightModal, setShowPreflightModal] = useState(false);
     const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([]);
-    const [previewChecked, setPreviewChecked] = useState(false);
+    const [checkedRevision, setCheckedRevision] = useState<string | null>(null);
     const [showMergeTagModal, setShowMergeTagModal] = useState(false);
     const [mergeTagSearch, setMergeTagSearch] = useState('');
     const [mergeTagCategory, setMergeTagCategory] = useState<MergeTagDefinition['category']>('customer');
@@ -71,6 +82,12 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
 
     const templateType = config.templateType || 'visual';
     const emailCategory = config.emailCategory || (config.isTransactional ? 'TRANSACTIONAL' : 'MARKETING');
+    const revision = getEmailSetupRevision(config);
+    const previewChecked = checkedRevision === revision;
+    const updateMany = (updates: Record<string, unknown>) => {
+        if (onUpdateMany) onUpdateMany(updates);
+        else Object.entries(updates).forEach(([key, value]) => onUpdate(key, value));
+    };
     const setupSteps = [
         { label: 'Recipient', done: Boolean((config.to || '{{customer.email}}').trim()) },
         { label: 'Subject', done: Boolean((config.subject || '').trim()) },
@@ -118,11 +135,11 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
     };
 
     const handleRichTextChange = (value: string) => {
-        onUpdate('htmlContent', value);
+        if (value !== config.htmlContent) updateMany({ htmlContent: value, designJson: null });
     };
 
     const handleHtmlChange = (value: string) => {
-        onUpdate('htmlContent', value);
+        updateMany({ htmlContent: value, designJson: null });
     };
 
     const runPreflightChecks = (): PreflightIssue[] => evaluateEmailPreflight({
@@ -137,7 +154,6 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
 
     const handlePreviewAndTest = () => {
         const issues = runPreflightChecks();
-        setPreviewChecked(true);
         setPreflightIssues(issues);
         if (issues.length === 0) {
             setShowPreview(true);
@@ -299,7 +315,9 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                             name="templateType"
                             value="visual"
                             checked={templateType === 'visual'}
-                            onChange={() => onUpdate('templateType', 'visual')}
+                            onChange={() => {
+                                onUpdate('templateType', 'visual');
+                            }}
                             className="h-4 w-4 text-blue-600"
                         />
                         <span className="text-sm text-gray-700">Visual Builder</span>
@@ -311,7 +329,10 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                             name="templateType"
                             value="richtext"
                             checked={templateType === 'richtext'}
-                            onChange={() => onUpdate('templateType', 'richtext')}
+                            onChange={() => {
+                                if (config.htmlContent && !window.confirm('Rich Text may remove layout and styling from this email. Use Raw HTML to preserve the markup. Continue?')) return;
+                                onUpdate('templateType', 'richtext');
+                            }}
                             className="h-4 w-4 text-blue-600"
                         />
                         <span className="text-sm text-gray-700">Rich Text</span>
@@ -418,8 +439,7 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                     value={emailCategory}
                     onChange={(e) => {
                         const nextValue = e.target.value === 'TRANSACTIONAL' ? 'TRANSACTIONAL' : 'MARKETING';
-                        onUpdate('emailCategory', nextValue);
-                        onUpdate('isTransactional', nextValue === 'TRANSACTIONAL');
+                        updateMany({ emailCategory: nextValue, isTransactional: nextValue === 'TRANSACTIONAL' });
                     }}
                     className="w-full rounded-lg border border-blue-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
                 >
@@ -595,12 +615,18 @@ export function SendEmailConfig({ config, onUpdate, onUpdateMany }: SendEmailCon
                     subject={config.subject}
                     previewText={config.previewText}
                     category={emailCategory}
+                    onPreviewed={() => setCheckedRevision(revision)}
+                    onTestSent={() => setCheckedRevision(revision)}
                     onClose={() => setShowPreview(false)}
                 />
             )}
 
             {showVisualBuilder && (
                 <MarketingEmailDesigner
+                    storageScope={storageScope}
+                    initialHtml={config.htmlContent}
+                    emailCategory={emailCategory}
+                    onTestSent={(html, _design, meta) => setCheckedRevision(getEmailSetupRevision({ ...config, htmlContent: html, subject: meta.subject, previewText: meta.previewText }))}
                     initialDesign={config.designJson}
                     initialSubject={config.subject}
                     initialPreviewText={config.previewText}

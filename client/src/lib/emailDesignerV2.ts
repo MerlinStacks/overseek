@@ -1,4 +1,4 @@
-import { sanitizeEmailHtml } from '../utils/emailHtml';
+import { sanitizeEmailHtml, sanitizeEmailLayoutHtml } from '../utils/emailHtml';
 import type { DeliveryEstimateEmailOptions } from '@overseek/core';
 
 export type EmailDeviceVisibility = 'all' | 'desktop' | 'mobile';
@@ -663,7 +663,7 @@ export function compileEmailDesignV2(envelope: EmailDesignV2Envelope): string {
     @media only screen and (max-width: 640px) {
       .os-mobile-hidden { display: none !important; }
       .os-mobile-block { display: block !important; width: 100% !important; }
-      .os-mobile-reverse { display: table-header-group !important; }
+      .os-mobile-stack-reverse { display: flex !important; flex-direction: column-reverse !important; }
       .os-responsive-block { display: block !important; width: 100% !important; max-width: 100% !important; }
     }
     @media only screen and (min-width: 641px) {
@@ -729,8 +729,8 @@ function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
     const borderWidth = section.borderWidth || 0;
     const borderColor = section.borderColor || '#e2e8f0';
     const radius = section.borderRadius || [0, 0, 0, 0];
-    const columnHtml = columns.map((column, index) => {
-        const stackClass = getStackClass(section.stackMode, index, columns.length);
+    const columnHtml = columns.map((column) => {
+        const stackClass = getStackClass(section.stackMode);
         const columnPadding = column.padding || '0';
         const columnBackground = column.backgroundColor ? `background:${column.backgroundColor};` : '';
         const verticalAlign = column.verticalAlign || 'top';
@@ -738,7 +738,7 @@ function renderSection(section: EmailSection, theme: EmailDesignTheme): string {
     }).join('');
 
     const borderDeclaration = borderStyle === 'none' || borderWidth <= 0 ? 'border:none;' : `border:${borderWidth}px ${borderStyle} ${borderColor};`;
-    const rowHtml = `<tr class="${visibilityClass}"><td class="os-email-section" style="background:${section.backgroundColor || theme.contentBackgroundColor};padding:${section.padding || '0'};${borderDeclaration}border-radius:${radius[0]}px ${radius[1]}px ${radius[2]}px ${radius[3]}px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${columnHtml}</tr></table></td></tr>`;
+    const rowHtml = `<tr class="${visibilityClass}"><td class="os-email-section" style="background:${section.backgroundColor || theme.contentBackgroundColor};padding:${section.padding || '0'};${borderDeclaration}border-radius:${radius[0]}px ${radius[1]}px ${radius[2]}px ${radius[3]}px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr${section.stackMode === 'reverse' ? ' class="os-mobile-stack-reverse"' : ''}>${columnHtml}</tr></table></td></tr>`;
     const conditionExpression = section.displayCondition?.enabled ? section.displayCondition.expression.trim() : '';
     if (!conditionExpression) return rowHtml;
     return `{{#if ${conditionExpression}}}${rowHtml}{{/if}}`;
@@ -911,7 +911,7 @@ function renderBlock(block: EmailBlock, theme: EmailDesignTheme): string {
         return `<div class="${joinClasses(blockClass, 'os-email-footer')}" style="padding:${props.padding || '8px 0'};text-align:${props.align || 'center'};font-size:12px;line-height:1.6;color:${props.color || theme.mutedTextColor};">${html}</div>`;
     }
 
-    return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '8px 0'};text-align:${(block.props as { align?: string }).align || 'left'};">${sanitizeEmailHtml(String(block.props.html || ''))}</div>`;
+    return `<div class="${blockClass}" style="padding:${(block.props as { padding?: string }).padding || '8px 0'};text-align:${(block.props as { align?: string }).align || 'left'};">${sanitizeEmailLayoutHtml(String(block.props.html || ''))}</div>`;
 }
 
 function getOrderItemsMergeTag(format: OrderItemsFormat | undefined): string {
@@ -1006,9 +1006,8 @@ function getVisibilityClass(visibility?: EmailDeviceVisibility): string {
     return '';
 }
 
-function getStackClass(stackMode: EmailStackMode = 'stack', index: number, total: number): string {
+function getStackClass(stackMode: EmailStackMode = 'stack'): string {
     if (stackMode === 'none') return '';
-    if (stackMode === 'reverse' && index === 0 && total > 1) return 'os-mobile-block os-mobile-reverse';
     return 'os-mobile-block';
 }
 

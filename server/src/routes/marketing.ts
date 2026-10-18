@@ -428,12 +428,13 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    // Test Email (standalone, for flow builder)
-    fastify.post<{ Body: { to: string; subject: string; content: string; previewText?: string; category?: 'MARKETING' | 'TRANSACTIONAL'; orderId?: string | null } }>('/test-email', async (request, reply) => {
+    // Preview and test use the same sample context and production merge resolver.
+    for (const route of ['/test-email', '/preview-email']) fastify.post<{ Body: { to?: string; subject: string; content: string; previewText?: string; category?: 'MARKETING' | 'TRANSACTIONAL'; orderId?: string | null } }>(route, async (request, reply) => {
         try {
+            const isPreview = route === '/preview-email';
             const { to, subject, content, previewText, category, orderId } = request.body;
 
-            if (!to || !subject || !content) {
+            if ((!isPreview && (!to || !subject)) || !content) {
                 return reply.code(400).send({ error: 'Missing required fields: to, subject, content' });
             }
             if (orderId !== undefined && orderId !== null && (
@@ -444,7 +445,7 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             const accountId = request.accountId || getAccountId(request);
-            const emailAccount = await getDefaultEmailAccount(accountId);
+            const emailAccount = isPreview ? null : await getDefaultEmailAccount(accountId);
             const account = await prisma.account.findFirst({
                 where: { id: accountId },
                 select: { wooUrl: true, domain: true, currency: true }
@@ -460,13 +461,9 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(404).send({ error: 'Order not found' });
             }
 
-            if (!emailAccount) {
+            if (!isPreview && !emailAccount) {
                 return reply.code(400).send({ error: 'No sending-capable email account is configured. Please set up a sending account in Settings.' });
             }
-
-            // Import email service to send the test
-            const { EmailService } = await import('../services/EmailService');
-            const emailService = new EmailService();
 
             const storeUrl = account?.wooUrl || account?.domain || '';
             const normalizedStoreUrl = storeUrl.startsWith('http://') || storeUrl.startsWith('https://')
@@ -475,11 +472,13 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
             const orderRaw = (sampleOrder?.rawData && typeof sampleOrder.rawData === 'object' ? sampleOrder.rawData : {}) as Record<string, any>;
             const billing = orderRaw.billing || {};
             const firstLineItem = Array.isArray(orderRaw.line_items) ? orderRaw.line_items[0] : undefined;
+            const sampleItems = orderRaw.line_items || orderRaw.lineItems || orderRaw.items || [{ name: 'Sample product', quantity: 1, price: '49.00', total: '49.00' }];
+            const currency = sampleOrder?.currency || account?.currency || 'USD';
             const testContext = {
                 customer: {
                     firstName: billing.first_name || 'Test',
                     lastName: billing.last_name || 'Customer',
-                    email: billing.email || to,
+                    email: billing.email || to || 'alex@example.com',
                     phone: billing.phone || ''
                 },
                 order: sampleOrder ? {
@@ -492,32 +491,45 @@ const marketingRoutes: FastifyPluginAsync = async (fastify) => {
                     total: sampleOrder.total,
                     dateCreated: sampleOrder.dateCreated,
                     lineItems: orderRaw.line_items || orderRaw.lineItems || orderRaw.items || []
-                } : undefined,
+                } : { number: '1001', status: 'processing', currency, total: '49.00', lineItems: sampleItems },
                 product: firstLineItem ? {
                     name: firstLineItem.name,
                     price: firstLineItem.price || firstLineItem.total,
                     image: firstLineItem.image,
                     permalink: firstLineItem.permalink
-                } : undefined,
+                } : { name: 'Sample product', price: '49.00' },
+                cart: {
+                    items: sampleItems,
+                    total: sampleOrder?.total || '49.00',
+                    currency,
+                    recoveryUrl: `${normalizedStoreUrl}/checkout/?recover_cart=preview`,
+                    checkoutUrl: `${normalizedStoreUrl}/checkout/`,
+                },
+                coupon: { code: 'PREVIEW10', discountType: 'percent', amount: 10, description: 'Sample discount' },
+                review: { reviewer: 'Test Customer', rating: 5, content: 'Great product!', productName: firstLineItem?.name || 'Sample product' },
                 store: { url: normalizedStoreUrl },
                 accountId,
                 currency: account?.currency || 'USD',
                 linkTriggerUrl: normalizedStoreUrl,
                 // Keep recipient-specific placeholders for EmailService to resolve
                 // after allocating the tracking ID, just like a live flow send.
-                preferencesUrl: '{{preferences_url}}',
-                unsubscribeUrl: '{{unsubscribe_url}}'
+                preferencesUrl: isPreview ? `${normalizedStoreUrl}/my-account/edit-account/` : '{{preferences_url}}',
+                unsubscribeUrl: isPreview ? `${normalizedStoreUrl}/?unsubscribe=preview` : '{{unsubscribe_url}}'
             };
 
-            const resolvedSubject = resolveMergeTags(subject, testContext);
+            const resolvedSubject = resolveMergeTags(subject || '', testContext);
             const resolvedContent = await resolveMergeTagsWithDynamicProducts(content, testContext);
             const resolvedPreviewText = resolveMergeTags(previewText || '', testContext);
             const contentWithPreviewText = applyPreviewText(resolvedContent, resolvedPreviewText);
 
+            if (isPreview) return { html: contentWithPreviewText, subject: resolvedSubject, previewText: resolvedPreviewText, orderId: sampleOrder?.id || null };
+
+            const { EmailService } = await import('../services/EmailService');
+            const emailService = new EmailService();
             const result = await emailService.sendEmail(
                 accountId,
-                emailAccount.id,
-                to,
+                emailAccount!.id,
+                to!,
                 resolvedSubject,
                 contentWithPreviewText,
                 undefined,

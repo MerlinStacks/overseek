@@ -135,6 +135,75 @@ describe('GoogleEnhancedConversionsService', () => {
         expect(url).toContain('1234567890'); // Dashes removed
     });
 
+    it('creates an independent purchase using the import action, original time, value and Woo order ID', async () => {
+        (global.fetch as any).mockResolvedValueOnce({ ok: true, status: 200, text: async () => '{"results":[{"orderId":"300"}]}' });
+        await service.sendEvent(accountId, { ...config, purchaseUploadActionId: '987' }, {
+            ...purchaseData, occurredAt: '2026-10-17T04:05:06Z', consentState: 'granted',
+        }, session);
+        expect((global.fetch as any).mock.calls[0][0]).toContain(':uploadClickConversions');
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.conversionAdjustments).toBeUndefined();
+        expect(body.conversions[0]).toMatchObject({
+            conversionAction: 'customers/1234567890/conversionActions/987', orderId: '300',
+            conversionDateTime: '2026-10-17 04:05:06+00:00', conversionValue: 250, currencyCode: 'AUD',
+            gclid: 'gclid-abc123', consent: { adUserData: 'GRANTED' },
+        });
+        expect(prisma.conversionDelivery.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'SENT' }) }));
+    });
+
+    it('replays an independent purchase without changing its action, order or original time', async () => {
+        (global.fetch as any).mockResolvedValueOnce({ ok: true, status: 200, text: async () => '{"results":[{"orderId":"300"}]}' });
+        const payload = { conversions: [{ conversionAction: 'customers/1234567890/conversionActions/987', orderId: '300', conversionDateTime: '2026-10-17 04:05:06+00:00', gclid: 'click-id' }], partialFailure: true };
+        expect((await service.retryStoredDelivery({ id: 'delivery', accountId, platform: 'GOOGLE', payload })).status).toBe('SENT');
+        expect((global.fetch as any).mock.calls[0][0]).toContain(':uploadClickConversions');
+        expect(JSON.parse((global.fetch as any).mock.calls[0][1].body)).toEqual(payload);
+    });
+
+    it('can create independent purchases with only a Google click ID', async () => {
+        await service.sendEvent(accountId, { customerId: config.customerId, purchaseUploadActionId: '987' }, {
+            ...purchaseData, payload: { ...purchaseData.payload, email: undefined },
+        }, null);
+        const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+        expect(body.conversions[0].userIdentifiers).toBeUndefined();
+        expect(body.conversions[0].gclid).toBe('gclid-abc123');
+    });
+
+    it('does not upload an explicitly denied purchase', async () => {
+        await service.sendEvent(accountId, { ...config, purchaseUploadActionId: '987' }, { ...purchaseData, consentState: 'denied' }, session);
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('does not report an empty Google response as delivered', async () => {
+        await service.sendEvent(accountId, config, purchaseData, session);
+        expect(prisma.conversionDelivery.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ status: 'FAILED', lastError: expect.stringContaining('unconfirmed') }),
+        }));
+    });
+
+    it('preserves independent purchases during quota cooldown for later retry', async () => {
+        vi.spyOn(service as any, 'getActiveQuotaCooldownUntil').mockResolvedValue(Date.now() + 60000);
+        await service.sendEvent(accountId, { ...config, purchaseUploadActionId: '987' }, purchaseData, session);
+        expect(global.fetch).not.toHaveBeenCalled();
+        expect(prisma.conversionDelivery.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ payload: expect.objectContaining({ conversions: expect.any(Array) }) }) }));
+        expect(prisma.conversionDelivery.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', httpStatus: 429 }) }));
+    });
+
+    it('checks independent action configuration without submitting any purchases', async () => {
+        (global.fetch as any)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ conversionAction: { type: 'UPLOAD_CLICKS', status: 'ENABLED' } }] }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ customer: { conversionTrackingSetting: { acceptedCustomerDataTerms: true } } }] }) });
+        const message = await service.validateConfiguration(accountId, { ...config, purchaseUploadActionId: '987' });
+        expect(message).toContain('No purchase was sent');
+        expect((global.fetch as any).mock.calls.every((call: any[]) => call[0].endsWith('/googleAds:search'))).toBe(true);
+        expect(prisma.adAccount.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId, platform: 'GOOGLE', externalId: '1234567890' } }));
+    });
+
+    it('rejects a website action for independent purchases', async () => {
+        (global.fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ conversionAction: { type: 'WEBPAGE', status: 'ENABLED' } }] }) });
+        await expect(service.validateConfiguration(accountId, { ...config, purchaseUploadActionId: '987' })).rejects.toThrow('UPLOAD_CLICKS');
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
     it('should normalize customerId (strip dashes) for DB lookup', async () => {
         await service.sendEvent(accountId, config, purchaseData, session);
 
@@ -275,6 +344,7 @@ describe('GoogleEnhancedConversionsService', () => {
     });
 
     it('should replay a stored enhancement through the direct retry contract', async () => {
+        (global.fetch as any).mockResolvedValueOnce({ ok: true, status: 200, text: async () => '{"results":[{"orderId":"300"}]}' });
         const result = await service.retryStoredDelivery({
             id: 'delivery-1',
             accountId,

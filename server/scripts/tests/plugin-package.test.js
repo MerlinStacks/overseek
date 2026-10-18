@@ -23,13 +23,19 @@ test('runtime manifest excludes native helpers, secrets, tooling and nested fixt
         'blocks/delivery-estimate/block.json', 'blocks/delivery-estimate/editor.js',
         'assets/css/delivery-estimate.css', 'assets/js/delivery-estimate.js',
         'templates/product-reviews.php', 'languages/overseek-wc.pot',
+        'includes/plugin-update-checker/license.txt',
+        'includes/plugin-update-checker/vendor/Parsedown.php',
+        'includes/plugin-update-checker/vendor/ParsedownModern.php',
+        'includes/plugin-update-checker/vendor/PucReadmeParser.php',
     ]) assert.equal(isRuntimeFile(file), true, file);
+    assert.equal(isRuntimeFile('includes/plugin-update-checker/vendor/unexpected.php'), false);
 });
 
 test('candidate contains every current runtime class, asset and block', () => {
     const source = path.resolve(__dirname, '../../../overseek-wc-plugin');
     const { included, excluded } = manifest(source);
     for (const root of ['includes', 'assets', 'blocks', 'templates', 'languages']) {
+        if (!fs.existsSync(path.join(source, root))) continue;
         for (const relative of fs.readdirSync(path.join(source, root), { recursive: true })) {
             const full = path.join(source, root, relative);
             if (fs.statSync(full).isFile() && !relative.endsWith('.md')) {
@@ -37,7 +43,7 @@ test('candidate contains every current runtime class, asset and block', () => {
             }
         }
     }
-    assert.ok(excluded.includes('tests/'));
+    assert.equal(included.some(file => file.startsWith('tests/')), false);
     assert.ok(included.includes('blocks/delivery-estimate/block.json'));
     assert.ok(included.includes('includes/class-overseek-receipt-api.php'));
     assert.ok(included.includes('assets/js/delivery-estimate.js'));

@@ -64,4 +64,14 @@ describe('capiConfig', () => {
         expect(redactCapiText('request access_token=top-secret failed', { accessToken: 'top-secret' }))
             .toBe('request access_token=[REDACTED] failed');
     });
+
+    it('accepts independent import configuration without requiring a website action', () => {
+        expect(validateCapiConfig('google', true, { customerId: '1234567890', purchaseUploadActionId: '987' })).toEqual([]);
+        expect(validateCapiConfig('google', true, { customerId: '1234567890' })).toContain('A purchase enhancement action or independent purchase import action is required');
+    });
+
+    it('rejects reusing the enhancement action and malformed import IDs without throwing', () => {
+        expect(validateCapiConfig('google', true, { customerId: '1234567890', conversionActionId: '987', purchaseUploadActionId: '987' })).toContain('The purchase import action must differ from the website enhancement action');
+        expect(validateCapiConfig('google', true, { customerId: '1234567890', purchaseUploadActionId: 987 })).toContain('purchaseUploadActionId must be a string');
+    });
 });

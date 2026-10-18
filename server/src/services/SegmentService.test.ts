@@ -65,4 +65,14 @@ describe('Rolling segment evaluation', () => {
         segment('purchasedWithinDays');
         expect(await service.getExportableCustomers('tenant', 'segment', true)).toMatchObject({ totalCount: 0, emails: [] });
     });
+
+    it.each(['emailClickedWithinDays', 'emailOpenedWithinDays', 'notEmailClickedWithinDays', 'notEmailOpenedWithinDays'])('evaluates %s with tenant-isolated event timestamps', async field => {
+        segment(field);
+        await service.getSegmentCount('tenant', 'segment');
+        const sql = mocks.query.mock.calls[0][0];
+        expect(sql.text).toContain('l."accountId" = c."accountId"');
+        expect(sql.values).toContain(field.includes('Clicked') ? 'CLICK' : 'OPEN');
+        expect(sql.values).toContainEqual(new Date('2026-10-11T12:00:00Z'));
+        expect(sql.text.includes('NOT EXISTS')).toBe(field.startsWith('not'));
+    });
 });

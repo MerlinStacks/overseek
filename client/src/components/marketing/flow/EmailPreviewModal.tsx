@@ -1,12 +1,14 @@
 /**
  * EmailPreviewModal - Modal for previewing and testing emails
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Eye, Send, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccount } from '../../../context/AccountContext';
 
 interface Props {
+    onPreviewed?: () => void;
+    onTestSent?: () => void;
     htmlContent: string;
     subject?: string;
     previewText?: string;
@@ -14,7 +16,7 @@ interface Props {
     onClose: () => void;
 }
 
-export function EmailPreviewModal({ htmlContent, subject, previewText, category = 'MARKETING', onClose }: Props) {
+export function EmailPreviewModal({ htmlContent, subject, previewText, category = 'MARKETING', onClose, onPreviewed, onTestSent }: Props) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const [testEmail, setTestEmail] = useState('');
@@ -22,6 +24,30 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
     const [sent, setSent] = useState(false);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState<'preview' | 'test'>('preview');
+    const [preview, setPreview] = useState<{ html: string; subject: string; previewText: string; orderId: string | null } | null>(null);
+    const [previewError, setPreviewError] = useState('');
+
+    useEffect(() => {
+        const controller = new AbortController();
+        setPreview(null);
+        setPreviewError('');
+        if (!htmlContent) return;
+        void (async () => {
+            try {
+                const res = await fetch('/api/marketing/preview-email', {
+                    method: 'POST', signal: controller.signal,
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' },
+                    body: JSON.stringify({ content: htmlContent, subject, previewText }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to load email preview');
+                if (!controller.signal.aborted) setPreview(data);
+            } catch (err) {
+                if (!controller.signal.aborted) setPreviewError(err instanceof Error ? err.message : 'Failed to load email preview');
+            }
+        })();
+        return () => controller.abort();
+    }, [htmlContent, subject, previewText, token, currentAccount?.id]);
 
     const handleSendTest = async () => {
         if (!testEmail.trim() || !testEmail.includes('@')) {
@@ -45,12 +71,14 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                     subject: subject || 'Test Email',
                     content: htmlContent,
                     previewText,
-                    category
+                    category,
+                    orderId: preview?.orderId
                 })
             });
 
             if (res.ok) {
                 setSent(true);
+                onTestSent?.();
                 setTimeout(() => setSent(false), 3000);
             } else {
                 const data = await res.json().catch(() => ({}));
@@ -75,7 +103,7 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                         </div>
                         <div>
                             <h3 className="font-semibold text-gray-900">Preview & Test</h3>
-                            <p className="text-sm text-gray-500">Preview your email and send a test</p>
+                            <p className="text-sm text-gray-500">Merge tags use a recent order or sample data, not a live cart.</p>
                         </div>
                     </div>
                     <button
@@ -114,13 +142,17 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                 <div className="flex-1 overflow-hidden p-6">
                     {activeTab === 'preview' ? (
                         <div className="h-full border rounded-lg overflow-hidden bg-gray-50">
-                            {htmlContent ? (
-                                <iframe
-                                    srcDoc={htmlContent}
-                                    className="w-full h-full min-h-[400px] bg-white"
-                                    title="Email Preview"
-                                    sandbox="allow-same-origin"
-                                />
+                            {previewError ? <p role="alert" className="p-4 text-red-600">{previewError}</p> : htmlContent && !preview ? <p className="p-4 text-gray-500">Loading email preview...</p> : preview ? (
+                                <>
+                                    <p className="border-b bg-white px-4 py-2 text-sm text-gray-700">{preview.subject}</p>
+                                    <iframe
+                                        onLoad={onPreviewed}
+                                        srcDoc={preview.html}
+                                        className="w-full h-full min-h-[400px] bg-white"
+                                        title="Email Preview"
+                                        sandbox="allow-same-origin"
+                                    />
+                                </>
                             ) : (
                                 <div className="flex items-center justify-center h-full text-gray-400">
                                     No content to preview
@@ -157,6 +189,8 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
                                     <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
                                 )}
 
+                                {previewError && <p role="alert" className="text-sm text-red-600">{previewError}</p>}
+
                                 {sent && (
                                     <p className="text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg flex items-center gap-2">
                                         <CheckCircle size={16} />
@@ -166,7 +200,7 @@ export function EmailPreviewModal({ htmlContent, subject, previewText, category 
 
                                 <button
                                     onClick={handleSendTest}
-                                    disabled={sending || !testEmail}
+                                    disabled={sending || !testEmail || !preview}
                                     className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50"
                                 >
                                     {sending ? (
