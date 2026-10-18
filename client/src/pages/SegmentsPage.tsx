@@ -251,26 +251,28 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
         return (
             <div className="space-y-6 max-w-4xl mx-auto">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">{editingSegment ? 'Edit Segment' : 'Create New Segment'}</h1>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">{editingSegment ? 'Edit Segment' : 'Create New Segment'}</h1>
                         <p className="text-sm text-gray-500">Define criteria to group your customers.</p>
                     </div>
 
-                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-xs space-y-4">
+                    <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-xs sm:p-6 dark:border-slate-700 dark:bg-slate-800">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Segment Name</label>
+                            <label htmlFor="segment-name" className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">Segment Name</label>
                             <input
+                                id="segment-name"
                                 type="text"
-                                className="w-full border border-gray-300 rounded-sm px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                                 placeholder="e.g. VIP Customers"
                                 value={segmentName}
                                 onChange={e => setSegmentName(e.target.value)}
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+                            <label htmlFor="segment-description" className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">Description (Optional)</label>
                             <input
+                                id="segment-description"
                                 type="text"
-                                className="w-full border border-gray-300 rounded-sm px-3 py-2 outline-hidden focus:ring-2 focus:ring-blue-500"
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                                 placeholder="Customers who spent over $500"
                                 value={segmentDesc}
                                 onChange={e => setSegmentDesc(e.target.value)}

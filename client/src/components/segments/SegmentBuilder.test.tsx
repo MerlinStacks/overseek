@@ -1,8 +1,41 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SegmentBuilder } from './SegmentBuilder';
 
+vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
+vi.mock('../../context/AccountContext', () => ({ useAccount: () => ({ currentAccount: { id: 'tenant' } }) }));
+
 describe('Ecommerce segment builder', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('keeps guidance collapsed instead of showing a large preset panel', () => {
+        render(<SegmentBuilder onSave={vi.fn()} onCancel={vi.fn()} />);
+        expect(screen.getByText('How audience rules work').closest('details')).not.toHaveAttribute('open');
+        expect(screen.queryByText('Ecommerce advertising presets')).not.toBeInTheDocument();
+    });
+
+    it.each(['product', 'category'] as const)('searches and saves a %s purchase exclusion with an optional window', async kind => {
+        const save = vi.fn();
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => kind === 'product' ? { products: [{ id: 'uuid', wooId: 42, name: 'Custom mug' }] } : { items: [{ id: 42, name: 'Mugs' }] } });
+        vi.stubGlobal('fetch', fetchMock);
+        render(<SegmentBuilder onSave={save} onCancel={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Add Condition' }));
+        fireEvent.change(screen.getByLabelText('Condition 1 field'), { target: { value: kind === 'product' ? 'purchasedProduct' : 'purchasedCategory' } });
+        expect(screen.getByRole('button', { name: 'Save Segment' })).toBeDisabled();
+        fireEvent.change(screen.getByLabelText(`Search ${kind}`), { target: { value: 'mug' } });
+        fireEvent.click(await screen.findByRole('button', { name: /(?:Custom mug|Mugs) #42/ }));
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('q=mug'), expect.objectContaining({ headers: { Authorization: 'Bearer token', 'X-Account-ID': 'tenant' } }));
+        fireEvent.change(screen.getByLabelText('Condition 1 operator'), { target: { value: 'notPurchased' } });
+        fireEvent.change(screen.getByLabelText('Condition 1 purchase window'), { target: { value: '30' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save Segment' }));
+        expect(save).toHaveBeenCalledWith({ type: 'AND', rules: [{ field: kind === 'product' ? 'purchasedProduct' : 'purchasedCategory', operator: 'notPurchased', value: '42', valueLabel: kind === 'product' ? 'Custom mug' : 'Mugs', withinDays: '30' }] });
+        fireEvent.change(screen.getByLabelText('Condition 1 purchase window'), { target: { value: '0' } });
+        expect(screen.getByRole('button', { name: 'Save Segment' })).toBeDisabled();
+        fireEvent.change(screen.getByLabelText('Condition 1 field'), { target: { value: 'totalSpent' } });
+        fireEvent.change(screen.getByLabelText('Condition 1 value'), { target: { value: '100' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save Segment' }));
+        expect(save).toHaveBeenLastCalledWith({ type: 'AND', rules: [{ field: 'totalSpent', operator: 'gt', value: '100' }] });
+    });
     it('creates an editable rolling purchase segment from a preset', () => {
         const save = vi.fn();
         render(<SegmentBuilder onSave={save} onCancel={vi.fn()} />);

@@ -33,4 +33,11 @@ describe('Advertising-only subscriber expansion', () => {
         await expect(getAdvertisingSubscribers('tenant', { type: 'AND', rules: [{ field: 'unknown', operator: 'eq', value: 0 }] })).rejects.toThrow('Unsupported');
         expect(mocks.query).not.toHaveBeenCalled();
     });
+    it.each(['purchasedProduct', 'purchasedCategory'])('applies %s purchase rules to opted-in guest subscribers too', async field => {
+        await getAdvertisingSubscribers('tenant', { type: 'AND', rules: [{ field, operator: 'notPurchased', value: '42', withinDays: '30' }] });
+        const sql = mocks.query.mock.calls[0][0];
+        expect(sql.text).toContain('NOT EXISTS (SELECT 1 FROM "WooOrder" o WHERE o."accountId" = c."accountId"');
+        expect(sql.text).toContain('jsonb_array_elements');
+        if (field === 'purchasedCategory') expect(sql.text).toContain('p."accountId" = c."accountId"');
+    });
 });

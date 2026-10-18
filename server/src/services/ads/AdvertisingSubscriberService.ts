@@ -1,11 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { behaviourPredicate } from '../segments/behaviourPredicate';
-import { rollingFields, validateCriteria, type SegmentCriteria, type SegmentRule } from '../segments/criteria';
+import { rollingFields, purchaseFields, validateCriteria, type SegmentCriteria, type SegmentRule } from '../segments/criteria';
 import type { AdvertisingProfile } from '../SegmentService';
 
 function rulePredicate(rule: SegmentRule): Prisma.Sql {
-    if (rollingFields.includes(rule.field)) return behaviourPredicate(rule);
+    if (rollingFields.includes(rule.field) || purchaseFields.includes(rule.field)) return behaviourPredicate(rule);
     const columns: Record<string, Prisma.Sql> = {
         email: Prisma.sql`c.email`, firstName: Prisma.sql`c."firstName"`, lastName: Prisma.sql`c."lastName"`,
         totalSpent: Prisma.sql`c."totalSpent"`, ordersCount: Prisma.sql`c."ordersCount"`,

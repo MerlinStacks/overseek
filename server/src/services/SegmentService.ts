@@ -2,7 +2,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import crypto from 'crypto';
-import { rollingFields, validateCriteria } from './segments/criteria';
+import { rollingFields, purchaseFields, validateCriteria } from './segments/criteria';
 import { behaviourPredicate } from './segments/behaviourPredicate';
 
 interface SegmentRule {
@@ -10,6 +10,7 @@ interface SegmentRule {
     operator: string;
     value: any;
     campaignId?: string;
+    withinDays?: string;
 }
 
 interface SegmentCriteria {
@@ -419,7 +420,7 @@ export class SegmentService {
         }
 
         const conditions: Prisma.WooCustomerWhereInput[] = await Promise.all(criteria.rules.map(async rule => {
-            if (rollingFields.includes(rule.field)) return this.mapRollingRule(accountId, rule);
+            if (rollingFields.includes(rule.field) || purchaseFields.includes(rule.field)) return this.mapRollingRule(accountId, rule);
             return this.mapRuleToPrisma(rule);
         }));
 

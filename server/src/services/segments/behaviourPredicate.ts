@@ -13,6 +13,20 @@ export function behaviourPredicate(rule: SegmentRule, now = new Date()): Prisma.
         return rule.field.startsWith('notEmail') ? Prisma.sql`NOT ${event}` : event;
     }
     const orderIdentity = Prisma.sql`(o."wooCustomerId" = c."wooId" AND c."wooId" > 0 OR lower(trim(o."billingEmail")) = lower(trim(c.email)) AND trim(c.email) <> '')`;
+    if (rule.field === 'purchasedProduct' || rule.field === 'purchasedCategory') {
+        const id = String(rule.value);
+        const items = Prisma.sql`jsonb_array_elements(CASE WHEN jsonb_typeof(o."rawData"->'line_items') = 'array' THEN o."rawData"->'line_items' ELSE '[]'::jsonb END)`;
+        const match = rule.field === 'purchasedProduct'
+            ? Prisma.sql`(item->>'product_id' = ${id} OR item->>'variation_id' = ${id})`
+            : Prisma.sql`EXISTS (SELECT 1 FROM "WooProduct" p WHERE p."accountId" = c."accountId"
+                AND p."wooId"::text = item->>'product_id'
+                AND p."rawData"->'categories' @> ${JSON.stringify([{ id: Number(id) }])}::jsonb)`;
+        const window = rule.withinDays === undefined ? Prisma.empty : Prisma.sql`AND o."dateCreated" >= ${new Date(now.getTime() - Number(rule.withinDays) * 86400000)}`;
+        const exists = Prisma.sql`EXISTS (SELECT 1 FROM "WooOrder" o WHERE o."accountId" = c."accountId" AND ${orderIdentity}
+            AND o.status IN ('processing', 'completed') AND o."dateCreated" <= ${now} ${window}
+            AND EXISTS (SELECT 1 FROM ${items} item WHERE ${match}))`;
+        return rule.operator === 'notPurchased' ? Prisma.sql`NOT ${exists}` : exists;
+    }
     const purchase = Prisma.sql`EXISTS (SELECT 1 FROM "WooOrder" o WHERE o."accountId" = c."accountId" AND ${orderIdentity} AND o.status IN ('processing', 'completed') AND o."dateCreated" >= ${cutoff} AND o."dateCreated" <= ${now})`;
     if (rule.field === 'notPurchasedWithinDays') return Prisma.sql`NOT ${purchase}`;
     if (rule.field !== 'abandonedCartWithinDays') return purchase;

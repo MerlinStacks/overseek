@@ -66,6 +66,32 @@ describe('Rolling segment evaluation', () => {
         expect(await service.getExportableCustomers('tenant', 'segment', true)).toMatchObject({ totalCount: 0, emails: [] });
     });
 
+    it.each(['purchasedProduct', 'purchasedCategory'])('evaluates %s against successful orders and tenant-scoped catalogue data', async field => {
+        mocks.segment.mockResolvedValue({ criteria: { type: 'AND', rules: [{ field, operator: 'purchased', value: '42', withinDays: '30' }] } });
+        await service.getSegmentCount('tenant', 'segment');
+        const sql = mocks.query.mock.calls[0][0];
+        expect(sql.text).toContain('o."accountId" = c."accountId"');
+        expect(sql.text).toContain("o.status IN ('processing', 'completed')");
+        expect(sql.text).toContain('jsonb_array_elements');
+        expect(sql.values).toContainEqual(new Date('2026-09-18T12:00:00Z'));
+        if (field === 'purchasedProduct') {
+            expect(sql.text).toContain("item->>'variation_id'");
+            expect(sql.values).toContain('42');
+        } else {
+            expect(sql.text).toContain('p."accountId" = c."accountId"');
+            expect(sql.values).toContain('[{"id":42}]');
+        }
+    });
+
+    it('supports all-time product exclusions without an arbitrary date cutoff', async () => {
+        mocks.segment.mockResolvedValue({ criteria: { type: 'OR', rules: [{ field: 'purchasedProduct', operator: 'notPurchased', value: '42' }] } });
+        await service.getSegmentCount('tenant', 'segment');
+        const sql = mocks.query.mock.calls[0][0];
+        expect(sql.text).toContain('NOT EXISTS');
+        expect(sql.text).not.toContain('o."dateCreated" >=');
+        expect(mocks.count.mock.calls[0][0].where.OR).toEqual([{ id: { in: ['customer'] } }]);
+    });
+
     it.each(['emailClickedWithinDays', 'emailOpenedWithinDays', 'notEmailClickedWithinDays', 'notEmailOpenedWithinDays'])('evaluates %s with tenant-isolated event timestamps', async field => {
         segment(field);
         await service.getSegmentCount('tenant', 'segment');

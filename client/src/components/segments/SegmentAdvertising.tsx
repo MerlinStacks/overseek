@@ -96,7 +96,10 @@ export function SegmentAdvertising({ segment, onRefresh }: {
                 <p>{sync.includeSubscribers ? 'Customers + eligible list subscribers' : 'Customers only'} · {sync.enhancedMatching ? 'Enhanced matching' : 'Email matching'}</p>
                 <p className="mt-1">{sync.autoSyncEnabled ? sync.status : 'PAUSED'} · {sync.memberCount ?? 0} identifiers · Last sync: {sync.lastSyncAt ? new Date(sync.lastSyncAt).toLocaleString() : 'Not yet'}</p>
                 {sync.lastError && <p className="mt-2 text-red-600 dark:text-red-400">{sync.lastError}</p>}
-                <button disabled={busy || (!sync.autoSyncEnabled && !consent)} onClick={() => void mutate(`audiences/${sync.id}`, 'PATCH', { enabled: !sync.autoSyncEnabled })} className="mt-2 font-medium text-indigo-600 dark:text-indigo-300 disabled:opacity-50">{sync.autoSyncEnabled ? 'Pause sync' : 'Resume sync'}</button>
+                <div className="mt-2 flex flex-wrap gap-4">
+                    {sync.status === 'FAILED' && sync.autoSyncEnabled && <button disabled={busy} onClick={() => void mutate(`audiences/${sync.id}`, 'PATCH', { enabled: true })} className="font-medium text-indigo-600 dark:text-indigo-300 disabled:opacity-50">Retry sync</button>}
+                    <button disabled={busy || (!sync.autoSyncEnabled && !consent)} onClick={() => void mutate(`audiences/${sync.id}`, 'PATCH', { enabled: !sync.autoSyncEnabled })} className="font-medium text-indigo-600 dark:text-indigo-300 disabled:opacity-50">{sync.autoSyncEnabled ? 'Pause sync' : 'Resume sync'}</button>
+                </div>
             </div>)}
         </div>
         <p className="text-xs">Pausing stops updates but leaves the existing platform audience intact. Deleting a segment also stops syncing; remove its audience in the ad platform if no longer needed.</p>

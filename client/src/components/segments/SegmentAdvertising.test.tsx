@@ -28,4 +28,18 @@ describe('Advertising data-sharing options', () => {
         await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
         expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ adAccountId: 'ads', consentConfirmed: true, includeSubscribers: true, enhancedMatching: true });
     });
+    it('can retry a failed enabled sync directly without changing its matching options', async () => {
+        const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+        vi.stubGlobal('fetch', fetch);
+        const onRefresh = vi.fn().mockResolvedValue(undefined);
+        render(<SegmentAdvertising segment={{ id: 'segment', name: 'Never Spent', audienceSyncs: [{
+            id: 'sync', platform: 'GOOGLE', audienceName: 'Never Spent', status: 'FAILED', lastSyncAt: null,
+            lastError: 'Google rejected audience sync (HTTP 403)', memberCount: 0, autoSyncEnabled: true, includeSubscribers: true, enhancedMatching: true
+        }] }} onRefresh={onRefresh} />);
+        await screen.findByRole('button', { name: 'Retry sync' });
+        fireEvent.click(screen.getByRole('button', { name: 'Retry sync' }));
+        await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+        expect(fetch).toHaveBeenCalledWith('/api/segments/segment/audiences/sync', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ enabled: true }) }));
+        expect(screen.getByRole('button', { name: 'Pause sync' })).toBeInTheDocument();
+    });
 });
