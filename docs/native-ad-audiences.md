@@ -53,7 +53,7 @@ Remote names include a stable `[OS-<record-id>]` suffix for safe reconciliation.
 
 Failures now retain sanitised provider guidance, HTTP status, Meta code/subcode and the Meta support reference when available. They are also logged with the local audience/account IDs; credentials and raw provider responses are not retained. Older generic failure messages cannot be reconstructed: after deploying this change, use **Retry creation** on a `FAILED` record to get the new diagnostics. No new database migration is needed for this diagnostics fix.
 
-Meta creation uses URL-encoded form fields, with the website `rule` and `lookalike_spec` individually JSON-encoded. Modern website rules carry pixel IDs and retention windows inside each inclusion/exclusion operand; legacy top-level `pixel_id` and `retention_days` are not mixed into those requests.
+Meta creation uses URL-encoded form fields, with the website `rule` and `lookalike_spec` individually JSON-encoded. Modern website rules carry pixel IDs and retention windows inside each inclusion/exclusion operand; legacy top-level `pixel_id` and `retention_days` are not mixed into those requests. Website creation also omits `subtype`: current Meta versions infer the audience type from the rule and reject an explicit website subtype with code 2654 / subcode 1870053. Existing `FAILED` definitions can be retried after deploying this fix without recreating the local segment.
 
 The existing scheduler runs `create-native-ad-audience` jobs. Its five-minute audience dispatcher also recovers pending dispatches and marks interrupted creations for review after 15 minutes. Created website audiences and lookalikes do not need membership uploads.
 

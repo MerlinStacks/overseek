@@ -58,7 +58,7 @@ describe('Platform-managed audience provisioning', () => {
         expect(request.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
         const payload = new URLSearchParams(request.body);
         expect(payload.get('name')).toBe('Cart additions [OS-native]');
-        expect(payload.get('subtype')).toBe('WEBSITE');
+        expect(payload.has('subtype')).toBe(false);
         expect(payload.get('prefill')).toBe('1');
         const rule = JSON.parse(payload.get('rule')!);
         expect(rule.inclusions.rules[0]).toMatchObject({ event_sources: [{ type: 'pixel', id: '123' }], retention_seconds: 14 * 86400 });
@@ -66,6 +66,20 @@ describe('Platform-managed audience provisioning', () => {
         expect(rule.exclusions.rules[0].retention_seconds).toBe(30 * 86400);
         expect(payload.has('pixel_id')).toBe(false);
         expect(payload.has('retention_days')).toBe(false);
+        expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'native' }, data: { externalId: 'remote', status: 'CREATED', lastError: null } });
+    });
+    it.each(['PageView', 'InitiateCheckout'])('creates %s website audiences without the unsupported subtype parameter', async event => {
+        mocks.find.mockResolvedValue({ ...audience, definition: { ...definition, event } });
+        fetch.mockImplementation(async (_url, request) => {
+            const form = new URLSearchParams(request.body);
+            if (form.has('subtype')) return { ok: false, status: 400, json: async () => ({ error: {
+                code: 2654, error_subcode: 1870053, message: 'The parameter "subtype" is not supported in the current API version.'
+            } }) };
+            return { ok: true, status: 200, json: async () => ({ id: 'remote' }) };
+        });
+        await NativeAudienceService.provision('tenant', 'native');
+        const rule = JSON.parse(new URLSearchParams(fetch.mock.calls[0][1].body).get('rule')!);
+        expect(rule.inclusions.rules[0].filter.filters[0].value).toBe(event);
         expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'native' }, data: { externalId: 'remote', status: 'CREATED', lastError: null } });
     });
     it('requires a locally managed seed in the same tenant and Meta ad account', async () => {

@@ -134,7 +134,9 @@ export class NativeAudienceService {
                     if (!pixels.some(pixel => pixel.id === definition.pixelId)) throw new NativeAudienceError('Pixel access is no longer available');
                     // Modern website rules carry their own pixel IDs and retention windows.
                     // Do not mix the legacy top-level pixel/retention parameters with these rules.
-                    payload = { name, subtype: 'WEBSITE', prefill: '1', rule: buildMetaWebsiteRule(definition) };
+                    // Current Meta versions infer a website audience from its rule and reject
+                    // an explicit subtype (code 2654 / subcode 1870053).
+                    payload = { name, prefill: '1', rule: buildMetaWebsiteRule(definition) };
                 }
                 // Meta documents rule/lookalike_spec as JSON-encoded form fields, not nested
                 // JSON request objects. Use its documented wire format for both audience types.
