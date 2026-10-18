@@ -145,6 +145,16 @@ export class SchedulerService {
                     break;
 
                 // Marketing jobs
+                case 'refresh-ad-audiences':
+                    await (await import('../ads/AudienceSyncService')).AudienceSyncService.dispatch();
+                    await (await import('../ads/NativeAudienceService')).NativeAudienceService.dispatchPending();
+                    break;
+                case 'create-native-ad-audience':
+                    await (await import('../ads/NativeAudienceService')).NativeAudienceService.provision(job.data.accountId, job.data.id);
+                    break;
+                case 'sync-ad-audience':
+                    await (await import('../ads/AudienceSyncService')).AudienceSyncService.sync(job.data.accountId, job.data.syncId);
+                    break;
                 case 'outcome-assessment':
                     await MarketingScheduler.dispatchOutcomeAssessment();
                     break;

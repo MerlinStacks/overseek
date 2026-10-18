@@ -22,11 +22,23 @@ interface SegmentBuilderProps {
 }
 
 const FIELDS = [
+    { label: 'Purchased in the last (days)', value: 'purchasedWithinDays', type: 'number' },
+    { label: 'No purchase in the last (days)', value: 'notPurchasedWithinDays', type: 'number' },
+    { label: 'Abandoned cart in the last (days)', value: 'abandonedCartWithinDays', type: 'number' },
     { label: 'Total Spent', value: 'totalSpent', type: 'number' },
     { label: 'Orders Count', value: 'ordersCount', type: 'number' },
     { label: 'Email', value: 'email', type: 'text' },
     { label: 'First Name', value: 'firstName', type: 'text' },
     { label: 'Last Name', value: 'lastName', type: 'text' }
+];
+
+const ROLLING_FIELDS = new Set(['purchasedWithinDays', 'notPurchasedWithinDays', 'abandonedCartWithinDays']);
+const PRESETS: { name: string; rules: SegmentRule[] }[] = [
+    { name: 'Recent purchasers', rules: [{ field: 'purchasedWithinDays', operator: 'within', value: '30' }] },
+    { name: 'Abandoned carts', rules: [{ field: 'abandonedCartWithinDays', operator: 'within', value: '7' }] },
+    { name: 'Win-back customers', rules: [{ field: 'ordersCount', operator: 'gte', value: '1' }, { field: 'notPurchasedWithinDays', operator: 'within', value: '90' }] },
+    { name: 'Repeat customers', rules: [{ field: 'ordersCount', operator: 'gte', value: '2' }] },
+    { name: 'High-value customers', rules: [{ field: 'totalSpent', operator: 'gte', value: '500' }] }
 ];
 
 const OPERATORS = {
@@ -75,9 +87,16 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
     };
 
     const getOperators = (fieldValue: string) => {
+        if (ROLLING_FIELDS.has(fieldValue)) return [{ label: 'Rolling window', value: 'within' }];
         const type = getSegmentFieldType(fieldValue);
         return OPERATORS[type as keyof typeof OPERATORS];
     };
+
+    const isValid = criteria.rules.every(rule => {
+        if (ROLLING_FIELDS.has(rule.field)) return Number.isInteger(Number(rule.value)) && Number(rule.value) >= 1 && Number(rule.value) <= 3650;
+        if (getSegmentFieldType(rule.field) === 'number') return rule.value.trim() !== '' && Number.isFinite(Number(rule.value)) && Number(rule.value) >= 0;
+        return rule.value.trim().length > 0;
+    });
 
     return (
         <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-4 shadow-xs sm:p-6">
@@ -95,6 +114,15 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                     </select>
                     <span className="text-sm text-gray-500">of the following conditions:</span>
                 </div>
+            </div>
+
+            <div className="rounded-lg bg-indigo-50 p-4 text-sm text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">
+                <p className="mb-2 font-medium">Ecommerce advertising presets</p>
+                <div className="flex flex-wrap gap-2">
+                    {PRESETS.map(preset => <button key={preset.name} type="button" onClick={() => setCriteria({ type: 'AND', rules: preset.rules.map(rule => ({ ...rule })) })} className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-indigo-700 dark:bg-slate-800 dark:text-indigo-200">{preset.name}</button>)}
+                </div>
+                <p className="mt-3">Presets replace the current rules. Day windows roll forward automatically. Purchases include processing/completed orders. Abandoned carts require 30 minutes of inactivity and exclude later purchases.</p>
+                <p className="mt-2">Only customers known to Overseek can match; anonymous visitors cannot be exported. Add an orders-count condition when excluding recent purchases to target past customers only.</p>
             </div>
 
             <div className="space-y-4">
@@ -125,6 +153,9 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                             inputMode={getSegmentFieldType(rule.field) === 'number' ? 'decimal' : 'text'}
                             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             placeholder="Value"
+                            min={ROLLING_FIELDS.has(rule.field) ? 1 : 0}
+                            max={ROLLING_FIELDS.has(rule.field) ? 3650 : undefined}
+                            step={ROLLING_FIELDS.has(rule.field) ? 1 : 'any'}
                             value={rule.value}
                             onChange={(e) => updateRule(index, { value: e.target.value })}
                         />
@@ -165,7 +196,7 @@ export function SegmentBuilder({ initialCriteria, onSave, onCancel, isSaving }: 
                 </button>
                 <button
                     onClick={() => onSave(criteria)}
-                    disabled={isSaving}
+                    disabled={isSaving || !isValid}
                     className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
                 >
                     {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}

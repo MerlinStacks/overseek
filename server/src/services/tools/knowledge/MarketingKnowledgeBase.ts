@@ -14,6 +14,7 @@ import { Logger } from '../../../utils/logger';
 export interface AnalysisContext {
     platform: 'google' | 'meta' | 'both';
     campaignType: CampaignType;
+    advertisingChannelType?: string;
     campaignName: string;
 
     // Metrics
@@ -73,9 +74,9 @@ const KNOWLEDGE_BASE: KnowledgeEntry[] = [
         platform: 'google',
         category: 'structure',
         condition: (ctx) =>
-            ctx.campaignType === 'shopping' &&
+            ctx.advertisingChannelType === 'PERFORMANCE_MAX' &&
             ctx.conversions < 30 &&
-            (ctx.daysSinceLaunch || 0) < 14,
+            ctx.daysSinceLaunch !== undefined && ctx.daysSinceLaunch < 14,
         recommendation: '⏳ **Learning Phase**: Performance Max needs 30+ conversions before optimization. Avoid major changes.',
         explanation: 'Google\'s machine learning requires sufficient conversion data to optimize effectively. Making changes during the learning phase resets the algorithm.',
         confidence: 'high',
@@ -88,12 +89,12 @@ const KNOWLEDGE_BASE: KnowledgeEntry[] = [
         platform: 'google',
         category: 'optimization',
         condition: (ctx) =>
-            ctx.campaignType === 'shopping' &&
+            ctx.advertisingChannelType === 'PERFORMANCE_MAX' &&
             ctx.conversions < 15 &&
             ctx.spend > 500 &&
             (ctx.daysSinceLaunch || 30) > 14,
-        recommendation: '⚠️ **Low Conversion Volume**: PMax campaign has limited conversions. Consider switching to Maximize Clicks to build data.',
-        explanation: 'Performance Max struggles with low conversion volume. Building click data first can help the algorithm learn your audience.',
+        recommendation: '⚠️ **Low Conversion Volume**: PMax campaign has limited conversions. Review conversion tracking, bidding targets, and budget before making changes.',
+        explanation: 'Performance Max relies on conversion data. Verify tracking and assess whether bidding targets and budget are restricting volume.',
         confidence: 'medium',
         priority: 2,
         tags: ['pmax', 'bid_strategy', 'conversions']

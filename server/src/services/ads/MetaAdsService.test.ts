@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MetaAdsService } from './MetaAdsService';
+import { AdsService } from '../ads';
 
 const { findUnique } = vi.hoisted(() => ({ findUnique: vi.fn() }));
 vi.mock('../../utils/prisma', () => ({ prisma: { adAccount: { findUnique } } }));
 vi.mock('../../utils/logger', () => ({ Logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('./GoogleAdsService', () => ({ GoogleAdsService: {} }));
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
     status, headers: { 'Content-Type': 'application/json' }
@@ -40,7 +42,7 @@ describe('Meta Ads reporting', () => {
                 : json({ data: [row('1', '25')], paging: { next: 'https://untrusted.test', cursors: { after: 'insights-next' } } });
         });
         vi.stubGlobal('fetch', fetchMock);
-        const result = await MetaAdsService.getCampaignInsights('connected', 7);
+        const result = await AdsService.getMetaCampaignInsights('connected', 7);
         expect(result.map(c => [c.campaignId, c.status, c.spend])).toEqual([['2', 'PAUSED', 50], ['1', 'ACTIVE', 25]]);
         expect(result[0]).toMatchObject({ conversions: 2, conversionsValue: 100, roas: 2, cpa: 25, currency: 'AUD' });
         expect(fetchMock).toHaveBeenCalledTimes(4);

@@ -9,6 +9,7 @@ import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
 import { useToast } from '../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
+import { SegmentAdvertising, type AudienceSync } from '../components/segments/SegmentAdvertising';
 
 interface Segment {
     id: string;
@@ -17,6 +18,7 @@ interface Segment {
     criteria: SegmentCriteria;
     campaigns?: Array<Record<string, unknown>>;
     _count?: { campaigns: number };
+    audienceSyncs?: AudienceSync[];
 }
 
 interface SegmentPreviewCustomer {
@@ -51,6 +53,7 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
     const [segmentToDelete, setSegmentToDelete] = useState<Segment | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [advertisingSegmentId, setAdvertisingSegmentId] = useState<string | null>(null);
     const navigate = useNavigate();
     const toast = useToast();
     const fetchSegments = useCallback(async () => {
@@ -359,6 +362,9 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                         >
                             View Members
                         </button>
+                        <button onClick={() => setAdvertisingSegmentId(segment.id)} className="mt-2 w-full rounded-lg border border-gray-200 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
+                            Advertising exports & sync{segment.audienceSyncs?.some(sync => sync.autoSyncEnabled) ? ' · Hourly' : ''}
+                        </button>
                     </div>
                 ))}
 
@@ -455,6 +461,10 @@ export function SegmentsPage({ embedded = false }: SegmentsPageProps) {
                     )}
                 </div>
             )}
+
+            <Modal isOpen={Boolean(advertisingSegmentId)} onClose={() => setAdvertisingSegmentId(null)} title="Advertising audiences">
+                {segments.find(segment => segment.id === advertisingSegmentId) && <SegmentAdvertising key={advertisingSegmentId} segment={segments.find(segment => segment.id === advertisingSegmentId)!} onRefresh={fetchSegments} />}
+            </Modal>
 
             <Modal
                 isOpen={Boolean(segmentToDelete)}

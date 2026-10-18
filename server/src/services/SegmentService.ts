@@ -2,6 +2,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import crypto from 'crypto';
+import { rollingFields, validateCriteria } from './segments/criteria';
 
 interface SegmentRule {
     field: string;
@@ -127,6 +128,8 @@ export class SegmentService {
     }
 
     async createSegment(accountId: string, data: { name: string; description?: string; criteria: any }) {
+        const error = validateCriteria(data.criteria);
+        if (error) throw new Error(error);
         return prisma.customerSegment.create({
             data: {
                 accountId,
@@ -138,10 +141,16 @@ export class SegmentService {
     }
 
     async updateSegment(id: string, accountId: string, data: { name?: string; description?: string; criteria?: any }) {
+        if (data.criteria !== undefined) {
+            const error = validateCriteria(data.criteria);
+            if (error) throw new Error(error);
+        }
         return prisma.customerSegment.updateMany({
             where: { id, accountId },
             data: {
-                ...data,
+                name: data.name,
+                description: data.description,
+                criteria: data.criteria,
                 updatedAt: new Date()
             }
         });
@@ -164,6 +173,7 @@ export class SegmentService {
             where: { accountId },
             orderBy: { createdAt: 'desc' },
             include: {
+                audienceSyncs: { select: { id: true, platform: true, audienceName: true, status: true, lastSyncAt: true, lastError: true, memberCount: true, autoSyncEnabled: true } },
                 _count: {
                     select: { campaigns: true }
                 }
@@ -179,7 +189,7 @@ export class SegmentService {
         if (!segment) throw new Error('Segment not found');
 
         const criteria = segment.criteria as unknown as SegmentCriteria;
-        const baseWhereClause = this.buildWhereClause(accountId, criteria);
+        const baseWhereClause = await this.buildWhereClause(accountId, criteria);
         const advancedWhereClause = this.buildAdvancedFilterWhere(filters);
         const whereClause = advancedWhereClause
             ? { AND: [baseWhereClause, advancedWhereClause] }
@@ -218,7 +228,7 @@ export class SegmentService {
         if (!segment) return [];
 
         const criteria = segment.criteria as unknown as SegmentCriteria;
-        const whereClause = this.buildWhereClause(accountId, criteria);
+        const whereClause = await this.buildWhereClause(accountId, criteria);
 
         const customers = await prisma.wooCustomer.findMany({
             where: whereClause,
@@ -236,7 +246,7 @@ export class SegmentService {
         if (!segment) return 0;
 
         const criteria = segment.criteria as unknown as SegmentCriteria;
-        const whereClause = this.buildWhereClause(accountId, criteria);
+        const whereClause = await this.buildWhereClause(accountId, criteria);
 
         return prisma.wooCustomer.count({ where: whereClause });
     }
@@ -264,7 +274,8 @@ export class SegmentService {
 
         for (const segment of segments) {
             const criteria = segment.criteria as unknown as SegmentCriteria;
-            if (this.matchesCriteria(customer, criteria)) {
+            const where = await this.buildWhereClause(accountId, criteria);
+            if (await prisma.wooCustomer.count({ where: { AND: [where, { id: customerId }] } })) {
                 matchingSegmentIds.push(segment.id);
             }
         }
@@ -280,7 +291,7 @@ export class SegmentService {
         if (!segment) return;
 
         const criteria = segment.criteria as unknown as SegmentCriteria;
-        const whereClause = this.buildWhereClause(accountId, criteria);
+        const whereClause = await this.buildWhereClause(accountId, criteria);
 
         let cursor: string | undefined;
 
@@ -321,14 +332,14 @@ export class SegmentService {
      * @returns Object containing raw and hashed emails/phones
      * @throws Error if segment not found or segment is empty
      */
-    async getExportableCustomers(accountId: string, segmentId: string): Promise<ExportableCustomerData> {
+    async getExportableCustomers(accountId: string, segmentId: string, allowEmpty = false): Promise<ExportableCustomerData> {
         const segment = await this.getSegment(segmentId, accountId);
         if (!segment) {
             throw new Error('Segment not found');
         }
 
         const criteria = segment.criteria as unknown as SegmentCriteria;
-        const whereClause = this.buildWhereClause(accountId, criteria);
+        const whereClause = await this.buildWhereClause(accountId, criteria);
 
         // Fetch all customers with email and rawData (phone is in rawData.billing.phone)
         const customers = await prisma.wooCustomer.findMany({
@@ -340,7 +351,7 @@ export class SegmentService {
         });
 
         // EDGE CASE: Handle empty segments gracefully with clear error message
-        if (customers.length === 0) {
+        if (customers.length === 0 && !allowEmpty) {
             throw new Error(`No customers match this segment. The segment "${segment.name}" has 0 customers matching the current criteria. Please adjust the segment rules or wait for more customer data.`);
         }
 
@@ -387,14 +398,17 @@ export class SegmentService {
         return crypto.createHash('sha256').update(value).digest('hex');
     }
 
-    private buildWhereClause(accountId: string, criteria: SegmentCriteria): Prisma.WooCustomerWhereInput {
+    private async buildWhereClause(accountId: string, criteria: SegmentCriteria): Promise<Prisma.WooCustomerWhereInput> {
+        const error = validateCriteria(criteria);
+        if (error) throw new Error(error);
         if (!criteria || !criteria.rules || criteria.rules.length === 0) {
             return { accountId }; // Return all if no rules? Or none? Let's say all for now or handle empty.
         }
 
-        const conditions: Prisma.WooCustomerWhereInput[] = criteria.rules.map(rule => {
+        const conditions: Prisma.WooCustomerWhereInput[] = await Promise.all(criteria.rules.map(async rule => {
+            if (rollingFields.includes(rule.field)) return this.mapRollingRule(accountId, rule);
             return this.mapRuleToPrisma(rule);
-        });
+        }));
 
         if (criteria.type === 'OR') {
             return {
@@ -439,58 +453,28 @@ export class SegmentService {
         return {};
     }
 
-    private matchesCriteria(customer: {
-        totalSpent: any;
-        ordersCount: any;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-    }, criteria: SegmentCriteria): boolean {
-        if (!criteria || !criteria.rules || criteria.rules.length === 0) return true;
-
-        const ruleResults = criteria.rules.map((rule) => this.matchesRule(customer, rule));
-        if (criteria.type === 'OR') {
-            return ruleResults.some(Boolean);
+    private async mapRollingRule(accountId: string, rule: SegmentRule): Promise<Prisma.WooCustomerWhereInput> {
+        const now = new Date();
+        const cutoff = new Date(now.getTime() - Number(rule.value) * 86400000);
+        // Match registered customers by Woo ID, and guest orders by billing email.
+        const orderIdentity = Prisma.sql`(o."wooCustomerId" = c."wooId" AND c."wooId" > 0 OR lower(trim(o."billingEmail")) = lower(trim(c.email)) AND trim(c.email) <> '')`;
+        const purchase = Prisma.sql`EXISTS (SELECT 1 FROM "WooOrder" o WHERE o."accountId" = c."accountId" AND ${orderIdentity} AND o.status IN ('processing', 'completed') AND o."dateCreated" >= ${cutoff} AND o."dateCreated" <= ${now})`;
+        let predicate = rule.field === 'notPurchasedWithinDays' ? Prisma.sql`NOT ${purchase}` : purchase;
+        if (rule.field === 'abandonedCartWithinDays') {
+            const inactive = new Date(now.getTime() - 30 * 60000);
+            predicate = Prisma.sql`EXISTS (
+                SELECT 1 FROM "AnalyticsSession" s
+                WHERE s."accountId" = c."accountId"
+                AND (s."wooCustomerId" = c."wooId" AND c."wooId" > 0 OR lower(trim(s.email)) = lower(trim(c.email)) AND trim(c.email) <> '')
+                AND s."cartValue" > 0 AND s."lastActiveAt" >= ${cutoff} AND s."lastActiveAt" <= ${inactive}
+                AND NOT EXISTS (SELECT 1 FROM "WooOrder" o WHERE o."accountId" = c."accountId" AND ${orderIdentity} AND o.status IN ('processing', 'completed') AND o."dateCreated" >= s."lastActiveAt")
+                AND NOT EXISTS (SELECT 1 FROM "AnalyticsEvent" e WHERE e."sessionId" = s.id AND e.type = 'purchase' AND e."occurredAt" >= s."lastActiveAt")
+            )`;
         }
-        return ruleResults.every(Boolean);
+        const customers = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`SELECT c.id FROM "WooCustomer" c WHERE c."accountId" = ${accountId} AND ${predicate}`);
+        return { id: { in: customers.map(customer => customer.id) } };
     }
 
-    private matchesRule(customer: {
-        totalSpent: any;
-        ordersCount: any;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-    }, rule: SegmentRule): boolean {
-        const { field, operator, value } = rule;
-
-        if (field === 'totalSpent' || field === 'ordersCount') {
-            const customerValue = Number((customer as any)[field] ?? 0);
-            const compareValue = Number(value);
-            if (!Number.isFinite(compareValue)) return false;
-            switch (operator) {
-                case 'gt': return customerValue > compareValue;
-                case 'lt': return customerValue < compareValue;
-                case 'gte': return customerValue >= compareValue;
-                case 'lte': return customerValue <= compareValue;
-                case 'eq': return customerValue === compareValue;
-                default: return false;
-            }
-        }
-
-        if (field === 'email' || field === 'firstName' || field === 'lastName') {
-            const customerValue = String((customer as any)[field] ?? '').toLowerCase();
-            const compareValue = String(value ?? '').toLowerCase();
-            switch (operator) {
-                case 'contains': return customerValue.includes(compareValue);
-                case 'equals': return customerValue === compareValue;
-                case 'startsWith': return customerValue.startsWith(compareValue);
-                default: return false;
-            }
-        }
-
-        return false;
-    }
 }
 
 export const segmentService = new SegmentService();

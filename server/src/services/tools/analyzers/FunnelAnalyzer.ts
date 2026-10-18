@@ -141,6 +141,7 @@ function mapCampaignTypeToFunnelStage(type: CampaignType): FunnelStage {
         case 'search':
             return 'consideration';
         case 'shopping':
+        case 'performance_max':
         case 'conversion':
         case 'brand':
             return 'conversion';
@@ -237,7 +238,7 @@ export class FunnelAnalyzer {
                     }
 
                     for (const campaign of campaigns) {
-                        const campaignType = getCampaignType(campaign.campaignName);
+                        const campaignType = getCampaignType(campaign.campaignName, campaign.advertisingChannelType);
                         const funnelStage = mapCampaignTypeToFunnelStage(campaignType);
                         const stageMetrics = FUNNEL_STAGE_METRICS[funnelStage];
 

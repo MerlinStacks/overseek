@@ -7,18 +7,24 @@ import { requireAuthFastify } from '../middleware/auth';
 import { segmentService } from '../services/SegmentService';
 import { Logger } from '../utils/logger';
 import { parseAdvancedFilters } from './routeHelpers';
+import { validateCriteria } from '../services/segments/criteria';
+import { segmentAudienceRoutes } from './segmentAudiences';
+import { nativeAudienceRoutes } from './nativeAudiences';
 
 function validateSegmentBody(body: any): string | null {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return 'Invalid segment payload';
     if ('name' in body && (typeof body.name !== 'string' || body.name.trim().length === 0)) return 'Segment name must be a non-empty string';
     if ('description' in body && body.description !== null && typeof body.description !== 'string') return 'Segment description must be a string';
     if ('conditions' in body && !Array.isArray(body.conditions)) return 'Segment conditions must be an array';
+    if ('criteria' in body) return validateCriteria(body.criteria);
     return null;
 }
 
 const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
     // Apply auth to all routes
     fastify.addHook('preHandler', requireAuthFastify);
+    await fastify.register(segmentAudienceRoutes);
+    await fastify.register(nativeAudienceRoutes);
 
     // List Segments
     fastify.get('/', async (request, reply) => {
@@ -38,6 +44,7 @@ const segmentsRoutes: FastifyPluginAsync = async (fastify) => {
             const accountId = request.accountId!;
             const validationError = validateSegmentBody(request.body);
             if (validationError) return reply.code(400).send({ error: validationError });
+            if (!(request.body as any).name || !(request.body as any).criteria) return reply.code(400).send({ error: 'Name and criteria are required' });
             const segment = await segmentService.createSegment(accountId, request.body as any);
             return segment;
         } catch (error) {

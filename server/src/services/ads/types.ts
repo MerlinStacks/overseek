@@ -31,6 +31,8 @@ export interface CampaignInsight {
     campaignId: string;
     campaignName: string;
     status: string;
+    /** Authoritative Google Ads channel, not inferred from the campaign name. */
+    advertisingChannelType?: string;
     spend: number;
     impressions: number;
     clicks: number;

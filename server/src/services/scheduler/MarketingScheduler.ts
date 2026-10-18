@@ -25,6 +25,9 @@ export class MarketingScheduler {
      * Register all marketing-related repeatable jobs
      */
     static async register() {
+        await this.queue.add('refresh-ad-audiences', {}, {
+            repeat: { pattern: '0 * * * *' }, jobId: 'refresh-ad-audiences-hourly'
+        });
         // Ad Alerts (Every 4 hours)
         await this.queue.add('ad-alerts', {}, {
             repeat: { pattern: '0 */4 * * *' },

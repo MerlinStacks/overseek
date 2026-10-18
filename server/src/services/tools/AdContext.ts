@@ -147,6 +147,7 @@ export function getSeasonalContext(date: Date = new Date()): SeasonalContext | n
 export type CampaignType =
     | 'brand'
     | 'shopping'
+    | 'performance_max'
     | 'search'
     | 'display'
     | 'video'
@@ -157,7 +158,8 @@ export type CampaignType =
     | 'unknown';
 
 const CAMPAIGN_TYPE_PATTERNS: { type: CampaignType; patterns: RegExp[] }[] = [
-    { type: 'shopping', patterns: [/\bshopping\b/i, /\bpmax\b/i, /\bperformance\s*max\b/i, /\bpla\b/i] },
+    { type: 'performance_max', patterns: [/\bpmax\b/i, /\bperformance\s*max\b/i] },
+    { type: 'shopping', patterns: [/\bshopping\b/i, /\bpla\b/i] },
     { type: 'search', patterns: [/\bsearch\b/i, /\bsem\b/i, /\btext\s*ads?\b/i] },
     { type: 'display', patterns: [/\bdisplay\b/i, /\bgdn\b/i, /\bbanner\b/i] },
     { type: 'video', patterns: [/\bvideo\b/i, /\byoutube\b/i, /\breels?\b/i] },
@@ -170,7 +172,18 @@ const CAMPAIGN_TYPE_PATTERNS: { type: CampaignType; patterns: RegExp[] }[] = [
 /**
  * Infer campaign type from campaign name.
  */
-export function getCampaignType(campaignName: string): CampaignType {
+export function getCampaignType(campaignName: string, advertisingChannelType?: string): CampaignType {
+    // Google metadata takes precedence, even when a campaign has a misleading name.
+    if (advertisingChannelType !== undefined) {
+        switch (advertisingChannelType) {
+            case 'PERFORMANCE_MAX': return 'performance_max';
+            case 'SHOPPING': return 'shopping';
+            case 'SEARCH': return 'search';
+            case 'DISPLAY': return 'display';
+            case 'VIDEO': return 'video';
+            default: return 'unknown';
+        }
+    }
     const name = campaignName.toLowerCase();
 
     for (const { type, patterns } of CAMPAIGN_TYPE_PATTERNS) {
@@ -201,6 +214,7 @@ export function getExpectedRoasThreshold(campaignType: CampaignType): { min: num
             // Remarketing should have high ROAS
             return { min: 2.0, good: 5.0 };
         case 'shopping':
+        case 'performance_max':
         case 'conversion':
             // Direct response campaigns
             return { min: 1.0, good: 3.0 };

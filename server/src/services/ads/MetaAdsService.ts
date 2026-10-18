@@ -191,7 +191,8 @@ export class MetaAdsService {
      * Uses Facebook Graph API to retrieve campaign breakdown.
      */
     static async getCampaignInsights(adAccountId: string, days: number = 30): Promise<CampaignInsight[]> {
-        return this.getEntityInsights(adAccountId, days, 'campaign');
+        // The shared AdsService facade aliases this method, so `this` may not be MetaAdsService.
+        return MetaAdsService.getEntityInsights(adAccountId, days, 'campaign');
     }
 
     /** Entity IDs come from account-scoped insights, not arbitrary Graph object paths. */
@@ -517,7 +518,7 @@ export class MetaAdsService {
         // Format data for Meta API
         const payload = {
             payload: {
-                schema: ['EMAIL_SHA256'],
+                schema: ['EMAIL'],
                 data: hashedEmails.map(email => [email])
             }
         };
@@ -551,6 +552,18 @@ export class MetaAdsService {
         }
     }
 
+    /** Remove expired segment members, including when the new segment is empty. */
+    static async removeCustomAudienceMembers(adAccountId: string, audienceId: string, hashedEmails: string[]): Promise<void> {
+        const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } });
+        if (!account || account.platform !== 'META' || !account.accessToken) throw new Error('Invalid Meta Ad Account');
+        const response = await metaFetch(buildMetaUrl(`${audienceId}/users`), account.accessToken, {
+            method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload: { schema: ['EMAIL'], data: hashedEmails.map(hash => [hash]) } })
+        });
+        const result = await safeFetchJson(response, 'removeCustomAudienceMembers');
+        if (!response.ok || result.error || result.num_invalid_entries > 0) throw new Error('Meta audience member removal failed');
+    }
+
     /**
      * Replace all members in a Custom Audience.
      * Clears existing members and uploads new ones.
@@ -572,7 +585,7 @@ export class MetaAdsService {
 
         const payload = {
             payload: {
-                schema: ['EMAIL_SHA256'],
+                schema: ['EMAIL'],
                 data: hashedEmails.map(email => [email])
             },
             session: {

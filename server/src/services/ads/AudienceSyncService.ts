@@ -1,0 +1,125 @@
+import crypto from 'crypto';
+import { prisma } from '../../utils/prisma';
+import { segmentService } from '../SegmentService';
+import { QueueFactory } from '../queue/QueueFactory';
+import { MetaAdsService } from './MetaAdsService';
+import { createGoogleAdsRestConfig } from './GoogleAdsClient';
+
+/** Only email hashes are sent; raw identifiers never enter queue payloads or logs. */
+export function audienceEmailHashes(emails: string[], platform: string): string[] {
+    return [...new Set(emails.map(email => {
+        let normalized = email.trim().toLowerCase();
+        if (platform === 'GOOGLE') {
+            const [local, domain] = normalized.split('@');
+            if (domain === 'gmail.com' || domain === 'googlemail.com') normalized = `${local.replace(/\./g, '')}@${domain}`;
+        }
+        return normalized;
+    }).filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        .map(email => crypto.createHash('sha256').update(email).digest('hex')))];
+}
+
+export class AudienceSyncService {
+    static async enqueue(accountId: string, syncId: string) {
+        // A stable job ID deduplicates manual clicks and scheduled refreshes, including active jobs.
+        await QueueFactory.createQueue('scheduler').add('sync-ad-audience', { accountId, syncId }, {
+            jobId: `sync-ad-audience-${syncId}`, removeOnComplete: true, removeOnFail: true,
+            attempts: 3, backoff: { type: 'exponential', delay: 60000 }
+        });
+    }
+
+    static async dispatch() {
+        let cursor: string | undefined;
+        while (true) {
+            const batch = await prisma.audienceSync.findMany({
+                where: { autoSyncEnabled: true, isLookalike: false, consentConfirmedAt: { not: null } },
+                select: { id: true, accountId: true }, orderBy: { id: 'asc' }, take: 100,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+            });
+            for (const sync of batch) await this.enqueue(sync.accountId, sync.id);
+            if (batch.length < 100) break;
+            cursor = batch[batch.length - 1].id;
+        }
+    }
+
+    static async sync(accountId: string, syncId: string) {
+        const sync = await prisma.audienceSync.findFirst({ where: { id: syncId, accountId }, include: { adAccount: true } });
+        if (!sync || !sync.autoSyncEnabled || !sync.consentConfirmedAt || sync.isLookalike) return;
+        if (sync.adAccount.accountId !== accountId || sync.adAccount.platform !== sync.platform) throw new Error('Invalid audience destination');
+        await prisma.audienceSync.update({ where: { id: sync.id }, data: { status: 'SYNCING', lastAttemptAt: new Date(), lastError: null } });
+        try {
+            const data = await segmentService.getExportableCustomers(accountId, sync.segmentId, true);
+            const desired = audienceEmailHashes(data.emails, sync.platform);
+            let applied = new Set((sync.syncedEmailHashes as string[]) || []);
+            let externalId = sync.externalId;
+            const google = sync.platform === 'GOOGLE' ? await createGoogleAdsRestConfig(sync.adAccountId) : null;
+            const googleRequest = async (path: string, body: unknown): Promise<any> => {
+                if (!google) throw new Error('Invalid Google configuration');
+                const response = await fetch(`https://googleads.googleapis.com/v24/customers/${google.customerId}/${path}`, {
+                    method: 'POST', signal: AbortSignal.timeout(30000),
+                    headers: {
+                        'Content-Type': 'application/json', Authorization: `Bearer ${google.accessToken}`,
+                        'developer-token': google.developerToken,
+                        ...(google.loginCustomerId ? { 'login-customer-id': google.loginCustomerId } : {})
+                    },
+                    body: JSON.stringify(body)
+                });
+                const result = await response.json() as any;
+                if (!response.ok || result.error || result.partialFailureError) {
+                    // Do not store API errors that can echo uploaded identifiers.
+                    throw new Error(`Google audience request failed (${response.status}). Check Customer Match eligibility, consent and account permissions.`);
+                }
+                return result;
+            };
+            if (!externalId) {
+                if (sync.platform === 'META') {
+                    externalId = (await MetaAdsService.createCustomAudience(sync.adAccountId, sync.audienceName, 'Automatically maintained by Overseek')).id;
+                } else if (google) {
+                    const result = await googleRequest('userLists:mutate', { operations: [{ create: {
+                        name: sync.audienceName, description: 'Automatically maintained by Overseek', membershipLifeSpan: 540,
+                        crmBasedUserList: { uploadKeyType: 'CONTACT_INFO', dataSourceType: 'FIRST_PARTY' }
+                    } }] });
+                    externalId = result.results?.[0]?.resourceName;
+                } else throw new Error('Unsupported audience platform');
+                if (!externalId) throw new Error('Platform did not return an audience ID');
+                await prisma.audienceSync.update({ where: { id: sync.id }, data: { externalId } });
+            }
+            const wanted = new Set(desired);
+            const removals = [...applied].filter(hash => !wanted.has(hash));
+            // Refresh existing members too: Google Customer Match membership has an expiry.
+            for (const [action, hashes] of [['remove', removals], ['create', desired]] as const) {
+                const batchSize = sync.platform === 'META' ? 1000 : 10;
+                for (let offset = 0; offset < hashes.length; offset += batchSize) {
+                    // Pausing stops further batches, without losing the last acknowledged snapshot.
+                    const active = await prisma.audienceSync.findFirst({ where: { id: sync.id, accountId, autoSyncEnabled: true } });
+                    if (!active) return;
+                    const batch = hashes.slice(offset, offset + batchSize);
+                    if (sync.platform === 'META') {
+                        if (action === 'remove') await MetaAdsService.removeCustomAudienceMembers(sync.adAccountId, externalId, batch);
+                        else {
+                            const result = await MetaAdsService.uploadCustomAudienceMembers(sync.adAccountId, externalId, batch);
+                            if (result.numInvalidEntries > 0) throw new Error('Meta rejected audience identifiers. Check your customer email data.');
+                        }
+                    } else {
+                        await googleRequest('userData:mutate', {
+                            customerMatchUserListMetadata: {
+                                userList: externalId, consent: { adUserData: 'GRANTED', adPersonalization: 'GRANTED' }
+                            },
+                            operations: batch.map(hash => ({ [action]: { userIdentifiers: [{ hashedEmail: hash }] } }))
+                        });
+                    }
+                    for (const hash of batch) action === 'remove' ? applied.delete(hash) : applied.add(hash);
+                    await prisma.audienceSync.update({ where: { id: sync.id }, data: { syncedEmailHashes: [...applied] } });
+                }
+            }
+            await prisma.audienceSync.updateMany({ where: { id: sync.id, accountId, autoSyncEnabled: true }, data: {
+                status: 'SYNCED', lastSyncAt: new Date(), lastError: null, memberCount: desired.length
+            } });
+        } catch (error) {
+            await prisma.audienceSync.updateMany({ where: { id: sync.id, accountId, autoSyncEnabled: true }, data: {
+                status: 'FAILED', lastError: 'Audience sync failed. Check platform permissions, customer-data terms and Customer Match eligibility, then retry.'
+            } });
+            // Queue retries without retaining platform responses containing customer data.
+            throw new Error('Audience sync failed');
+        }
+    }
+}

@@ -121,12 +121,13 @@ export class RecommendationEngine {
 
         for (const campaign of campaigns) {
             try {
-                const campaignType = getCampaignType(campaign.campaignName);
+                const campaignType = getCampaignType(campaign.campaignName, campaign.advertisingChannelType);
                 const funnelStage = this.inferFunnelStage(campaignType);
 
                 const context: AnalysisContext = {
                     platform,
                     campaignType,
+                    advertisingChannelType: campaign.advertisingChannelType,
                     campaignName: campaign.campaignName,
                     spend: campaign.spend,
                     roas: campaign.roas,
@@ -273,6 +274,7 @@ export class RecommendationEngine {
             case 'search':
                 return 'consideration';
             case 'shopping':
+            case 'performance_max':
             case 'conversion':
             case 'brand':
                 return 'conversion';

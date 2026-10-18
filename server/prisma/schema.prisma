@@ -184,6 +184,7 @@ model Account {
   AnalyticsSession     AnalyticsSession[]
   segments             CustomerSegment[]
   audienceSyncs        AudienceSync[]
+  nativeAdAudiences    NativeAdAudience[]
 
   reportTemplates ReportTemplate[]
   reportSchedules ReportSchedule[]
@@ -1339,6 +1340,7 @@ model AdAccount {
 
   snapshots     AdPerformanceSnapshot[]
   audienceSyncs AudienceSync[]
+  nativeAdAudiences NativeAdAudience[]
 
   @@index([accountId])
 }
@@ -2784,10 +2786,14 @@ model AudienceSync {
   externalId   String?  // Platform's audience ID after creation
   audienceName String   // Name on the platform
   
-  status       String   @default("PENDING") // 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED'
+  status       String   @default("PENDING") // 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED' | 'PAUSED'
   lastSyncAt   DateTime?
   lastError    String?  @db.Text
-  memberCount  Int?     // Number of matched users
+  memberCount  Int?     // Submitted identifiers, not platform-matched users
+  autoSyncEnabled Boolean @default(false)
+  consentConfirmedAt DateTime?
+  syncedEmailHashes Json @default("[]")
+  lastAttemptAt DateTime?
   
   // Lookalike settings (if derived)
   isLookalike       Boolean @default(false)
@@ -2803,6 +2809,31 @@ model AudienceSync {
   
   @@unique([accountId, segmentId, platform, adAccountId])
   @@index([accountId, platform])
+  @@index([adAccountId])
+}
+
+/// Platform-managed website membership and Meta lookalikes, not uploaded customer lists.
+model NativeAdAudience {
+  id           String @id @default(uuid())
+  accountId    String
+  adAccountId  String
+  platform     String
+  kind         String // WEBSITE | LOOKALIKE
+  name         String
+  definitionKey String
+  definition   Json
+  externalId   String?
+  status       String @default("PENDING") // PENDING | CREATING | CREATED | FAILED | NEEDS_REVIEW
+  lastError    String? @db.Text
+  consentConfirmedAt DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  account      Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  adAccount    AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, adAccountId, definitionKey])
+  @@index([accountId, createdAt])
   @@index([adAccountId])
 }
 

@@ -136,7 +136,7 @@ export class GoogleAdsService {
 
             const query = `
                 SELECT
-                    campaign.id, campaign.name, campaign.status,
+                    campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type,
                     metrics.cost_micros, metrics.impressions, metrics.clicks,
                     metrics.conversions, metrics.conversions_value
                 FROM campaign
@@ -158,6 +158,7 @@ export class GoogleAdsService {
                     campaignId: resourceValue(row.campaign, 'id')?.toString() || '',
                     campaignName: resourceValue(row.campaign, 'name') || 'Unknown',
                     status: resourceValue(row.campaign, 'status') || 'UNKNOWN',
+                    advertisingChannelType: resourceValue(row.campaign, 'advertisingChannelType', 'advertising_channel_type'),
                     spend, impressions, clicks, conversions, conversionsValue,
                     roas: spend > 0 ? conversionsValue / spend : 0,
                     ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
