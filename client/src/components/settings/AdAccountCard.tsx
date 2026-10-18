@@ -3,7 +3,7 @@
  * 
  * Individual ad account display card with insights and actions.
  */
-import { MessageCircle as Facebook, Trash2, RefreshCw, Pencil, AlertCircle } from 'lucide-react';
+import { MessageCircle as Facebook, Trash2, RefreshCw, Pencil, AlertCircle, Link2 } from 'lucide-react';
 import { formatCurrency, formatCompact, formatNumber } from '../../utils/format';
 
 interface AdAccount {
@@ -69,8 +69,8 @@ export function AdAccountCard({
 
     return (
         <div className={`bg-white rounded-xl shadow-xs border p-4 ${isPending ? 'border-amber-300' : error ? isTemporarilyUnavailable ? 'border-amber-200' : 'border-red-200' : 'border-gray-200'}`}>
-            <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                     <div className={`p-2 rounded-lg ${account.platform === 'META' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
                         {account.platform === 'META' ? <Facebook size={20} /> : <GoogleIcon className="w-5 h-5" />}
                     </div>
@@ -79,7 +79,7 @@ export function AdAccountCard({
                         <p className="text-xs text-gray-500 font-mono">{isPending ? 'Setup not complete' : account.externalId}</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                     {isPending ? (
                         <button
                             onClick={onCompleteSetup}
@@ -93,6 +93,15 @@ export function AdAccountCard({
                                 </span>
                             )}
                             {!error && <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>}
+                            <button
+                                type="button"
+                                onClick={onReconnect}
+                                aria-label={`Reconnect ${account.platform === 'GOOGLE' ? 'Google Ads' : 'Meta'} account`}
+                                title="Renew permissions without removing this account or its audience syncs"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                                <Link2 size={14} />Reconnect
+                            </button>
                             <button
                                 onClick={onRefresh}
                                 disabled={isLoadingInsights}
@@ -146,13 +155,12 @@ export function AdAccountCard({
                                 {insights && isTemporarilyUnavailable && <p className="text-xs mt-1 text-amber-700">Showing the last loaded metrics.</p>}
                             </div>
                         </div>
-                        <button
-                            onClick={isTemporarilyUnavailable ? onRefresh : onReconnect}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg shrink-0 ${isTemporarilyUnavailable ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                        {isTemporarilyUnavailable && <button
+                            onClick={onRefresh}
+                            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
                         >
-                            <RefreshCw size={14} />
-                            {isTemporarilyUnavailable ? 'Retry' : 'Reconnect'}
-                        </button>
+                            <RefreshCw size={14} />Retry
+                        </button>}
                     </div>
                 </div>
             )}

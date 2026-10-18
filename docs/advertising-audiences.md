@@ -35,7 +35,7 @@ Failed enabled destinations have a **Retry sync** button that queues another run
 
 1. Enable **Data Manager API** (`datamanager.googleapis.com`) in the Google Cloud project that owns the configured Google Ads OAuth client.
 2. Add `https://www.googleapis.com/auth/datamanager` to the OAuth consent screen's Data Access configuration, alongside `https://www.googleapis.com/auth/adwords`. Update OAuth verification/test-user settings as Google requires for the new sensitive scope.
-3. After deploying Overseek's updated OAuth flow, **reconnect Google Ads in Settings** and grant both scopes. Existing refresh tokens do not automatically acquire the new permission.
+3. After deploying Overseek's updated OAuth flow, go to **Settings → Ad Accounts** and click the labelled **Reconnect** button beside the Google account's status, then grant both scopes. This action is available even for healthy/Active accounts and preserves the account and its audience syncs. The separate circular-arrow icon only refreshes statistics; do not use the trash/disconnect action to renew permissions. Existing refresh tokens do not automatically acquire the new permission.
 4. The Google user must have access to the destination advertising account, directly or through the configured manager. Data Manager uses OAuth plus `login-account` for resource management and `loginAccount` in ingestion destinations; it does not use a Google Ads developer-token header.
 5. Retry the existing sync. Account terms, consent, political-ad declarations where applicable, minimum audience sizes and platform eligibility still apply. This migration does not grant or bypass any eligibility restrictions.
 
