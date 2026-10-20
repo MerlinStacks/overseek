@@ -1,0 +1,16 @@
+OverSeek Integration for WooCommerce 2.25.8
+Released: 2026-10-20
+
+Storefront reviews and presentation:
+- Refresh the reviews and preference centre layouts, including mobile styling.
+- Keep store ratings separate from product ratings. Products without reviews invite customers to be the first to review instead of showing a zero score or borrowing the store score.
+- Show fractional stars in compact product ratings.
+- Add updated achievement badge artwork, Platinum transparency at 95% of active reviews published, and verified-review milestones at 5, 25, 500, 750, 1000, 1500, 3000 and 5000 reviews.
+
+WordPress release notes:
+- Use native plugin-details headings, paragraphs and lists, with no preformatted scrolling box or embedded frame.
+- Preserve SLDevs updates, automatic-update preferences, and classic and Blocks checkout support.
+
+Requirements: WordPress 6.4+, PHP 8.1+, WooCommerce (plugin header minimum 7.0; Blocks checkout requires 8.0+), and a running OverSeek server.
+
+Upgrade the existing overseek-wc-plugin folder in place; do not uninstall first. Purge separately managed page caches/CDNs as needed. Delivery estimates may require readiness revalidation after the version change. Check reviews, preference centre and classic/Blocks checkout on staging before production deployment. This release does not deploy the OverSeek backend or change the backend deployment requirements documented for 2.25.6.

@@ -65,8 +65,9 @@ export function EmptyState({
             {/* Primary Action - Gradient Button */}
             {action && (
                 <button
+                    type="button"
                     onClick={action.onClick}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600 text-white text-sm font-medium rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600 text-white text-sm font-medium rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/35 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:transform-none"
                 >
                     {action.icon}
                     {action.label}

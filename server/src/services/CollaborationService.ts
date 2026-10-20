@@ -22,8 +22,34 @@ const PRESENCE_KEY_PREFIX = 'presence:';
 const PRESENCE_TTL_SECONDS = 60; // 60 seconds (aggressive to prevent ghost entries)
 /** Timeout for Redis operations to prevent blocking */
 const REDIS_OPERATION_TIMEOUT_MS = 5000;
-/** Max age for stale entries to be pruned on join (30 seconds) */
-const STALE_PRUNE_ON_JOIN_MS = 30000;
+const PRESENCE_MAX_AGE_MS = PRESENCE_TTL_SECONDS * 1000;
+
+// Compare the snapshot atomically: a concurrent heartbeat or rejoin must survive pruning.
+const PRUNE_SCRIPT = `
+local removed = 0
+for i = 1, #ARGV, 2 do
+    if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[i + 1] then
+        removed = removed + redis.call('HDEL', KEYS[1], ARGV[i])
+    end
+end
+return removed`;
+
+// Do not recreate presence after a concurrent leave or overwrite a newer heartbeat.
+const REFRESH_SCRIPT = `
+if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then
+    redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
+    redis.call('EXPIRE', KEYS[1], ARGV[4])
+    return 1
+end
+return 0`;
+
+function parsePresence(value: string): UserInfo | null {
+    try {
+        const info = JSON.parse(value);
+        const lastSeen = info?.lastHeartbeat ?? info?.connectedAt;
+        return info && typeof info.userId === 'string' && typeof info.name === 'string' && typeof lastSeen === 'number' && Number.isFinite(lastSeen) ? info : null;
+    } catch { return null; }
+}
 
 /**
  * Wraps a promise with a timeout to prevent indefinite blocking.
@@ -51,7 +77,7 @@ export class CollaborationService {
         const key = `${PRESENCE_KEY_PREFIX}${docId}`;
         try {
             // Prune stale entries first to prevent ghost presence after reconnects
-            await this.pruneStale(docId, STALE_PRUNE_ON_JOIN_MS);
+            await this.pruneStale(docId, PRESENCE_MAX_AGE_MS);
 
             const infoWithHeartbeat = {
                 ...userInfo,
@@ -103,20 +129,16 @@ export class CollaborationService {
                 'refreshPresence:get'
             );
             if (existing) {
-                const userInfo = JSON.parse(existing) as UserInfo;
+                const userInfo = parsePresence(existing);
+                if (!userInfo) return;
                 userInfo.lastHeartbeat = Date.now();
                 await withTimeout(
-                    redisClient.hset(key, socketId, JSON.stringify(userInfo)),
+                    redisClient.eval(REFRESH_SCRIPT, 1, key, socketId, existing, JSON.stringify(userInfo), PRESENCE_TTL_SECONDS),
                     REDIS_OPERATION_TIMEOUT_MS,
                     'refreshPresence:set'
                 );
-                // Refresh the key TTL
-                await withTimeout(
-                    redisClient.expire(key, PRESENCE_TTL_SECONDS),
-                    REDIS_OPERATION_TIMEOUT_MS,
-                    'refreshPresence:expire'
-                );
             }
+            await this.pruneStale(docId, PRESENCE_MAX_AGE_MS);
         } catch (error) {
             Logger.error('[CollaborationService] Error refreshing presence', { error, docId, socketId });
         }
@@ -129,17 +151,18 @@ export class CollaborationService {
     static async getPresence(docId: string, pruneStaleMs?: number): Promise<UserInfo[]> {
         const key = `${PRESENCE_KEY_PREFIX}${docId}`;
         try {
-            // Optionally prune stale entries first
-            if (pruneStaleMs) {
-                await this.pruneStale(docId, pruneStaleMs);
-            }
+            const maxAge = pruneStaleMs ?? PRESENCE_MAX_AGE_MS;
+            await this.pruneStale(docId, maxAge);
 
             const values = await withTimeout(
                 redisClient.hvals(key),
                 REDIS_OPERATION_TIMEOUT_MS,
                 'getPresence'
             );
-            return values.map(v => JSON.parse(v));
+            return values.flatMap(value => {
+                const info = parsePresence(value);
+                return info && Date.now() - (info.lastHeartbeat ?? info.connectedAt) <= maxAge ? [info] : [];
+            });
         } catch (error) {
             Logger.error('[CollaborationService] Error getting presence', { error, docId });
             return [];
@@ -151,6 +174,7 @@ export class CollaborationService {
      * Protects against zombie entries from crashed clients.
      */
     static async pruneStale(docId: string, maxAgeMs: number): Promise<number> {
+        if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0) throw new Error('Invalid presence age');
         const key = `${PRESENCE_KEY_PREFIX}${docId}`;
         const now = Date.now();
         let prunedCount = 0;
@@ -164,27 +188,19 @@ export class CollaborationService {
 
             if (!entries) return 0;
 
-            const staleSocketIds: string[] = [];
+            const staleEntries: string[] = [];
             for (const [socketId, value] of Object.entries(entries)) {
-                try {
-                    const userInfo = JSON.parse(value) as UserInfo;
-                    const lastSeen = userInfo.lastHeartbeat || userInfo.connectedAt;
-                    if (now - lastSeen > maxAgeMs) {
-                        staleSocketIds.push(socketId);
-                    }
-                } catch {
-                    // Malformed entry, mark for removal
-                    staleSocketIds.push(socketId);
-                }
+                const info = parsePresence(value);
+                if (!info || now - (info.lastHeartbeat ?? info.connectedAt) > maxAgeMs) staleEntries.push(socketId, value);
             }
 
-            if (staleSocketIds.length > 0) {
-                await withTimeout(
-                    redisClient.hdel(key, ...staleSocketIds),
+            if (staleEntries.length > 0) {
+                const removed = await withTimeout(
+                    redisClient.eval(PRUNE_SCRIPT, 1, key, ...staleEntries),
                     REDIS_OPERATION_TIMEOUT_MS,
                     'pruneStale:hdel'
                 );
-                prunedCount = staleSocketIds.length;
+                prunedCount = Number(removed);
                 Logger.debug('[CollaborationService] Pruned stale entries', { docId, count: prunedCount });
             }
         } catch (error) {

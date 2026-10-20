@@ -122,7 +122,7 @@ const oauthMetaRoutes: FastifyPluginAsync = async (fastify) => {
 
             // If reconnecting an existing account, update its tokens
             if (stateData.reconnectId) {
-                await AdsService.updateAccountTokens(stateData.reconnectId, {
+                await AdsService.updateAccountTokens(stateData.accountId, stateData.reconnectId, {
                     accessToken: tokenResult.accessToken
                 });
                 Logger.info('[MetaAdsOAuth] Reconnected existing account', { accountId: stateData.reconnectId });

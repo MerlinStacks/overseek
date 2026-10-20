@@ -10,16 +10,17 @@ import { z } from 'zod';
 import { InternalProductsService } from '../services/InternalProductsService';
 import { validateFastify } from '../middleware/validate';
 import { requireAuthFastify } from '../middleware/auth';
+import { PermissionService } from '../services/PermissionService';
 
 // === Zod Schemas ===
 
 const createInternalProductSchema = z.object({
     body: z.object({
-        name: z.string().min(1, 'Name is required'),
+        name: z.string().trim().min(1, 'Name is required').max(500),
         sku: z.string().optional(),
         description: z.string().optional(),
-        stockQuantity: z.number().int().optional(),
-        cogs: z.number().optional(),
+        stockQuantity: z.number().int().min(0).max(2147483647).optional(),
+        cogs: z.number().finite().min(0).max(99999999.99).optional(),
         binLocation: z.string().optional(),
         mainImage: z.string().url().optional().or(z.literal('')),
         images: z.array(z.string().url()).optional(),
@@ -32,11 +33,11 @@ const updateInternalProductSchema = z.object({
         id: z.string().uuid(),
     }),
     body: z.object({
-        name: z.string().min(1).optional(),
+        name: z.string().trim().min(1).max(500).optional(),
         sku: z.string().optional(),
         description: z.string().optional(),
-        stockQuantity: z.number().int().optional(),
-        cogs: z.number().optional(),
+        stockQuantity: z.number().int().min(0).max(2147483647).optional(),
+        cogs: z.number().finite().min(0).max(99999999.99).optional(),
         binLocation: z.string().optional(),
         mainImage: z.string().url().optional().or(z.literal('')),
         images: z.array(z.string().url()).optional(),
@@ -49,13 +50,17 @@ const adjustStockSchema = z.object({
         id: z.string().uuid(),
     }),
     body: z.object({
-        adjustment: z.number().int(),
-        reason: z.string().min(1, 'Reason is required'),
+        adjustment: z.number().int().min(-2147483647).max(2147483647),
+        reason: z.string().trim().min(1, 'Reason is required').max(1000),
     }),
 });
 
 export default async function internalProductsRoutes(fastify: FastifyInstance) {
     fastify.addHook('preHandler', requireAuthFastify);
+    fastify.addHook('preHandler', async (request, reply) => {
+        if (!request.accountId) return reply.code(400).send({ error: 'Account ID required' });
+        if (request.method !== 'GET' && (!request.user || !await PermissionService.hasPermission(request.user.id, request.accountId, 'manage_inventory'))) return reply.code(403).send({ error: 'Inventory management permission required' });
+    });
 
     // List internal products
     fastify.get('/', async (req: FastifyRequest<{
@@ -67,13 +72,15 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
             return reply.status(400).send({ error: 'Account ID required' });
         }
 
-        const { search, supplierId, limit, offset } = req.query;
+        const parsed = z.object({ search: z.string().max(500).optional(), supplierId: z.string().uuid().optional(), limit: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(1).max(200)).optional(), offset: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(1000000)).optional() }).safeParse(req.query);
+        if (!parsed.success) return reply.code(400).send({ error: 'Invalid product query' });
+        const { search, supplierId, limit, offset } = parsed.data;
 
         const result = await InternalProductsService.list(accountId, {
             search,
             supplierId,
-            limit: limit ? parseInt(limit, 10) : undefined,
-            offset: offset ? parseInt(offset, 10) : undefined
+            limit,
+            offset
         });
 
         return reply.send(result);
@@ -99,7 +106,8 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
         if (!accountId) return reply.status(400).send({ error: 'Account ID required' });
         const { id } = req.params;
 
-        const item = await InternalProductsService.getById(id);
+        if (!z.string().uuid().safeParse(id).success) return reply.code(400).send({ error: 'Invalid product ID' });
+        const item = await InternalProductsService.getById(id, accountId);
 
         if (!item || item.accountId !== accountId) {
             return reply.status(404).send({ error: 'Internal product not found' });
@@ -194,6 +202,7 @@ export default async function internalProductsRoutes(fastify: FastifyInstance) {
         if (!accountId) return reply.status(400).send({ error: 'Account ID required' });
         const { id } = req.params;
         const force = req.query.force === 'true';
+        if (!z.string().uuid().safeParse(id).success || (req.query.force !== undefined && !['true', 'false'].includes(req.query.force))) return reply.code(400).send({ error: 'Invalid deletion request' });
 
         try {
             if (force) {

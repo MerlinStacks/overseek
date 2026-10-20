@@ -4,6 +4,7 @@
  * Type definitions for WooCommerce rawData JSON fields stored in Prisma.
  * These replace `as any` casts throughout the codebase for better type safety.
  */
+import { z } from 'zod';
 
 
 export interface WooOrderBillingAddress {
@@ -44,7 +45,7 @@ export interface WooOrderLineItem {
     total: string;
     total_tax: string;
     taxes?: Array<{ id: number; total: string; subtotal: string }>;
-    meta_data?: Array<{ id: number; key: string; value: string }>;
+    meta_data?: Array<{ id: number; key: string; value: unknown }>;
     sku?: string;
     price: number;
     image?: { id: number; src: string };
@@ -290,38 +291,71 @@ export interface WooReviewRawData {
  * const orderData = asWooOrderRawData(order.rawData);
  * if (orderData) { console.log(orderData.billing.email); }
  */
+// Validate required and known optional fields before asserting complete API response types.
+const strings = (required: string[], optional: string[] = []) => ({
+    ...Object.fromEntries(required.map(key => [key, z.string()])),
+    ...Object.fromEntries(optional.map(key => [key, z.string().optional()])),
+});
+const id = z.number().int().nonnegative();
+const number = z.number();
+const metadata = z.array(z.looseObject({ id, key: z.string(), value: z.unknown() })).optional();
+const address = z.looseObject(strings(['first_name', 'last_name'], ['company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country']));
+const billing = address.extend({ email: z.string().optional(), phone: z.string().optional() });
+const image = z.looseObject({ id, ...strings(['src'], ['date_created', 'date_modified', 'name', 'alt']) });
+const lineItem = z.looseObject({
+    id, product_id: id, variation_id: id.optional(), quantity: number, price: number,
+    ...strings(['name', 'subtotal', 'subtotal_tax', 'total', 'total_tax'], ['tax_class', 'sku']),
+    taxes: z.array(z.looseObject({ id, ...strings(['total', 'subtotal']) })).optional(),
+    meta_data: metadata,
+    image: z.looseObject({ id, src: z.string() }).optional(),
+});
+const orderSchema = z.looseObject({
+    id, ...strings(['status', 'currency', 'date_created', 'date_created_gmt', 'date_modified', 'date_modified_gmt', 'discount_total', 'discount_tax', 'shipping_total', 'shipping_tax', 'cart_tax', 'total', 'total_tax', 'number'], ['version', 'order_key', 'payment_method', 'payment_method_title', 'transaction_id', 'customer_ip_address', 'customer_user_agent', 'created_via', 'customer_note', 'cart_hash']),
+    parent_id: id.optional(), customer_id: id, prices_include_tax: z.boolean().optional(), billing, shipping: address, meta_data: metadata,
+    ...Object.fromEntries(['date_completed', 'date_completed_gmt', 'date_paid', 'date_paid_gmt'].map(key => [key, z.string().nullable().optional()])),
+    line_items: z.array(lineItem),
+    tax_lines: z.array(z.looseObject({ id, rate_id: id, compound: z.boolean(), ...strings(['rate_code', 'label', 'tax_total', 'shipping_tax_total']) })).optional(),
+    shipping_lines: z.array(z.looseObject({ id, ...strings(['method_title', 'method_id', 'total', 'total_tax'], ['instance_id']) })).optional(),
+    fee_lines: z.array(z.looseObject({ id, ...strings(['name', 'amount', 'total', 'total_tax'], ['tax_class', 'tax_status']) })).optional(),
+    coupon_lines: z.array(z.looseObject({ id, ...strings(['code', 'discount', 'discount_tax']) })).optional(),
+    refunds: z.array(z.looseObject({ id, ...strings(['reason', 'total']) })).optional(),
+});
+const productSchema = z.looseObject({
+    id, ...strings(['name', 'slug', 'date_created', 'date_created_gmt', 'date_modified', 'date_modified_gmt', 'type', 'sku', 'price', 'regular_price'], ['permalink', 'description', 'short_description', 'sale_price', 'price_html', 'external_url', 'button_text', 'tax_class', 'weight', 'shipping_class', 'average_rating', 'purchase_note']),
+    status: z.enum(['draft', 'pending', 'private', 'publish']),
+    catalog_visibility: z.enum(['visible', 'catalog', 'search', 'hidden']).optional(),
+    ...Object.fromEntries(['featured', 'on_sale', 'purchasable', 'virtual', 'downloadable', 'manage_stock', 'backorders_allowed', 'backordered', 'sold_individually', 'shipping_required', 'shipping_taxable', 'reviews_allowed'].map(key => [key, z.boolean().optional()])),
+    ...Object.fromEntries(['total_sales', 'shipping_class_id', 'rating_count', 'parent_id', 'menu_order'].map(key => [key, number.optional()])),
+    ...Object.fromEntries(['related_ids', 'upsell_ids', 'cross_sell_ids', 'variations', 'grouped_products'].map(key => [key, z.array(id).optional()])),
+    date_on_sale_from: z.string().nullable().optional(), date_on_sale_to: z.string().nullable().optional(),
+    tax_status: z.enum(['taxable', 'shipping', 'none']).optional(),
+    stock_quantity: number.nullable(), stock_status: z.enum(['instock', 'outofstock', 'onbackorder']), backorders: z.enum(['no', 'notify', 'yes']).optional(),
+    dimensions: z.looseObject(strings(['length', 'width', 'height'])).optional(),
+    categories: z.array(z.looseObject({ id, ...strings(['name', 'slug']) })), tags: z.array(z.looseObject({ id, ...strings(['name', 'slug']) })).optional(),
+    images: z.array(image), attributes: z.array(z.looseObject({ id, name: z.string(), position: number, visible: z.boolean(), variation: z.boolean(), options: z.array(z.string()) })).optional(),
+    meta_data: metadata,
+});
+const customerSchema = z.looseObject({
+    id, ...strings(['date_created', 'date_created_gmt', 'date_modified', 'date_modified_gmt', 'email', 'first_name', 'last_name'], ['role', 'username', 'avatar_url']),
+    billing, shipping: address, is_paying_customer: z.boolean().optional(), meta_data: metadata,
+});
+const reviewSchema = z.looseObject({
+    id, product_id: id, ...strings(['date_created', 'date_created_gmt', 'reviewer', 'reviewer_email', 'review']),
+    status: z.enum(['approved', 'hold', 'spam', 'unspam', 'trash', 'untrash']), rating: number, verified: z.boolean(), reviewer_avatar_urls: z.record(z.string(), z.string()).optional(),
+});
+
 export function asWooOrderRawData(data: unknown): WooOrderRawData | null {
-    if (!data || typeof data !== 'object') return null;
-    const d = data as Record<string, unknown>;
-    if (typeof d.id === 'number' && typeof d.total === 'string' && d.billing) {
-        return data as WooOrderRawData;
-    }
-    return null;
+    return orderSchema.safeParse(data).success ? data as WooOrderRawData : null;
 }
 
 export function asWooProductRawData(data: unknown): WooProductRawData | null {
-    if (!data || typeof data !== 'object') return null;
-    const d = data as Record<string, unknown>;
-    if (typeof d.id === 'number' && typeof d.name === 'string') {
-        return data as WooProductRawData;
-    }
-    return null;
+    return productSchema.safeParse(data).success ? data as WooProductRawData : null;
 }
 
 export function asWooCustomerRawData(data: unknown): WooCustomerRawData | null {
-    if (!data || typeof data !== 'object') return null;
-    const d = data as Record<string, unknown>;
-    if (typeof d.id === 'number' && typeof d.email === 'string') {
-        return data as WooCustomerRawData;
-    }
-    return null;
+    return customerSchema.safeParse(data).success ? data as WooCustomerRawData : null;
 }
 
 export function asWooReviewRawData(data: unknown): WooReviewRawData | null {
-    if (!data || typeof data !== 'object') return null;
-    const d = data as Record<string, unknown>;
-    if (typeof d.id === 'number' && typeof d.product_id === 'number') {
-        return data as WooReviewRawData;
-    }
-    return null;
+    return reviewSchema.safeParse(data).success ? data as WooReviewRawData : null;
 }

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), adjustStock: vi.fn() }));
 vi.mock('../services/InternalProductsService', () => ({ InternalProductsService: mocks }));
-vi.mock('../middleware/auth', () => ({ requireAuthFastify: async (request: { accountId: string }) => { request.accountId = 'tenant-1'; } }));
+vi.mock('../middleware/auth', () => ({ requireAuthFastify: async (request: any) => { request.accountId = 'tenant-1'; request.user = { id: 'user' }; } }));
+vi.mock('../services/PermissionService', () => ({ PermissionService: { hasPermission: async () => true } }));
 
 import routes from './internalProducts';
 

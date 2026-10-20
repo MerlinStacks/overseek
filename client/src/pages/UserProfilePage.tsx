@@ -8,6 +8,7 @@ import SessionManager from '../components/settings/SessionManager';
 import { RichTextEditor } from '../components/common/RichTextEditor';
 import { ChangePasswordModal } from '../components/settings/ChangePasswordModal';
 import { getSafeHref } from '../utils/url';
+import { DateTimeSettings } from '../components/settings/DateTimeSettings';
 
 /**
  * User profile page with premium styling, dark mode support,
@@ -412,6 +413,7 @@ export function UserProfilePage() {
             </div>
 
             {/* Session Manager */}
+            <div className="mt-8"><DateTimeSettings /></div>
             <div className="mt-8 animate-fade-slide-up animation-delay-200">
                 <SessionManager />
             </div>

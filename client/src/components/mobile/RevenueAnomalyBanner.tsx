@@ -21,7 +21,7 @@ export function RevenueAnomalyBanner({ anomaly }: RevenueAnomalyBannerProps) {
     const navigate = useNavigate();
 
     // Don't render if no anomaly or normal state
-    if (!anomaly || !anomaly.isAnomaly) {
+    if (!anomaly || !anomaly.isAnomaly || !['above', 'below'].includes(anomaly.direction) || !Number.isFinite(anomaly.percentChange) || !anomaly.message.trim()) {
         return null;
     }
 
@@ -29,14 +29,15 @@ export function RevenueAnomalyBanner({ anomaly }: RevenueAnomalyBannerProps) {
 
     return (
         <button
+            type="button"
             onClick={() => navigate('/m/analytics')}
-            className={`w-full p-4 rounded-xl flex items-center gap-3 text-left transition-transform active:scale-[0.98] ${isPositive
+            className={`w-full p-4 rounded-xl flex items-center gap-3 text-left transition-transform active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none ${isPositive
                     ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white'
                     : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
                 }`}
             aria-label={`Revenue anomaly alert: ${anomaly.message}`}
         >
-            <div className={`p-2 rounded-lg ${isPositive ? 'bg-white/20' : 'bg-white/20'}`}>
+            <div aria-hidden="true" className="p-2 rounded-lg bg-white/20">
                 {isPositive ? (
                     <Rocket size={24} className="text-white" />
                 ) : (

@@ -30,11 +30,10 @@ export async function backfillOrderDenormalizedFields(): Promise<{ updated: numb
         // Check for null OR already processed (using cursor pagination)
         const orders = await prisma.wooOrder.findMany({
             where: {
-                // Only process orders that haven't been touched yet (wooCustomerId is also null)
-                wooCustomerId: null,
+                OR: [{ wooCustomerId: null }, { billingEmail: null }, { billingCountry: null }],
                 ...(lastId ? { id: { gt: lastId } } : {})
             },
-            select: { id: true, rawData: true },
+            select: { id: true, rawData: true, billingEmail: true, billingCountry: true, wooCustomerId: true },
             take: BATCH_SIZE,
             orderBy: { id: 'asc' }
         });
@@ -47,18 +46,30 @@ export async function backfillOrderDenormalizedFields(): Promise<{ updated: numb
         // Process batch
         for (const order of orders) {
             try {
-                const raw = order.rawData as any;
-                // Normalize email: lowercase, trim, convert empty strings to null
-                const rawEmail = raw?.billing?.email;
-                const billingEmail = rawEmail && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
-                const billingCountry = raw?.billing?.country || null;
-                const wooCustomerId = raw?.customer_id > 0 ? raw.customer_id : null;
-
-                await prisma.wooOrder.update({
-                    where: { id: order.id },
-                    data: { billingEmail, billingCountry, wooCustomerId }
+                const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+                const raw = object(order.rawData);
+                const billing = object(raw.billing);
+                const email = typeof billing.email === 'string' ? billing.email.trim().toLowerCase() : '';
+                const country = typeof billing.country === 'string' ? billing.country.trim().toUpperCase() : '';
+                const customerId = typeof raw.customer_id === 'number' ? raw.customer_id
+                    : typeof raw.customer_id === 'string' && /^\d+$/.test(raw.customer_id.trim()) ? Number(raw.customer_id) : NaN;
+                const data: { billingEmail?: string; billingCountry?: string; wooCustomerId?: number } = {};
+                if (order.billingEmail == null && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) data.billingEmail = email;
+                if (order.billingCountry == null && /^[A-Z]{2}$/.test(country)) data.billingCountry = country;
+                if (order.wooCustomerId == null && Number.isSafeInteger(customerId) && customerId > 0 && customerId <= 2147483647) data.wooCustomerId = customerId;
+                // Guests and incomplete raw records may remain eligible; do not rewrite unchanged rows.
+                if (Object.keys(data).length === 0) continue;
+                const result = await prisma.wooOrder.updateMany({
+                    where: {
+                        id: order.id,
+                        ...(data.billingEmail ? { billingEmail: null } : {}),
+                        ...(data.billingCountry ? { billingCountry: null } : {}),
+                        ...(data.wooCustomerId ? { wooCustomerId: null } : {}),
+                    },
+                    data,
                 });
-                updated++;
+                // Conditional writes also protect values populated by a concurrent order sync.
+                updated += result.count;
             } catch (error) {
                 errors++;
                 Logger.warn('[Backfill] Failed to update order', { orderId: order.id, error });

@@ -10,6 +10,7 @@ import { AISettings } from '../components/settings/AISettings';
 import { TrackingScriptHelper } from '../components/settings/TrackingScriptHelper';
 import { AppearanceSettings } from '../components/settings/AppearanceSettings';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
+import { DateTimeSettings } from '../components/settings/DateTimeSettings';
 import { EmailSettings } from '../components/settings/EmailSettings';
 import { GoldPriceSettings } from '../components/settings/GoldPriceSettings';
 import { InventoryAlertsSettings } from '../components/settings/InventoryAlertsSettings';
@@ -29,9 +30,9 @@ import {
 } from 'lucide-react';
 import { SettingsPageSkeleton } from '../components/ui/PageSkeletons';
 
-type TabId = 'deliveryEstimates' | 'general' | 'appearance' | 'team' | 'roles' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications' | 'webhooks' | 'ads' | 'cannedResponses' | 'conversions';
+type TabId = 'dateTime' | 'deliveryEstimates' | 'general' | 'appearance' | 'team' | 'roles' | 'chat' | 'channels' | 'intelligence' | 'analytics' | 'sync' | 'email' | 'inventory' | 'orderTags' | 'goldPrice' | 'notifications' | 'webhooks' | 'ads' | 'cannedResponses' | 'conversions';
 
-const VALID_TABS: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses', 'conversions', 'deliveryEstimates'];
+const VALID_TABS: TabId[] = ['general', 'appearance', 'team', 'roles', 'chat', 'channels', 'intelligence', 'analytics', 'sync', 'email', 'inventory', 'orderTags', 'goldPrice', 'notifications', 'webhooks', 'ads', 'cannedResponses', 'conversions', 'deliveryEstimates', 'dateTime'];
 
 interface TabDef {
     id: TabId;
@@ -93,6 +94,10 @@ export function SettingsPage() {
             ]
         },
         {
+            name: 'Personal',
+            tabs: [{ id: 'dateTime', label: 'Date & Time', icon: LayoutGrid }]
+        },
+        {
             name: 'Commerce',
             tabs: [
                 { id: 'orderTags', label: 'Order Tags', icon: Tags },
@@ -141,6 +146,7 @@ export function SettingsPage() {
     const renderContent = () => {
         const contentByTab: Record<TabId, React.ReactNode> = {
             general: <GeneralSettings />,
+            dateTime: <DateTimeSettings />,
             deliveryEstimates: <DeliveryEstimatesSettingsPage />,
             appearance: (
                 <SettingsCard title="Branding & Appearance" description="Manage shared branding for your dashboard, emails, and wholesale catalogs.">

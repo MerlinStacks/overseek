@@ -20,8 +20,12 @@ interface MiscCostEntry {
 export function sumMiscCosts(miscCosts: unknown): number {
     if (!Array.isArray(miscCosts)) return 0;
 
-    return (miscCosts as MiscCostEntry[]).reduce((total, entry) => {
-        const amount = Number(entry?.amount);
-        return total + (isNaN(amount) ? 0 : amount);
+    return miscCosts.reduce((total, entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return total;
+        const value: unknown = entry.amount;
+        const amount = typeof value === 'number' ? value : typeof value === 'string' && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()) ? Number(value) : NaN;
+        if (!Number.isFinite(amount)) return total;
+        if (!Number.isFinite(total + amount)) throw new RangeError('Miscellaneous cost total exceeds numeric range');
+        return total + amount;
     }, 0);
 }

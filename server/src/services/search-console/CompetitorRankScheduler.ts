@@ -20,45 +20,40 @@ const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** 2 hours + 5 min after boot — offset from keyword scheduler to spread load */
 const INITIAL_DELAY_MS = 2 * 60 * 60 * 1000 + 5 * 60 * 1000;
 
-let intervalHandle: ReturnType<typeof setInterval> | null = null;
-let initialTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+let timeout: ReturnType<typeof setTimeout> | null = null;
+let started = false;
+let generation = 0;
+let inFlight: Promise<void> | null = null;
 
 /**
  * Start the daily competitor rank refresh scheduler.
  * Safe to call multiple times; subsequent calls are no-ops.
  */
 export function startCompetitorRankScheduler(): void {
-    if (intervalHandle || initialTimeoutHandle) {
-        Logger.info('Competitor rank scheduler already running');
-        return;
-    }
-
-    Logger.info('Competitor rank scheduler starting', {
-        intervalMs: REFRESH_INTERVAL_MS,
-        initialDelayMs: INITIAL_DELAY_MS,
-    });
-
-    initialTimeoutHandle = setTimeout(async () => {
-        initialTimeoutHandle = null;
-        await runRefresh();
-
-        intervalHandle = setInterval(runRefresh, REFRESH_INTERVAL_MS);
-    }, INITIAL_DELAY_MS);
+    if (started) return;
+    started = true;
+    const current = ++generation;
+    const tick = async () => {
+        timeout = null;
+        if (inFlight) await inFlight;
+        if (!started || current !== generation) return;
+        const work = runRefresh();
+        inFlight = work;
+        try { await work; } finally { if (inFlight === work) inFlight = null; }
+        if (started && current === generation) timeout = setTimeout(() => void tick(), REFRESH_INTERVAL_MS);
+    };
+    timeout = setTimeout(() => void tick(), INITIAL_DELAY_MS);
 }
 
 /**
  * Stop the scheduler (for graceful shutdown).
  */
-export function stopCompetitorRankScheduler(): void {
-    if (initialTimeoutHandle) {
-        clearTimeout(initialTimeoutHandle);
-        initialTimeoutHandle = null;
-    }
-    if (intervalHandle) {
-        clearInterval(intervalHandle);
-        intervalHandle = null;
-    }
-    Logger.info('Competitor rank scheduler stopped');
+export async function stopCompetitorRankScheduler(): Promise<void> {
+    started = false;
+    generation++;
+    if (timeout) clearTimeout(timeout);
+    timeout = null;
+    await inFlight;
 }
 
 /**
@@ -66,13 +61,8 @@ export function stopCompetitorRankScheduler(): void {
  * Syncs keywords first, then checks positions.
  */
 async function runRefresh(): Promise<void> {
-    const isConfigured = await SerpCheckService.isConfigured();
-    if (!isConfigured) {
-        Logger.info('Competitor rank scheduler skipped: no SERP credentials configured');
-        return;
-    }
-
     try {
+        if (!await SerpCheckService.isConfigured()) return;
         Logger.info('Starting scheduled competitor rank refresh');
 
         // Find all accounts that have active competitor domains

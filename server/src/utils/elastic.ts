@@ -13,19 +13,19 @@ export const esClient = new Client({
  * Result is cached for 60s to avoid spamming ping requests.
  */
 let _esAvailable = true;
-let _esCheckedAt = 0;
+let _esCheckedAt = -Infinity;
+let pendingCheck: Promise<boolean> | null = null;
 const ES_CHECK_INTERVAL_MS = 60_000;
 
 export async function isElasticsearchAvailable(): Promise<boolean> {
     const now = Date.now();
     if (now - _esCheckedAt < ES_CHECK_INTERVAL_MS) return _esAvailable;
-
-    try {
-        await esClient.ping();
-        _esAvailable = true;
-    } catch {
-        _esAvailable = false;
-    }
-    _esCheckedAt = now;
-    return _esAvailable;
+    if (pendingCheck) return pendingCheck;
+    pendingCheck = (async () => {
+        try { await esClient.ping({}, { requestTimeout: 5000, maxRetries: 0 }); _esAvailable = true; }
+        catch { _esAvailable = false; }
+        _esCheckedAt = Date.now();
+        return _esAvailable;
+    })().finally(() => { pendingCheck = null; });
+    return pendingCheck;
 }

@@ -6,6 +6,7 @@ import { Logger } from '../utils/logger';
 import { verifyToken } from '../utils/auth';
 import { setIO } from '../socket';
 import { ChatService } from '../services/ChatService';
+import { onShutdown } from '../utils/shutdown';
 
 interface SocketInitResult {
     io: Server;
@@ -71,15 +72,20 @@ export async function initializeSocketIO(server: http.Server, fastify: FastifyIn
     });
 
     // Apply Redis adapter for horizontal scaling
+    let disposeAdapter: (() => Promise<void>) | undefined;
     try {
         const { createSocketAdapter } = await import('../utils/socketAdapter');
-        io.adapter(createSocketAdapter());
+        const adapter = createSocketAdapter();
+        disposeAdapter = adapter.dispose;
+        io.adapter(adapter);
         Logger.info('[Socket.IO] Redis adapter enabled for horizontal scaling');
     } catch (error) {
+        await disposeAdapter?.().catch(cleanupError => Logger.warn('[Socket.IO] Adapter cleanup failed', { error: cleanupError }));
         Logger.warn('[Socket.IO] Redis adapter not available, running in single-instance mode', { error });
     }
 
     setIO(io);
+    onShutdown(() => new Promise<void>(resolve => { io.close(() => resolve()); }));
 
     const chatService = new ChatService(io);
 

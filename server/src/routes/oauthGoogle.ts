@@ -7,7 +7,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { AdsService } from '../services/ads';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
-import { buildCallbackUrl, buildFrontendUrl } from './oauthHelpers';
+import { buildCallbackUrl, buildFrontendUrl, createSignedOauthState, verifySignedOauthState } from './oauthHelpers';
 import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 const CALLBACK_SUFFIX = 'google/callback';
@@ -41,7 +41,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
             const frontendRedirect = sanitizeFrontendRedirect(query.redirect);
             const reconnectId = query.reconnectId;
 
-            const state = Buffer.from(JSON.stringify({ accountId, frontendRedirect, reconnectId })).toString('base64url');
+            const state = await createSignedOauthState({ accountId, frontendRedirect, reconnectId, provider: 'GOOGLE_ADS' });
             const callbackUrl = buildCallbackUrl(request, CALLBACK_SUFFIX);
             const authUrl = await AdsService.getGoogleAuthUrl(callbackUrl, state);
             return { authUrl };
@@ -68,10 +68,8 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'missing_params' }));
             }
 
-            let stateData: { accountId: string; frontendRedirect: string; reconnectId?: string };
-            try {
-                stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
-            } catch {
+            const stateData = await verifySignedOauthState<{ accountId: string; frontendRedirect: string; reconnectId?: string; provider: string }>(state);
+            if (!stateData || stateData.provider !== 'GOOGLE_ADS' || !stateData.accountId) {
                 return reply.redirect(buildFrontendUrl(DEFAULT_MARKETING_REDIRECT, { error: 'invalid_state' }));
             }
 
@@ -81,7 +79,7 @@ const oauthGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
             // If reconnecting an existing account, update its tokens
             if (stateData.reconnectId) {
-                await AdsService.updateAccountTokens(stateData.reconnectId, {
+                await AdsService.updateAccountTokens(stateData.accountId, stateData.reconnectId, {
                     accessToken: tokens.accessToken,
                     ...(tokens.refreshToken ? { refreshToken: tokens.refreshToken } : {}),
                 });

@@ -9,6 +9,15 @@ import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { REVENUE_STATUSES } from '../constants/orderStatus';
 
+function positiveNumber(value: unknown): number | null {
+    const number = typeof value === 'number' ? value : typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : NaN;
+    return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+}
+
 interface AtRiskProduct {
     id: string;
     wooId: number;
@@ -24,11 +33,12 @@ interface AtRiskProduct {
  * Returns at-risk products even if InventorySettings haven't been configured.
  */
 export async function checkInventoryHealth(accountId: string): Promise<AtRiskProduct[]> {
+    if (!accountId?.trim()) throw new Error('Account ID required');
     // Get Inventory Settings (use defaults if not configured)
     const settings = await prisma.inventorySettings.findUnique({ where: { accountId } });
 
     // Use default threshold of 14 days if settings don't exist
-    const thresholdDays = settings?.lowStockThresholdDays ?? 14;
+    const thresholdDays = positiveNumber(settings?.lowStockThresholdDays) ?? 14;
 
     // Get Sales Data (Last 30 Days) from DB
     const thirtyDaysAgo = new Date();
@@ -45,13 +55,23 @@ export async function checkInventoryHealth(accountId: string): Promise<AtRiskPro
 
     // Aggregate Sales Volume (Map<WooID, Qty>)
     const salesMap = new Map<number, number>();
+    const variationSales = new Map<string, number>();
     for (const order of recentOrders) {
         const data = order.rawData as any;
-        if (Array.isArray(data.line_items)) {
+        if (Array.isArray(data?.line_items)) {
             for (const item of data.line_items) {
-                const pid = item.product_id;
-                const qty = Number(item.quantity) || 0;
-                salesMap.set(pid, (salesMap.get(pid) || 0) + qty);
+                if (!item || typeof item !== 'object') continue;
+                const pid = positiveNumber(item.product_id);
+                const qty = positiveNumber(item.quantity);
+                if (!pid || !Number.isInteger(pid) || !qty) continue;
+                const total = (salesMap.get(pid) || 0) + qty;
+                if (Number.isFinite(total)) salesMap.set(pid, total);
+                const vid = positiveNumber(item.variation_id);
+                if (vid && Number.isInteger(vid)) {
+                    const key = `${pid}:${vid}`;
+                    const variantTotal = (variationSales.get(key) || 0) + qty;
+                    if (Number.isFinite(variantTotal)) variationSales.set(key, variantTotal);
+                }
             }
         }
     }
@@ -67,16 +87,16 @@ export async function checkInventoryHealth(accountId: string): Promise<AtRiskPro
     for (const p of products) {
         const raw = p.rawData as any;
         // Prioritize materialized DB field, fall back to rawData
-        const managesStock = p.manageStock || raw?.manage_stock;
+        const managesStock = p.manageStock ?? raw?.manage_stock;
         const stock = p.stockQuantity ?? raw?.stock_quantity;
-        if (!managesStock || typeof stock !== 'number') continue;
+        if (managesStock !== true || typeof stock !== 'number' || !Number.isFinite(stock)) continue;
 
         const sold30 = salesMap.get(p.wooId) || 0;
 
         if (sold30 <= 0) continue; // No velocity
 
         const dailyVelocity = sold30 / 30;
-        const daysRemaining = stock / dailyVelocity;
+        const daysRemaining = Math.max(0, stock) / dailyVelocity;
 
         if (daysRemaining < thresholdDays) {
             atRisk.push({
@@ -108,12 +128,12 @@ export async function checkInventoryHealth(accountId: string): Promise<AtRiskPro
 
     for (const v of variations) {
         const stock = v.stockQuantity ?? 0;
-        // Variant sales are tracked under the parent product_id in WooCommerce orders
-        const sold30 = salesMap.get(v.product.wooId) || 0;
+        if (!Number.isFinite(stock)) continue;
+        const sold30 = variationSales.get(`${v.product.wooId}:${v.wooId}`) || 0;
         if (sold30 <= 0) continue;
 
         const dailyVelocity = sold30 / 30;
-        const daysRemaining = stock / dailyVelocity;
+        const daysRemaining = Math.max(0, stock) / dailyVelocity;
 
         if (daysRemaining < thresholdDays) {
             atRisk.push({
@@ -136,6 +156,7 @@ export async function checkInventoryHealth(accountId: string): Promise<AtRiskPro
  * Sends email alerts to configured recipients when products are running low.
  */
 export async function sendLowStockAlerts(accountId: string): Promise<void> {
+    if (!accountId?.trim()) throw new Error('Account ID required');
     const settings = await prisma.inventorySettings.findUnique({ where: { accountId } });
     if (!settings || !settings.isEnabled || settings.alertEmails.length === 0) return;
 
@@ -149,7 +170,7 @@ export async function sendLowStockAlerts(accountId: string): Promise<void> {
     // Construct Email Content
     const tableRows = atRisk.slice(0, 15).map(p => `
         <tr>
-            <td style="padding: 8px;">${p.name}</td>
+            <td style="padding: 8px;">${escapeHtml(p.name)}</td>
             <td style="padding: 8px;">${p.stock}</td>
             <td style="padding: 8px;">${p.daysRemaining} days</td>
         </tr>
@@ -171,7 +192,7 @@ export async function sendLowStockAlerts(accountId: string): Promise<void> {
             </tbody>
         </table>
         ${atRisk.length > 15 ? `<p>...and ${atRisk.length - 15} more.</p>` : ''}
-        <p><a href="${process.env.APP_URL || 'http://localhost:5173'}/inventory">Manage Inventory</a></p>
+        <p><a href="${escapeHtml(process.env.APP_URL || 'http://localhost:5173')}/inventory">Manage Inventory</a></p>
     `;
 
     // Resolve default email account

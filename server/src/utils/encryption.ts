@@ -39,7 +39,8 @@ export const decrypt = (text: string): string => {
     const [ivHex, tagHex, encryptedHex] = parts;
 
     const isValidHex = (s: string) => /^[0-9a-fA-F]+$/.test(s);
-    if (!isValidHex(ivHex) || !isValidHex(tagHex) || !isValidHex(encryptedHex)) {
+    // AES-GCM can authenticate an empty plaintext, which has an empty ciphertext segment.
+    if (!isValidHex(ivHex) || !isValidHex(tagHex) || (encryptedHex !== '' && !isValidHex(encryptedHex))) {
         Logger.warn('[encryption] Value contains colons but is not encrypted, treating as plain-text');
         return text;
     }
@@ -57,4 +58,3 @@ export const decrypt = (text: string): string => {
         throw new Error('Decryption failed - encryption key mismatch or corrupted data');
     }
 };
-

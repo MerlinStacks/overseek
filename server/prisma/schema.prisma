@@ -21,6 +21,9 @@ model User {
   avatarUrl    String?
   shiftStart   String? // e.g. "09:00"
   shiftEnd     String? // e.g. "17:00"
+  timezone     String? // Personal display timezone; null follows the browser
+  dateFormat   String? // dmy, mdy, ymd; null preserves the default display
+  timeFormat   String? // 12h, 24h; null preserves the default display
   emailSignature String? @db.Text // Rich HTML email signature for inbox replies
   isSuperAdmin Boolean  @default(false)
   

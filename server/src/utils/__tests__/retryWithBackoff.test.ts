@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
     retryWithBackoff,
     isRetryableError,
-    calculateBackoffDelay
+    calculateBackoffDelay,
+    isCredentialError,
+    isMaintenanceMode,
+    getRetryAfterSeconds
 } from '../retryWithBackoff';
 
 // Mock the logger to avoid actual logging during tests
@@ -46,6 +49,35 @@ describe('isRetryableError', () => {
     it('returns false for non-retryable errors', () => {
         expect(isRetryableError({ message: 'Invalid JSON' })).toBe(false);
         expect(isRetryableError(new Error('Something went wrong'))).toBe(false);
+    });
+});
+
+describe('additional retry regression coverage', () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+    it.each([[0, 900], [0.5, 1000], [0.999, 1100]])('uses deterministic jitter for random value %s', (random, delay) => {
+        vi.spyOn(Math, 'random').mockReturnValue(random);
+        expect(calculateBackoffDelay(0, 1000, 30000)).toBe(delay);
+    });
+    it('applies the configured cap before jitter', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.5);
+        expect(calculateBackoffDelay(20, 1000, 5000)).toBe(5000);
+    });
+    it('detects credential errors and network failures nested in causes', () => {
+        expect(isCredentialError({ status: 401 })).toBe(true);
+        expect(isCredentialError({ response: { status: 403 } })).toBe(true);
+        expect(isCredentialError({ status: 500 })).toBe(false);
+        expect(isRetryableError({ cause: { code: 'EAI_AGAIN' } })).toBe(true);
+        expect(isRetryableError(null)).toBe(false);
+    });
+    it('extracts maintenance Retry-After and skips retries', async () => {
+        const error = { response: { status: 503, headers: { 'retry-after': ['120'] } }, message: 'Maintenance' };
+        expect(isMaintenanceMode(error)).toBe(true); expect(getRetryAfterSeconds(error)).toBe(120);
+        const fn = vi.fn().mockRejectedValue(error);
+        await expect(retryWithBackoff(fn)).rejects.toBe(error); expect(fn).toHaveBeenCalledOnce();
+    });
+    it('makes only one attempt when retries are disabled', async () => {
+        const error = { status: 500 }; const fn = vi.fn().mockRejectedValue(error);
+        await expect(retryWithBackoff(fn, { maxRetries: 0 })).rejects.toBe(error); expect(fn).toHaveBeenCalledOnce();
     });
 });
 

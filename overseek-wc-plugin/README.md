@@ -2,7 +2,7 @@
 
 A WordPress plugin that connects your WooCommerce store to your self-hosted OverSeek server.
 
-Current version: **2.25.7**.
+Current version: **2.25.8**.
 
 ### Simple delivery estimate setup
 
@@ -163,6 +163,14 @@ revalidation before reactivation. See `docs/companion-2.23.1-release.md` for the
 candidate validation gate and upgrade sequence.
 
 ## Changelog
+
+### 2.25.8 - 2026-10-20
+
+- Refresh storefront reviews and the preference centre layout, including mobile styling.
+- Keep store and product ratings separate, display honest empty-review states, and show fractional stars in compact ratings.
+- Add supplied WebP achievement badges, including Platinum transparency and updated verified-review milestones.
+- Display release notes using native WordPress plugin-details headings, paragraphs and lists instead of a preformatted scrolling box.
+- Preserve classic and Blocks checkout support, SLDevs updates and existing automatic-update preferences.
 
 ### 2.25.7 - 2026-10-18
 

@@ -2,7 +2,6 @@
 
 import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
-import { StockValidationService } from './StockValidationService';
 import type { Prisma } from '@prisma/client';
 
 
@@ -15,7 +14,7 @@ export interface CreateInternalProductData {
     binLocation?: string;
     mainImage?: string;
     images?: string[];
-    supplierId?: string;
+    supplierId?: string | null;
 }
 
 export interface UpdateInternalProductData {
@@ -27,7 +26,7 @@ export interface UpdateInternalProductData {
     binLocation?: string;
     mainImage?: string;
     images?: string[];
-    supplierId?: string;
+    supplierId?: string | null;
 }
 
 export interface InternalProductWithSupplier {
@@ -50,6 +49,9 @@ export interface InternalProductWithSupplier {
 
 
 export class InternalProductsService {
+    private static requireAccount(accountId: string): void {
+        if (!accountId?.trim()) throw new Error('Account ID required');
+    }
 
 
     static async list(
@@ -62,6 +64,8 @@ export class InternalProductsService {
         }
     ): Promise<{ items: InternalProductWithSupplier[]; total: number }> {
         const { search, supplierId, limit = 100, offset = 0 } = options || {};
+        this.requireAccount(accountId);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 200 || !Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new Error('Invalid product pagination');
 
         const where: Prisma.InternalProductWhereInput = {
             accountId,
@@ -101,9 +105,10 @@ export class InternalProductsService {
     }
 
 
-    static async getById(id: string): Promise<InternalProductWithSupplier | null> {
-        const item = await prisma.internalProduct.findUnique({
-            where: { id },
+    static async getById(id: string, accountId: string): Promise<InternalProductWithSupplier | null> {
+        this.requireAccount(accountId);
+        const item = await prisma.internalProduct.findFirst({
+            where: { id, accountId },
             include: {
                 supplier: { select: { id: true, name: true } },
                 _count: { select: { bomItems: true } }
@@ -125,7 +130,7 @@ export class InternalProductsService {
         accountId: string,
         data: CreateInternalProductData
     ): Promise<InternalProductWithSupplier> {
-
+        this.requireAccount(accountId);
         if (data.supplierId) {
             const supplier = await prisma.supplier.findFirst({
                 where: { id: data.supplierId, accountId }
@@ -172,10 +177,11 @@ export class InternalProductsService {
     static async update(
         id: string,
         data: UpdateInternalProductData,
-        callerAccountId?: string
+        callerAccountId: string
     ): Promise<InternalProductWithSupplier> {
+        this.requireAccount(callerAccountId);
         const existing = await prisma.internalProduct.findUnique({
-            where: { id },
+            where: { id, accountId: callerAccountId },
             select: { accountId: true, stockQuantity: true }
         });
 
@@ -197,7 +203,7 @@ export class InternalProductsService {
         const stockChanged = data.stockQuantity !== undefined && data.stockQuantity !== existing.stockQuantity;
 
         const item = await prisma.internalProduct.update({
-            where: { id },
+            where: { id, accountId: callerAccountId },
             data: {
                 ...(data.name !== undefined && { name: data.name }),
                 ...(data.sku !== undefined && { sku: data.sku || null }),
@@ -236,9 +242,12 @@ export class InternalProductsService {
     }
 
 
-    static async delete(id: string, callerAccountId?: string): Promise<{ success: boolean; bomUsageWarning?: number }> {
-        const existing = await prisma.internalProduct.findUnique({
-            where: { id },
+    static async delete(id: string, callerAccountId: string): Promise<{ success: boolean; bomUsageWarning?: number }> {
+        this.requireAccount(callerAccountId);
+        return prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "InternalProduct" WHERE id = ${id} AND "accountId" = ${callerAccountId} FOR UPDATE`;
+        const existing = await tx.internalProduct.findUnique({
+            where: { id, accountId: callerAccountId },
             include: { _count: { select: { bomItems: true } } }
         });
 
@@ -254,7 +263,7 @@ export class InternalProductsService {
             };
         }
 
-        await prisma.internalProduct.delete({ where: { id } });
+        await tx.internalProduct.delete({ where: { id, accountId: callerAccountId } });
 
         Logger.info('[InternalProductsService] Deleted internal product', {
             productId: id,
@@ -262,12 +271,16 @@ export class InternalProductsService {
         });
 
         return { success: true };
+        });
     }
 
 
-    static async forceDelete(id: string, callerAccountId?: string): Promise<{ success: boolean; bomItemsRemoved: number }> {
-        const existing = await prisma.internalProduct.findUnique({
-            where: { id },
+    static async forceDelete(id: string, callerAccountId: string): Promise<{ success: boolean; bomItemsRemoved: number }> {
+        this.requireAccount(callerAccountId);
+        const { bomItemsRemoved, parents } = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "InternalProduct" WHERE id = ${id} AND "accountId" = ${callerAccountId} FOR UPDATE`;
+        const existing = await tx.internalProduct.findUnique({
+            where: { id, accountId: callerAccountId },
             include: { _count: { select: { bomItems: true } } }
         });
 
@@ -277,13 +290,15 @@ export class InternalProductsService {
 
 
         const bomItemsRemoved = existing._count.bomItems;
+        const parents = await tx.bOMItem.findMany({ where: { internalProductId: id, bom: { product: { accountId: callerAccountId } } }, select: { bom: { select: { productId: true, variationId: true } } } });
+        if (parents.length !== bomItemsRemoved) throw new Error('Cannot delete a product with inconsistent BOM ownership');
         if (bomItemsRemoved > 0) {
-            await prisma.bOMItem.deleteMany({
-                where: { internalProductId: id }
+            await tx.bOMItem.deleteMany({
+                where: { internalProductId: id, bom: { product: { accountId: callerAccountId } } }
             });
         }
 
-        await prisma.internalProduct.delete({ where: { id } });
+        await tx.internalProduct.delete({ where: { id, accountId: callerAccountId } });
 
         Logger.info('[InternalProductsService] Force deleted internal product', {
             productId: id,
@@ -291,6 +306,20 @@ export class InternalProductsService {
             bomItemsRemoved
         });
 
+        return { bomItemsRemoved, parents };
+        });
+        // Discover dependencies before removing the links, then recalculate after commit.
+        if (parents.length) {
+        const { BOMInventorySyncService } = await import('./BOMInventorySyncService');
+        const { BOMConsumptionService } = await import('./BOMConsumptionService');
+        const unique = new Map(parents.map(item => [`${item.bom.productId}:${item.bom.variationId}`, item.bom]));
+        for (const parent of unique.values()) {
+            try {
+                await BOMInventorySyncService.syncProductToWoo(callerAccountId, parent.productId, parent.variationId);
+                await BOMConsumptionService.cascadeSyncAffectedProducts(callerAccountId, parent.productId, parent.variationId);
+            } catch (error) { Logger.error('Failed to sync BOM after internal product deletion', { accountId: callerAccountId, parent, error }); }
+        }
+        }
         return { success: true, bomItemsRemoved };
     }
 
@@ -300,10 +329,14 @@ export class InternalProductsService {
         adjustment: number,
         reason: string,
         source: 'USER' | 'SYSTEM_BOM' | 'SYSTEM_SYNC' = 'USER',
-        callerAccountId?: string
+        callerAccountId = ''
     ): Promise<InternalProductWithSupplier> {
-        const existing = await prisma.internalProduct.findUnique({
-            where: { id },
+        this.requireAccount(callerAccountId);
+        if (!Number.isInteger(adjustment) || Math.abs(adjustment) > 2147483647 || !reason.trim()) throw new Error('Invalid stock adjustment');
+        const { item, existing, previousStock, newStock } = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "InternalProduct" WHERE id = ${id} AND "accountId" = ${callerAccountId} FOR UPDATE`;
+        const existing = await tx.internalProduct.findUnique({
+            where: { id, accountId: callerAccountId },
             select: { accountId: true, stockQuantity: true, name: true }
         });
 
@@ -313,9 +346,10 @@ export class InternalProductsService {
 
         const previousStock = existing.stockQuantity;
         const newStock = Math.max(0, previousStock + adjustment);
+        if (newStock > 2147483647) throw new Error('Stock quantity exceeds numeric range');
 
-        const item = await prisma.internalProduct.update({
-            where: { id },
+        const item = await tx.internalProduct.update({
+            where: { id, accountId: callerAccountId },
             data: { stockQuantity: newStock },
             include: {
                 supplier: { select: { id: true, name: true } },
@@ -324,20 +358,9 @@ export class InternalProductsService {
         });
 
 
-        await StockValidationService.logStockChange(
-            existing.accountId,
-            id,
-            source,
-            previousStock,
-            newStock,
-            'PASSED',
-            {
-                reason,
-                adjustment,
-                productType: 'INTERNAL',
-                productName: existing.name
-            }
-        );
+        await tx.auditLog.create({ data: { accountId: callerAccountId, userId: null, action: 'UPDATE', resource: 'PRODUCT', resourceId: id, source, previousValue: { stock_quantity: previousStock }, validationStatus: 'PASSED', details: { stock_quantity: newStock, reason, adjustment, productType: 'INTERNAL', productName: existing.name } } });
+        return { item, existing, previousStock, newStock };
+        });
 
         Logger.info('[InternalProductsService] Stock adjusted', {
             productId: id,
@@ -391,6 +414,7 @@ export class InternalProductsService {
         sku: string | null;
         stockQuantity: number;
     }>> {
+        this.requireAccount(accountId);
         return prisma.internalProduct.findMany({
             where: { accountId },
             select: {

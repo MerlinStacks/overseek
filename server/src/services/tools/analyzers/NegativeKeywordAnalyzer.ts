@@ -1,25 +1,25 @@
 /**
  * Negative Keyword Analyzer
  *
- * Identifies wasted ad spend on irrelevant search terms by cross-referencing
- * Google Ads search term reports with Search Console data and the WooCommerce
- * product catalog.
+ * Flags paid targeting keywords for human review using catalog-word overlap.
+ * This is not an actual search-term report or proof of irrelevant traffic.
  *
  * Why this matters: typical ecommerce accounts waste 5-15% of search spend
  * on terms that never convert and are unrelated to inventory.
  */
 
 import { Logger } from '../../../utils/logger';
+import { createHash } from 'node:crypto';
 import { prisma } from '../../../utils/prisma';
 import { GoogleAdsService } from '../../ads/GoogleAdsService';
 import { SearchKeywordInsight } from '../../ads/types';
 import {
     ActionableRecommendation,
-    KeywordAction,
-    createKeywordHeadline
+    KeywordAction
 } from '../types/ActionableTypes';
 
 interface NegativeKeywordResult {
+    currency?: string;
     hasData: boolean;
     suggestions: ActionableRecommendation[];
     summary: {
@@ -40,6 +40,7 @@ export class NegativeKeywordAnalyzer {
      * 3. Not related to any product in the WooCommerce catalog
      */
     static async analyze(accountId: string): Promise<NegativeKeywordResult> {
+        if (!accountId?.trim()) throw new Error('Account ID required');
         const result: NegativeKeywordResult = {
             hasData: false,
             suggestions: [],
@@ -60,6 +61,10 @@ export class NegativeKeywordAnalyzer {
             ]);
 
             if (allKeywords.length === 0) return result;
+            const currencies = new Set(allKeywords.map(kw => kw.currency?.trim().toUpperCase()));
+            if (currencies.size !== 1 || !/^[A-Z]{3}$/.test([...currencies][0] || '')) throw new Error('Negative keyword analysis requires one known currency');
+            result.currency = [...currencies][0];
+            if (!allKeywords.every(kw => ['spend', 'conversions', 'clicks', 'ctr', 'cpc'].every(key => typeof kw[key as keyof SearchKeywordInsight] === 'number' && Number.isFinite(kw[key as keyof SearchKeywordInsight]) && Number(kw[key as keyof SearchKeywordInsight]) >= 0))) throw new Error('Invalid paid keyword metrics');
 
             result.hasData = true;
             result.summary.totalKeywordsAnalyzed = allKeywords.length;
@@ -82,6 +87,7 @@ export class NegativeKeywordAnalyzer {
             for (const candidate of candidates) {
                 const kw = candidate.keyword;
                 const action: KeywordAction = {
+                    adAccountId: kw.adAccountId,
                     actionType: 'add_negative',
                     keyword: kw.keywordText,
                     matchType: 'exact',
@@ -92,25 +98,33 @@ export class NegativeKeywordAnalyzer {
                     campaignId: kw.campaignId,
                     campaignName: kw.campaignName
                 };
+                const start = Date.parse(kw.dateStart);
+                const end = Date.parse(kw.dateStop);
+                const periodDays = (end - start) / 86400000 + 1;
+                if (!Number.isFinite(periodDays) || periodDays < 1 || periodDays > 366) throw new Error('Invalid keyword reporting period');
+                const projectedSpend = kw.spend * 30 / periodDays;
+                if (!Number.isFinite(projectedSpend)) throw new Error('Keyword spend exceeds numeric range');
+                const money = (amount: number) => `${result.currency} ${amount.toFixed(2)}`;
 
                 result.suggestions.push({
-                    id: `neg_kw_${kw.keywordText.replace(/\s+/g, '_').substring(0, 20)}`,
+                    id: `neg_kw_${createHash('sha256').update(JSON.stringify([accountId, kw.adAccountId, kw.campaignId, kw.adGroupId, kw.keywordId, kw.keywordText, kw.matchType])).digest('hex').slice(0, 24)}`,
                     priority: kw.spend >= 20 ? 1 : kw.spend >= 10 ? 2 : 3,
                     category: 'optimization',
-                    headline: `🛑 ${createKeywordHeadline(action)}`,
-                    explanation: `"${kw.keywordText}" spent $${kw.spend.toFixed(2)} with ${kw.clicks} clicks but zero conversions. ` +
-                        `This keyword has low relevance to your product catalog (${candidate.relevanceScore}% match).`,
+                    headline: `Review negative keyword candidate: "${kw.keywordText}"`,
+                    explanation: `"${kw.keywordText}" spent ${money(kw.spend)} with ${kw.clicks} clicks and no reported conversions. ` +
+                        `Catalog-word overlap is ${candidate.relevanceScore}%, not a measured relevance score. Review actual search terms, brand names and conversion lag before blocking traffic. Projected spend is not guaranteed savings.`,
                     dataPoints: [
-                        `$${kw.spend.toFixed(2)} spent over 28 days`,
+                        `${money(kw.spend)} spent from ${kw.dateStart} to ${kw.dateStop}`,
                         `${kw.clicks} clicks, 0 conversions`,
-                        `${kw.ctr.toFixed(1)}% CTR at $${kw.cpc.toFixed(2)} CPC`,
+                        `${kw.ctr.toFixed(1)}% CTR at ${money(kw.cpc)} CPC`,
                         `Campaign: ${kw.campaignName}`,
-                        `Catalog relevance: ${candidate.relevanceScore}%`
+                        `Catalog-word overlap: ${candidate.relevanceScore}%`,
+                        `Projected 30-day spend exposure: ${money(projectedSpend)} (not guaranteed savings)`
                     ],
                     action,
                     confidence: this.calculateConfidence(kw, candidate.relevanceScore),
                     estimatedImpact: {
-                        spendChange: -kw.spend,
+                        spendChange: -projectedSpend,
                         timeframe: '30d'
                     },
                     platform: 'google',
@@ -118,7 +132,8 @@ export class NegativeKeywordAnalyzer {
                     tags: ['negative-keyword', 'waste-reduction', 'optimization']
                 });
 
-                result.summary.estimatedMonthlySavings += kw.spend;
+                result.summary.estimatedMonthlySavings += projectedSpend;
+                if (!Number.isFinite(result.summary.estimatedMonthlySavings)) throw new Error('Keyword spend exceeds numeric range');
             }
 
             result.summary.negativeCandidates = result.suggestions.length;
@@ -126,43 +141,42 @@ export class NegativeKeywordAnalyzer {
 
         } catch (error) {
             Logger.error('NegativeKeywordAnalyzer failed', { error, accountId });
+            throw error;
         }
 
         return result;
     }
 
     /** Aggregate search keywords from all Google Ads accounts */
-    private static async getAllPaidKeywords(adAccountIds: string[]): Promise<SearchKeywordInsight[]> {
+    private static async getAllPaidKeywords(adAccountIds: string[]): Promise<Array<SearchKeywordInsight & { adAccountId: string }>> {
         const results = await Promise.all(
-            adAccountIds.map(id => GoogleAdsService.getSearchKeywords(id, 28, 500).catch(() => []))
+            adAccountIds.map(async adAccountId => {
+                const rows = await GoogleAdsService.getSearchKeywords(adAccountId, 28, 500, { strict: true });
+                if (rows.length >= 500) throw new Error('Paid keywords reached the analysis limit');
+                return rows.map(row => ({ ...row, adAccountId }));
+            })
         );
-        return results.flat();
+        const unique = new Map(results.flat().map(row => [JSON.stringify([row.adAccountId, row.campaignId, row.adGroupId, row.keywordId, row.keywordText, row.matchType]), row]));
+        return [...unique.values()];
     }
 
     /**
      * Extract product-related terms from WooCommerce catalog.
-     * Returns a normalized set of words from product names and categories.
+     * Returns a normalized set of words from product names and SKUs.
      */
     private static async getProductCatalogTerms(accountId: string): Promise<Set<string>> {
         const terms = new Set<string>();
 
-        try {
-            const products = await prisma.wooProduct.findMany({
-                where: { accountId },
-                select: { name: true, sku: true }
-            });
+        const products = await prisma.wooProduct.findMany({
+            where: { accountId },
+            select: { name: true, sku: true }
+        });
 
-            for (const product of products) {
-                const words = (product.name + ' ' + (product.sku || ''))
-                    .toLowerCase()
-                    .replace(/[^\w\s]/g, ' ')
-                    .split(/\s+/)
-                    .filter(w => w.length > 2);
-                for (const word of words) terms.add(word);
-            }
-        } catch (error) {
-            Logger.warn('Failed to fetch product catalog terms', { error });
+        for (const product of products) {
+            const words = this.words(product.name + ' ' + (product.sku || ''));
+            for (const word of words) terms.add(word);
         }
+        if (terms.size === 0) throw new Error('Product catalog terms are unavailable; negative keyword suggestions were withheld');
 
         return terms;
     }
@@ -172,11 +186,15 @@ export class NegativeKeywordAnalyzer {
      * Higher = more relevant (should NOT be negated).
      */
     private static scoreRelevance(keywordText: string, productTerms: Set<string>): number {
-        const words = keywordText.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2);
-        if (words.length === 0) return 0;
+        const words = this.words(keywordText);
+        if (words.length === 0) return 100;
 
         const matchedWords = words.filter(w => productTerms.has(w));
         return Math.round((matchedWords.length / words.length) * 100);
+    }
+
+    private static words(text: string): string[] {
+        return [...new Set(text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(word => word.length >= 2))];
     }
 
     /** Confidence score for a negative keyword recommendation */
@@ -196,6 +214,6 @@ export class NegativeKeywordAnalyzer {
         if (relevanceScore === 0) score += 20;
         else if (relevanceScore < 20) score += 10;
 
-        return Math.min(95, score);
+        return Math.min(60, score); // Lexical overlap alone cannot establish irrelevance.
     }
 }

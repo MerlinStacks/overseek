@@ -584,14 +584,15 @@ class OverSeek_Reviews {
 		$rating  = isset( $summary['average'] ) ? (float) $summary['average'] : 0.0;
 
 		if ( $total <= 0 ) {
-			return '';
+			$label = esc_html__( 'Be the first to review', 'overseek-wc' );
+			return $this->truthy( $atts['link'] )
+				? '<a class="os-review-stars-summary__link woocommerce-review-link" href="' . esc_url( get_permalink( $product_id ) . '#review_form' ) . '">' . $label . '</a>'
+				: '<span class="os-review-stars-summary">' . $label . '</span>';
 		}
 
 		$colors = $this->get_review_brand_colors();
 		$color  = ! empty( $atts['color_stars'] ) ? sanitize_hex_color( (string) $atts['color_stars'] ) : $colors['primary'];
 		$style = $color ? ' style="--os-review-star-color:' . esc_attr( $color ) . '"' : '';
-		$full  = (int) floor( max( 0.0, min( 5.0, $rating ) ) );
-		$stars = str_repeat( '★', $full ) . str_repeat( '☆', 5 - $full );
 		$count = '';
 		if ( $this->truthy( $atts['show_count'] ) ) {
 			$count = sprintf(
@@ -600,11 +601,7 @@ class OverSeek_Reviews {
 			);
 		}
 		$html  = '<span class="os-review-stars-summary"' . $style . '>'
-			. '<span class="os-review-stars" aria-label="'
-			. esc_attr( sprintf( 'Rated %.1f out of 5 from %d reviews', $rating, $total ) )
-			. '">'
-			. esc_html( $stars )
-			. '</span>'
+			. OverSeek_Review_Renderer::render_stars( $rating )
 			. $count
 			. '</span>';
 
@@ -940,12 +937,16 @@ class OverSeek_Reviews {
 	private function get_summary_context( array $args, array $summary ): array {
 		$product_id      = ! empty( $args['product_id'] ) ? (int) $args['product_id'] : 0;
 		$product_summary = $summary;
+		// A store rating contains store reviews only, never product-review aggregates.
+		$store_summary = $this->get_summary( [
+			'review_source'   => 'shop',
+			'product_reviews' => 'false',
+			'shop_reviews'    => 'true',
+			'status'          => 'approved',
+		] );
 
 		if ( $product_id > 0 ) {
-			$store_args = $args;
-			unset( $store_args['product_id'] );
 			$product_summary = $summary;
-			$summary         = $this->get_summary( $store_args );
 
 			$product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : null;
 			if ( $product ) {
@@ -968,7 +969,7 @@ class OverSeek_Reviews {
 		return [
 			'store_name'      => get_bloginfo( 'name' ),
 			'product_summary' => $product_summary,
-			'store_summary'   => $summary,
+			'store_summary'   => $store_summary,
 			'trust_badges'    => $this->get_trust_badges(),
 		];
 	}
@@ -996,19 +997,19 @@ class OverSeek_Reviews {
 		$published_percentage = $active > 0 ? ( $counts['approved'] / $active ) * 100 : 0.0;
 
 		if ( $show_transparency && $published_percentage >= 30 ) {
-			$tier = $published_percentage >= 90 ? 'Gold' : ( $published_percentage >= 60 ? 'Silver' : 'Bronze' );
+			$tier = $published_percentage >= 95 ? 'Platinum' : ( $published_percentage >= 90 ? 'Gold' : ( $published_percentage >= 60 ? 'Silver' : 'Bronze' ) );
 			$badges[] = [
 				'type'       => 'transparency',
 				'tier'       => strtolower( $tier ),
 				'label'      => sprintf( __( 'Transparency %s', 'overseek-wc' ), $tier ),
 				'description'=> sprintf( __( '%d%% of active reviews published', 'overseek-wc' ), (int) round( $published_percentage ) ),
-				'asset_url'  => $this->get_review_badge_asset_url( 'Transparency - ' . $tier . '.svg' ),
+				'asset_url'  => $this->get_review_badge_asset_url( 'transparency-' . strtolower( $tier ) . '.webp' ),
 			];
 		}
 
 		if ( $show_verified ) {
 			$verified_tier = 0;
-			foreach ( [ 10000, 2500, 1000, 500, 250, 100, 50 ] as $threshold ) {
+			foreach ( [ 5000, 3000, 1500, 1000, 750, 500, 25, 5 ] as $threshold ) {
 				if ( $counts['verified'] >= $threshold ) {
 					$verified_tier = $threshold;
 					break;
@@ -1020,7 +1021,7 @@ class OverSeek_Reviews {
 					'tier'       => (string) $verified_tier,
 					'label'      => sprintf( __( '%s+ verified reviews', 'overseek-wc' ), number_format_i18n( $verified_tier ) ),
 					'description'=> sprintf( _n( '%s verified review published', '%s verified reviews published', $counts['verified'], 'overseek-wc' ), number_format_i18n( $counts['verified'] ) ),
-					'asset_url'  => $this->get_review_badge_asset_url( 'Verified Reviews ' . $verified_tier . '.svg' ),
+					'asset_url'  => $this->get_review_badge_asset_url( 'verified-' . $verified_tier . '.webp' ),
 				];
 			}
 		}
@@ -1087,7 +1088,7 @@ class OverSeek_Reviews {
 	}
 
 	/**
-	 * Return a bundled badge URL when its supplied SVG asset is available.
+	 * Return a bundled badge URL when its supplied image asset is available.
 	 *
 	 * @param string $filename Asset filename.
 	 * @return string

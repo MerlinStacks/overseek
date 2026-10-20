@@ -12,7 +12,10 @@
  * tab view. Sub-sections are collapsible to avoid overwhelming the user.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useAccount } from '../../context/AccountContext';
+import { useAuth } from '../../context/AuthContext';
+import { formatDateSafe } from '../../utils/format';
 import {
     useCompetitors,
     useAddCompetitor,
@@ -29,8 +32,16 @@ import {
 
 /** Format a SERP position for display */
 function formatPosition(pos: number | null): string {
-    if (pos === null) return '—';
+    if (pos === null || !Number.isFinite(pos) || pos <= 0) return '—';
     return `#${Math.round(pos)}`;
+}
+
+function rankingPath(value: string | null): string {
+    if (!value) return '—';
+    try {
+        const url = new URL(value);
+        return ['https:', 'http:'].includes(url.protocol) ? url.pathname : 'URL unavailable';
+    } catch { return 'URL unavailable'; }
 }
 
 /** Get color class for a position value */
@@ -61,11 +72,18 @@ function directionIcon(dir: CompetitorMovement['direction']): string {
 }
 
 export function CompetitorTab() {
+    const { currentAccount } = useAccount();
+    const { token } = useAuth();
+    if (!currentAccount || !token) return <p role="status">Select an account to view competitors.</p>;
+    return <CompetitorContent key={JSON.stringify([currentAccount.id, token])} />;
+}
+
+function CompetitorContent() {
     const [newDomain, setNewDomain] = useState('');
     const [selectedCompetitorId, setSelectedCompetitorId] = useState<string | null>(null);
     const [activeView, setActiveView] = useState<'positions' | 'movement' | 'headtohead'>('positions');
 
-    const { data: competitorsData, isLoading: competitorsLoading } = useCompetitors();
+    const { data: competitorsData, isLoading: competitorsLoading, error: competitorsError, refetch: reloadCompetitors } = useCompetitors();
     const addCompetitor = useAddCompetitor();
     const removeCompetitor = useRemoveCompetitor();
     const refreshPositions = useRefreshCompetitorPositions();
@@ -73,9 +91,21 @@ export function CompetitorTab() {
     const competitors = competitorsData?.competitors ?? [];
     const selectedCompetitor = competitors.find((c: CompetitorDomain) => c.id === selectedCompetitorId) ?? null;
 
-    const { data: keywordsData, isLoading: keywordsLoading } = useCompetitorKeywords(selectedCompetitorId);
-    const { data: movementData, isLoading: movementLoading } = useCompetitorMovement(7);
-    const { data: headToHeadData, isLoading: h2hLoading } = useCompetitorHeadToHead(selectedCompetitor?.domain ?? null);
+    const { data: keywordsData, isLoading: keywordsLoading, error: keywordsError, refetch: reloadKeywords } = useCompetitorKeywords(selectedCompetitor?.id ?? null);
+    const { data: movementData, isLoading: movementLoading, error: movementError, refetch: reloadMovement } = useCompetitorMovement(7);
+    const { data: headToHeadData, isLoading: h2hLoading, error: h2hError, refetch: reloadComparison } = useCompetitorHeadToHead(selectedCompetitor?.domain ?? null);
+    const [saving, setSaving] = useState(false);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const pending = useRef(false);
+    const active = useRef(true);
+    useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+    const mutate = async (work: () => Promise<unknown>, success: () => void = () => {}) => {
+        if (pending.current) return;
+        pending.current = true; setSaving(true); setActionError(null);
+        try { await work(); if (active.current) success(); }
+        catch { if (active.current) setActionError('Could not save competitor changes or refresh positions. Please try again.'); }
+        finally { pending.current = false; if (active.current) setSaving(false); }
+    };
 
     const keywords = keywordsData?.keywords ?? [];
     const movements = movementData?.movements ?? [];
@@ -85,29 +115,35 @@ export function CompetitorTab() {
     const handleAdd = () => {
         const domain = newDomain.trim();
         if (!domain) return;
-        addCompetitor.mutate({ domain }, {
-            onSuccess: () => setNewDomain(''),
-        });
+        void mutate(() => addCompetitor.mutateAsync({ domain }), () => setNewDomain(''));
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 text-slate-800 dark:text-slate-100">
+            {actionError && <p role="alert" className="text-red-600 dark:text-red-400">{actionError}</p>}
+            {saving && <p role="status">Saving competitor changes or checking positions...</p>}
+            {competitorsError && <p role="alert">Could not load competitors. <button type="button" onClick={() => void reloadCompetitors()}>Retry competitors</button></p>}
             {/* ── Header: Add Competitor + Refresh ── */}
             <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1 flex gap-2">
                     <input
                         id="competitor-domain-input"
+                        aria-label="Competitor domain" disabled={saving}
                         type="text"
                         placeholder="competitor.com"
                         value={newDomain}
                         onChange={e => setNewDomain(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                        className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                        onKeyDown={event => {
+                            if (event.key !== 'Enter' || event.repeat || event.nativeEvent.isComposing) return;
+                            event.preventDefault(); handleAdd();
+                        }}
+                        className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
                     />
                     <button
                         id="add-competitor-btn"
+                        type="button"
                         onClick={handleAdd}
-                        disabled={addCompetitor.isPending || !newDomain.trim()}
+                        disabled={saving || addCompetitor.isPending || !newDomain.trim()}
                         className="px-4 py-2 rounded-lg bg-sky-500/20 text-sky-400 text-sm font-medium hover:bg-sky-500/30 transition-colors disabled:opacity-50"
                     >
                         {addCompetitor.isPending ? 'Adding…' : 'Add'}
@@ -115,8 +151,9 @@ export function CompetitorTab() {
                 </div>
                 <button
                     id="refresh-competitor-positions-btn"
-                    onClick={() => refreshPositions.mutate()}
-                    disabled={refreshPositions.isPending || competitors.length === 0}
+                    type="button"
+                    onClick={() => void mutate(() => refreshPositions.mutateAsync())}
+                    disabled={saving || refreshPositions.isPending || competitors.length === 0 || !!competitorsError}
                     className="px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 text-sm font-medium hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
                 >
                     {refreshPositions.isPending ? 'Checking SERPs…' : '🔄 Refresh Positions'}
@@ -125,8 +162,8 @@ export function CompetitorTab() {
 
             {/* ── Competitor Cards ── */}
             {competitorsLoading ? (
-                <div className="text-sm text-slate-400 text-center py-6">Loading competitors…</div>
-            ) : competitors.length === 0 ? (
+                <div role="status" className="text-sm text-slate-400 text-center py-6">Loading competitors…</div>
+            ) : competitorsError ? null : competitors.length === 0 ? (
                 <div className="text-center py-8 text-slate-400">
                     <p className="text-lg mb-1">No competitors tracked yet</p>
                     <p className="text-sm">Add a competitor domain above to start tracking their SERP positions.</p>
@@ -138,10 +175,12 @@ export function CompetitorTab() {
                             key={comp.id}
                             competitor={comp}
                             isSelected={comp.id === selectedCompetitorId}
+                            disabled={saving}
                             onSelect={() => setSelectedCompetitorId(comp.id === selectedCompetitorId ? null : comp.id)}
                             onRemove={() => {
-                                removeCompetitor.mutate(comp.id);
-                                if (selectedCompetitorId === comp.id) setSelectedCompetitorId(null);
+                                if (!pending.current && window.confirm(`Remove competitor "${comp.domain}"?`)) void mutate(() => removeCompetitor.mutateAsync(comp.id), () => {
+                                    if (selectedCompetitorId === comp.id) setSelectedCompetitorId(null);
+                                });
                             }}
                         />
                     ))}
@@ -153,6 +192,7 @@ export function CompetitorTab() {
                 <div className="flex gap-1 bg-white/5 rounded-lg p-1">
                     {(['positions', 'movement', 'headtohead'] as const).map(view => (
                         <button
+                            type="button" aria-pressed={activeView === view}
                             key={view}
                             onClick={() => setActiveView(view)}
                             className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeView === view
@@ -169,23 +209,23 @@ export function CompetitorTab() {
             )}
 
             {/* ── Position Table ── */}
-            {activeView === 'positions' && selectedCompetitorId && (
-                <PositionTable keywords={keywords} loading={keywordsLoading} competitor={selectedCompetitor} />
+            {activeView === 'positions' && selectedCompetitor && (
+                keywordsError ? <p role="alert">Could not load keyword positions. <button type="button" onClick={() => void reloadKeywords()}>Retry positions</button></p> : <PositionTable keywords={keywords} loading={keywordsLoading} competitor={selectedCompetitor} />
             )}
-            {activeView === 'positions' && !selectedCompetitorId && competitors.length > 0 && (
+            {activeView === 'positions' && !selectedCompetitor && competitors.length > 0 && (
                 <p className="text-sm text-slate-400 text-center py-6">Select a competitor above to view their keyword positions.</p>
             )}
 
             {/* ── Movement Feed ── */}
             {activeView === 'movement' && (
-                <MovementFeed movements={movements} loading={movementLoading} />
+                movementError ? <p role="alert">Could not load competitor movements. <button type="button" onClick={() => void reloadMovement()}>Retry movements</button></p> : <MovementFeed movements={movements} loading={movementLoading} />
             )}
 
             {/* ── Head-to-Head ── */}
-            {activeView === 'headtohead' && selectedCompetitorId && (
-                <HeadToHeadTable rows={headToHead} loading={h2hLoading} competitor={selectedCompetitor} />
+            {activeView === 'headtohead' && selectedCompetitor && (
+                h2hError ? <p role="alert">Could not load competitor comparison. <button type="button" onClick={() => void reloadComparison()}>Retry comparison</button></p> : <HeadToHeadTable rows={headToHead} loading={h2hLoading} competitor={selectedCompetitor} />
             )}
-            {activeView === 'headtohead' && !selectedCompetitorId && competitors.length > 0 && (
+            {activeView === 'headtohead' && !selectedCompetitor && competitors.length > 0 && (
                 <p className="text-sm text-slate-400 text-center py-6">Select a competitor above to see head-to-head comparison.</p>
             )}
         </div>
@@ -202,21 +242,23 @@ function CompetitorCard({
     isSelected,
     onSelect,
     onRemove,
+    disabled,
 }: {
     competitor: CompetitorDomain;
     isSelected: boolean;
     onSelect: () => void;
     onRemove: () => void;
+    disabled: boolean;
 }) {
     return (
         <div
-            onClick={onSelect}
-            className={`relative p-4 rounded-xl border cursor-pointer transition-all ${isSelected
+            className={`relative p-4 rounded-xl border border-slate-200 dark:border-slate-700 transition-all ${isSelected
                 ? 'border-sky-500/50 bg-sky-500/10 shadow-lg shadow-sky-500/5'
                 : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]'
                 }`}
         >
             <button
+                type="button" disabled={disabled} aria-label={`Remove competitor ${competitor.domain}`}
                 onClick={e => { e.stopPropagation(); onRemove(); }}
                 className="absolute top-2 right-2 p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                 title="Remove competitor"
@@ -224,26 +266,28 @@ function CompetitorCard({
                 ✕
             </button>
 
-            <h4 className="text-sm font-semibold text-white truncate pr-6">{competitor.domain}</h4>
+            <button type="button" disabled={disabled} aria-label={`Select competitor ${competitor.domain}`} aria-pressed={isSelected} onClick={onSelect} className="block w-full text-left rounded-lg focus-visible:outline-2 focus-visible:outline-sky-500">
+            <span className="block text-sm font-semibold text-slate-900 dark:text-white truncate pr-6">{competitor.domain}</span>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <div>
+            <span className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <span>
                     <span className="text-slate-400">Keywords</span>
-                    <p className="text-white font-medium">{competitor.keywordCount}</p>
-                </div>
-                <div>
+                    <span className="block text-slate-900 dark:text-white font-medium">{competitor.keywordCount}</span>
+                </span>
+                <span>
                     <span className="text-slate-400">Avg Position</span>
-                    <p className={`font-medium ${positionColorClass(competitor.avgPosition)}`}>
+                    <span className={`block font-medium ${positionColorClass(competitor.avgPosition)}`}>
                         {competitor.avgPosition ? `#${competitor.avgPosition}` : '—'}
-                    </p>
-                </div>
-            </div>
+                    </span>
+                </span>
+            </span>
 
             {competitor.lastCheckedAt && (
-                <p className="mt-2 text-xs text-slate-500">
-                    Last checked: {new Date(competitor.lastCheckedAt).toLocaleDateString()}
-                </p>
+                <span className="block mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Last checked: {formatDateSafe(competitor.lastCheckedAt)}
+                </span>
             )}
+            </button>
         </div>
     );
 }
@@ -259,7 +303,7 @@ function PositionTable({
     competitor: CompetitorDomain | null;
 }) {
     if (loading) {
-        return <div className="text-sm text-slate-400 text-center py-6">Loading positions…</div>;
+        return <div role="status" className="text-sm text-slate-400 text-center py-6">Loading positions…</div>;
     }
 
     if (keywords.length === 0) {
@@ -288,7 +332,7 @@ function PositionTable({
                 <tbody>
                     {keywords.map(kw => (
                         <tr key={kw.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                            <td className="py-2.5 pr-4 text-white font-medium">{kw.keyword}</td>
+                            <td className="py-2.5 pr-4 text-slate-900 dark:text-white font-medium">{kw.keyword}</td>
                             <td className={`py-2.5 pr-4 text-right font-mono ${positionColorClass(kw.currentPosition)}`}>
                                 {formatPosition(kw.currentPosition)}
                             </td>
@@ -299,7 +343,7 @@ function PositionTable({
                                 }
                             </td>
                             <td className="py-2.5 text-right text-xs text-slate-400 max-w-[200px] truncate" title={kw.rankingUrl ?? ''}>
-                                {kw.rankingUrl ? new URL(kw.rankingUrl).pathname : '—'}
+                                {rankingPath(kw.rankingUrl)}
                             </td>
                         </tr>
                     ))}
@@ -318,7 +362,7 @@ function MovementFeed({
     loading: boolean;
 }) {
     if (loading) {
-        return <div className="text-sm text-slate-400 text-center py-6">Loading movement data…</div>;
+        return <div role="status" className="text-sm text-slate-400 text-center py-6">Loading movement data…</div>;
     }
 
     if (movements.length === 0) {
@@ -337,7 +381,7 @@ function MovementFeed({
                 <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
                     <span className="text-lg">{directionIcon(m.direction)}</span>
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white">
+                        <p className="text-sm text-slate-900 dark:text-white">
                             <span className="text-sky-400 font-medium">{m.competitorDomain}</span>
                             {' '}
                             <span className="text-slate-400">
@@ -368,7 +412,7 @@ function HeadToHeadTable({
     competitor: CompetitorDomain | null;
 }) {
     if (loading) {
-        return <div className="text-sm text-slate-400 text-center py-6">Loading comparison…</div>;
+        return <div role="status" className="text-sm text-slate-400 text-center py-6">Loading comparison…</div>;
     }
 
     if (rows.length === 0) {
@@ -408,7 +452,7 @@ function HeadToHeadTable({
                     <tbody>
                         {rows.map((row, i) => (
                             <tr key={i} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                <td className="py-2.5 pr-4 text-white font-medium">{row.keyword}</td>
+                                <td className="py-2.5 pr-4 text-slate-900 dark:text-white font-medium">{row.keyword}</td>
                                 <td className={`py-2.5 pr-4 text-right font-mono ${positionColorClass(row.yourPosition)}`}>
                                     {formatPosition(row.yourPosition)}
                                 </td>

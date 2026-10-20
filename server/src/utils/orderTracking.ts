@@ -14,6 +14,26 @@ export interface TrackingItem {
     dateShipped: string | null;
 }
 
+function scalar(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : typeof value === 'number' && Number.isFinite(value) ? String(value) : '';
+}
+
+function trackingUrl(value: unknown): string | null {
+    const text = scalar(value);
+    try {
+        const url = new URL(text);
+        return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+    } catch { return null; }
+}
+
+function shippedDate(value: unknown): string | null {
+    const text = scalar(value);
+    if (!text) return null;
+    const numeric = /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : null;
+    const date = new Date(numeric === null ? text : numeric < 1e12 ? numeric * 1000 : numeric);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
 /**
  * Extracts tracking items from WooCommerce order raw data.
  *
@@ -26,9 +46,9 @@ export function extractOrderTracking(rawData: unknown): TrackingItem[] {
     if (!rawData || typeof rawData !== 'object') return [];
 
     const order = rawData as Record<string, unknown>;
-    const metaData = order.meta_data as Array<{ key: string; value: unknown }> | undefined;
-
-    if (!Array.isArray(metaData)) return [];
+    if (!Array.isArray(order.meta_data)) return [];
+    const metaData = order.meta_data.filter((meta): meta is { key: string; value: unknown } =>
+        !!meta && typeof meta === 'object' && typeof meta.key === 'string');
 
     const items: TrackingItem[] = [];
 
@@ -41,14 +61,14 @@ export function extractOrderTracking(rawData: unknown): TrackingItem[] {
         for (const entry of astEntry.value) {
             if (!entry || typeof entry !== 'object') continue;
             const e = entry as Record<string, unknown>;
-            const trackingNumber = String(e.tracking_number ?? '').trim();
+            const trackingNumber = scalar(e.tracking_number);
             if (!trackingNumber) continue;
 
             items.push({
-                provider: String(e.tracking_provider ?? e.custom_tracking_provider ?? 'Unknown').trim(),
+                provider: scalar(e.tracking_provider) || scalar(e.custom_tracking_provider) || 'Unknown',
                 trackingNumber,
-                trackingUrl: e.tracking_link ? String(e.tracking_link).trim() : null,
-                dateShipped: e.date_shipped ? String(e.date_shipped).trim() : null,
+                trackingUrl: trackingUrl(e.tracking_link) || trackingUrl(e.custom_tracking_link),
+                dateShipped: shippedDate(e.date_shipped),
             });
         }
     }
@@ -63,13 +83,13 @@ export function extractOrderTracking(rawData: unknown): TrackingItem[] {
 
     for (const meta of metaData) {
         const key = String(meta.key).toLowerCase();
-        const val = meta.value != null ? String(meta.value).trim() : '';
+        const val = scalar(meta.value);
         if (!val) continue;
 
         if (key.includes('tracking_number') || key === '_tracking_number') {
             fallbackNumber = val;
         } else if (key.includes('tracking_url') || key.includes('tracking_link') || key === '_tracking_url') {
-            fallbackUrl = val;
+            fallbackUrl = trackingUrl(val);
         } else if (key.includes('tracking_provider') || key.includes('shipping_provider')) {
             fallbackProvider = val;
         }

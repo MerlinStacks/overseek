@@ -329,7 +329,7 @@ export function useMessageSend({
      */
     const handleScheduleMessage = useCallback(async (scheduledFor: Date) => {
         const plainText = input.replace(/<[^>]*>/g, '').trim();
-        if (!plainText || !token || !currentAccount) return;
+        if (!plainText || !token || !currentAccount) throw new Error('A message and active account are required to schedule');
 
         setIsScheduling(true);
         try {
@@ -352,7 +352,7 @@ export function useMessageSend({
             if (!res.ok) {
                 const errData = await res.json();
                 Logger.warn('Failed to schedule message', { error: errData.error });
-                return;
+                throw new Error('Failed to schedule message');
             }
 
             // Clear input on success
@@ -361,6 +361,7 @@ export function useMessageSend({
             Logger.info('Message scheduled', { scheduledFor: scheduledFor.toISOString() });
         } catch (error) {
             Logger.error('Schedule message error:', { error: error });
+            throw error;
         } finally {
             setIsScheduling(false);
         }

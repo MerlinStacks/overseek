@@ -18,7 +18,7 @@ const SEVERITY_STYLES = {
 } as const;
 
 export function HealthTab() {
-    const { data: cannData, isLoading: cannLoading } = useCannibalization();
+    const { data: cannData, isLoading: cannLoading, error: cannError, refetch: reloadCannibalization } = useCannibalization();
     const contentBrief = useContentBrief();
     const [expandedKw, setExpandedKw] = useState<string | null>(null);
     const [activeBrief, setActiveBrief] = useState<ContentBrief | null>(null);
@@ -48,6 +48,8 @@ export function HealthTab() {
 
                 {cannLoading ? (
                     <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 text-slate-400 animate-spin" /></div>
+                ) : cannError ? (
+                    <div role="alert">Could not complete cannibalization analysis. Existing findings were preserved. <button type="button" onClick={() => void reloadCannibalization()}>Retry analysis</button></div>
                 ) : cannResults.length === 0 ? (
                     <div className="glass-panel rounded-2xl text-center py-14 px-6">
                         <ShieldCheck className="w-10 h-10 text-emerald-400 mx-auto mb-3" />

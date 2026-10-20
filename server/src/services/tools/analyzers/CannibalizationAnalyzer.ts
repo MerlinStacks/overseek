@@ -67,6 +67,7 @@ export class CannibalizationAnalyzer {
 
         } catch (error) {
             Logger.error('CannibalizationAnalyzer failed', { error, accountId });
+            throw error;
         }
 
         return result;

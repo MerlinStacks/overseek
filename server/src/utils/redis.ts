@@ -2,16 +2,22 @@ import Redis, { RedisOptions } from 'ioredis';
 import { Logger } from './logger';
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379', 10);
+const port = process.env.REDIS_PORT || '6379';
+if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new Error('REDIS_PORT must be an integer from 1 to 65535');
+const REDIS_PORT = Number(port);
 
 
 const baseOptions: RedisOptions = {
     host: REDIS_HOST,
     port: REDIS_PORT,
-    maxRetriesPerRequest: null,    // required by BullMQ
+    // API/cache operations must fail rather than queue indefinitely during an outage.
+    maxRetriesPerRequest: 2,
+    commandTimeout: 5000,
+    connectTimeout: 5000,
+    enableOfflineQueue: false,
     enableReadyCheck: true,
     retryStrategy: (times) => {
-        // exponential backoff, max 30s
+        // bounded reconnect backoff; retrying the connection does not queue API commands
         const delay = Math.min(times * 50, 30000);
         // avoid log spam
         if (times === 5 || times % 10 === 0) {
@@ -84,6 +90,9 @@ class RedisConnection {
     public static createWorkerConnection(): Redis {
         const workerConn = new Redis({
             ...baseOptions,
+            maxRetriesPerRequest: null, // BullMQ blocking commands must remain persistent.
+            commandTimeout: undefined,
+            enableOfflineQueue: true,
             lazyConnect: true,
         });
 
@@ -95,7 +104,8 @@ class RedisConnection {
 
     public static async close(): Promise<void> {
         if (RedisConnection.instance) {
-            await RedisConnection.instance.quit();
+            try { await RedisConnection.instance.quit(); }
+            finally { RedisConnection.instance.disconnect(); }
             Logger.info('Redis Connection Closed');
         }
     }
@@ -103,4 +113,3 @@ class RedisConnection {
 
 export const redisClient = RedisConnection.getInstance();
 export const createWorkerConnection = RedisConnection.createWorkerConnection;
-

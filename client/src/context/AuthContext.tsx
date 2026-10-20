@@ -11,6 +11,9 @@ interface User {
     shiftStart?: string | null;
     shiftEnd?: string | null;
     emailSignature?: string | null;
+    timezone?: string | null;
+    dateFormat?: 'dmy' | 'mdy' | 'ymd' | null;
+    timeFormat?: '12h' | '24h' | null;
     isSuperAdmin?: boolean;
 }
 

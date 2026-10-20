@@ -1,18 +1,35 @@
+/* Follow the storefront's scheme; explicit theme toggles beat the OS preference. */
+:where(.os-reviews-shell, .os-review-form, .os-reviews-empty) {
+	--os-review-text: light-dark(#172033, #e2e8f0);
+	--os-review-muted: light-dark(#64748b, #a6b5c9);
+	--os-review-surface: light-dark(#ffffff, #182231);
+	--os-review-soft: light-dark(#f8fafc, #222f42);
+	--os-review-border: light-dark(rgba(15, 23, 42, 0.14), rgba(203, 213, 225, 0.22));
+	color: var(--os-review-text);
+}
+
+@media (prefers-color-scheme: dark) {
+	:where(.os-reviews-shell, .os-review-form, .os-reviews-empty) { color-scheme: dark; }
+}
+
+:where(.dark, [data-theme="dark"], [data-color-scheme="dark"]) :where(.os-reviews-shell, .os-review-form, .os-reviews-empty) { color-scheme: dark; }
+:where(.light, [data-theme="light"], [data-color-scheme="light"]) :where(.os-reviews-shell, .os-review-form, .os-reviews-empty) { color-scheme: light; }
+
 .os-reviews-shell {
 	--os-review-columns: 3;
 	--os-review-star-color: #f59e0b;
 	--os-review-accent-1: var(--os-review-star-color, #f59e0b);
 	--os-review-accent-2: var(--os-review-accent-1);
 	--os-review-accent-3: var(--os-review-accent-1);
-	--os-review-card-bg: #ffffff;
-	--os-review-card-border: rgba(15, 23, 42, 0.08);
-	--os-review-product-bg: #f8fafc;
+	--os-review-card-bg: var(--os-review-surface);
+	--os-review-card-border: var(--os-review-border);
+	--os-review-product-bg: var(--os-review-soft);
 	--os-review-card-radius: 18px;
 	--os-review-card-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 	--os-review-card-shadow-hover: 0 14px 34px rgba(15, 23, 42, 0.1);
 	--os-review-slider-desktop: 3;
 	--os-review-slider-mobile: 1;
-	color: #172033;
+	color: var(--os-review-text);
 	font-family: inherit;
 }
 
@@ -43,9 +60,9 @@
 	max-width: 100%;
 	margin: 0 auto 26px;
 	padding: 18px 22px;
-	border: 1px solid rgba(15, 23, 42, 0.08);
+	border: 1px solid var(--os-review-border);
 	border-radius: 24px;
-	background: rgba(255, 255, 255, 0.92);
+	background: var(--os-review-surface);
 	box-shadow: 0 22px 60px rgba(15, 23, 42, 0.1);
 	backdrop-filter: blur(12px);
 }
@@ -85,7 +102,7 @@
 .os-reviews-summary__brand strong {
 	display: block;
 	margin-bottom: 4px;
-	color: #111827;
+	color: var(--os-review-text);
 	font-size: clamp(20px, 3vw, 28px);
 	line-height: 1.05;
 }
@@ -94,7 +111,7 @@
 .os-reviews-summary__brand small,
 .os-reviews-summary__rating span {
 	display: block;
-	color: #64748b;
+	color: var(--os-review-muted);
 	font-size: 14px;
 }
 
@@ -144,8 +161,8 @@
 }
 
 .os-review-trust-badge {
-	--os-review-badge-color: #0f766e;
-	--os-review-badge-soft: #ecfdf9;
+	--os-review-badge-color: light-dark(#0f766e, #5eead4);
+	--os-review-badge-soft: light-dark(#ecfdf9, #153c38);
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -156,9 +173,9 @@
 	height: 132px;
 	border: 2px solid var(--os-review-badge-color);
 	border-radius: 50%;
-	background: radial-gradient(circle at 50% 38%, #ffffff 0 42%, var(--os-review-badge-soft) 100%);
+	background: radial-gradient(circle at 50% 38%, var(--os-review-surface) 0 42%, var(--os-review-badge-soft) 100%);
 	color: var(--os-review-badge-color);
-	box-shadow: 0 8px 22px color-mix(in srgb, var(--os-review-badge-color) 12%, transparent), inset 0 0 0 4px #ffffff;
+	box-shadow: 0 8px 22px color-mix(in srgb, var(--os-review-badge-color) 12%, transparent), inset 0 0 0 4px var(--os-review-surface);
 }
 
 .os-review-trust-badge::before {
@@ -243,7 +260,7 @@
 	border-radius: 999px;
 	background: var(--os-review-badge-soft);
 	color: var(--os-review-badge-color);
-	box-shadow: 0 0 0 4px #ffffff;
+	box-shadow: 0 0 0 4px var(--os-review-surface);
 	font-size: 7px;
 	font-weight: 900;
 	letter-spacing: 0.065em;
@@ -265,18 +282,43 @@
 }
 
 .os-review-trust-badge--transparency {
-	--os-review-badge-color: #a87908;
-	--os-review-badge-soft: #fffbeb;
+	--os-review-badge-color: light-dark(#a87908, #fcd34d);
+	--os-review-badge-soft: light-dark(#fffbeb, #413516);
 }
 
 .os-review-trust-badge--transparency-silver {
-	--os-review-badge-color: #64748b;
-	--os-review-badge-soft: #f8fafc;
+	--os-review-badge-color: light-dark(#64748b, #cbd5e1);
+	--os-review-badge-soft: var(--os-review-soft);
 }
 
 .os-review-trust-badge--transparency-bronze {
-	--os-review-badge-color: #a84f0b;
-	--os-review-badge-soft: #fff7ed;
+	--os-review-badge-color: light-dark(#a84f0b, #fdba74);
+	--os-review-badge-soft: light-dark(#fff7ed, #432c1c);
+}
+
+/* Supplied artwork already contains its border, caption and branding. */
+.os-review-trust-badge--image {
+	width: 132px;
+	min-width: 0;
+	flex: 0 0 132px;
+	height: 132px;
+	border: 0;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+}
+
+.os-review-trust-badge--image::before { content: none; }
+
+.os-review-trust-badge--image img {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	height: auto;
+	border: 0;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
 }
 
 .os-reviews-summary--product-only .os-reviews-summary__ratings {
@@ -300,7 +342,10 @@
 .os-review-stars {
 	position: relative;
 	display: inline-block;
+	width: max-content;
+	flex: 0 0 auto;
 	color: #cbd5e1;
+	font-family: Arial, Helvetica, sans-serif;
 	font-size: 18px;
 	letter-spacing: 0.06em;
 	line-height: 1;
@@ -311,11 +356,11 @@
 	display: block;
 }
 
-.os-review-stars-summary .os-review-stars {
-	color: var(--os-review-star-color, #f59e0b);
+.os-review-stars .os-review-stars__base {
+	color: light-dark(#cbd5e1, #64748b);
 }
 
-.os-review-stars__fill {
+.os-review-stars .os-review-stars__fill {
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -1375,4 +1420,106 @@ body.os-review-lightbox-open {
 	.os-reviews-summary__ratings {
 		grid-template-columns: 1fr;
 	}
+}
+
+/* Shared semantic colors, including mobile surfaces and native controls. */
+.os-reviews-summary__rating strong,
+.os-customer-media__header h3,
+.os-review-card__author,
+.os-review-card__content p,
+.os-review-card__reply p,
+.os-review-card__product a,
+.os-review-card__product span,
+.os-review-row__content p,
+.os-review-form h3,
+.os-review-form__field span,
+.os-review-form__rating legend {
+	color: var(--os-review-text);
+}
+
+.os-customer-media__header p,
+.os-review-card time,
+.os-review-row__meta,
+.os-review-form__header p,
+.os-review-form small,
+.os-reviews-empty,
+.os-review-form textarea::placeholder {
+	color: var(--os-review-muted);
+}
+
+.os-review-slider__arrow,
+.os-reviews-pagination__page,
+.os-reviews-pagination__button,
+.os-review-form,
+.os-review-form input,
+.os-review-form select,
+.os-review-form textarea {
+	border-color: var(--os-review-border);
+	background: var(--os-review-surface);
+	color: var(--os-review-text);
+}
+
+.os-review-card__product,
+.os-review-card__replies,
+.os-review-media__button,
+.os-review-row,
+.os-review-form__dropzone,
+.os-reviews-empty,
+.os-reviews-summary__rating {
+	border-color: var(--os-review-border);
+}
+
+.os-review-card__replies,
+.os-review-media,
+.os-review-media__button,
+.os-review-form__dropzone,
+.os-reviews-empty {
+	background: var(--os-review-soft);
+}
+
+.os-customer-media__header > span,
+.os-review-card__country,
+.os-review-form__upload-icon {
+	background: color-mix(in srgb, var(--os-review-accent-1) 12%, var(--os-review-surface));
+	color: var(--os-review-text);
+}
+
+.os-review-card__verified,
+.os-review-form__notice--success {
+	background: light-dark(#ecfdf5, #123c30);
+	color: light-dark(#047857, #6ee7b7);
+}
+
+.os-review-form__notice--error {
+	background: light-dark(#fef2f2, #491d25);
+	color: light-dark(#991b1b, #fca5a5);
+}
+
+.os-review-form--first-review {
+	background: radial-gradient(circle at 100% 0, color-mix(in srgb, var(--os-review-accent-1) 13%, transparent), transparent 34%), var(--os-review-surface);
+}
+
+.os-review-stars,
+.os-review-form__stars label {
+	color: light-dark(#cbd5e1, #64748b);
+}
+
+.os-review-slider__dots span { background: var(--os-review-muted); }
+
+.os-review-slider__arrow:hover,
+.os-review-slider__arrow:focus,
+.os-reviews-pagination__page.is-active,
+.os-reviews-pagination__page:hover,
+.os-reviews-pagination__button:hover {
+	border-color: var(--os-review-accent-1);
+	background: var(--os-review-accent-1);
+	color: var(--os-review-on-accent, #ffffff);
+}
+
+.os-review-card__product a:hover,
+.os-review-card__product a:focus { color: var(--os-review-accent-1); }
+
+@media (max-width: 640px) {
+	.os-reviews-summary__rating { background: var(--os-review-soft); }
+	.os-reviews-summary__rating strong { white-space: normal; }
 }

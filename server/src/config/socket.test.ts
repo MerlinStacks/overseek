@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { initializeSocketIO } from './socket';
 
 const mocks = vi.hoisted(() => ({
-    use: vi.fn(), adapter: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), verifyToken: vi.fn()
+    use: vi.fn(), adapter: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), verifyToken: vi.fn(), makeAdapter: vi.fn(), dispose: vi.fn()
 }));
 vi.mock('socket.io', () => ({ Server: class { use = mocks.use; adapter = mocks.adapter; } }));
 vi.mock('../utils/prisma', () => ({ prisma: {
@@ -12,7 +12,8 @@ vi.mock('../utils/prisma', () => ({ prisma: {
 } }));
 vi.mock('../utils/logger', () => ({ Logger: { error: vi.fn(), warn: vi.fn(), debug: vi.fn(), info: vi.fn() } }));
 vi.mock('../utils/auth', () => ({ verifyToken: mocks.verifyToken }));
-vi.mock('../utils/socketAdapter', () => ({ createSocketAdapter: vi.fn() }));
+vi.mock('../utils/socketAdapter', () => ({ createSocketAdapter: mocks.makeAdapter }));
+vi.mock('../utils/shutdown', () => ({ onShutdown: vi.fn() }));
 vi.mock('../socket', () => ({ setIO: vi.fn() }));
 vi.mock('../services/ChatService', () => ({ ChatService: class {} }));
 vi.mock('../routes/chat', () => ({ createChatRoutes: vi.fn() }));
@@ -25,7 +26,15 @@ describe('socket authentication failure isolation', () => {
         mocks.verifyToken.mockReturnValue({ userId: 'user-1' });
         mocks.findUnique.mockResolvedValue({ isSuperAdmin: false });
         mocks.findMany.mockResolvedValue([{ accountId: 'account-1' }]);
+        mocks.makeAdapter.mockReturnValue({ dispose: mocks.dispose });
+        mocks.dispose.mockResolvedValue(undefined);
         await initializeSocketIO({} as http.Server, { register: vi.fn() } as unknown as FastifyInstance);
+    });
+
+    it('disposes an adapter that fails during installation before falling back', async () => {
+        mocks.adapter.mockImplementationOnce(() => { throw new Error('Install failed'); });
+        await initializeSocketIO({} as http.Server, { register: vi.fn() } as unknown as FastifyInstance);
+        expect(mocks.dispose).toHaveBeenCalledOnce();
     });
 
     it.each(['findUnique', 'findMany'] as const)('contains rejected Prisma %s and fails authentication closed', async operation => {

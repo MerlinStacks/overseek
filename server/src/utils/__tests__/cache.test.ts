@@ -45,6 +45,11 @@ describe('Cache Utilities', () => {
         it('treats malformed JSON as a cache miss', async () => {
             mockRedisClient.get.mockResolvedValue('{broken');
             await expect(cacheGet('key')).resolves.toBeNull();
+            expect(mockRedisClient.del).toHaveBeenCalledWith('cache:key');
+        });
+        it('enforces the limit in UTF-8 bytes, not UTF-16 code units', async () => {
+            mockRedisClient.get.mockResolvedValue(JSON.stringify('界'.repeat(4 * 1024 * 1024)));
+            expect(await cacheGet('unicode')).toBeNull(); expect(mockRedisClient.del).toHaveBeenCalledWith('cache:unicode');
         });
 
         it.each([false, 0, '', [], {}])('preserves cached falsey or empty values: %j', async value => {
@@ -166,7 +171,12 @@ describe('Cache Utilities', () => {
     });
 
     describe('cacheDeletePattern', () => {
+        it('reports actual removals rather than scanned duplicate keys', async () => {
+            mockRedisClient.scan.mockResolvedValueOnce(['0', ['cache:a', 'cache:a']]); mockRedisClient.del.mockResolvedValueOnce(1);
+            expect(await cacheDeletePattern('*')).toBe(1);
+        });
         it('scans through all cursors, including empty intermediate pages', async () => {
+            mockRedisClient.del.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
             mockRedisClient.scan
                 .mockResolvedValueOnce(['12', ['cache:products:a', 'cache:products:b']])
                 .mockResolvedValueOnce(['24', []])

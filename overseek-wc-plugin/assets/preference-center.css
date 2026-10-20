@@ -1,7 +1,26 @@
+:where(body.os-pref-standalone, .os-pref-shell) {
+	--os-pref-bg: light-dark(#f7f4ed, #111827);
+	--os-pref-surface: light-dark(#fffdf8, #1c2635);
+	--os-pref-soft: light-dark(#faf7ef, #263244);
+	--os-pref-text: light-dark(#202020, #f1f5f9);
+	--os-pref-muted: light-dark(#5e5a52, #bdc8d6);
+	--os-pref-border: light-dark(#ded8cc, #475569);
+	color: var(--os-pref-text);
+}
+
+@media (prefers-color-scheme: dark) {
+	:where(body.os-pref-standalone, .os-pref-shell) { color-scheme: dark; }
+}
+
+:where(.dark, [data-theme="dark"], [data-color-scheme="dark"]) :where(.os-pref-shell),
+body.os-pref-standalone:where(.dark, [data-theme="dark"], [data-color-scheme="dark"]) { color-scheme: dark; }
+:where(.light, [data-theme="light"], [data-color-scheme="light"]) :where(.os-pref-shell),
+body.os-pref-standalone:where(.light, [data-theme="light"], [data-color-scheme="light"]) { color-scheme: light; }
+
 body.os-pref-standalone {
 	margin: 0;
-	background: #f7f4ed;
-	color: #202020;
+	background: var(--os-pref-bg);
+	color: var(--os-pref-text);
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
@@ -257,3 +276,34 @@ body.os-pref-standalone {
 		grid-template-columns: 1fr;
 	}
 }
+
+.os-pref-card,
+.os-pref-option,
+.os-pref-option__marker {
+	background: var(--os-pref-surface);
+	border-color: var(--os-pref-border);
+}
+.os-pref-card__header { border-color: var(--os-pref-border); }
+.os-pref-summary-card,
+.os-pref-note,
+.os-pref-option.is-active {
+	background: var(--os-pref-soft);
+	border-color: var(--os-pref-border);
+}
+.os-pref-card h1,
+.os-pref-summary-card strong,
+.os-pref-email,
+.os-pref-section-title,
+.os-pref-option__title { color: var(--os-pref-text); }
+.os-pref-subtitle,
+.os-pref-card p,
+.os-pref-option__copy,
+.os-pref-note,
+.os-pref-footnote,
+.os-pref-summary-label { color: var(--os-pref-muted); }
+.os-pref-eyebrow { color: light-dark(#8a6b1f, #fcd34d); }
+.os-pref-status--neutral { background: light-dark(#f7e6a5, #443719); color: light-dark(#3f320d, #fde68a); }
+.os-pref-status--success,
+.os-pref-banner--success { background: light-dark(#eef8ec, #163c2b); color: light-dark(#245d2d, #86efac); border-color: light-dark(#c7dfc0, #326849); }
+.os-pref-status--error,
+.os-pref-banner--error { background: light-dark(#fff0ee, #491d25); color: light-dark(#8b1f1f, #fca5a5); border-color: light-dark(#edc7c0, #85404a); }

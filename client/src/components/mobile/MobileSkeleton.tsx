@@ -15,7 +15,7 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ className = '', variant = 'rect', width, height }: SkeletonProps) {
-    const baseClasses = 'animate-shimmer bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 bg-[length:200%_100%]';
+    const baseClasses = 'animate-shimmer motion-reduce:animate-none bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 bg-[length:200%_100%]';
 
     const variantClasses = {
         text: 'h-4 rounded',
@@ -25,6 +25,7 @@ export function Skeleton({ className = '', variant = 'rect', width, height }: Sk
 
     return (
         <div
+            aria-hidden="true"
             className={`${baseClasses} ${variantClasses[variant]} ${className}`}
             style={{ width, height }}
         />
@@ -33,7 +34,7 @@ export function Skeleton({ className = '', variant = 'rect', width, height }: Sk
 
 export function DashboardSkeleton() {
     return (
-        <div className="space-y-6 animate-fade-in">
+        <div role="status" aria-label="Loading dashboard" className="space-y-6 animate-fade-in motion-reduce:animate-none">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="space-y-2">
@@ -92,9 +93,10 @@ export function DashboardSkeleton() {
 }
 
 export function ListSkeleton({ count = 5 }: { count?: number }) {
+    const safeCount = Number.isFinite(count) ? Math.max(0, Math.min(100, Math.floor(count))) : 5;
     return (
-        <div className="space-y-3 animate-fade-in">
-            {[...Array(count)].map((_, i) => (
+        <div role="status" aria-label="Loading list" className="space-y-3 animate-fade-in motion-reduce:animate-none">
+            {Array.from({ length: safeCount }, (_, i) => (
                 <div
                     key={i}
                     className="pwa-card p-4 flex items-center gap-3"
@@ -117,7 +119,7 @@ export function ListSkeleton({ count = 5 }: { count?: number }) {
  */
 export function OrdersSkeleton() {
     return (
-        <div className="space-y-4 animate-fade-in">
+        <div role="status" aria-label="Loading orders" className="space-y-4 animate-fade-in motion-reduce:animate-none">
             {/* Search Bar */}
             <div className="pwa-card p-3">
                 <Skeleton className="h-10 w-full rounded-xl" />
@@ -168,7 +170,7 @@ export function OrdersSkeleton() {
  */
 export function InboxSkeleton() {
     return (
-        <div className="min-h-full flex flex-col space-y-4 animate-fade-in">
+        <div role="status" aria-label="Loading inbox" className="min-h-full flex flex-col space-y-4 animate-fade-in motion-reduce:animate-none">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <Skeleton className="h-6 w-24" />

@@ -20,7 +20,11 @@ export function EnterSubmitPlugin({ onSubmit, disabled }: EnterSubmitPluginProps
         return editor.registerCommand(
             KEY_ENTER_COMMAND,
             (event: KeyboardEvent | null) => {
-                if (!event || disabled) return false;
+                if (!event || disabled || event.defaultPrevented || !editor.isEditable()) return false;
+                // IME confirmation is not a request to send (229 covers legacy Safari IME events).
+                if (event.isComposing || editor.isComposing() || event.keyCode === 229) return false;
+                const root = editor.getRootElement();
+                if (!root || !(event.target instanceof Node) || !root.contains(event.target)) return false;
 
                 // Shift+Enter creates new line (default behavior)
                 if (event.shiftKey) return false;

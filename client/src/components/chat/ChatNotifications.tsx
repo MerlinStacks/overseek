@@ -1,211 +1,95 @@
-
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-/** Auto-dismiss timeout for notifications (10 minutes) */
-const NOTIFICATION_AUTO_DISMISS_MS = 10 * 60 * 1000;
-/** Batch non-urgent message notifications into one digest */
-const MESSAGE_BATCH_WINDOW_MS = 12_000;
-
-interface NotificationQueueItem {
-    conversationId?: string;
-    content?: string;
-    priority?: string;
+interface MessageEvent {
+    accountId?: string; conversationId?: string; content?: string;
+    type?: string; senderType?: string; assignedTo?: string; priority?: string;
 }
 
-interface IncomingMessageEvent {
-    accountId?: string;
-    type?: string;
-    senderType?: string;
-    assignedTo?: string;
-    priority?: string;
-    content?: string;
-    conversationId?: string;
+function quietHours(): boolean {
+    const hour = new Date().getHours();
+    const fallback = hour >= 22 || hour < 7;
+    try {
+        const raw = localStorage.getItem('inbox_notification_rules');
+        if (!raw) return fallback;
+        const rules = JSON.parse(raw);
+        if (!rules || typeof rules !== 'object') return fallback;
+        if (rules.quietHoursEnabled === false) return false;
+        if (rules.quietHoursEnabled !== true) return fallback;
+        const validHour = (value: unknown): value is number => Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 23;
+        const start = validHour(rules.quietStartHour) ? rules.quietStartHour : 22;
+        const end = validHour(rules.quietEndHour) ? rules.quietEndHour : 7;
+        return start === end || (start < end ? hour >= start && hour < end : hour >= start || hour < end);
+    } catch { return fallback; }
 }
 
-/**
- * Headless component to handle global chat notifications via browser API.
- * Filters notifications to only show for the user's currently active account.
- */
+/** Notifications are owned by one account/user scope, including their queued work. */
 export function ChatNotifications() {
     const { socket } = useSocket();
     const { user } = useAuth();
     const { currentAccount } = useAccount();
-    const location = useLocation();
+    const { pathname } = useLocation();
     const navigate = useNavigate();
-    const messageQueueRef = useRef<NotificationQueueItem[]>([]);
-    const batchTimerRef = useRef<number | null>(null);
-
-    const isWithinQuietHours = () => {
-        try {
-            const raw = localStorage.getItem('inbox_notification_rules');
-            if (!raw) {
-                const nowHour = new Date().getHours();
-                return nowHour >= 22 || nowHour < 7; // sensible default
-            }
-            const rules = JSON.parse(raw) as {
-                quietHoursEnabled?: boolean;
-                quietStartHour?: number;
-                quietEndHour?: number;
-            };
-            if (!rules.quietHoursEnabled) return false;
-            const start = Number.isInteger(rules.quietStartHour) ? (rules.quietStartHour as number) : 22;
-            const end = Number.isInteger(rules.quietEndHour) ? (rules.quietEndHour as number) : 7;
-            const nowHour = new Date().getHours();
-            if (start === end) return true;
-            if (start < end) return nowHour >= start && nowHour < end;
-            return nowHour >= start || nowHour < end;
-        } catch {
-            return false;
-        }
-    };
-
-    const showNotification = (title: string, body: string, tag: string, onClick?: () => void) => {
-        if (Notification.permission !== 'granted') return;
-        const n = new Notification(title, {
-            body,
-            icon: '/favicon.ico',
-            tag
-        });
-        setTimeout(() => n.close(), NOTIFICATION_AUTO_DISMISS_MS);
-        n.onclick = function () {
-            window.focus();
-            onClick?.();
-            n.close();
-        };
-    };
-
-    // Check permission on mount
-    useEffect(() => {
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
-    }, []);
+    const accountId = currentAccount?.id;
+    const userId = user?.id;
 
     useEffect(() => {
-        if (!socket) return;
-
-        const handleNewMessage = (msg: IncomingMessageEvent) => {
-            // CRITICAL: Account Isolation - only show notifications for current account
-            // Prevents cross-account notification leakage for multi-account users
-            if (msg.accountId && currentAccount?.id && msg.accountId !== currentAccount.id) {
-                return;
-            }
-
-            const isCustomerMessage = msg.type === 'CUSTOMER' || msg.senderType === 'CUSTOMER';
-            const isAssignedToMe = !msg.assignedTo || msg.assignedTo === user?.id;
-            const isHighPriority = (msg.priority || '').toUpperCase() === 'HIGH';
-            const isOnInbox = location.pathname.startsWith('/inbox');
-            const isFocusedInbox = isOnInbox && document.visibilityState === 'visible';
-
-            if (isCustomerMessage && isAssignedToMe) {
-                // Hygiene rules:
-                // - suppress low-priority notifications while actively focused in inbox
-                // - suppress low-priority notifications during quiet hours
-                if (!isHighPriority && (isFocusedInbox || isWithinQuietHours())) {
-                    return;
-                }
-
-                if (isHighPriority) {
-                    showNotification(
-                        'High Priority Message',
-                        msg.content || 'Urgent customer message',
-                        `conversation-high-${msg.conversationId}`,
-                        () => navigate(`/inbox?conversationId=${msg.conversationId}`)
-                    );
-                    return;
-                }
-
-                messageQueueRef.current.push({
-                    conversationId: msg.conversationId,
-                    content: msg.content,
-                    priority: msg.priority
-                });
-
-                if (batchTimerRef.current) return;
-                batchTimerRef.current = window.setTimeout(() => {
-                    const queue = [...messageQueueRef.current];
-                    messageQueueRef.current = [];
-                    batchTimerRef.current = null;
-                    if (queue.length === 0) return;
-
-                    if (queue.length === 1) {
-                        const item = queue[0];
-                        showNotification(
-                            'New Message',
-                            item.content || 'You have a new message',
-                            `conversation-${item.conversationId}`,
-                            () => navigate(`/inbox?conversationId=${item.conversationId}`)
-                        );
-                        return;
-                    }
-
-                    const uniqueConversations = new Set(queue.map(q => q.conversationId).filter(Boolean)).size;
-                    showNotification(
-                        `${queue.length} New Messages`,
-                        `${uniqueConversations} conversations need attention`,
-                        'conversation-batch',
-                        () => navigate('/inbox')
-                    );
-                }, MESSAGE_BATCH_WINDOW_MS);
-            }
-        };
-
-        /**
-         * Handle snooze expiry notifications.
-         * When a snoozed conversation reopens, notify the assigned agent.
-         */
-        const handleSnoozeExpired = (data: {
-            conversationId: string;
-            assignedToId?: string;
-            customerName?: string;
-            accountId?: string;
-        }) => {
-            // Account isolation check
-            if (data.accountId && currentAccount?.id && data.accountId !== currentAccount.id) {
-                return;
-            }
-
-            // Only notify if assigned to current user
-            if (data.assignedToId && data.assignedToId !== user?.id) {
-                return;
-            }
-
-            if (Notification.permission === 'granted') {
-                const customerName = data.customerName || 'Customer';
-                const n = new Notification('Snooze Ended', {
-                    body: `Conversation with ${customerName} has reopened`,
-                    icon: '/favicon.ico',
-                    tag: `snooze-${data.conversationId}`,
-                });
-
-                // Auto-dismiss after 10 minutes
-                setTimeout(() => n.close(), NOTIFICATION_AUTO_DISMISS_MS);
-
-                n.onclick = function () {
-                    window.focus();
-                    navigate(`/inbox?conversationId=${data.conversationId}`);
-                    n.close();
+        if (!socket || !accountId || !userId || typeof window.Notification !== 'function') return;
+        let active = true;
+        let queue: MessageEvent[] = [];
+        let batchTimer: ReturnType<typeof setTimeout> | null = null;
+        const notifications = new Map<Notification, ReturnType<typeof setTimeout>>();
+        const show = (title: string, body: string, tag: string, conversationId?: string) => {
+            if (!active || Notification.permission !== 'granted') return;
+            try {
+                const notification = new Notification(title, { body, icon: '/favicon.ico', tag: `${accountId}:${tag}` });
+                const dispose = () => {
+                    const timer = notifications.get(notification);
+                    if (timer) clearTimeout(timer);
+                    notifications.delete(notification); notification.onclick = null; notification.onclose = null;
+                    notification.close();
                 };
-            }
+                notifications.set(notification, setTimeout(dispose, 10 * 60 * 1000));
+                notification.onclose = () => { const timer = notifications.get(notification); if (timer) clearTimeout(timer); notifications.delete(notification); };
+                notification.onclick = () => {
+                    if (active) { window.focus(); navigate(conversationId ? `/inbox?conversationId=${encodeURIComponent(conversationId)}` : '/inbox'); }
+                    dispose();
+                };
+            } catch { /* Some mobile browsers expose Notification but disallow its constructor. */ }
         };
-
-        socket.on('message:new', handleNewMessage);
-        socket.on('snooze:expired', handleSnoozeExpired);
-
+        const focusedInbox = () => pathname.startsWith('/inbox') && document.visibilityState === 'visible' && document.hasFocus();
+        const handleMessage = (message: MessageEvent) => {
+            if (!active || !message || message.accountId !== accountId || typeof message.conversationId !== 'string' || !message.conversationId) return;
+            if (!(message.type === 'CUSTOMER' || message.senderType === 'CUSTOMER') || (message.assignedTo && message.assignedTo !== userId)) return;
+            const high = typeof message.priority === 'string' && message.priority.toUpperCase() === 'HIGH';
+            const content = typeof message.content === 'string' ? message.content : 'You have a new message';
+            if (high) { show('High Priority Message', content, `high:${message.conversationId}`, message.conversationId); return; }
+            if (focusedInbox() || quietHours()) return;
+            // Bound retained content during bursts; a digest does not need every message body.
+            if (queue.length < 1000) queue.push({ conversationId: message.conversationId, content });
+            if (batchTimer) return;
+            batchTimer = setTimeout(() => {
+                batchTimer = null;
+                const batch = queue; queue = [];
+                if (!active || batch.length === 0 || focusedInbox() || quietHours()) return;
+                if (batch.length === 1) show('New Message', batch[0].content || 'You have a new message', `message:${batch[0].conversationId}`, batch[0].conversationId);
+                else show(`${batch.length} New Messages`, `${new Set(batch.map(item => item.conversationId)).size} conversations need attention`, 'batch');
+            }, 12000);
+        };
+        const handleSnooze = (data: { accountId?: string; conversationId?: string; assignedToId?: string; customerName?: string }) => {
+            if (!active || !data || data.accountId !== accountId || typeof data.conversationId !== 'string' || !data.conversationId || (data.assignedToId && data.assignedToId !== userId)) return;
+            show('Snooze Ended', `Conversation with ${typeof data.customerName === 'string' ? data.customerName : 'Customer'} has reopened`, `snooze:${data.conversationId}`, data.conversationId);
+        };
+        socket.on('message:new', handleMessage); socket.on('snooze:expired', handleSnooze);
         return () => {
-            if (batchTimerRef.current) {
-                window.clearTimeout(batchTimerRef.current);
-                batchTimerRef.current = null;
-            }
-            socket.off('message:new', handleNewMessage);
-            socket.off('snooze:expired', handleSnoozeExpired);
+            active = false; queue = []; if (batchTimer) clearTimeout(batchTimer);
+            socket.off('message:new', handleMessage); socket.off('snooze:expired', handleSnooze);
+            for (const [notification, timer] of notifications) { clearTimeout(timer); notification.onclick = null; notification.onclose = null; try { notification.close(); } catch { /* Already disposed by the browser. */ } }
+            notifications.clear();
         };
-    }, [socket, location.pathname, user, navigate, currentAccount?.id]);
-
-    return null; // Headless
+    }, [socket, accountId, userId, navigate, pathname]);
+    return null;
 }
-

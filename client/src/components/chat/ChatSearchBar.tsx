@@ -4,7 +4,7 @@
  * Provides message search functionality within a conversation.
  */
 
-import { useEffect } from 'react';
+import { useId, useRef } from 'react';
 import { Search, X } from 'lucide-react';
 
 interface ChatSearchBarProps {
@@ -22,38 +22,40 @@ export function ChatSearchBar({
     matchCount,
     totalCount
 }: ChatSearchBarProps) {
-    // Close on Escape key
-    useEffect(() => {
-        const handleKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', handleKey);
-        return () => document.removeEventListener('keydown', handleKey);
-    }, [onClose]);
+    const composing = useRef(false);
+    const scopeId = useId();
     return (
-        <div className="px-4 py-2 border-b border-gray-200 bg-white flex items-center gap-2">
+        <div className="px-4 py-2 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-wrap items-center gap-2" onKeyDown={event => {
+            if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing || composing.current) return;
+            event.preventDefault(); event.stopPropagation(); onClose();
+        }}>
             <Search size={16} className="text-gray-400" aria-hidden="true" />
             <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder="Search messages..."
-                className="flex-1 text-sm outline-hidden"
+                className="min-w-0 flex-1 text-sm outline-hidden dark:bg-slate-800 dark:text-slate-100"
                 autoFocus
                 aria-label="Search messages"
+                aria-describedby={scopeId}
+                onCompositionStart={() => { composing.current = true; }}
+                onCompositionEnd={() => { composing.current = false; }}
             />
             {searchQuery && (
-                <span className="text-xs text-gray-400">
-                    {matchCount} of {totalCount}
+                <span role="status" aria-live="polite" className="text-xs text-gray-500 dark:text-slate-400">
+                    {matchCount} of {totalCount} loaded messages
                 </span>
             )}
             <button
+                type="button"
                 onClick={onClose}
                 className="p-1 rounded-sm hover:bg-gray-100 text-gray-400"
                 aria-label="Close search"
             >
                 <X size={14} />
             </button>
+            <span id={scopeId} className="basis-full text-xs text-gray-500 dark:text-slate-400">Searches loaded messages only.</span>
         </div>
     );
 }

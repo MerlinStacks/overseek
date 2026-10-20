@@ -450,11 +450,11 @@ export function useRefreshCompetitorPositions() {
 /** Keyword revenue entry */
 export interface KeywordRevenue {
     keyword: string;
-    clicks: number;
-    sessions: number;
-    conversions: number;
+    clicks?: number | null;
+    sessions?: number | null;
+    conversions?: number | null;
     estimatedRevenue: number;
-    revenuePerClick: number;
+    revenuePerClick?: number | null;
 }
 
 /** Hook: Fetch keyword revenue report */

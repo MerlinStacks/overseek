@@ -15,6 +15,7 @@ vi.mock('../../utils/redis', () => ({
         hvals: vi.fn().mockResolvedValue([]),
         hgetall: vi.fn().mockResolvedValue({}),
         expire: vi.fn().mockResolvedValue(1),
+        eval: vi.fn().mockResolvedValue(1),
     },
 }));
 
@@ -37,11 +38,14 @@ const mockRedis = redisClient as unknown as {
     hvals: ReturnType<typeof vi.fn>;
     hgetall: ReturnType<typeof vi.fn>;
     expire: ReturnType<typeof vi.fn>;
+    eval: ReturnType<typeof vi.fn>;
 };
 
 describe('CollaborationService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockRedis.eval.mockResolvedValue(1);
+        mockRedis.hgetall.mockResolvedValue({});
     });
 
     afterEach(() => {
@@ -91,8 +95,8 @@ describe('CollaborationService', () => {
 
     describe('getPresence', () => {
         it('should return parsed presence list', async () => {
-            const user1 = JSON.stringify({ userId: 'u1', name: 'User 1', connectedAt: 1000 });
-            const user2 = JSON.stringify({ userId: 'u2', name: 'User 2', connectedAt: 2000 });
+            const user1 = JSON.stringify({ userId: 'u1', name: 'User 1', connectedAt: Date.now() });
+            const user2 = JSON.stringify({ userId: 'u2', name: 'User 2', connectedAt: Date.now() });
             mockRedis.hvals.mockResolvedValueOnce([user1, user2]);
 
             const result = await CollaborationService.getPresence('doc-1');
@@ -124,9 +128,9 @@ describe('CollaborationService', () => {
             await CollaborationService.refreshPresence('doc-1', 'socket-abc');
 
             expect(mockRedis.hget).toHaveBeenCalledWith('presence:doc-1', 'socket-abc');
-            expect(mockRedis.hset).toHaveBeenCalled();
+            expect(mockRedis.eval).toHaveBeenCalled();
 
-            const updatedData = JSON.parse(mockRedis.hset.mock.calls[0][2]);
+            const updatedData = JSON.parse(mockRedis.eval.mock.calls[0][5]);
             expect(updatedData.lastHeartbeat).toBeGreaterThan(1000);
         });
 
@@ -163,7 +167,7 @@ describe('CollaborationService', () => {
             const pruned = await CollaborationService.pruneStale('doc-1', 120000); // 2 min threshold
 
             expect(pruned).toBe(1);
-            expect(mockRedis.hdel).toHaveBeenCalledWith('presence:doc-1', 'socket-stale');
+            expect(mockRedis.eval).toHaveBeenCalledWith(expect.stringContaining("redis.call('HGET'"), 1, 'presence:doc-1', 'socket-stale', staleUser);
         });
 
         it('should return 0 if no stale entries', async () => {
@@ -195,5 +199,26 @@ describe('CollaborationService', () => {
             expect(mockRedis.hdel).toHaveBeenCalledWith('presence:doc-2', 'socket-abc');
             expect(mockRedis.hdel).toHaveBeenCalledWith('presence:doc-3', 'socket-abc');
         });
+    });
+
+    it('filters stale and malformed entries without hiding valid presence', async () => {
+        mockRedis.hvals.mockResolvedValueOnce(['invalid', JSON.stringify({ userId: 'old', name: 'Old', connectedAt: Date.now() - 61000 }), JSON.stringify({ userId: 'active', name: 'Active', connectedAt: Date.now() })]);
+        expect(await CollaborationService.getPresence('doc')).toEqual([expect.objectContaining({ userId: 'active' })]);
+    });
+
+    it('does not count or delete a stale snapshot refreshed concurrently', async () => {
+        const stale = JSON.stringify({ userId: 'u', name: 'User', connectedAt: Date.now() - 120000 });
+        mockRedis.hgetall.mockResolvedValueOnce({ socket: stale });
+        mockRedis.eval.mockResolvedValueOnce(0); // atomic compare failed because the heartbeat changed
+        expect(await CollaborationService.pruneStale('doc', 60000)).toBe(0);
+        expect(mockRedis.hdel).not.toHaveBeenCalled();
+    });
+
+    it('uses compare-and-set for heartbeats so a concurrent leave is not undone', async () => {
+        const existing = JSON.stringify({ userId: 'u', name: 'User', connectedAt: Date.now() });
+        mockRedis.hget.mockResolvedValueOnce(existing); mockRedis.eval.mockResolvedValueOnce(0);
+        await CollaborationService.refreshPresence('doc', 'socket');
+        expect(mockRedis.eval).toHaveBeenCalledWith(expect.stringContaining("redis.call('EXPIRE'"), 1, 'presence:doc', 'socket', existing, expect.any(String), 60);
+        expect(mockRedis.hset).not.toHaveBeenCalled(); expect(mockRedis.expire).not.toHaveBeenCalled();
     });
 });

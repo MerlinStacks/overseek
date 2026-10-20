@@ -7,11 +7,22 @@ import { SearchQueryService } from '../services/search/SearchQueryService';
 import { EmbeddingService } from '../services/EmbeddingService';
 import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
+import { prisma } from '../utils/prisma';
+
+const querySchema = (defaultLimit?: number, requiredQuery = false) => ({
+    type: 'object',
+    properties: {
+        q: { type: 'string', maxLength: 500, ...(requiredQuery ? { minLength: 1 } : {}) },
+        ...(defaultLimit ? { limit: { type: 'integer', minimum: 1, maximum: 100, default: defaultLimit } } : {})
+    },
+    ...(requiredQuery ? { required: ['q'] } : {}),
+    additionalProperties: false
+});
 
 const searchRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', requireAuthFastify);
 
-    fastify.get('/global', async (request, reply) => {
+    fastify.get('/global', { schema: { querystring: querySchema() } }, async (request, reply) => {
         try {
             const accountId = request.accountId;
             const { q } = request.query as { q?: string };
@@ -27,18 +38,18 @@ const searchRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Semantic search using pgvector embeddings
-    fastify.get('/semantic', async (request, reply) => {
+    fastify.get('/semantic', { schema: { querystring: querySchema(10, true) } }, async (request, reply) => {
         try {
             const accountId = request.accountId;
-            const { q, limit } = request.query as { q?: string; limit?: string };
+            const { q, limit } = request.query as { q?: string; limit: number };
 
             if (!accountId) return reply.code(400).send({ error: 'No account' });
-            if (!q) return reply.code(400).send({ error: 'Query required' });
+            if (!q?.trim()) return reply.code(400).send({ error: 'Query required' });
 
             const results = await EmbeddingService.semanticSearch(
                 accountId,
-                q,
-                parseInt(limit || '10', 10)
+                q.trim(),
+                limit
             );
 
             return results;
@@ -49,18 +60,18 @@ const searchRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Find similar products
-    fastify.get<{ Params: { productId: string } }>('/similar/:productId', async (request, reply) => {
+    fastify.get<{ Params: { productId: string } }>('/similar/:productId', { schema: { querystring: querySchema(5) } }, async (request, reply) => {
         try {
             const accountId = request.accountId;
             const { productId } = request.params;
-            const { limit } = request.query as { limit?: string };
+            const { limit } = request.query as { limit: number };
 
             if (!accountId) return reply.code(400).send({ error: 'No account' });
 
             const results = await EmbeddingService.findSimilarProducts(
                 productId,
                 accountId,
-                parseInt(limit || '5', 10)
+                limit
             );
 
             return results;
@@ -71,16 +82,26 @@ const searchRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Batch generate embeddings (admin only)
-    fastify.post<{ Body: { limit?: number } }>('/embeddings/generate', async (request, reply) => {
+    fastify.post<{ Body: { limit?: number } }>('/embeddings/generate', {
+        schema: { body: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false } }
+    }, async (request, reply) => {
         try {
             const accountId = request.accountId;
-            const { limit } = request.body;
+            const { limit } = request.body ?? {};
 
             if (!accountId) return reply.code(400).send({ error: 'No account' });
 
+            if (!request.user?.isSuperAdmin) {
+                if (!request.user) return reply.code(401).send({ error: 'Authentication required' });
+                const membership = await prisma.accountUser.findUnique({
+                    where: { userId_accountId: { userId: request.user.id, accountId } }, select: { role: true }
+                });
+                if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) return reply.code(403).send({ error: 'Account admin required' });
+            }
+
             const updated = await EmbeddingService.batchUpdateEmbeddings(
                 accountId,
-                limit || 100
+                limit ?? 100
             );
 
             return { success: true, updated };

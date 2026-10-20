@@ -3,7 +3,7 @@
  * 
  * Tone and platform selection UI for the Ad Copy Generator.
  */
-import { TonePreset, Platform } from './adCopyTypes';
+import type { TonePreset, Platform } from './adCopyTypes';
 
 interface ToneSelectionProps {
     tonePresets: TonePreset[];
@@ -16,13 +16,14 @@ interface ToneSelectionProps {
  */
 export function ToneSelection({ tonePresets, selectedTone, onSelect }: ToneSelectionProps) {
     return (
-        <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+        <fieldset>
+            <legend className="block text-sm font-medium text-gray-300 mb-2">
                 Tone & Style
-            </label>
+            </legend>
             <div className="space-y-2">
                 {tonePresets.map((tone) => (
                     <button
+                        type="button" aria-pressed={selectedTone === tone.id}
                         key={tone.id}
                         onClick={() => onSelect(tone.id)}
                         className={`w-full p-3 rounded-lg border text-left transition-all ${selectedTone === tone.id
@@ -37,7 +38,7 @@ export function ToneSelection({ tonePresets, selectedTone, onSelect }: ToneSelec
                     </button>
                 ))}
             </div>
-        </div>
+        </fieldset>
     );
 }
 
@@ -52,13 +53,14 @@ interface PlatformSelectionProps {
  */
 export function PlatformSelection({ platforms, selectedPlatform, onSelect }: PlatformSelectionProps) {
     return (
-        <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+        <fieldset>
+            <legend className="block text-sm font-medium text-gray-300 mb-2">
                 Target Platform
-            </label>
+            </legend>
             <div className="space-y-2">
                 {platforms.map((platform) => (
                     <button
+                        type="button" aria-pressed={selectedPlatform === platform.id}
                         key={platform.id}
                         onClick={() => onSelect(platform.id)}
                         className={`w-full p-3 rounded-lg border text-left transition-all ${selectedPlatform === platform.id
@@ -76,6 +78,6 @@ export function PlatformSelection({ platforms, selectedPlatform, onSelect }: Pla
                     </button>
                 ))}
             </div>
-        </div>
+        </fieldset>
     );
 }

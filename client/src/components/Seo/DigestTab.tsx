@@ -10,11 +10,12 @@ type Mover = SeoDigest['topMovers']['improved'][number];
 type NewKw = SeoDigest['newKeywords'][number];
 
 export function DigestTab() {
-    const { data: digest, isLoading } = useSeoDigest();
+    const { data: digest, isLoading, error, refetch } = useSeoDigest();
 
     if (isLoading) {
-        return <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 text-slate-400 animate-spin" /></div>;
+        return <div role="status" aria-label="Loading SEO digest" className="flex items-center justify-center py-12"><Loader2 aria-hidden="true" className="w-6 h-6 text-slate-400 animate-spin motion-reduce:animate-none" /></div>;
     }
+    if (error) return <div role="alert">Could not load the SEO digest. <button type="button" onClick={() => void refetch()}>Retry digest</button></div>;
 
     if (!digest) {
         return (

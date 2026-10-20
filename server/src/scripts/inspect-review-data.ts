@@ -1,18 +1,20 @@
+import { requiredAccountId, runScript, withScriptPrisma } from './scriptUtils';
 
-import dotenv from 'dotenv';
-dotenv.config();
-import { createPrismaClient } from '../utils/prisma';
-const prisma = createPrismaClient();
-
-async function main() {
-    const review = await prisma.wooReview.findFirst();
-    if (review) {
-        console.log("Review Raw Data Keys:", Object.keys(review.rawData as object));
-        console.log("Reviewer Email:", (review.rawData as any).reviewer_email);
-        console.log("Full Raw Data:", JSON.stringify(review.rawData, null, 2));
-    } else {
-        console.log("No reviews found");
-    }
-    await prisma.$disconnect();
+/** Inspect a deterministic account-scoped review without printing customer content or identity. */
+export async function main(args = process.argv.slice(2)) {
+    const accountId = requiredAccountId(args);
+    await withScriptPrisma(async prisma => {
+        const review = await prisma.wooReview.findFirst({
+            where: { accountId }, orderBy: { id: 'asc' }, select: { id: true, rawData: true }
+        });
+        if (!review) { console.log('No reviews found for this account.'); return; }
+        const raw = review.rawData;
+        const data = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+        console.log('Review ID:', review.id);
+        console.log('Review Raw Data Keys:', data ? Object.keys(data) : []);
+        console.log('Reviewer email present:', Boolean(data && typeof data.reviewer_email === 'string' && data.reviewer_email));
+        console.log('Raw values omitted to protect reviewer data.');
+    });
 }
-main();
+
+if (require.main === module) void runScript(main);

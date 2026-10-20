@@ -17,8 +17,8 @@ export interface KeywordRevenueAttribution {
     keywordId: string;
     keyword: string;
     targetUrl: string | null;
-    sessions: number;
-    conversions: number;
+    sessions: number | null;
+    conversions: number | null;
     estimatedRevenue: number;
 }
 
@@ -144,8 +144,8 @@ export class KeywordRevenueService {
             keywordId: kw.id,
             keyword: kw.keyword,
             targetUrl: kw.targetUrl,
-            sessions: 0, // Would need to re-query for live session count
-            conversions: 0,
+            sessions: null, // These metrics are not persisted; absence is not a measured zero.
+            conversions: null,
             estimatedRevenue: kw.estimatedRevenue ?? 0,
         }));
     }

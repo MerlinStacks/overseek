@@ -95,7 +95,7 @@ async function start() {
     const { startKeywordRankScheduler, stopKeywordRankScheduler } = await import('./services/search-console/keywordRankScheduler');
     startKeywordRankScheduler();
     onShutdown(async () => {
-      stopKeywordRankScheduler();
+      await stopKeywordRankScheduler();
     });
     Logger.info('[Startup] Keyword rank scheduler started');
   } catch (error) {
@@ -107,7 +107,7 @@ async function start() {
     const { startCompetitorRankScheduler, stopCompetitorRankScheduler } = await import('./services/search-console/CompetitorRankScheduler');
     startCompetitorRankScheduler();
     onShutdown(async () => {
-      stopCompetitorRankScheduler();
+      await stopCompetitorRankScheduler();
     });
     Logger.info('[Startup] Competitor rank scheduler started');
   } catch (error) {

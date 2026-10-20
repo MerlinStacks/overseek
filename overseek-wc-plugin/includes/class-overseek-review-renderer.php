@@ -33,9 +33,9 @@ class OverSeek_Review_Renderer {
 		$total           = isset( $summary['total'] ) ? (int) $summary['total'] : 0;
 		$rating          = isset( $summary['average'] ) ? (float) $summary['average'] : 0.0;
 		$store_name      = ! empty( $context['store_name'] ) ? (string) $context['store_name'] : get_bloginfo( 'name' );
-		$product_summary = isset( $context['product_summary'] ) && is_array( $context['product_summary'] ) ? $context['product_summary'] : [];
+		$product_summary = isset( $context['product_summary'] ) && is_array( $context['product_summary'] ) ? $context['product_summary'] : ( $product_only ? $summary : [] );
 		$product_total   = isset( $product_summary['total'] ) ? (int) $product_summary['total'] : 0;
-		$product_rating  = $product_total > 0 && isset( $product_summary['average'] ) ? (float) $product_summary['average'] : $rating;
+		$product_rating  = $product_total > 0 && isset( $product_summary['average'] ) ? (float) $product_summary['average'] : 0.0;
 		$trust_badges    = isset( $context['trust_badges'] ) && is_array( $context['trust_badges'] ) ? $context['trust_badges'] : [];
 		$review_cta      = self::truthy( $context['review_cta'] ?? false );
 		$classes         = [ 'os-reviews-summary' ];
@@ -45,7 +45,7 @@ class OverSeek_Review_Renderer {
 
 		ob_start();
 		?>
-		<div class="<?php echo esc_attr( implode( ' ', $classes ) ); ?>" aria-label="<?php echo esc_attr( sprintf( 'Average rating %.1f out of 5 from %d reviews', $rating, $total ) ); ?>">
+		<div class="<?php echo esc_attr( implode( ' ', $classes ) ); ?>" aria-label="<?php echo esc_attr__( 'Customer reviews', 'overseek-wc' ); ?>">
 			<?php if ( ! $product_only ) : ?>
 				<div class="os-reviews-summary__brand">
 					<span class="os-reviews-summary__badge" aria-hidden="true">★</span>
@@ -59,15 +59,15 @@ class OverSeek_Review_Renderer {
 			<div class="os-reviews-summary__ratings">
 				<?php if ( ! $product_only ) : ?>
 					<div class="os-reviews-summary__rating">
-						<?php echo self::render_stars( $rating ); ?>
+						<?php if ( $total > 0 ) { echo self::render_stars( $rating ); } ?>
 						<span><?php esc_html_e( 'Store rating', 'overseek-wc' ); ?></span>
-						<strong><?php echo esc_html( number_format_i18n( $rating, 2 ) ); ?> / 5</strong>
+						<strong><?php echo $total > 0 ? esc_html( number_format_i18n( $rating, 2 ) . ' / 5' ) : esc_html__( 'No store reviews yet', 'overseek-wc' ); ?></strong>
 					</div>
 				<?php endif; ?>
 				<div class="os-reviews-summary__rating">
-					<?php echo self::render_stars( $product_rating ); ?>
+					<?php if ( $product_total > 0 ) { echo self::render_stars( $product_rating ); } ?>
 					<span><?php esc_html_e( 'Product rating', 'overseek-wc' ); ?></span>
-					<strong><?php echo esc_html( number_format_i18n( $product_rating, 2 ) ); ?> / 5</strong>
+					<strong><?php echo $product_total > 0 ? esc_html( number_format_i18n( $product_rating, 2 ) . ' / 5' ) : esc_html__( 'Be the first to review', 'overseek-wc' ); ?></strong>
 				</div>
 			</div>
 			<?php if ( ! $product_only ) : ?>
@@ -137,6 +137,13 @@ class OverSeek_Review_Renderer {
 				$achievement = ucfirst( $tier );
 			}
 			$accessible_label = trim( $label . ( '' !== $description ? '. ' . $description : '' ) );
+			$asset_url = isset( $badge['asset_url'] ) ? (string) $badge['asset_url'] : '';
+			if ( '' !== $asset_url ) {
+				$out .= '<div class="os-review-trust-badge os-review-trust-badge--image" title="' . esc_attr( $description ) . '">';
+				$out .= '<img src="' . esc_url( $asset_url ) . '" width="480" height="480" alt="' . esc_attr( $accessible_label ) . '" loading="lazy" decoding="async">';
+				$out .= '</div>';
+				continue;
+			}
 			$out .= '<div class="os-review-trust-badge os-review-trust-badge--' . esc_attr( $type . ' os-review-trust-badge--' . $type . '-' . $tier ) . '" title="' . esc_attr( $description ) . '" aria-label="' . esc_attr( $accessible_label ) . '">';
 			$out .= '<span class="os-review-trust-badge__crest" aria-hidden="true">' . self::render_trust_badge_icon( $type ) . '</span>';
 			$out .= '<span class="os-review-trust-badge__copy" aria-hidden="true"><strong>' . esc_html( $achievement ) . '</strong><span>' . esc_html( $caption ) . '</span></span>';
@@ -446,7 +453,7 @@ class OverSeek_Review_Renderer {
 	 * @param float $rating Rating value.
 	 * @return string
 	 */
-	private static function render_stars( float $rating ): string {
+	public static function render_stars( float $rating ): string {
 		$rating = max( 0.0, min( 5.0, $rating ) );
 		$fill   = round( ( $rating / 5 ) * 100, 1 );
 

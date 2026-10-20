@@ -1,231 +1,57 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Loader2, ArrowUp, ArrowDown } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { cn } from '../../utils/cn';
-import { format } from 'date-fns';
+import { formatDateTimeSafe } from '../../utils/format';
+import { reportMoney, useReportRequest } from './useReportRequest';
 
 interface ProfitItem {
-    orderId: string;
-    orderNumber: string;
-    date: string;
-    productId: number;
-    variationId: number;
-    name: string;
-    sku: string;
-    quantity: number;
-    revenue: number;
-    cogsUnit: number;
-    cost: number;
-    profit: number;
-    margin: number;
+    orderId: string; orderNumber: string; date: string; productId: number; variationId: number;
+    name: string; sku: string; quantity: number; revenue: number; cogsUnit: number; cost: number; profit: number; margin: number;
 }
-
-interface ProfitSummary {
-    revenue: number;
-    cost: number;
-    profit: number;
-    margin: number;
-}
-
-interface ProfitabilityReportProps {
-    startDate: string;
-    endDate: string;
-}
-
+interface ProfitSummary { revenue: number; cost: number; profit: number; margin: number }
+interface Report { breakdown: ProfitItem[]; summary: ProfitSummary }
+interface Props { startDate: string; endDate: string }
 type SortColumn = 'date' | 'name' | 'revenue' | 'cost' | 'profit' | 'margin';
-type SortDirection = 'asc' | 'desc';
+function decodeReport(value: unknown): Report {
+    const report = value as Report;
+    if (!report || !Array.isArray(report.breakdown) || !report.summary || !['revenue', 'cost', 'profit', 'margin'].every(key => Number.isFinite(report.summary[key as keyof ProfitSummary])) ||
+        !report.breakdown.every(item => item && typeof item.name === 'string' && typeof item.date === 'string' && (typeof item.orderNumber === 'string' || typeof item.orderNumber === 'number') && (item.sku == null || typeof item.sku === 'string') && ['quantity', 'revenue', 'cogsUnit', 'cost', 'profit', 'margin'].every(key => Number.isFinite(item[key as keyof ProfitItem])))) throw new Error('Invalid profitability response');
+    return report;
+}
 
-export function ProfitabilityReport({ startDate, endDate }: ProfitabilityReportProps) {
-    const { token } = useAuth();
-    const { currentAccount } = useAccount();
-    const [isLoading, setIsLoading] = useState(true);
-    const [data, setData] = useState<ProfitItem[]>([]);
-    const [summary, setSummary] = useState<ProfitSummary | null>(null);
-    const [error, setError] = useState<string | null>(null);
+export function ProfitabilityReport(props: Props) {
+    const { token } = useAuth(); const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to view profitability.</p>;
+    return <AccountProfitability key={JSON.stringify([currentAccount.id, token, props.startDate, props.endDate])} {...props} token={token} accountId={currentAccount.id} currency={currentAccount.currency} />;
+}
 
-    const [sortColumn, setSortColumn] = useState<SortColumn>('date');
-    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-
-    const fetchData = useCallback(async () => {
-        if (!currentAccount || !token) return;
-        setIsLoading(true);
-        try {
-            const res = await fetch(`/api/analytics/profitability?startDate=${startDate}&endDate=${endDate}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-Account-ID': currentAccount.id }
-            });
-            if (!res.ok) throw new Error('Failed to fetch profitability data');
-            const json = await res.json();
-            setData(json.breakdown);
-            setSummary(json.summary);
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Failed to fetch profitability data');
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentAccount, token, startDate, endDate]);
-
-    useEffect(() => {
-        void fetchData();
-    }, [fetchData]);
-
-    const handleSort = (column: SortColumn) => {
-        if (sortColumn === column) {
-            setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-        } else {
-            setSortColumn(column);
-            setSortDirection('desc');
-        }
-    };
-
-    const sortedData = useMemo(() => {
-        return [...data].sort((a, b) => {
-            let aVal: string | number = a[sortColumn];
-            let bVal: string | number = b[sortColumn];
-
-            if (sortColumn === 'date') {
-                aVal = new Date(a.date).getTime();
-                bVal = new Date(b.date).getTime();
-            } else if (sortColumn === 'name') {
-                aVal = (aVal as string).toLowerCase();
-                bVal = (bVal as string).toLowerCase();
-            }
-
-            if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-            if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-            return 0;
-        });
-    }, [data, sortColumn, sortDirection]);
-
-    const SortableHeader = ({ column, label, align = 'left' }: { column: SortColumn; label: string; align?: 'left' | 'right' }) => (
-        <th
-            onClick={() => handleSort(column)}
-            className={cn(
-                "px-4 py-3 font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors select-none",
-                align === 'right' && 'text-right'
-            )}
-        >
-            <span className="inline-flex items-center gap-1">
-                {label}
-                {sortColumn === column && (
-                    sortDirection === 'asc'
-                        ? <ArrowUp size={14} className="text-blue-600" />
-                        : <ArrowDown size={14} className="text-blue-600" />
-                )}
-            </span>
-        </th>
-    );
-
-    if (isLoading) {
-        return (
-            <div className="h-96 flex flex-col items-center justify-center text-gray-400">
-                <Loader2 className="animate-spin mb-4" size={32} />
-                <p>Calculating profitability...</p>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="p-8 text-center text-red-500 bg-red-50 rounded-xl">
-                <p className="font-bold">Error loading report</p>
-                <p className="text-sm">{error}</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-6">
-            {/* Summary Cards */}
-            {summary && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-200">
-                        <p className="text-sm text-gray-500 mb-1">Total Revenue</p>
-                        <p className="text-2xl font-bold text-gray-900">${summary.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-200">
-                        <p className="text-sm text-gray-500 mb-1">Total Cost (COGS)</p>
-                        <p className="text-2xl font-bold text-gray-900">${summary.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-200">
-                        <p className="text-sm text-gray-500 mb-1">Gross Profit</p>
-                        <p className={cn("text-2xl font-bold", summary.profit >= 0 ? "text-green-600" : "text-red-600")}>
-                            ${summary.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-200">
-                        <p className="text-sm text-gray-500 mb-1">Overall Margin</p>
-                        <p className={cn("text-2xl font-bold", summary.margin >= 20 ? "text-green-600" : summary.margin > 0 ? "text-yellow-600" : "text-red-600")}>
-                            {summary.margin.toFixed(1)}%
-                        </p>
-                    </div>
-                </div>
-            )}
-
-            <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900">Profitability Breakdown</h2>
-                        <p className="text-sm text-gray-500">Gross profit analysis per sold item.</p>
-                    </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <SortableHeader column="date" label="Date" />
-                                <SortableHeader column="name" label="Product" />
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-right">Qty</th>
-                                <SortableHeader column="revenue" label="Revenue" align="right" />
-                                <SortableHeader column="cost" label="COGS" align="right" />
-                                <SortableHeader column="profit" label="Profit" align="right" />
-                                <SortableHeader column="margin" label="Margin %" align="right" />
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {sortedData.map((item, idx) => {
-                                const marginColor = item.margin >= 30 ? "text-green-600" : item.margin >= 10 ? "text-yellow-600" : "text-red-600";
-                                const profitColor = item.profit >= 0 ? "text-gray-900" : "text-red-600";
-
-                                return (
-                                    <tr key={`${item.orderId}-${item.variationId || item.productId}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                                            {format(new Date(item.date), 'MMM d, HH:mm')}
-                                            <div className="text-xs text-blue-600">#{item.orderNumber}</div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <p className="font-medium text-gray-900 truncate max-w-[200px] md:max-w-xs">{item.name}</p>
-                                            <p className="text-xs text-gray-500">{item.sku || 'No SKU'}</p>
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-gray-700">{item.quantity}</td>
-                                        <td className="px-4 py-3 text-right text-gray-900 font-medium">
-                                            ${item.revenue.toFixed(2)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-gray-500">
-                                            ${item.cost.toFixed(2)}
-                                            <div className="text-xs text-gray-400">(${item.cogsUnit.toFixed(2)} ea)</div>
-                                        </td>
-                                        <td className={cn("px-4 py-3 text-right font-medium", profitColor)}>
-                                            ${item.profit.toFixed(2)}
-                                        </td>
-                                        <td className={cn("px-4 py-3 text-right font-bold", marginColor)}>
-                                            {item.margin.toFixed(1)}%
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                            {sortedData.length === 0 && (
-                                <tr>
-                                    <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                                        No sales found in this period.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+function AccountProfitability({ startDate, endDate, token, accountId, currency }: Props & { token: string; accountId: string; currency: string }) {
+    const query = new URLSearchParams({ startDate, endDate });
+    const { data, loading, error, retry } = useReportRequest(`/api/analytics/profitability?${query}`, accountId, token, decodeReport);
+    const [sort, setSort] = useState<SortColumn>('date'); const [ascending, setAscending] = useState(false);
+    const rows = useMemo(() => [...(data?.breakdown ?? [])].sort((first, second) => {
+        const value = (item: ProfitItem) => sort === 'date' ? (Date.parse(item.date) || 0) : sort === 'name' ? item.name.toLowerCase() : item[sort];
+        const a = value(first); const b = value(second);
+        return (a < b ? -1 : a > b ? 1 : 0) * (ascending ? 1 : -1);
+    }), [data, sort, ascending]);
+    if (loading) return <p role="status">Calculating profitability...</p>;
+    if (error || !data) return <p role="alert">Could not load profitability. <button type="button" onClick={retry}>Retry profitability</button></p>;
+    const columns: Array<[SortColumn | 'quantity', string]> = [['date', 'Date'], ['name', 'Product'], ['quantity', 'Qty'], ['revenue', 'Revenue'], ['cost', 'COGS'], ['profit', 'Profit'], ['margin', 'Margin %']];
+    return <section aria-label="Profitability report" className="space-y-4 text-slate-900 dark:text-slate-100">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {(['revenue', 'cost', 'profit', 'margin'] as const).map(key => <div key={key} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4"><p className="text-sm text-slate-500 dark:text-slate-400">{{ revenue: 'Total Revenue', cost: 'Total Cost (COGS)', profit: 'Gross Profit', margin: 'Overall Margin' }[key]}</p><p className="text-2xl font-semibold">{key === 'margin' ? `${data.summary.margin.toFixed(1)}%` : reportMoney(data.summary[key], currency)}</p></div>)}
         </div>
-    );
+        <h2 className="text-xl font-bold">Profitability Breakdown</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Gross profit per sold item. Amounts are labelled with account currency; no currency conversion is performed here.</p>
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700"><table className="w-full text-left text-sm"><caption className="sr-only">Profitability per sold item</caption>
+            <thead className="bg-slate-50 dark:bg-slate-800"><tr>{columns.map(([key, label]) => <th key={key} scope="col" className="p-3" aria-sort={sort === key ? ascending ? 'ascending' : 'descending' : undefined}>{key === 'quantity' ? label : <button type="button" className="font-semibold" onClick={() => { if (sort === key) setAscending(!ascending); else { setSort(key); setAscending(false); } }}>{label}{sort === key ? ascending ? ' ↑' : ' ↓' : ''}</button>}</th>)}</tr></thead>
+            <tbody>{rows.map((item, index) => <tr key={`${item.orderId}-${item.productId}-${item.variationId}-${index}`} className="border-t border-slate-100 dark:border-slate-700">
+                <td className="p-3 whitespace-nowrap">{formatDateTimeSafe(item.date, 'Date unavailable')}<div className="text-xs text-blue-600 dark:text-blue-400">#{item.orderNumber}</div></td>
+                <th scope="row" className="p-3 font-medium">{item.name}<div className="text-xs text-slate-500 dark:text-slate-400">{item.sku || 'No SKU'}</div></th>
+                <td className="p-3">{item.quantity}</td><td className="p-3">{reportMoney(item.revenue, currency)}</td>
+                <td className="p-3">{reportMoney(item.cost, currency)}<div className="text-xs">({reportMoney(item.cogsUnit, currency)} ea)</div></td>
+                <td className="p-3">{reportMoney(item.profit, currency)}</td><td className="p-3">{item.margin.toFixed(1)}%</td>
+            </tr>)}{rows.length === 0 && <tr><td colSpan={7} className="p-8 text-center">No sales found in this period.</td></tr>}</tbody>
+        </table></div>
+    </section>;
 }

@@ -14,7 +14,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             <AdminSidebar />
             <div className="flex-1 flex flex-col min-w-0">
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-100/50">
-                    <div className="max-w-[1600px] mx-auto p-8">
+                    <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
                         {children}
                     </div>
                 </main>

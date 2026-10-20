@@ -406,12 +406,13 @@ export function useBOMSync(): UseBOMSyncReturn {
                 }
             });
             if (signal.aborted) return;
+            if (!res.ok) throw new Error('Failed to reactivate BOM item');
             if (res.ok) {
                 await fetchDeactivatedItems();
                 if (!signal.aborted) await fetchPendingChanges();
             }
         } catch (err) {
-            if (!signal.aborted) Logger.error('Failed to reactivate BOM item', { error: err });
+            if (!signal.aborted) { Logger.error('Failed to reactivate BOM item', { error: err }); throw err; }
         }
     }, [accountId, token, getSignal, fetchDeactivatedItems, fetchPendingChanges]);
 

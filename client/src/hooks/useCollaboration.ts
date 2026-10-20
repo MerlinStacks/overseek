@@ -1,13 +1,8 @@
-/**
- * useCollaboration - Client-side presence hook for collaborative editing.
- * 
- * Tracks active users viewing a document and sends heartbeats to keep presence alive.
- */
-
-import { useEffect, useState, useRef, useCallback } from 'react';
+/** Tracks document presence, scoped to the current account, user and connection. */
+import { useEffect, useMemo, useState } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { Logger } from '../utils/logger';
+import { useAccount } from '../context/AccountContext';
 
 export interface PresenceUser {
     userId: string;
@@ -17,92 +12,55 @@ export interface PresenceUser {
     connectedAt: number;
 }
 
-/** Heartbeat interval in ms - must be less than server TTL (120s) */
-const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
+const HEARTBEAT_INTERVAL_MS = 30000;
 
 export const useCollaboration = (documentId: string) => {
     const { socket, isConnected } = useSocket();
     const { user } = useAuth();
-    const [activeUsers, setActiveUsers] = useState<PresenceUser[]>([]);
-
-    // Track if we've joined to prevent double joins on strict mode/renders
-    const joinedRef = useRef(false);
-    const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-    // Memoized heartbeat sender
-    const sendHeartbeat = useCallback(() => {
-        if (socket && joinedRef.current && documentId) {
-            socket.emit('presence:heartbeat', { docId: documentId });
-        }
-    }, [socket, documentId]);
+    const { currentAccount } = useAccount();
+    const userId = user?.id;
+    const name = user?.fullName || user?.email || 'Unknown User';
+    const avatarUrl = user?.avatarUrl || undefined;
+    const accountId = currentAccount?.id;
+    const scope = useMemo(() => ({ socket, isConnected, documentId, userId, name, avatarUrl, accountId }),
+        [socket, isConnected, documentId, userId, name, avatarUrl, accountId]);
+    const [presence, setPresence] = useState<{ scope: typeof scope; users: PresenceUser[] } | null>(null);
 
     useEffect(() => {
-        if (!socket || !isConnected || !documentId || !user) return;
-
-        Logger.debug('Joining document', { documentId });
-
-        // Generate a random color for this session
-        const sessionColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-
-        const presenceUser = {
-            id: user.id || 'unknown',
-            name: user.fullName || user.email || 'Unknown User',
-            avatarUrl: user.avatarUrl || undefined,
-            color: sessionColor
+        const { socket, isConnected, documentId, userId, name, avatarUrl, accountId } = scope;
+        if (!socket || !isConnected || !documentId || !userId || !accountId) return;
+        let active = true;
+        const color = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+        const join = () => socket.emit('join:document', { docId: documentId, user: { id: userId, name, avatarUrl, color } });
+        const sync = (users: PresenceUser[]) => {
+            if (active && Array.isArray(users)) setPresence({ scope, users });
         };
-
-        socket.emit('join:document', { docId: documentId, user: presenceUser });
-        joinedRef.current = true;
-
-        const handlePresenceSync = (users: PresenceUser[]) => {
-            setActiveUsers(users);
-        };
-
-        socket.on('presence:sync', handlePresenceSync);
-
-        // Start heartbeat interval to keep presence alive
-        heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-
-        // Pause heartbeat when tab is hidden, resume when visible
-        const handleVisibilityChange = () => {
-            if (document.hidden) {
-                // Tab hidden - stop heartbeats (will expire after TTL)
-                if (heartbeatIntervalRef.current) {
-                    clearInterval(heartbeatIntervalRef.current);
-                    heartbeatIntervalRef.current = null;
-                }
-            } else {
-                // Tab visible again - send immediate heartbeat and restart interval
-                sendHeartbeat();
-                if (!heartbeatIntervalRef.current) {
-                    heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-                }
+        // Subscribe before joining: the server may broadcast the initial list immediately.
+        socket.on('presence:sync', sync);
+        join();
+        let interval: ReturnType<typeof setInterval> | undefined;
+        const heartbeat = () => socket.emit('presence:heartbeat', { docId: documentId });
+        const start = () => { if (interval === undefined) interval = setInterval(heartbeat, HEARTBEAT_INTERVAL_MS); };
+        const stop = () => { clearInterval(interval); interval = undefined; };
+        if (!document.hidden) start();
+        const visibility = () => {
+            if (document.hidden) stop();
+            else {
+                // A heartbeat cannot recreate an entry that expired while this tab was hidden.
+                join();
+                start();
             }
         };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
+        document.addEventListener('visibilitychange', visibility);
         return () => {
-            Logger.debug('Leaving document', { documentId });
-
-            // Clear heartbeat interval
-            if (heartbeatIntervalRef.current) {
-                clearInterval(heartbeatIntervalRef.current);
-                heartbeatIntervalRef.current = null;
-            }
-
-            // Remove visibility listener
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-
-            // Leave document
-            socket.emit('leave:document', { docId: documentId });
-            socket.off('presence:sync', handlePresenceSync);
-            joinedRef.current = false;
+            active = false;
+            stop();
+            document.removeEventListener('visibilitychange', visibility);
+            socket.off('presence:sync', sync);
+            // Do not buffer a stale leave until a future reconnection.
+            if (socket.connected) socket.emit('leave:document', { docId: documentId });
         };
-    }, [socket, isConnected, documentId, user, sendHeartbeat]);
+    }, [scope]);
 
-    return {
-        activeUsers,
-        isConnected
-    };
+    return { activeUsers: presence?.scope === scope && isConnected ? presence.users : [], isConnected };
 };

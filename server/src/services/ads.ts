@@ -11,6 +11,27 @@
 import { prisma } from '../utils/prisma';
 import { MetaAdsService } from './ads/MetaAdsService';
 import { GoogleAdsService } from './ads/GoogleAdsService';
+import { z } from 'zod';
+
+const requiredText = z.string().trim().min(1);
+const connectionSchema = z.object({
+    platform: z.enum(['META', 'GOOGLE']),
+    externalId: requiredText,
+    accessToken: requiredText,
+    refreshToken: z.string().optional(),
+    name: z.string().trim().optional(),
+    currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
+}).strict();
+const updateSchema = z.object({
+    accessToken: requiredText.optional(), refreshToken: z.string().optional(),
+    name: z.string().trim().optional(), externalId: requiredText.optional(),
+}).strict();
+
+function validated<T>(schema: z.ZodType<T>, input: unknown): T {
+    const result = schema.safeParse(input);
+    if (!result.success) throw Object.assign(new Error('Invalid ad account input'), { statusCode: 400 });
+    return result.data;
+}
 
 // Re-export types for backwards compatibility
 export { AdMetric, CampaignInsight, DailyTrend, ShoppingProductInsight, SearchKeywordInsight } from './ads/types';
@@ -94,6 +115,7 @@ export class AdsService {
      * Get all connected ad accounts for a store account.
      */
     static async getAdAccounts(accountId: string) {
+        accountId = validated(requiredText, accountId);
         return prisma.adAccount.findMany({
             where: { accountId }
         });
@@ -113,15 +135,17 @@ export class AdsService {
             currency?: string;
         }
     ) {
+        accountId = validated(requiredText, accountId);
+        const input = validated(connectionSchema, data);
         return prisma.adAccount.create({
             data: {
                 accountId,
-                platform: data.platform,
-                externalId: data.externalId,
-                accessToken: data.accessToken,
-                refreshToken: data.refreshToken,
-                name: data.name || `${data.platform} Account`,
-                currency: data.currency
+                platform: input.platform,
+                externalId: validated(requiredText, input.platform === 'GOOGLE' ? input.externalId.replace(/-/g, '') : input.externalId),
+                accessToken: input.accessToken,
+                refreshToken: input.refreshToken,
+                name: input.name || `${input.platform} Account`,
+                currency: input.currency
             }
         });
     }
@@ -130,12 +154,16 @@ export class AdsService {
      * Update an existing ad account (e.g., refresh token rotation).
      */
     static async updateAccount(
+        accountId: string,
         adAccountId: string,
-        data: Partial<{ accessToken: string; refreshToken: string; name: string }>
+        data: Partial<{ accessToken: string; refreshToken: string; name: string; externalId: string }>
     ) {
+        accountId = validated(requiredText, accountId);
+        adAccountId = validated(requiredText, adAccountId);
+        const input = validated(updateSchema, data);
         return prisma.adAccount.update({
-            where: { id: adAccountId },
-            data
+            where: { id: adAccountId, accountId },
+            data: input
         });
     }
 
@@ -148,9 +176,11 @@ export class AdsService {
     /**
      * Delete a connected ad account.
      */
-    static async disconnectAccount(adAccountId: string) {
+    static async disconnectAccount(accountId: string, adAccountId: string) {
+        accountId = validated(requiredText, accountId);
+        adAccountId = validated(requiredText, adAccountId);
         return prisma.adAccount.delete({
-            where: { id: adAccountId }
+            where: { id: adAccountId, accountId }
         });
     }
 }

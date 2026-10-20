@@ -27,7 +27,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
                 "dark:bg-slate-800/90 dark:border-slate-700/50",
                 // Shadow & transitions
                 "shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)]",
-                "transition-all duration-300 ease-out",
+                "transition-all duration-300 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                 // Hover effect (unless disabled)
                 !noHover && "hover:shadow-[0_10px_40px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] hover:-translate-y-0.5",
                 !noHover && "dark:hover:shadow-[0_10px_40px_rgba(0,0,0,0.3),0_4px_12px_rgba(0,0,0,0.2)]",
@@ -54,7 +54,7 @@ export const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
 );
 CardHeader.displayName = "CardHeader";
 
-export const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(
+export const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
     ({ className, ...props }, ref) => (
         <h3
             ref={ref}

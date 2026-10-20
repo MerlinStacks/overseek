@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { cn } from '../../utils/cn';
@@ -26,17 +26,32 @@ const SNOOZE_OPTIONS: SnoozeOption[] = [
  * Modal component for selecting snooze duration.
  * Provides predefined time options for snoozing a conversation.
  */
-export function SnoozeModal({ isOpen, onClose, onSnooze }: SnoozeModalProps) {
+export function SnoozeModal(props: SnoozeModalProps) {
+    return props.isOpen ? <SnoozeModalContent {...props} /> : null;
+}
+
+function SnoozeModalContent({ isOpen, onClose, onSnooze }: SnoozeModalProps) {
     const [isSnoozing, setIsSnoozing] = useState(false);
+    const [error, setError] = useState(false);
+    const active = useRef(true);
+    const pending = useRef(false);
+    useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
 
     const handleSnooze = async (minutes: number) => {
+        if (pending.current) return;
+        pending.current = true;
+        setError(false);
         setIsSnoozing(true);
         try {
+            // eslint-disable-next-line react-hooks/purity -- Calculated only in the click handler, never during rendering.
             const snoozeUntil = new Date(Date.now() + minutes * 60 * 1000);
             await onSnooze(snoozeUntil);
-            onClose();
+            if (active.current) onClose();
+        } catch {
+            if (active.current) setError(true);
         } finally {
-            setIsSnoozing(false);
+            pending.current = false;
+            if (active.current) setIsSnoozing(false);
         }
     };
 
@@ -53,23 +68,25 @@ export function SnoozeModal({ isOpen, onClose, onSnooze }: SnoozeModalProps) {
             maxWidth="max-w-sm"
         >
             <div className="space-y-3">
+                {error && <p role="alert" className="text-red-700 dark:text-red-300">Could not snooze this conversation. Please try again.</p>}
                 <p className="text-sm text-gray-500">
                     Select how long to snooze this conversation:
                 </p>
                 <div className="space-y-1">
                     {SNOOZE_OPTIONS.map((option) => (
                         <button
+                            type="button"
                             key={option.minutes}
                             onClick={() => handleSnooze(option.minutes)}
                             disabled={isSnoozing}
                             className={cn(
                                 "w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors",
-                                "hover:bg-blue-50 text-left",
+                                "hover:bg-blue-50 dark:hover:bg-slate-700 text-left",
                                 isSnoozing && "opacity-50 cursor-not-allowed"
                             )}
                         >
                             <div>
-                                <div className="font-medium text-gray-900">{option.label}</div>
+                                <div className="font-medium text-gray-900 dark:text-slate-100">{option.label}</div>
                                 <div className="text-xs text-gray-500">{option.description}</div>
                             </div>
                             <Clock size={16} className="text-gray-400" />
@@ -77,6 +94,7 @@ export function SnoozeModal({ isOpen, onClose, onSnooze }: SnoozeModalProps) {
                     ))}
                 </div>
                 <button
+                    type="button"
                     onClick={onClose}
                     className="w-full px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors border-t border-gray-100 pt-3 mt-2"
                 >

@@ -9,22 +9,30 @@ import { z } from 'zod';
 
 /** UUID string validation */
 export const uuidSchema = z.string().uuid();
+const inputNumber = z.union([z.number(), z.string().trim().min(1).pipe(z.coerce.number())]);
+const inputDate = z.union([z.date(), z.string().trim().min(1).pipe(z.coerce.date())]);
+const websiteUrl = z.string().trim().url().refine(value => {
+    try {
+        const url = new URL(value);
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
+    } catch { return false; }
+}, 'Use an HTTP or HTTPS URL without credentials');
 
 /** Pagination query params */
 export const paginationSchema = z.object({
     query: z.object({
-        page: z.coerce.number().int().positive().default(1),
-        limit: z.coerce.number().int().positive().max(100).default(20)
+        page: inputNumber.pipe(z.number().int().positive()).default(1),
+        limit: inputNumber.pipe(z.number().int().positive().max(100)).default(20)
     })
 });
 
 /** Date range query params */
 export const dateRangeSchema = z.object({
     query: z.object({
-        startDate: z.coerce.date().optional(),
-        endDate: z.coerce.date().optional(),
+        startDate: inputDate.optional(),
+        endDate: inputDate.optional(),
         days: z.coerce.number().int().positive().max(365).default(30)
-    })
+    }).refine(query => !query.startDate || !query.endDate || query.startDate <= query.endDate, { message: 'Start date must not follow end date', path: ['endDate'] })
 });
 
 export const loginSchema = z.object({
@@ -52,7 +60,7 @@ export const resetPasswordSchema = z.object({
 export const createAccountSchema = z.object({
     body: z.object({
         name: z.string().min(1).max(100),
-        wooUrl: z.string().url(),
+        wooUrl: websiteUrl,
         wooConsumerKey: z.string().min(10),
         wooConsumerSecret: z.string().min(10)
     })
@@ -79,9 +87,9 @@ export const updateProductSchema = z.object({
     }),
     body: z.object({
         name: z.string().optional(),
-        price: z.coerce.number().positive().optional(),
+        price: inputNumber.pipe(z.number().nonnegative()).optional(),
         binLocation: z.string().max(50).optional(),
-        cogs: z.coerce.number().positive().optional(),
+        cogs: inputNumber.pipe(z.number().nonnegative()).optional(),
         supplierId: z.string().uuid().nullable().optional()
     })
 });

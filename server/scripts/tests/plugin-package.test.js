@@ -16,6 +16,7 @@ test('runtime manifest excludes native helpers, secrets, tooling and nested fixt
         'vendor/composer/autoload.php', 'scripts/db.php', '.env', 'assets/.env.json',
         'assets/secrets.json', 'includes/credentials.php', 'includes/example.test.php',
         'assets/tmp/data.json', 'assets/cache.sql', 'assets/app.js.map', 'wp-config.php',
+        'assets/review-badges/source.png',
     ]) assert.equal(isRuntimeFile(file), false, file);
     for (const file of [
         'overseek-integration.php', 'uninstall.php', 'README.md',
@@ -38,6 +39,10 @@ test('candidate contains every current runtime class, asset and block', () => {
         if (!fs.existsSync(path.join(source, root))) continue;
         for (const relative of fs.readdirSync(path.join(source, root), { recursive: true })) {
             const full = path.join(source, root, relative);
+            if (`${root}/${relative.split(path.sep).join('/')}` === 'assets/review-badges/source.png') {
+                assert.ok(excluded.includes('assets/review-badges/source.png'));
+                continue;
+            }
             if (fs.statSync(full).isFile() && !relative.endsWith('.md')) {
                 assert.ok(included.includes(`${root}/${relative.split(path.sep).join('/')}`), full);
             }

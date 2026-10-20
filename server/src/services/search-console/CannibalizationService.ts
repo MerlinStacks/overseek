@@ -35,6 +35,7 @@ export class CannibalizationService {
      * 3. Score severity by position spread and traffic split
      */
     static async detectCannibalization(accountId: string): Promise<CannibalizationResult[]> {
+        if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account ID required');
         const scAccount = await SearchConsoleService.getActiveAccount(accountId);
         if (!scAccount) return [];
 
@@ -45,37 +46,50 @@ export class CannibalizationService {
         const endDate = formatDate(daysAgo(3));
         const startDate = formatDate(daysAgo(93));
 
-        let rows: any[] = [];
+        const rows: Array<{ keys: [string, string]; clicks: number; impressions: number; position: number }> = [];
+        const pageSize = 5000;
         try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${scAccount.accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    startDate,
-                    endDate,
-                    dimensions: ['query', 'page'],
-                    rowLimit: 5000,
-                    dataState: 'final'
-                })
-            });
+            for (let page = 0; ; page++) {
+                if (page >= 20) throw new Error('Search data exceeds analysis limit; existing findings were preserved');
+                const response = await fetch(url, {
+                    method: 'POST',
+                    signal: AbortSignal.timeout(30000),
+                    headers: {
+                        Authorization: `Bearer ${scAccount.accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        startDate,
+                        endDate,
+                        dimensions: ['query', 'page'],
+                        rowLimit: pageSize,
+                        startRow: page * pageSize,
+                        dataState: 'final'
+                    })
+                });
 
-            if (!response.ok) return [];
-            const data = await response.json();
-            rows = data.rows || [];
+                if (!response.ok) throw new Error(`Search Console analysis failed (${response.status})`);
+                const data = await response.json();
+                const batch = data.rows ?? [];
+                if (!Array.isArray(batch) || !batch.every(row => row && Array.isArray(row.keys) && row.keys.length === 2 && row.keys.every(key => typeof key === 'string' && key.trim()) && ['clicks', 'impressions', 'position'].every(key => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0))) throw new Error('Invalid Search Console analysis response');
+                rows.push(...batch);
+                if (batch.length < pageSize) break;
+            }
         } catch (error) {
             Logger.error('Failed to fetch page-level search data', { error, accountId });
-            return [];
+            throw error;
         }
 
         // Group by query
         const queryPages = new Map<string, Array<{ url: string; clicks: number; impressions: number; position: number }>>();
 
+        const seen = new Set<string>();
         for (const row of rows) {
-            const query = row.keys[0];
+            const query = row.keys[0].trim().toLowerCase();
             const page = row.keys[1];
+            const key = JSON.stringify([query, page]);
+            if (seen.has(key)) continue;
+            seen.add(key);
 
             if (!queryPages.has(query)) queryPages.set(query, []);
             queryPages.get(query)!.push({
@@ -108,7 +122,7 @@ export class CannibalizationService {
 
             if (pages.length >= 3 && totalClicks > 20) {
                 severity = 'high';
-                recommendation = `${pages.length} pages compete for "${keyword}". Consolidate into one authoritative page and redirect others.`;
+                recommendation = `${pages.length} pages rank for "${keyword}". Review search intent and content overlap before considering consolidation or redirects.`;
             } else if (positionSpread > 15) {
                 severity = 'medium';
                 recommendation = `Position spread of ${positionSpread} positions. Consider canonical tags or content consolidation.`;
@@ -136,22 +150,16 @@ export class CannibalizationService {
             where: { accountId, isActive: true },
             select: { id: true, keyword: true }
         });
-        const trackedMap = new Map(tracked.map(t => [t.keyword.toLowerCase(), t.id]));
-
+        const findings = new Map(results.map(result => [result.keyword.toLowerCase(), result.pages.map(page => page.url)]));
         const ops: any[] = [];
-        for (const result of results) {
-            const trackedId = trackedMap.get(result.keyword.toLowerCase());
-            if (trackedId) {
-                ops.push(prisma.trackedKeyword.update({
-                    where: { id: trackedId },
-                    data: { cannibalizationPages: result.pages.map(p => p.url) }
-                }));
-            }
+        for (const keyword of tracked) {
+            ops.push(prisma.trackedKeyword.update({
+                where: { id: keyword.id, accountId },
+                data: { cannibalizationPages: findings.get(keyword.keyword.trim().toLowerCase()) || [] }
+            }));
         }
         if (ops.length > 0) {
-            await prisma.$transaction(ops).catch(e =>
-                Logger.warn('Failed to update cannibalization data', { error: e })
-            );
+            await prisma.$transaction(ops);
         }
 
         return results.slice(0, 30);

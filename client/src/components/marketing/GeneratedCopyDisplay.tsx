@@ -4,7 +4,7 @@
  * Displays AI-generated ad copy with copy-to-clipboard functionality.
  */
 import { Check, Copy, Clipboard, CheckCircle2 } from 'lucide-react';
-import { GeneratedCopy } from './adCopyTypes';
+import type { GeneratedCopy } from './adCopyTypes';
 
 interface CopyItemProps {
     text: string;
@@ -20,9 +20,9 @@ interface CopyItemProps {
 function CopyItem({ text, itemKey, copiedItems, onCopy, isMultiline }: CopyItemProps) {
     return (
         <div
-            className={`flex ${isMultiline ? 'items-start' : 'items-center'} justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700 group`}
+            className={`flex flex-wrap gap-3 ${isMultiline ? 'items-start' : 'items-center'} justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700 group`}
         >
-            <span className={`text-white ${isMultiline ? 'text-sm leading-relaxed' : ''}`}>
+            <span className={`text-white min-w-0 flex-1 break-words [overflow-wrap:anywhere] whitespace-pre-wrap ${isMultiline ? 'text-sm leading-relaxed' : ''}`}>
                 {text}
             </span>
             <div className={`flex items-center gap-2 ${isMultiline ? 'ml-3' : ''} flex-shrink-0`}>
@@ -30,8 +30,9 @@ function CopyItem({ text, itemKey, copiedItems, onCopy, isMultiline }: CopyItemP
                     {text.length} chars
                 </span>
                 <button
+                    type="button" aria-label={`${copiedItems.has(itemKey) ? 'Copied' : 'Copy'} ${itemKey.startsWith('h-') ? 'headline' : itemKey.startsWith('d-') ? 'description' : 'primary text'} ${Number(itemKey.slice(2)) + 1}`}
                     onClick={() => onCopy(text, itemKey)}
-                    className="p-1.5 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
+                    className="p-1.5 text-gray-400 hover:text-white focus-visible:outline-2 focus-visible:outline-violet-400 transition-colors"
                 >
                     {copiedItems.has(itemKey) ? (
                         <Check className="w-4 h-4 text-green-400" />
@@ -76,6 +77,7 @@ export function GeneratedCopyDisplay({
                     ))}
                 </div>
                 <button
+                    type="button"
                     onClick={onCopyAll}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
                 >

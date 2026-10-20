@@ -33,18 +33,19 @@ export async function cacheGet<T>(key: string, options?: CacheOptions): Promise<
         const cached = await redisClient.get(fullKey);
         if (cached) {
             // guard against huge payloads that could OOM during parse
-            if (cached.length > MAX_SAFE_CACHE_SIZE) {
+            if (Buffer.byteLength(cached, 'utf8') > MAX_SAFE_CACHE_SIZE) {
                 Logger.error('[Cache] DANGEROUS: Cached value exceeds safe size limit', {
                     key: fullKey,
-                    sizeBytes: cached.length,
-                    sizeMB: (cached.length / 1024 / 1024).toFixed(2),
+                    sizeBytes: Buffer.byteLength(cached, 'utf8'),
+                    sizeMB: (Buffer.byteLength(cached, 'utf8') / 1024 / 1024).toFixed(2),
                     limitMB: (MAX_SAFE_CACHE_SIZE / 1024 / 1024).toFixed(0)
                 });
 
                 await redisClient.del(fullKey);
                 return null;
             }
-            return JSON.parse(cached) as T;
+            try { return JSON.parse(cached) as T; }
+            catch { await redisClient.del(fullKey); return null; }
         }
         return null;
     } catch (error) {
@@ -63,16 +64,18 @@ export async function cacheSet<T>(
     const ttl = options?.ttl ?? DEFAULT_TTL;
 
     try {
+        if (!Number.isSafeInteger(ttl) || ttl <= 0 || ttl > 2147483647) return;
         const serialized = JSON.stringify(value);
+        if (serialized === undefined) return;
 
         // Why: prevent storing payloads that will be rejected on read anyway.
         // Without this guard, cacheAside() enters an infinite write-delete loop:
         // cacheGet detects oversized → deletes → cacheAside refetches → cacheSet writes it back.
-        if (serialized.length > MAX_SAFE_CACHE_SIZE) {
+        if (Buffer.byteLength(serialized, 'utf8') > MAX_SAFE_CACHE_SIZE) {
             Logger.warn('[Cache] Skipping write: payload exceeds safe size limit', {
                 key: fullKey,
-                sizeBytes: serialized.length,
-                sizeMB: (serialized.length / 1024 / 1024).toFixed(2),
+                sizeBytes: Buffer.byteLength(serialized, 'utf8'),
+                sizeMB: (Buffer.byteLength(serialized, 'utf8') / 1024 / 1024).toFixed(2),
                 limitMB: (MAX_SAFE_CACHE_SIZE / 1024 / 1024).toFixed(0)
             });
             return;
@@ -106,8 +109,7 @@ export async function cacheDeletePattern(pattern: string, namespace?: string): P
             const [nextCursor, keys] = await redisClient.scan(cursor, 'MATCH', fullPattern, 'COUNT', 100);
             cursor = nextCursor;
             if (keys.length > 0) {
-                await redisClient.del(...keys);
-                deleted += keys.length;
+                for (let index = 0; index < keys.length; index += 100) deleted += await redisClient.del(...keys.slice(index, index + 100));
             }
         } while (cursor !== '0');
 
@@ -117,7 +119,7 @@ export async function cacheDeletePattern(pattern: string, namespace?: string): P
         return deleted;
     } catch (error) {
         Logger.debug('[Cache] Pattern delete failed', { pattern: fullPattern, error });
-        return 0;
+        return deleted;
     }
 }
 

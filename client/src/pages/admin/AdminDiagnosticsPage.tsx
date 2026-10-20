@@ -35,14 +35,14 @@ export function AdminDiagnosticsPage() {
     } = useDiagnostics();
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 text-slate-800 dark:text-slate-100">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-slate-800">System Diagnostics</h1>
+                <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">System Diagnostics</h1>
             </div>
 
             {/* Message Banner */}
             {message && (
-                <div className={cn(
+                <div role={message.type === 'success' ? 'status' : 'alert'} className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-lg",
                     message.type === 'success' ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"
                 )}>
@@ -52,16 +52,17 @@ export function AdminDiagnosticsPage() {
             )}
 
             {/* System Health Section */}
-            <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6">
+                <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <Activity size={20} />
                         System Health
                     </h2>
                     <button
+                        type="button"
                         onClick={fetchSystemHealth}
                         disabled={healthLoading}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
                     >
                         <RefreshCw size={14} className={healthLoading ? 'animate-spin' : ''} />
                         Refresh
@@ -69,11 +70,11 @@ export function AdminDiagnosticsPage() {
                 </div>
 
                 {healthLoading && !systemHealth ? (
-                    <div className="text-center py-8 text-slate-400">Loading system health...</div>
+                    <div role="status" className="text-center py-8 text-slate-400">Loading system health...</div>
                 ) : systemHealth ? (
                     <div className="space-y-6">
                         {/* Overall Status + Version */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap gap-3 items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className={cn(
                                     "w-3 h-3 rounded-full",
@@ -82,15 +83,15 @@ export function AdminDiagnosticsPage() {
                                 )} />
                                 <span className="text-lg font-medium capitalize">{systemHealth.status}</span>
                             </div>
-                            <div className="text-sm text-slate-500">
+                            <div className="text-sm text-slate-500 dark:text-slate-400">
                                 v{systemHealth.version.app} • Node {systemHealth.version.node} • Up {systemHealth.version.uptimeFormatted}
                             </div>
                         </div>
 
                         {/* Services Grid */}
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             {Object.entries(systemHealth.services).map(([name, service]) => (
-                                <div key={name} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                                <div key={name} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
                                     <div className={cn(
                                         "w-2 h-2 rounded-full",
                                         service.status === 'healthy' ? "bg-green-500" :
@@ -98,8 +99,9 @@ export function AdminDiagnosticsPage() {
                                     )} />
                                     <div>
                                         <div className="font-medium text-sm capitalize">{name}</div>
+                                        <div className="text-xs capitalize">{service.status}</div>
                                         {service.latencyMs !== undefined && (
-                                            <div className="text-xs text-slate-500">{service.latencyMs}ms</div>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400">{service.latencyMs}ms</div>
                                         )}
                                     </div>
                                 </div>
@@ -108,17 +110,17 @@ export function AdminDiagnosticsPage() {
 
                         {/* Queue Stats */}
                         <div>
-                            <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
                                 <Zap size={14} /> Job Queues
                             </h3>
-                            <div className="grid grid-cols-4 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                 {Object.entries(systemHealth.queues).map(([name, stats]) => (
-                                    <div key={name} className="p-3 bg-slate-50 rounded-lg">
-                                        <div className="text-xs font-medium text-slate-600 capitalize mb-1">{name}</div>
+                                    <div key={name} className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                                        <div className="text-xs font-medium text-slate-600 dark:text-slate-300 capitalize mb-1">{name}</div>
                                         <div className="flex gap-2 text-xs">
-                                            <span className="text-amber-600">⏳{stats.waiting}</span>
-                                            <span className="text-blue-600">▶{stats.active}</span>
-                                            <span className="text-red-600">✗{stats.failed}</span>
+                                            <span className="text-amber-600">Waiting: {stats.waiting}</span>
+                                            <span className="text-blue-600">Active: {stats.active}</span>
+                                            <span className="text-red-600">Failed: {stats.failed}</span>
                                         </div>
                                     </div>
                                 ))}
@@ -126,30 +128,30 @@ export function AdminDiagnosticsPage() {
                         </div>
 
                         {/* Sync Summary + Webhook Health */}
-                        <div className="flex gap-6">
+                        <div className="flex flex-wrap gap-6">
                             <div>
-                                <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
                                     <Database size={14} /> Sync Status
                                 </h3>
-                                <div className="flex gap-3">
+                                <div className="flex flex-wrap gap-3">
                                     {systemHealth.sync.entityTypes.map(entity => (
-                                        <div key={entity.type} className="text-center p-2 bg-slate-50 rounded-lg">
-                                            <div className="text-lg font-bold text-slate-700">{entity.accountsSynced}/{entity.accountsTracked}</div>
-                                            <div className="text-xs text-slate-500 capitalize">{entity.type}</div>
+                                        <div key={entity.type} className="text-center p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                                            <div className="text-lg font-bold text-slate-700 dark:text-slate-200">{entity.accountsSynced}/{entity.accountsTracked}</div>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{entity.type}</div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                             <div>
-                                <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
                                     <Webhook size={14} /> Webhooks (24h)
                                 </h3>
                                 <div className="flex gap-3 text-center">
-                                    <div className="p-2 bg-slate-50 rounded-lg">
+                                    <div className="p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
                                         <div className="text-lg font-bold text-green-600">{systemHealth.webhooks.processed24h}</div>
                                         <div className="text-xs text-slate-500">Processed</div>
                                     </div>
-                                    <div className="p-2 bg-slate-50 rounded-lg">
+                                    <div className="p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
                                         <div className="text-lg font-bold text-red-600">{systemHealth.webhooks.failed24h}</div>
                                         <div className="text-xs text-slate-500">Failed</div>
                                     </div>
@@ -163,14 +165,15 @@ export function AdminDiagnosticsPage() {
             </div>
 
             {/* Push Subscriptions Section */}
-            <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6">
+                <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <Bell size={20} />
                         Push Subscriptions
                     </h2>
                     <div className="flex gap-2">
                         <button
+                            type="button"
                             onClick={fetchSubscriptions}
                             disabled={loading}
                             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
@@ -180,6 +183,7 @@ export function AdminDiagnosticsPage() {
                         </button>
                         {subscriptions && subscriptions.totalSubscriptions > 0 && (
                             <button
+                                type="button"
                                 onClick={deleteAllSubscriptions}
                                 disabled={loading}
                                 className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
@@ -193,7 +197,7 @@ export function AdminDiagnosticsPage() {
 
                 {subscriptions && (
                     <div className="space-y-4">
-                        <div className="flex gap-4 text-sm text-slate-600">
+                        <div className="flex gap-4 text-sm text-slate-600 dark:text-slate-300">
                             <span>Total: <strong>{subscriptions.totalSubscriptions}</strong></span>
                             <span>Accounts: <strong>{subscriptions.uniqueAccounts}</strong></span>
                         </div>
@@ -201,10 +205,11 @@ export function AdminDiagnosticsPage() {
                         {Object.entries(subscriptions.byAccount).map(([accountKey, subs]) => (
                             <div key={accountKey} className="border border-slate-200 rounded-lg overflow-hidden">
                                 <button
+                                    type="button" aria-expanded={expandedAccounts.has(accountKey)} aria-label={`${accountKey} ${subs.length} subscription${subs.length !== 1 ? 's' : ''}`}
                                     onClick={() => toggleAccount(accountKey)}
-                                    className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                                    className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-left"
                                 >
-                                    <span className="font-medium text-slate-700">{accountKey}</span>
+                                    <span className="font-medium text-slate-700 dark:text-slate-200">{accountKey}</span>
                                     <span className="flex items-center gap-2 text-sm text-slate-500">
                                         {subs.length} subscription{subs.length !== 1 ? 's' : ''}
                                         {expandedAccounts.has(accountKey) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -213,9 +218,9 @@ export function AdminDiagnosticsPage() {
                                 {expandedAccounts.has(accountKey) && (
                                     <div className="divide-y divide-slate-100">
                                         {subs.map(sub => (
-                                            <div key={sub.id} className="px-4 py-3 flex items-center justify-between text-sm">
-                                                <div className="space-y-1">
-                                                    <div className="font-medium text-slate-700">{sub.userEmail}</div>
+                                            <div key={sub.id} className="px-4 py-3 flex gap-3 items-center justify-between text-sm">
+                                                <div className="space-y-1 min-w-0 break-words">
+                                                    <div className="font-medium text-slate-700 dark:text-slate-200">{sub.userEmail}</div>
                                                     <div className="text-xs text-slate-500">
                                                         ID: {sub.id} | User: {sub.userId}
                                                     </div>
@@ -229,6 +234,7 @@ export function AdminDiagnosticsPage() {
                                                     </div>
                                                 </div>
                                                 <button
+                                                    type="button" disabled={loading} aria-label={`Delete subscription for ${sub.userEmail} (${sub.id})`}
                                                     onClick={() => deleteSubscription(sub.id)}
                                                     className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                     title="Delete subscription"
@@ -246,20 +252,21 @@ export function AdminDiagnosticsPage() {
             </div>
 
             {/* Test Push Section */}
-            <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-6">
-                <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2 mb-4">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 p-6">
+                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2 mb-4">
                     <Send size={20} />
                     Test Push Notification
                 </h2>
 
-                <div className="flex gap-4 items-end">
+                <div className="flex flex-col sm:flex-row gap-4 sm:items-end">
                     <div className="flex-1">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Select Account</label>
+                        <label htmlFor="diagnostics-account" className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Select Account</label>
                         <select
+                            id="diagnostics-account" disabled={loading}
                             value={selectedAccountId}
                             onChange={(e) => setSelectedAccountId(e.target.value)}
                             onFocus={() => accounts.length === 0 && fetchAccounts()}
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                             <option value="">-- Select Account --</option>
                             {accounts.map(acc => (
@@ -267,18 +274,20 @@ export function AdminDiagnosticsPage() {
                             ))}
                         </select>
                     </div>
-                    <div className="w-48">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Notification Type</label>
+                    <div className="w-full sm:w-48">
+                        <label htmlFor="diagnostics-notification-type" className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Notification Type</label>
                         <select
+                            id="diagnostics-notification-type" disabled={loading}
                             value={testType}
                             onChange={(e) => setTestType(e.target.value as 'order' | 'message')}
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                             <option value="order">New Order</option>
                             <option value="message">New Message</option>
                         </select>
                     </div>
                     <button
+                        type="button"
                         onClick={sendTestPush}
                         disabled={!selectedAccountId || loading}
                         className="inline-flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -289,8 +298,8 @@ export function AdminDiagnosticsPage() {
                 </div>
 
                 {testResult && (
-                    <div className="mt-4 p-4 bg-slate-50 rounded-lg text-sm">
-                        <div className="font-medium text-slate-700 mb-2">Test Result for {testResult.accountName}</div>
+                    <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg text-sm">
+                        <div className="font-medium text-slate-700 dark:text-slate-200 mb-2">Test Result for {testResult.accountName}</div>
                         <div className="grid grid-cols-3 gap-4 text-center">
                             <div>
                                 <div className="text-2xl font-bold text-green-600">{testResult.sent}</div>
@@ -301,7 +310,7 @@ export function AdminDiagnosticsPage() {
                                 <div className="text-xs text-slate-500">Failed</div>
                             </div>
                             <div>
-                                <div className="text-2xl font-bold text-slate-600">{testResult.eligibleSubscriptions}</div>
+                                <div className="text-2xl font-bold text-slate-600 dark:text-slate-300">{testResult.eligibleSubscriptions}</div>
                                 <div className="text-xs text-slate-500">Eligible</div>
                             </div>
                         </div>

@@ -9,10 +9,11 @@ import { SCHEDULER_LIMITS } from '../config/limits';
 type ShutdownCallback = () => Promise<void>;
 
 const shutdownCallbacks: ShutdownCallback[] = [];
+const resourceCallbacks: ShutdownCallback[] = [];
 
 /** register a callback to run on shutdown (queue draining, etc.) */
-export function onShutdown(callback: ShutdownCallback): void {
-    shutdownCallbacks.push(callback);
+export function onShutdown(callback: ShutdownCallback, phase: 'drain' | 'resources' = 'drain'): void {
+    (phase === 'resources' ? resourceCallbacks : shutdownCallbacks).push(callback);
 }
 
 
@@ -32,8 +33,22 @@ export function initGracefulShutdown(server: Server): void {
         }, SCHEDULER_LIMITS.SHUTDOWN_TIMEOUT_MS);
 
 
-        server.close(() => {
-            Logger.info('[Shutdown] HTTP server closed');
+        let failed = false;
+        const httpClosed = new Promise<void>(resolve => {
+            try {
+                server.close(error => {
+                    if (error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') {
+                        failed = true;
+                        Logger.error('[Shutdown] HTTP close failed', { error });
+                    }
+                    Logger.info('[Shutdown] HTTP server closed');
+                    resolve();
+                });
+            } catch (error) {
+                failed = true;
+                Logger.error('[Shutdown] HTTP close failed', { error });
+                resolve();
+            }
         });
 
 
@@ -41,8 +56,14 @@ export function initGracefulShutdown(server: Server): void {
             try {
                 await callback();
             } catch (error) {
+                failed = true;
                 Logger.error('[Shutdown] Callback error', { error });
             }
+        }
+        // Keep shared dependencies alive for in-flight requests and queue draining.
+        await httpClosed;
+        for (const callback of resourceCallbacks) {
+            try { await callback(); } catch (error) { failed = true; Logger.error('[Shutdown] Resource cleanup failed', { error }); }
         }
 
 
@@ -50,6 +71,7 @@ export function initGracefulShutdown(server: Server): void {
             await prisma.$disconnect();
             Logger.info('[Shutdown] Database connection closed');
         } catch (error) {
+            failed = true;
             Logger.error('[Shutdown] Failed to close database', { error });
         }
 
@@ -58,12 +80,13 @@ export function initGracefulShutdown(server: Server): void {
             await redisClient.quit();
             Logger.info('[Shutdown] Redis connection closed');
         } catch (error) {
+            failed = true;
             Logger.error('[Shutdown] Failed to close Redis', { error });
         }
 
         clearTimeout(forceExitTimeout);
         Logger.info('[Shutdown] Graceful shutdown complete');
-        process.exit(0);
+        process.exit(failed ? 1 : 0);
     };
 
 
@@ -72,4 +95,3 @@ export function initGracefulShutdown(server: Server): void {
 
     Logger.info('[Shutdown] Graceful shutdown handlers registered');
 }
-

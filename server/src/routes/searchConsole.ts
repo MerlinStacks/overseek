@@ -532,7 +532,9 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/competitors/:id/keywords', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
             const { id } = request.params as { id: string };
-            const keywords = await CompetitorAnalysisService.getCompetitorKeywords(id);
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
+            const keywords = await CompetitorAnalysisService.getCompetitorKeywords(accountId, id);
             return { keywords, count: keywords.length };
         } catch (error: any) {
             Logger.error('Failed to fetch competitor keywords', { error });
@@ -546,11 +548,13 @@ const searchConsoleRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/competitors/:id/keywords/:kwId/history', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const { kwId } = request.params as { id: string; kwId: string };
+            const { id, kwId } = request.params as { id: string; kwId: string };
+            const accountId = getAdsAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const query = request.query as { days?: string };
             const days = parseDays(query.days, 30);
 
-            const history = await CompetitorAnalysisService.getCompetitorKeywordHistory(kwId, days);
+            const history = await CompetitorAnalysisService.getCompetitorKeywordHistory(accountId, id, kwId, days);
             return { history, count: history.length };
         } catch (error: any) {
             Logger.error('Failed to fetch competitor keyword history', { error });

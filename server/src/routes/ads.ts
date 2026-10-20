@@ -163,32 +163,29 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             const adAccount = await getAdAccountOrReply(accountId, adAccountId, reply);
             if (!adAccount) return;
 
-            const updateData: { name?: string; accessToken?: string; refreshToken?: string } = {};
+            const updateData: { name?: string; accessToken?: string; refreshToken?: string; externalId?: string } = {};
             if (name !== undefined) updateData.name = name;
             if (accessToken !== undefined) updateData.accessToken = accessToken;
             if (refreshToken !== undefined) updateData.refreshToken = refreshToken;
 
-            const updated = await AdsService.updateAccount(adAccountId, updateData);
-
             if (externalId !== undefined) {
                 // Normalize Google externalId: strip dashes for consistency with complete-setup
-                const normalizedExtId = adAccount.platform === 'GOOGLE'
+                const normalizedExtId = adAccount.platform === 'GOOGLE' && typeof externalId === 'string'
                     ? externalId.replace(/-/g, '')
                     : externalId;
-                await prisma.adAccount.update({
-                    where: { id: adAccountId },
-                    data: { externalId: normalizedExtId }
-                });
+                updateData.externalId = normalizedExtId;
             }
+            const updated = await AdsService.updateAccount(accountId, adAccountId, updateData);
 
             Logger.info('Ad account updated', { adAccountId, fields: Object.keys(updateData) });
 
             return {
                 ...maskAdAccountTokens(updated),
-                externalId: externalId || adAccount.externalId,
+                externalId: updated.externalId,
             };
         } catch (error: any) {
             Logger.error('Failed to update ad account', { error });
+            if (error.statusCode === 400) return reply.code(400).send({ error: error.message });
             return reply.code(500).send({ error: 'Failed to update ad account' });
         }
     });
@@ -206,7 +203,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             // Normalize Google externalId: strip dashes for consistency with complete-setup
-            const normalizedExternalId = platform === 'GOOGLE' ? externalId.replace(/-/g, '') : externalId;
+            const normalizedExternalId = platform === 'GOOGLE' && typeof externalId === 'string' ? externalId.replace(/-/g, '') : externalId;
 
             const adAccount = await AdsService.connectAccount(accountId, {
                 platform, externalId: normalizedExternalId, accessToken, refreshToken, name, currency
@@ -215,6 +212,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             return maskAdAccountTokens(adAccount);
         } catch (error: any) {
             Logger.error('Failed to connect ad account', { error });
+            if (error.statusCode === 400) return reply.code(400).send({ error: error.message });
             return reply.code(500).send({ error: 'Failed to connect ad account' });
         }
     });
@@ -230,7 +228,7 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             const adAccount = await getAdAccountOrReply(accountId, adAccountId, reply);
             if (!adAccount) return;
 
-            await AdsService.disconnectAccount(adAccountId);
+            await AdsService.disconnectAccount(accountId, adAccountId);
             return { success: true };
         } catch (error: any) {
             Logger.error('Failed to disconnect ad account', { error });
@@ -247,30 +245,28 @@ const adsRoutes: FastifyPluginAsync = async (fastify) => {
             const { adAccountId } = request.params;
             const { customerId, name } = request.body;
 
-            if (!customerId) {
+            if (typeof customerId !== 'string' || !/^\d[\d-]*\d$/.test(customerId.trim())) {
                 return reply.code(400).send({ error: 'Customer ID is required' });
             }
 
             const adAccount = await getAdAccountOrReply(accountId, adAccountId, reply);
             if (!adAccount) return;
 
+            if (adAccount.platform !== 'GOOGLE') return reply.code(400).send({ error: 'Only Google accounts support this setup flow' });
             if (adAccount.externalId !== 'PENDING_SETUP') {
                 return reply.code(400).send({ error: 'Account is already configured' });
             }
 
-            await AdsService.updateAccount(adAccountId, {
-                name: name || `Google Ads (${customerId})`
-            });
-
-            await prisma.adAccount.update({
-                where: { id: adAccountId },
-                data: { externalId: customerId.replace(/-/g, '') }
+            await AdsService.updateAccount(accountId, adAccountId, {
+                name: name || `Google Ads (${customerId})`,
+                externalId: customerId.trim().replace(/-/g, '')
             });
 
             Logger.info('Google Ads account setup completed', { adAccountId, customerId });
             return { success: true, message: 'Google Ads account configured successfully' };
         } catch (error: any) {
             Logger.error('Failed to complete ad account setup', { error });
+            if (error.statusCode === 400) return reply.code(400).send({ error: error.message });
             return reply.code(500).send({ error: error.message });
         }
     });

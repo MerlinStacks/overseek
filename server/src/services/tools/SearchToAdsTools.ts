@@ -21,6 +21,8 @@ export class SearchToAdsTools {
             const correlation = await SearchToAdsIntelligenceService.getCorrelation(accountId);
 
             return {
+                currency: correlation.currency,
+                reportingPeriod: correlation.reportingPeriod,
                 summary: correlation.summary,
                 topCannibalized: correlation.overlap
                     .filter(o => o.cannibalizationScore >= 50)

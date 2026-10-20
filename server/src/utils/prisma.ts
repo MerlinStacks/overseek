@@ -44,6 +44,6 @@ export const prisma = new Proxy({} as PrismaClient, {
 /** standalone client for scripts that need their own connection */
 export function createPrismaClient(): PrismaClient {
     const scriptPool = new Pool({ connectionString: process.env.DATABASE_URL });
-    const scriptAdapter = new PrismaPg(scriptPool);
+    const scriptAdapter = new PrismaPg(scriptPool, { disposeExternalPool: true });
     return new PrismaClient({ adapter: scriptAdapter });
 }

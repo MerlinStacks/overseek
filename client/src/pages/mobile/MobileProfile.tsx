@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useHaptic } from '../../hooks/useHaptic';
 import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
+import { DateTimeSettings } from '../../components/settings/DateTimeSettings';
 import {
     User,
     Mail,
@@ -291,6 +292,7 @@ export function MobileProfile() {
             </div>
 
             {/* Logout Button */}
+            <DateTimeSettings />
             <button
                 onClick={handleLogout}
                 className="w-full py-3.5 bg-red-500/10 border border-red-500/20 text-red-400 font-semibold rounded-2xl flex items-center justify-center gap-2 active:bg-red-500/20 active:scale-[0.98] transition-all"

@@ -8,24 +8,17 @@
 
 import { Smartphone, Monitor, Clock, ExternalLink } from 'lucide-react';
 import { LiveSession } from '../../types/analytics';
-import { formatCurrency } from '../../utils/format';
-
-/** Country-code → flag emoji. Falls back to 🌍. */
-function getFlagEmoji(countryCode: string | null): string {
-    if (!countryCode) return '🌍';
-    const codePoints = countryCode
-        .toUpperCase()
-        .split('')
-        .map(char => 127397 + char.charCodeAt(0));
-    return String.fromCodePoint(...codePoints);
-}
+import { formatTimeSafe } from '../../utils/format';
+import { useAccount } from '../../context/AccountContext';
+import { cartAmount, cartMoney, flagEmoji, useLiveClock } from './liveDisplay';
 
 /** Recency status: green < 1 min, yellow 1-3 min, gray > 3 min. */
-function getStatusClasses(isoDate: string): string {
-    const secsAgo = (Date.now() - new Date(isoDate).getTime()) / 1000;
-    if (secsAgo < 60) return 'bg-green-500 animate-pulse';
-    if (secsAgo < 180) return 'bg-yellow-400';
-    return 'bg-gray-300';
+function visitorStatus(isoDate: string, now: number): { label: string; classes: string } {
+    const secsAgo = (now - new Date(isoDate).getTime()) / 1000;
+    if (!Number.isFinite(secsAgo) || secsAgo < 0) return { label: 'Activity unavailable', classes: 'bg-gray-300' };
+    if (secsAgo < 60) return { label: 'Active within the last minute', classes: 'bg-green-500 animate-pulse motion-reduce:animate-none' };
+    if (secsAgo < 180) return { label: 'Active within the last three minutes', classes: 'bg-yellow-400' };
+    return { label: 'Inactive for at least three minutes', classes: 'bg-gray-300' };
 }
 
 interface VisitorsTableProps {
@@ -33,8 +26,12 @@ interface VisitorsTableProps {
     onVisitorClick?: (visitorId: string) => void;
 }
 
-export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => (
+export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => {
+    const { currentAccount } = useAccount();
+    const now = useLiveClock();
+    return (
     <table className="w-full text-left text-sm">
+        <caption className="sr-only">Live visitors and their latest activity</caption>
         <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
             <tr>
                 <th className="p-4 font-medium">Visitor</th>
@@ -60,11 +57,13 @@ export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => (
                                     {v.deviceType === 'mobile' ? <Smartphone size={16} /> : <Monitor size={16} />}
                                 </div>
                                 {/* Status dot */}
-                                <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${getStatusClasses(v.lastActiveAt)}`} />
+                                <span role="img" aria-label={visitorStatus(v.lastActiveAt, now).label} className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${visitorStatus(v.lastActiveAt, now).classes}`} />
                             </div>
                             <div>
                                 <div className="font-medium text-gray-900 break-all">
-                                    {v.customer?.firstName
+                                    {onVisitorClick ? <button type="button" onClick={event => { event.stopPropagation(); onVisitorClick(v.visitorId); }} className="text-left underline decoration-dotted underline-offset-4 focus-visible:outline-2 focus-visible:outline-blue-500" aria-label={`View visitor profile: ${v.customer?.firstName ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim() : v.visitorId}`}>
+                                        {v.customer?.firstName ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim() : `${v.visitorId.substring(0, 8)}...`}
+                                    </button> : v.customer?.firstName
                                         ? `${v.customer.firstName} ${v.customer.lastName || ''}`.trim()
                                         : `${v.visitorId.substring(0, 8)}...`}
                                 </div>
@@ -76,7 +75,7 @@ export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => (
                     {/* Location */}
                     <td className="p-4">
                         <div className="flex items-center gap-2">
-                            <span className="text-xl">{getFlagEmoji(v.country)}</span>
+                            <span aria-hidden="true" className="text-xl">{flagEmoji(v.country)}</span>
                             <span className="text-gray-700">{v.city || 'Unknown'}, {v.country || '-'}</span>
                         </div>
                     </td>
@@ -105,12 +104,12 @@ export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => (
 
                     {/* Cart Value */}
                     <td className="p-4 hidden lg:table-cell text-right">
-                        {Number(v.cartValue) > 0 ? (
+                        {cartAmount(v.cartValue) !== null ? (
                             <span className="text-sm font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-md">
-                                {formatCurrency(Number(v.cartValue))}
+                                {cartMoney(cartAmount(v.cartValue), currentAccount?.currency)}
                             </span>
                         ) : (
-                            <span className="text-xs text-gray-300">—</span>
+                            <span className="text-xs text-gray-500">Unavailable</span>
                         )}
                     </td>
 
@@ -118,11 +117,11 @@ export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => (
                     <td className="p-4">
                         <div className="flex items-center gap-2 text-gray-700">
                             <Clock size={14} className="text-gray-400" />
-                            {new Date(v.lastActiveAt).toLocaleTimeString()}
+                            {formatTimeSafe(v.lastActiveAt, 'Time unavailable')}
                         </div>
                         {/* Profile link hint on hover */}
                         {onVisitorClick && (
-                            <div className="text-xs text-blue-500 mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                            <div aria-hidden="true" className="text-xs text-blue-500 mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center gap-1">
                                 <ExternalLink size={10} /> View profile
                             </div>
                         )}
@@ -136,4 +135,5 @@ export const VisitorsTable = ({ data, onVisitorClick }: VisitorsTableProps) => (
             )}
         </tbody>
     </table>
-);
+    );
+};

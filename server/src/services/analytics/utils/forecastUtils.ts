@@ -6,6 +6,12 @@
  */
 
 import { ANALYTICS_CONFIG } from './analyticsConfig';
+// Default-filled months must not count as observed seasonal history.
+const observedMonths = new WeakMap<Map<number, number>, number>();
+function nonnegative(value: number): void {
+    if (!Number.isFinite(value) || value < 0) throw new RangeError('Forecast inputs must be finite and nonnegative');
+}
+function validateSales(sales: number[]): void { sales.forEach(nonnegative); }
 
 
 export type StockoutRisk = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
@@ -51,33 +57,27 @@ export function weightedMovingAverage(
     weights: readonly number[] = [0.4, 0.3, 0.2, 0.1]
 ): number {
     if (dailySales.length === 0) return 0;
+    validateSales(dailySales);
+    if (!weights.length || weights.some(weight => !Number.isFinite(weight) || weight < 0) || !weights.some(weight => weight > 0)) throw new RangeError('Invalid forecast weights');
     if (dailySales.length === 1) return dailySales[0];
 
     // Segment data into chunks based on weights
     const segmentSize = Math.ceil(dailySales.length / weights.length);
-    const segments: number[] = [];
-
-    for (let i = 0; i < weights.length; i++) {
-        const start = dailySales.length - (segmentSize * (weights.length - i));
-        const end = start + segmentSize;
-        const segment = dailySales.slice(Math.max(0, start), Math.min(dailySales.length, end));
-
-        if (segment.length > 0) {
-            const avg = segment.reduce((a, b) => a + b, 0) / segment.length;
-            segments.push(avg);
-        }
-    }
-
-    // Apply weights (reverse order: most recent segment gets highest weight)
     let weightedSum = 0;
     let weightSum = 0;
-    for (let i = 0; i < segments.length; i++) {
-        const weight = weights[i] || weights[weights.length - 1];
-        weightedSum += segments[segments.length - 1 - i] * weight;
+    for (let i = 0; i < weights.length; i++) {
+        const end = dailySales.length - i * segmentSize;
+        if (end <= 0) break;
+        const segment = dailySales.slice(Math.max(0, end - segmentSize), end);
+        const average = segment.reduce((sum, value) => sum + value / segment.length, 0);
+        const weight = weights[i];
+        weightedSum += average * weight;
         weightSum += weight;
     }
 
-    return weightSum > 0 ? weightedSum / weightSum : 0;
+    const result = weightSum > 0 ? weightedSum / weightSum : 0;
+    nonnegative(result);
+    return result;
 }
 
 
@@ -92,6 +92,11 @@ export function calculateSeasonalityCoefficients(
     monthlySales: Map<number, number>
 ): Map<number, number> {
     const coefficients = new Map<number, number>();
+    for (const [month, sales] of monthlySales) {
+        if (!Number.isInteger(month) || month < 1 || month > 12) throw new RangeError('Invalid seasonality month');
+        nonnegative(sales);
+    }
+    observedMonths.set(coefficients, monthlySales.size);
 
     if (monthlySales.size === 0) {
         // Default: no seasonality adjustment
@@ -103,7 +108,7 @@ export function calculateSeasonalityCoefficients(
 
     // Calculate average monthly sales
     const values = Array.from(monthlySales.values());
-    const avgMonthly = values.reduce((a, b) => a + b, 0) / values.length;
+    const avgMonthly = values.reduce((sum, value) => sum + value / values.length, 0);
 
     if (avgMonthly === 0) {
         for (let m = 1; m <= 12; m++) {
@@ -134,7 +139,10 @@ export function getSeasonalityFactor(
     targetMonth: number,
     coefficients: Map<number, number>
 ): number {
-    return coefficients.get(targetMonth) ?? 1.0;
+    if (!Number.isInteger(targetMonth) || targetMonth < 1 || targetMonth > 12) throw new RangeError('Invalid forecast month');
+    const factor = coefficients.get(targetMonth) ?? 1.0;
+    nonnegative(factor);
+    return factor;
 }
 
 
@@ -149,6 +157,7 @@ export function calculateLinearTrend(
     dailySales: number[]
 ): { slope: number; intercept: number } {
     const n = dailySales.length;
+    validateSales(dailySales);
     if (n < 2) return { slope: 0, intercept: dailySales[0] ?? 0 };
 
     const x = dailySales.map((_, i) => i);
@@ -164,6 +173,7 @@ export function calculateLinearTrend(
 
     const slope = (n * sumXY - sumX * sumY) / denominator;
     const intercept = (sumY - slope * sumX) / n;
+    if (!Number.isFinite(slope) || !Number.isFinite(intercept)) throw new RangeError('Forecast trend exceeds numeric range');
 
     return { slope, intercept };
 }
@@ -176,6 +186,7 @@ export function classifyTrend(
     currentAvg: number,
     threshold: number = 5
 ): { direction: TrendDirection; percent: number } {
+    nonnegative(previousAvg); nonnegative(currentAvg); nonnegative(threshold);
     if (previousAvg === 0) {
         return {
             direction: currentAvg > 0 ? 'up' : 'stable',
@@ -184,6 +195,7 @@ export function classifyTrend(
     }
 
     const percent = Math.round(((currentAvg - previousAvg) / previousAvg) * 100);
+    if (!Number.isFinite(percent)) throw new RangeError('Forecast trend exceeds numeric range');
 
     let direction: TrendDirection = 'stable';
     if (percent > threshold) direction = 'up';
@@ -235,18 +247,20 @@ export function predictDailyDemand(
     const midpoint = Math.floor(historicalDaily.length / 2);
     const olderAvg = historicalDaily.slice(0, midpoint).reduce((a, b) => a + b, 0) / Math.max(1, midpoint);
     const recentAvg = historicalDaily.slice(midpoint).reduce((a, b) => a + b, 0) / Math.max(1, historicalDaily.length - midpoint);
-    const { direction: trendDirection, percent: trendPercent } = classifyTrend(olderAvg, recentAvg);
+    const { direction: trendDirection, percent: trendPercent } = historicalDaily.length < 2
+        ? { direction: 'stable' as const, percent: 0 }
+        : classifyTrend(olderAvg, recentAvg);
 
     // 5. Combine: WMA * seasonality + small trend adjustment
     // Trend adjustment is capped to prevent runaway predictions
-    const trendAdjustment = Math.max(-0.3, Math.min(0.3, slope * 7)); // 7-day projection, capped at ±30%
+    const trendAdjustment = Math.max(-0.3, Math.min(0.3, slope * 7)); // 7-day projection, capped at ±0.3 units/day
     const dailyDemand = Math.max(0, wma * seasonalityFactor + trendAdjustment);
 
     // 6. Confidence based on data quality
-    const confidence = calculateConfidence(historicalDaily.length, seasonalityCoeffs.size);
+    const confidence = calculateConfidence(historicalDaily.length, observedMonths.get(seasonalityCoeffs) ?? seasonalityCoeffs.size);
 
     return {
-        dailyDemand: Math.round(dailyDemand * 100) / 100,
+        dailyDemand: Number(dailyDemand.toFixed(2)),
         confidence,
         trendDirection,
         trendPercent,
@@ -270,9 +284,9 @@ function calculateConfidence(dataPoints: number, monthsCovered: number): number 
     } else if (dataPoints >= 90) {
         confidence = 70;
     } else if (dataPoints >= config.minHistoryDays) {
-        confidence = 50 + (dataPoints - config.minHistoryDays) * 0.5;
+        confidence = 50 + (dataPoints - config.minHistoryDays) / (90 - config.minHistoryDays) * 20;
     } else if (dataPoints >= 7) {
-        confidence = 30 + (dataPoints - 7) * 1.5;
+        confidence = 30 + (dataPoints - 7) / Math.max(1, config.minHistoryDays - 7) * 20;
     } else {
         confidence = dataPoints * 4;  // Very low for < 7 days
     }
@@ -296,6 +310,8 @@ export function classifyStockoutRisk(
     daysRemaining: number,
     leadTimeDays: number
 ): StockoutRisk {
+    if (Number.isNaN(daysRemaining)) throw new RangeError('Invalid stockout estimate');
+    nonnegative(leadTimeDays);
     const config = getForecastConfig();
     const effectiveThreshold = Math.max(leadTimeDays, config.riskThresholds.critical);
 
@@ -321,8 +337,10 @@ export function calculateDaysUntilStockout(
     currentStock: number,
     dailyDemand: number
 ): number {
-    if (dailyDemand <= 0) return 999;  // No demand = infinite days
+    if (!Number.isFinite(currentStock)) throw new RangeError('Invalid current stock');
+    nonnegative(dailyDemand);
     if (currentStock <= 0) return 0;    // Already out
+    if (dailyDemand === 0) return 999;  // No demand = infinite days
 
     return Math.floor(currentStock / dailyDemand);
 }
@@ -342,12 +360,15 @@ export function calculateReorderQuantity(
     leadTimeDays: number,
     safetyStockDays: number
 ): number {
+    nonnegative(dailyDemand); nonnegative(leadTimeDays); nonnegative(safetyStockDays);
     if (dailyDemand <= 0) return 0;
 
     const leadTimeQty = dailyDemand * leadTimeDays;
     const safetyQty = dailyDemand * safetyStockDays;
 
-    return Math.ceil(leadTimeQty + safetyQty);
+    const result = Math.ceil(leadTimeQty + safetyQty);
+    nonnegative(result);
+    return result;
 }
 
 /**
@@ -358,5 +379,6 @@ export function calculateReorderPoint(
     leadTimeDays: number,
     safetyStockDays: number
 ): number {
-    return Math.ceil(dailyDemand * (leadTimeDays + safetyStockDays));
+    nonnegative(dailyDemand); nonnegative(leadTimeDays); nonnegative(safetyStockDays);
+    return calculateReorderQuantity(dailyDemand, leadTimeDays, safetyStockDays);
 }

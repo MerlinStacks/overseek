@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Check, X, AlertCircle } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info';
@@ -12,14 +12,16 @@ interface ToastProps {
 }
 
 export function Toast({ message, isVisible, onClose, duration = 3000, type = 'success' }: ToastProps) {
+    const close = useRef(onClose);
+    useEffect(() => { close.current = onClose; }, [onClose]);
     useEffect(() => {
-        if (isVisible) {
+        if (isVisible && duration !== 0) {
             const timer = setTimeout(() => {
-                onClose();
-            }, duration);
+                close.current();
+            }, Number.isFinite(duration) && duration > 0 ? duration : 3000);
             return () => clearTimeout(timer);
         }
-    }, [isVisible, duration, onClose]);
+    }, [isVisible, duration, message, type]);
 
     if (!isVisible) return null;
 
@@ -42,13 +44,13 @@ export function Toast({ message, isVisible, onClose, duration = 3000, type = 'su
     };
 
     return (
-        <div className="animate-in slide-in-from-bottom-5 fade-in duration-300" role="alert">
-            <div className={`${bgColors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px]`}>
+        <div className="animate-in slide-in-from-bottom-5 fade-in duration-300 motion-reduce:animate-none" role={type === 'error' ? 'alert' : 'status'} aria-atomic="true">
+            <div className={`${bgColors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 w-full max-w-full`}>
                 <div className={`${iconBgColors[type]} rounded-full p-1`}>
                     {icons[type]}
                 </div>
-                <span className="font-medium text-sm flex-1">{message}</span>
-                <button onClick={onClose} className="text-gray-400 hover:text-white ml-2 transition-colors">
+                <span className="font-medium text-sm flex-1 min-w-0 break-words">{message}</span>
+                <button type="button" aria-label="Dismiss notification" onClick={onClose} className="text-white/80 hover:text-white ml-2 transition-colors">
                     <X size={16} />
                 </button>
             </div>

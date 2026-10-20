@@ -15,6 +15,8 @@ const updaterRuntime = new Set([
 
 /** Only runtime roots and asset formats ship; developer tooling is never copied. */
 function isRuntimeFile(relative) {
+    // Badge artwork source is a development input; ship only the cropped assets.
+    if (relative === 'assets/review-badges/source.png') return false;
     if (updaterRuntime.has(relative)) return true;
     const parts = relative.split('/');
     if (parts.some(part => part.startsWith('.') || forbidden.test(part))) return false;

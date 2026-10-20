@@ -14,6 +14,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import * as crypto from 'crypto';
+import { Readable, Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import type { AccountBackup, StoredBackupInfo, BackupSettings } from './types';
 import { BACKUP_DIR, FREQUENCY_MS } from './constants';
 
@@ -37,101 +39,36 @@ export async function streamSerializeToGzip(
     backup: AccountBackup,
     filePath: string
 ): Promise<BackupWriteResult> {
-    // Write to temp file first, then atomically rename
-    const tempPath = `${filePath}.tmp.${Date.now()}`;
-
-    return new Promise((resolve, reject) => {
-        const gzStream = zlib.createGzip();
-        const writeStream = fs.createWriteStream(tempPath);
-        const hashStream = crypto.createHash('sha256');
-
-        // Pipe gzip output to both file and hash calculator
-        gzStream.on('data', (chunk: Buffer) => {
-            writeStream.write(chunk);
-            hashStream.update(chunk);
-        });
-
-        gzStream.on('end', () => {
-            writeStream.end();
-        });
-
-        writeStream.on('finish', () => {
-            try {
-                const stats = fs.statSync(tempPath);
-                const checksum = hashStream.digest('hex');
-
-                // EDGE CASE FIX: Atomic rename from temp to final path
-                // If this fails, no corrupted file will exist at the final path
-                fs.renameSync(tempPath, filePath);
-
-                resolve({
-                    sizeBytes: stats.size,
-                    checksum
-                });
-            } catch (renameError) {
-                // Clean up temp file if rename fails
-                try {
-                    fs.unlinkSync(tempPath);
-                } catch {
-                    // Ignore cleanup errors
-                }
-                reject(renameError);
-            }
-        });
-
-        writeStream.on('error', (err) => {
-            // Clean up temp file on write error
-            try {
-                fs.unlinkSync(tempPath);
-            } catch {
-                // Ignore cleanup errors
-            }
-            reject(err);
-        });
-
-        gzStream.on('error', (err) => {
-            // Clean up temp file on gzip error
-            try {
-                fs.unlinkSync(tempPath);
-            } catch {
-                // Ignore cleanup errors
-            }
-            reject(err);
-        });
-
-        // Write opening brace and metadata fields
-        gzStream.write('{"exportedAt":' + JSON.stringify(backup.exportedAt) + ',');
-        gzStream.write('"version":' + JSON.stringify(backup.version) + ',');
-        gzStream.write('"account":' + JSON.stringify(backup.account) + ',');
-        gzStream.write('"data":{');
-
-        // Stream each data key separately to avoid giant string allocation
-        const dataKeys = Object.keys(backup.data);
-        dataKeys.forEach((key, keyIndex) => {
-            gzStream.write(JSON.stringify(key) + ':[');
-
+    const tempPath = `${filePath}.tmp.${crypto.randomUUID()}`;
+    const hash = crypto.createHash('sha256');
+    let sizeBytes = 0;
+    async function* serialize() {
+        yield '{"exportedAt":' + JSON.stringify(backup.exportedAt) + ',"version":' + JSON.stringify(backup.version) + ',"account":' + JSON.stringify(backup.account) + ',"data":{';
+        const keys = Object.keys(backup.data);
+        for (let index = 0; index < keys.length; index++) {
+            const key = keys[index];
+            yield (index ? ',' : '') + JSON.stringify(key) + ':[';
             const records = backup.data[key];
-            // Write records in chunks to avoid memory spikes
-            const CHUNK_SIZE = 500;
-            for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-                const chunk = records.slice(i, i + CHUNK_SIZE);
-                const chunkJson = chunk.map(r => JSON.stringify(r)).join(',');
-                if (i > 0 && chunkJson) {
-                    gzStream.write(',');
-                }
-                gzStream.write(chunkJson);
+            for (let start = 0; start < records.length; start += 500) {
+                yield (start ? ',' : '') + records.slice(start, start + 500).map(record => JSON.stringify(record) ?? 'null').join(',');
             }
-
-            gzStream.write(']');
-            if (keyIndex < dataKeys.length - 1) {
-                gzStream.write(',');
-            }
-        });
-
-        // Close data object and root object
-        gzStream.write('}}');
-        gzStream.end();
-    });
+            yield ']';
+        }
+        yield '}}';
+    }
+    try {
+        await pipeline(
+            Readable.from(serialize(), { objectMode: false }),
+            zlib.createGzip(),
+            new Transform({ transform(chunk, _encoding, callback) { hash.update(chunk); sizeBytes += chunk.length; callback(null, chunk); } }),
+            fs.createWriteStream(tempPath, { flags: 'wx' }),
+        );
+        await fs.promises.rename(tempPath, filePath);
+        return { sizeBytes, checksum: hash.digest('hex') };
+    } catch (error) {
+        await fs.promises.unlink(tempPath).catch(() => {});
+        throw error;
+    }
 }
 
 /**
@@ -150,7 +87,7 @@ export async function saveBackupToStorage(
 
     // Generate filename with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = `backup_${timestamp}.json.gz`;
+    const filename = `backup_${timestamp}_${crypto.randomUUID()}.json.gz`;
     const filePath = path.join(accountBackupDir, filename);
 
     // Stream-serialize to gzip to avoid V8 string length limits
@@ -158,7 +95,7 @@ export async function saveBackupToStorage(
     const { sizeBytes, checksum } = await streamSerializeToGzip(backup, filePath);
 
     // Count total records
-    const recordCount = Object.values(backup.data).flat().length;
+    const recordCount = Object.values(backup.data).reduce((total, records) => total + records.length, 0);
 
     // Create DB record
     const stored = await prisma.storedBackup.create({
@@ -170,6 +107,9 @@ export async function saveBackupToStorage(
             status: 'COMPLETED',
             type,
         },
+    }).catch(async error => {
+        await fs.promises.unlink(filePath).catch(() => {});
+        throw error;
     });
 
     // Update settings if scheduled

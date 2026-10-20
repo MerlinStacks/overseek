@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bell, BellOff, MessageSquare, ShoppingCart, Loader2, Smartphone, Send, CheckCircle, XCircle } from 'lucide-react';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +11,13 @@ import { useAccount } from '../../context/AccountContext';
  * which notification types they want to receive.
  */
 export function NotificationSettings() {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
+    // Remount both the panel and its device-subscription hook when the auth scope changes.
+    return <NotificationSettingsPanel key={JSON.stringify([currentAccount?.id, token])} />;
+}
+
+function NotificationSettingsPanel() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
     const {
@@ -26,53 +33,92 @@ export function NotificationSettings() {
 
     const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
     const [testError, setTestError] = useState<string | null>(null);
+    const [testSummary, setTestSummary] = useState('');
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const active = useRef(false);
+    const pending = useRef(false);
+    const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const testRequest = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+        active.current = true;
+        return () => {
+            active.current = false;
+            clearTimeout(timer.current);
+            testRequest.current?.abort();
+        };
+    }, []);
+
+    const saveChange = async (change: () => Promise<boolean>, errorMessage: string) => {
+        if (pending.current || isLoading) return;
+        pending.current = true;
+        setIsSaving(true);
+        setActionError(null);
+        try {
+            const saved = await change();
+            if (!saved && active.current) setActionError(errorMessage);
+        } catch {
+            if (active.current) setActionError(errorMessage);
+        } finally {
+            if (active.current) { pending.current = false; setIsSaving(false); }
+        }
+    };
 
     const handleToggle = async () => {
-        if (isSubscribed) {
-            await unsubscribe();
-        } else {
-            await subscribe();
-        }
+        await saveChange(isSubscribed ? unsubscribe : subscribe,
+            isSubscribed ? 'Could not disable notifications. Please try again.' : 'Could not enable notifications. Check browser permissions and try again.');
     };
 
     /**
      * Sends a test push notification to verify the setup is working.
      */
     const handleTestNotification = async () => {
+        if (pending.current || isLoading) return;
         if (!token || !currentAccount) {
             setTestError('Authentication required');
             setTestStatus('error');
             return;
         }
 
+        pending.current = true;
+        clearTimeout(timer.current);
+        const controller = new AbortController();
+        testRequest.current = controller;
         setTestStatus('sending');
         setTestError(null);
 
         try {
             const res = await fetch('/api/notifications/push/test', {
                 method: 'POST',
+                signal: controller.signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id
                 }
             });
 
-            if (!res.ok) {
-                const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.success !== true || !Number.isFinite(data.sent) || data.sent <= 0) {
                 throw new Error(data.error || 'Failed to send test notification');
             }
 
+            if (!active.current) return;
+            setTestSummary(`Test push accepted for ${data.sent} subscription(s).${data.failed > 0 ? ` ${data.failed} subscription(s) failed.` : ''} Delivery on this device is not guaranteed.`);
             setTestStatus('success');
             // Reset after 3 seconds
-            setTimeout(() => setTestStatus('idle'), 3000);
+            timer.current = setTimeout(() => setTestStatus('idle'), 3000);
         } catch (error) {
+            if (!active.current || controller.signal.aborted) return;
             setTestError(error instanceof Error ? error.message : 'Failed to send test');
             setTestStatus('error');
             // Reset after 5 seconds
-            setTimeout(() => {
+            timer.current = setTimeout(() => {
                 setTestStatus('idle');
                 setTestError(null);
             }, 5000);
+        } finally {
+            if (active.current) pending.current = false;
         }
     };
 
@@ -110,6 +156,7 @@ export function NotificationSettings() {
             </div>
 
             <div className="p-6 space-y-6">
+                {actionError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{actionError}</p>}
                 {/* Main Toggle */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -134,14 +181,15 @@ export function NotificationSettings() {
                         </div>
                     </div>
                     <button
+                        type="button" aria-label={isSubscribed ? 'Disable push notifications' : 'Enable push notifications'}
                         onClick={handleToggle}
-                        disabled={isLoading}
+                        disabled={isLoading || isSaving || testStatus === 'sending' || (!isSubscribed && permissionState === 'denied')}
                         className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${isSubscribed
                             ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             : 'bg-blue-600 text-white hover:bg-blue-700'
                             } disabled:opacity-50`}
                     >
-                        {isLoading ? (
+                        {isLoading || isSaving ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                         ) : isSubscribed ? (
                             <>
@@ -190,8 +238,9 @@ export function NotificationSettings() {
                             </div>
                             <input
                                 type="checkbox"
+                                disabled={isLoading || isSaving || testStatus === 'sending'}
                                 checked={preferences.notifyNewMessages}
-                                onChange={(e) => updatePreferences({ notifyNewMessages: e.target.checked })}
+                                onChange={(e) => { const checked = e.target.checked; void saveChange(() => updatePreferences({ notifyNewMessages: checked }), 'Could not save notification preferences. Please try again.'); }}
                                 className="w-5 h-5 rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                         </label>
@@ -209,8 +258,9 @@ export function NotificationSettings() {
                             </div>
                             <input
                                 type="checkbox"
+                                disabled={isLoading || isSaving || testStatus === 'sending'}
                                 checked={preferences.notifyNewOrders}
-                                onChange={(e) => updatePreferences({ notifyNewOrders: e.target.checked })}
+                                onChange={(e) => { const checked = e.target.checked; void saveChange(() => updatePreferences({ notifyNewOrders: checked }), 'Could not save notification preferences. Please try again.'); }}
                                 className="w-5 h-5 rounded-sm border-gray-300 text-green-600 focus:ring-green-500"
                             />
                         </label>
@@ -236,9 +286,9 @@ export function NotificationSettings() {
                                 </div>
                                 <div>
                                     <p className="font-medium text-gray-900">Test Notification</p>
-                                    <p className="text-sm text-gray-500">
+                                    <p role={testStatus === 'error' ? 'alert' : 'status'} className="text-sm text-gray-500">
                                         {testStatus === 'success'
-                                            ? 'Notification sent successfully!'
+                                            ? testSummary
                                             : testStatus === 'error'
                                                 ? testError || 'Failed to send notification'
                                                 : 'Send a test to verify notifications work'}
@@ -246,8 +296,9 @@ export function NotificationSettings() {
                                 </div>
                             </div>
                             <button
+                                type="button"
                                 onClick={handleTestNotification}
-                                disabled={testStatus === 'sending'}
+                                disabled={testStatus === 'sending' || isSaving || isLoading}
                                 className="px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
                             >
                                 {testStatus === 'sending' ? (

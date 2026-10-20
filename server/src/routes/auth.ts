@@ -12,6 +12,7 @@ import { prisma } from '../utils/prisma';
 import { Logger } from '../utils/logger';
 import { PermissionService } from '../services/PermissionService';
 import { z } from 'zod';
+import { profilePreferencesSchema } from '../schemas/profilePreferences';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -369,7 +370,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             return {
                 token: accessToken,
                 refreshToken,
-                user: { id: user.id, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, isSuperAdmin: user.isSuperAdmin }
+                user: { id: user.id, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, isSuperAdmin: user.isSuperAdmin, timezone: user.timezone, dateFormat: user.dateFormat, timeFormat: user.timeFormat }
             };
         } catch (error) {
             Logger.error('Login error', { error });
@@ -407,9 +408,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             const userId = request.user!.id;
             const { fullName, shiftStart, shiftEnd, emailSignature } = request.body as any;
+            const preferences = profilePreferencesSchema.safeParse(request.body);
+            if (!preferences.success) {
+                return reply.code(400).send({ error: 'Invalid date and time preferences' });
+            }
 
             // Why: explicit whitelist prevents mass-assignment if new sensitive fields are added to User model
             const data: Record<string, unknown> = {};
+            Object.assign(data, preferences.data);
             if (fullName !== undefined) data.fullName = fullName;
             if (shiftStart !== undefined) data.shiftStart = shiftStart;
             if (shiftEnd !== undefined) data.shiftEnd = shiftEnd;

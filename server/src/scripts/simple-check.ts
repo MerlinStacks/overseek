@@ -1,26 +1,17 @@
+import { runScript, withScriptPrisma } from './scriptUtils';
 
-import { createPrismaClient } from '../utils/prisma';
-
-const prisma = createPrismaClient();
-
-async function main() {
+export async function main(): Promise<number> {
     try {
-        const count = await prisma.user.count();
-        console.log(`User Count: ${count}`);
-
-        if (count > 0) {
-            console.log('SUCCESS: Users found.');
-            process.exit(0); // Success
-        } else {
-            console.log('FAILURE: No users found.');
-            process.exit(1); // Failure (Empty)
-        }
-    } catch (e) {
-        console.error(e);
-        process.exit(2); // Error
-    } finally {
-        await prisma.$disconnect();
+        return await withScriptPrisma(async prisma => {
+            const count = await prisma.user.count();
+            console.log(`User Count: ${count}`);
+            console.log(count > 0 ? 'SUCCESS: Users found.' : 'FAILURE: No users found.');
+            return count > 0 ? 0 : 1;
+        });
+    } catch {
+        console.error('User check failed. Check database configuration and availability.');
+        return 2;
     }
 }
 
-main();
+if (require.main === module) void runScript(main);

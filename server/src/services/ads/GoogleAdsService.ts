@@ -28,7 +28,7 @@ function resourceValue(resource: any, camelKey: string, snakeKey: string = camel
 
 export class GoogleAdsService {
 
-    private static async searchRows(adAccountId: string, query: string): Promise<{ rows: any[]; currency: string }> {
+    private static async searchRows(adAccountId: string, query: string, strict = false): Promise<{ rows: any[]; currency: string }> {
         const { customerId, loginCustomerId, developerToken, accessToken, currency } = await createGoogleAdsRestConfig(adAccountId);
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -53,6 +53,9 @@ export class GoogleAdsService {
             err.code = response.status;
             throw err;
         }
+
+        if (strict && (!body || typeof body !== 'object' || Array.isArray(body) || body.error || (body.results !== undefined && !Array.isArray(body.results)))) throw new Error('Invalid Google Ads response');
+        if (strict && body.nextPageToken) throw new Error('Incomplete Google Ads keyword response');
 
         return { rows: Array.isArray(body?.results) ? body.results : [], currency };
     }
@@ -364,11 +367,11 @@ export class GoogleAdsService {
     /**
      * Fetch search keywords performance.
      */
-    static async getSearchKeywords(adAccountId: string, days: number = 30, limit: number = 500): Promise<SearchKeywordInsight[]> {
+    static async getSearchKeywords(adAccountId: string, days: number = 30, limit: number = 500, options: { strict?: boolean; endDate?: string } = {}): Promise<SearchKeywordInsight[]> {
         try {
-            const endDate = new Date();
-            const startDate = new Date();
-            startDate.setDate(startDate.getDate() - days);
+            const endDate = options.endDate ? new Date(`${options.endDate}T00:00:00Z`) : new Date();
+            const startDate = new Date(endDate);
+            startDate.setUTCDate(startDate.getUTCDate() - days);
 
             const query = `
                 SELECT
@@ -390,7 +393,7 @@ export class GoogleAdsService {
                 LIMIT ${limit}
             `;
 
-            const { rows: results, currency } = await GoogleAdsService.searchRows(adAccountId, query);
+            const { rows: results, currency } = await GoogleAdsService.searchRows(adAccountId, query, options.strict);
 
             return results.map((row: any) => {
                 const spend = metricNumber(row.metrics, 'costMicros', 'cost_micros') / 1_000_000;
@@ -426,6 +429,7 @@ export class GoogleAdsService {
                 recordGrpcFailure(adAccountId);
                 Logger.warn('Failed to fetch Google Search Keywords', { error: msg, adAccountId });
             }
+            if (options.strict) throw error;
             return [];
         }
     }

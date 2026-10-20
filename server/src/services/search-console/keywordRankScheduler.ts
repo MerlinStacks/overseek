@@ -1,68 +1,41 @@
-/**
- * Keyword Rank Scheduler
- *
- * Runs daily position refreshes for all accounts with tracked keywords.
- * Uses setInterval because there's no existing cron infrastructure.
- *
- * Why 24h interval: Search Console data updates once daily,
- * so more frequent polling wastes quota.
- */
-
 import { Logger } from '../../utils/logger';
 import { KeywordTrackingService } from './KeywordTrackingService';
 
-/** 24 hours in milliseconds */
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
-/** 5 minutes delay before first run (let server finish booting) */
 const INITIAL_DELAY_MS = 5 * 60 * 1000;
+let timeout: ReturnType<typeof setTimeout> | null = null;
+let started = false;
+let generation = 0;
+let inFlight: Promise<void> | null = null;
 
-let intervalHandle: ReturnType<typeof setInterval> | null = null;
-let initialTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
-
-/**
- * Start the daily keyword rank refresh scheduler.
- * Safe to call multiple times; subsequent calls are no-ops.
- */
+/** Schedule the next refresh only after the previous one finishes. */
 export function startKeywordRankScheduler(): void {
-    if (intervalHandle || initialTimeoutHandle) {
-        Logger.info('Keyword rank scheduler already running');
-        return;
-    }
-
-    Logger.info('Keyword rank scheduler starting', {
-        intervalMs: REFRESH_INTERVAL_MS,
-        initialDelayMs: INITIAL_DELAY_MS,
-    });
-
-    // First run after boot delay
-    initialTimeoutHandle = setTimeout(async () => {
-        initialTimeoutHandle = null;
-        await runRefresh();
-
-        // Then every 24 hours
-        intervalHandle = setInterval(runRefresh, REFRESH_INTERVAL_MS);
-    }, INITIAL_DELAY_MS);
+    if (started) return;
+    started = true;
+    const current = ++generation;
+    const tick = async () => {
+        timeout = null;
+        // A previous generation can still be draining after a stop/restart.
+        if (inFlight) await inFlight;
+        if (!started || current !== generation) return;
+        const work = runRefresh();
+        inFlight = work;
+        try { await work; } finally { if (inFlight === work) inFlight = null; }
+        if (started && current === generation) timeout = setTimeout(() => void tick(), REFRESH_INTERVAL_MS);
+    };
+    timeout = setTimeout(() => void tick(), INITIAL_DELAY_MS);
 }
 
-/**
- * Stop the scheduler (for graceful shutdown).
- */
-export function stopKeywordRankScheduler(): void {
-    if (initialTimeoutHandle) {
-        clearTimeout(initialTimeoutHandle);
-        initialTimeoutHandle = null;
-    }
-    if (intervalHandle) {
-        clearInterval(intervalHandle);
-        intervalHandle = null;
-    }
-    Logger.info('Keyword rank scheduler stopped');
+export async function stopKeywordRankScheduler(): Promise<void> {
+    started = false;
+    generation++;
+    if (timeout) clearTimeout(timeout);
+    timeout = null;
+    await inFlight;
 }
 
 async function runRefresh(): Promise<void> {
     try {
-        Logger.info('Starting scheduled keyword rank refresh');
         await KeywordTrackingService.refreshAllAccounts();
         Logger.info('Completed scheduled keyword rank refresh');
     } catch (error) {

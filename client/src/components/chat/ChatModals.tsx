@@ -8,6 +8,7 @@ import { AssignModal } from './AssignModal';
 import { MergeModal } from './MergeModal';
 import { ImageLightbox } from './ImageLightbox';
 import { SchedulePickerModal } from './SchedulePickerModal';
+import { Modal } from '../ui/Modal';
 
 interface ChatModalsProps {
     conversationId: string;
@@ -75,34 +76,32 @@ export function ChatModals({
 
             {/* Snooze Modal */}
             <SnoozeModal
+                key={`snooze-${conversationId}`}
                 isOpen={showSnoozeModal}
                 onClose={onCloseSnooze}
                 onSnooze={onSnooze}
             />
 
             {/* Assign Modal */}
-            <AssignModal
+            {onAssign ? <AssignModal
+                key={`assign-${conversationId}`}
                 isOpen={showAssignModal}
                 onClose={onCloseAssign}
-                onAssign={async (userId) => {
-                    if (onAssign) {
-                        await onAssign(userId);
-                    }
-                }}
+                onAssign={onAssign}
                 currentAssigneeId={assigneeId}
-            />
+            /> : <Modal isOpen={showAssignModal} onClose={onCloseAssign} title="Assignment unavailable">
+                <p>Conversation assignment is not available in this view.</p>
+            </Modal>}
 
             {/* Merge Modal */}
-            <MergeModal
+            {onMerge ? <MergeModal
                 isOpen={showMergeModal}
                 onClose={onCloseMerge}
-                onMerge={async (targetId) => {
-                    if (onMerge) {
-                        await onMerge(targetId);
-                    }
-                }}
+                onMerge={onMerge}
                 currentConversationId={conversationId}
-            />
+            /> : <Modal isOpen={showMergeModal} onClose={onCloseMerge} title="Merge unavailable">
+                <p>Conversation merging is not available in this view.</p>
+            </Modal>}
 
             {/* Image Lightbox */}
             {lightboxImage && (

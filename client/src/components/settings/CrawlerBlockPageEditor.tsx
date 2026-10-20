@@ -6,7 +6,7 @@
  * than a bare 403 error that provides no recourse.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Logger } from '../../utils/logger';
 import { FileText, Loader2, RotateCcw, Save, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -45,6 +45,17 @@ const PLACEHOLDERS = [
 export function CrawlerBlockPageEditor() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to edit the crawler block page.</p>;
+    return <CrawlerBlockPageContent key={JSON.stringify([currentAccount.id, token])} />;
+}
+
+function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+}
+
+function CrawlerBlockPageContent() {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const [html, setHtml] = useState('');
     const [savedHtml, setSavedHtml] = useState('');
     const [isLoading, setIsLoading] = useState(true);
@@ -52,39 +63,59 @@ export function CrawlerBlockPageEditor() {
     const [showPreview, setShowPreview] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const active = useRef(true);
+    const pending = useRef(false);
+    const load = useRef<AbortController | null>(null);
+    const save = useRef<AbortController | null>(null);
+    const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const accountId = currentAccount?.id;
 
     const fetchTemplate = useCallback(async () => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
+        load.current?.abort();
+        const controller = new AbortController(); load.current = controller;
 
         try {
             setIsLoading(true);
+            setError(null);
             const res = await fetch(`/api/crawlers/block-page`, {
+                signal: controller.signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'x-account-id': currentAccount.id,
+                    'x-account-id': accountId,
                 }
             });
 
             if (!res.ok) throw new Error('Failed to fetch block page');
 
             const data = await res.json();
+            if (!data || (data.html !== null && typeof data.html !== 'string')) throw new Error('Invalid template response');
+            if (!active.current || controller.signal.aborted) return;
             const template = data.html || '';
             setHtml(template);
             setSavedHtml(template);
         } catch (err) {
+            if (!active.current || controller.signal.aborted) return;
             Logger.error('Failed to fetch block page template', { error: err });
             setError('Failed to load block page template');
         } finally {
-            setIsLoading(false);
+            if (active.current && !controller.signal.aborted) setIsLoading(false);
         }
-    }, [currentAccount, token]);
+    }, [accountId, token]);
 
     useEffect(() => {
-        fetchTemplate();
+        active.current = true;
+        let disposed = false;
+        queueMicrotask(() => { if (!disposed) void fetchTemplate(); });
+        return () => { disposed = true; active.current = false; load.current?.abort(); save.current?.abort(); if (successTimer.current) clearTimeout(successTimer.current); };
     }, [fetchTemplate]);
 
     const handleSave = async () => {
-        if (!currentAccount || !token) return;
+        if (!currentAccount || !token || pending.current || isLoading) return;
+        pending.current = true;
+        const controller = new AbortController(); save.current = controller;
+        const submittedHtml = html;
+        if (successTimer.current) clearTimeout(successTimer.current);
 
         setIsSaving(true);
         setError(null);
@@ -93,24 +124,28 @@ export function CrawlerBlockPageEditor() {
         try {
             const res = await fetch(`/api/crawlers/block-page`, {
                 method: 'PUT',
+                signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                     'x-account-id': currentAccount.id,
                 },
-                body: JSON.stringify({ html: html || null }),
+                body: JSON.stringify({ html: submittedHtml || null }),
             });
 
             if (!res.ok) throw new Error('Failed to save block page');
 
-            setSavedHtml(html);
+            if (!active.current || controller.signal.aborted) return;
+            setSavedHtml(submittedHtml);
             setSuccess(true);
-            setTimeout(() => setSuccess(false), 3000);
+            successTimer.current = setTimeout(() => setSuccess(false), 3000);
         } catch (err) {
+            if (!active.current || controller.signal.aborted) return;
             Logger.error('Failed to save block page template', { error: err });
             setError('Failed to save template');
         } finally {
-            setIsSaving(false);
+            pending.current = false;
+            if (active.current) setIsSaving(false);
         }
     };
 
@@ -122,7 +157,7 @@ export function CrawlerBlockPageEditor() {
 
     /** Replace placeholders with example values for preview */
     const previewHtml = html
-        .replace(/\{\{site_name\}\}/g, currentAccount?.name || 'My Store')
+        .replace(/\{\{site_name\}\}/g, () => escapeHtml(currentAccount?.name || 'My Store'))
         .replace(/\{\{contact_email\}\}/g, 'admin@example.com')
         .replace(/\{\{crawler_name\}\}/g, 'semrushbot');
 
@@ -144,6 +179,7 @@ export function CrawlerBlockPageEditor() {
                     </div>
                     <div className="flex items-center gap-2">
                         <button
+                            type="button" aria-pressed={showPreview}
                             onClick={() => setShowPreview(!showPreview)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-slate-300 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
                         >
@@ -157,12 +193,13 @@ export function CrawlerBlockPageEditor() {
             <div className="p-6 space-y-4">
                 {/* Error / Success */}
                 {error && (
-                    <div className="p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-red-700 dark:text-red-400 text-sm">
+                    <div role="alert" className="p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-red-700 dark:text-red-400 text-sm">
                         {error}
+                        <button type="button" disabled={isSaving || isLoading} onClick={() => void fetchTemplate()}>Reload template</button>
                     </div>
                 )}
                 {success && (
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-400 text-sm">
+                    <div role="status" className="p-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-400 text-sm">
                         ✓ Block page template saved. Changes will sync to your store within 1 hour.
                     </div>
                 )}
@@ -192,15 +229,16 @@ export function CrawlerBlockPageEditor() {
                             <span className="text-xs text-gray-500 dark:text-slate-400">Live Preview (placeholders replaced with example data)</span>
                         </div>
                         <iframe
-                            srcDoc={previewHtml || DEFAULT_TEMPLATE.replace(/\{\{site_name\}\}/g, currentAccount.name || 'My Store').replace(/\{\{contact_email\}\}/g, 'admin@example.com').replace(/\{\{crawler_name\}\}/g, 'semrushbot')}
+                            srcDoc={previewHtml || DEFAULT_TEMPLATE.replace(/\{\{site_name\}\}/g, () => escapeHtml(currentAccount.name || 'My Store')).replace(/\{\{contact_email\}\}/g, 'admin@example.com').replace(/\{\{crawler_name\}\}/g, 'semrushbot')}
                             className="w-full h-80 bg-white"
-                            sandbox="allow-same-origin"
+                            sandbox=""
                             title="Block page preview"
                         />
                     </div>
                 ) : (
                     /* Editor Mode */
                     <textarea
+                        aria-label="Block page HTML" disabled={isSaving}
                         value={html}
                         onChange={e => setHtml(e.target.value)}
                         placeholder="Paste your custom HTML here, or click 'Reset to Default' for a starter template..."
@@ -212,14 +250,16 @@ export function CrawlerBlockPageEditor() {
                 {/* Actions */}
                 <div className="flex items-center gap-3">
                     <button
+                        type="button"
                         onClick={handleSave}
-                        disabled={isSaving || !hasChanges}
+                        disabled={isSaving || isLoading || !hasChanges}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 text-sm"
                     >
                         {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                         Save Template
                     </button>
                     <button
+                        type="button" disabled={isSaving || isLoading}
                         onClick={handleReset}
                         className="flex items-center gap-2 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors font-medium text-sm"
                     >

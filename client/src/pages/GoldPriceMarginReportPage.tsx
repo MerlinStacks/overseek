@@ -6,7 +6,7 @@
  * Supports pagination for large datasets.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Gem, ArrowLeft, TrendingDown, TrendingUp, Search, Loader2, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -71,42 +71,61 @@ function goldTypeLabel(type?: string): string {
 export function GoldPriceMarginReportPage() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to view the report.</p>;
+    return <GoldPriceMarginReport key={JSON.stringify([currentAccount.id, token])} />;
+}
+
+function GoldPriceMarginReport() {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const [data, setData] = useState<ReportData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
+    const request = useRef<AbortController | null>(null);
+    const accountId = currentAccount?.id;
 
     // Debounce search to avoid excessive filtering on each keystroke
     const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
     const fetchReport = useCallback(async (page: number = 1) => {
-        if (!currentAccount || !token) return;
+        if (!accountId || !token) return;
+        request.current?.abort();
+        const controller = new AbortController();
+        request.current = controller;
 
+        setData(null);
         setError(null);
         setLoading(true);
         try {
             const res = await fetch(`/api/reports/gold-price/margin?page=${page}&limit=${PAGE_SIZE}`, {
+                signal: controller.signal,
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'X-Account-ID': currentAccount.id
+                    'X-Account-ID': accountId
                 }
             });
             if (!res.ok) {
                 throw new Error(`Failed to load report (${res.status})`);
             }
-            setData(await res.json());
+            const report = await res.json();
+            if (!report || !Array.isArray(report.products)) throw new Error('Invalid report response');
+            if (!controller.signal.aborted) setData(report);
         } catch (err) {
+            if (controller.signal.aborted) return;
             const message = err instanceof Error ? err.message : 'Failed to load report';
             Logger.error('Failed to load gold price report', { error: err });
             setError(message);
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) setLoading(false);
         }
-    }, [currentAccount, token]);
+    }, [accountId, token]);
 
     useEffect(() => {
-        fetchReport(currentPage);
+        let disposed = false;
+        queueMicrotask(() => { if (!disposed) void fetchReport(currentPage); });
+        return () => { disposed = true; request.current?.abort(); };
     }, [fetchReport, currentPage]);
 
     // Get currency from account (default to USD)
@@ -171,7 +190,8 @@ export function GoldPriceMarginReportPage() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                     <input
                         type="text"
-                        placeholder="Search by name, variant, or SKU..."
+                        aria-label="Search products on this page"
+                        placeholder="Search this page by name, variant, or SKU..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
@@ -198,6 +218,7 @@ export function GoldPriceMarginReportPage() {
                         {error}
                     </p>
                     <button
+                        type="button"
                         onClick={() => fetchReport(currentPage)}
                         className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
                     >
@@ -319,7 +340,7 @@ export function GoldPriceMarginReportPage() {
                     <div className="px-4 py-3 bg-gray-50 dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700">
                         <div className="flex items-center justify-between">
                             <span className="text-sm text-gray-500 dark:text-gray-400">
-                                Showing {filteredProducts.length} of {data.count} items
+                                Showing {filteredProducts.length} items on this page; {data.count} items overall
                                 {data.totalPages > 1 && ` (Page ${data.page} of ${data.totalPages})`}
                             </span>
 
@@ -327,6 +348,7 @@ export function GoldPriceMarginReportPage() {
                             {data.totalPages > 1 && (
                                 <div className="flex items-center gap-2">
                                     <button
+                                        type="button"
                                         onClick={() => goToPage(currentPage - 1)}
                                         disabled={currentPage === 1}
                                         className="p-1.5 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -351,6 +373,7 @@ export function GoldPriceMarginReportPage() {
 
                                             return (
                                                 <button
+                                                    type="button" aria-current={pageNum === currentPage ? 'page' : undefined}
                                                     key={pageNum}
                                                     onClick={() => goToPage(pageNum)}
                                                     className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${pageNum === currentPage
@@ -365,6 +388,7 @@ export function GoldPriceMarginReportPage() {
                                     </div>
 
                                     <button
+                                        type="button"
                                         onClick={() => goToPage(currentPage + 1)}
                                         disabled={currentPage === data.totalPages}
                                         className="p-1.5 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -377,7 +401,7 @@ export function GoldPriceMarginReportPage() {
 
                             {filteredProducts.length > 0 && (
                                 <span className="text-sm text-gray-500 dark:text-gray-400">
-                                    Avg Margin: <span className="font-mono font-medium">
+                                    Avg Margin (shown rows): <span className="font-mono font-medium">
                                         {(filteredProducts.reduce((acc, p) => acc + p.profitMargin, 0) / filteredProducts.length).toFixed(1)}%
                                     </span>
                                 </span>

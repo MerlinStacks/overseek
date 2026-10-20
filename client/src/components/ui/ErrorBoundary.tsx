@@ -66,12 +66,17 @@ export class ErrorBoundary extends Component<Props, State> {
         });
 
         // Notify parent if callback provided
-        this.props.onError?.(error, errorInfo);
+        try {
+            this.props.onError?.(error, errorInfo);
+        } catch (callbackError) {
+            Logger.error('ErrorBoundary onError callback failed', { error: callbackError });
+        }
 
         // Auto-reload on chunk load errors (stale deployment cache)
-        if (isChunkLoadError(error)) {
-            handleChunkLoadError(error);
-            return; // Skip normal error handling, will reload
+        try {
+            if (isChunkLoadError(error)) handleChunkLoadError(error);
+        } catch (recoveryError) {
+            Logger.error('ErrorBoundary deployment recovery failed', { error: recoveryError });
         }
     }
 
@@ -86,7 +91,13 @@ export class ErrorBoundary extends Component<Props, State> {
         }
 
         // Execute custom reset logic
-        onReset?.();
+        try {
+            onReset?.();
+        } catch (resetError) {
+            Logger.error('ErrorBoundary onReset callback failed', { error: resetError });
+            this.setState(previous => ({ softResetCount: previous.softResetCount + 1 }));
+            return;
+        }
 
         // Clear error state and increment counter
         this.setState(prev => ({
@@ -105,14 +116,14 @@ export class ErrorBoundary extends Component<Props, State> {
         const { hasError, error, softResetCount } = this.state;
 
         if (hasError) {
-            if (this.props.fallback) {
+            if (this.props.fallback !== undefined) {
                 return this.props.fallback;
             }
 
             const canSoftReset = allowSoftReset && softResetCount < maxSoftResets;
 
             return (
-                <div className="p-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800/50 text-red-900 dark:text-red-200 flex flex-col items-center justify-center text-center space-y-4 shadow-sm">
+                <div role="alert" className="p-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800/50 text-red-900 dark:text-red-200 flex flex-col items-center justify-center text-center space-y-4 shadow-sm">
                     <div className="p-3 bg-red-100 dark:bg-red-800/30 rounded-full">
                         <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
                     </div>
@@ -125,6 +136,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     <div className="flex gap-3">
                         {canSoftReset && (
                             <button
+                                type="button"
                                 onClick={this.handleSoftReset}
                                 className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-700 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-slate-600 transition-colors shadow-sm"
                             >
@@ -133,6 +145,7 @@ export class ErrorBoundary extends Component<Props, State> {
                             </button>
                         )}
                         <button
+                            type="button"
                             onClick={this.handleHardReset}
                             className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm"
                         >
@@ -155,4 +168,3 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.children;
     }
 }
-

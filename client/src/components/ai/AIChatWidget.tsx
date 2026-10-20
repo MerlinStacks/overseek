@@ -25,6 +25,13 @@ interface MessageSource {
 function AIChatWidgetInner() {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return null;
+    return <AccountAIChat key={JSON.stringify([currentAccount.id, token])} />;
+}
+
+function AccountAIChat() {
+    const { token } = useAuth();
+    const { currentAccount } = useAccount();
     const location = useLocation();
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([
@@ -33,9 +40,15 @@ function AIChatWidgetInner() {
     const [input, setInput] = useState('');
     const [isThinking, setIsThinking] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const request = useRef<AbortController | null>(null);
+    const requestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pending = useRef(false);
+    const active = useRef(true);
+    const [error, setError] = useState<string | null>(null);
+    useEffect(() => { active.current = true; return () => { active.current = false; request.current?.abort(); if (requestTimer.current) clearTimeout(requestTimer.current); }; }, []);
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView?.({ behavior: 'auto' });
     };
 
     useEffect(() => {
@@ -46,9 +59,13 @@ function AIChatWidgetInner() {
         if (e) e.preventDefault();
         const textToSend = textOverride || input;
 
-        if (!textToSend.trim() || !currentAccount) return;
+        if (!textToSend.trim() || !currentAccount || !token || pending.current) return;
+        pending.current = true; setError(null);
+        const controller = new AbortController(); request.current = controller;
+        const timeout = setTimeout(() => controller.abort(), 60000);
+        requestTimer.current = timeout;
 
-        const userMsg: Message = { id: Date.now().toString(), role: 'user', content: textToSend };
+        const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: textToSend.trim() };
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setIsThinking(true);
@@ -56,6 +73,7 @@ function AIChatWidgetInner() {
         try {
             const res = await fetch('/api/ai/chat', {
                 method: 'POST',
+                signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
@@ -68,22 +86,25 @@ function AIChatWidgetInner() {
             });
 
             const data = await res.json();
+            if (!active.current) return;
 
             if (res.ok) {
+                if (typeof data?.reply !== 'string' || !data.reply.trim()) throw new Error('Invalid AI reply');
                 const aiMsg: Message = {
-                    id: Date.now().toString() + '_ai',
+                    id: crypto.randomUUID(),
                     role: 'assistant',
                     content: data.reply,
-                    sources: data.sources
+                    sources: Array.isArray(data.sources) ? data.sources.filter((source: unknown) => source && typeof source === 'object').map((source: MessageSource) => ({ name: typeof source.name === 'string' ? source.name : undefined, title: typeof source.title === 'string' ? source.title : undefined, term: typeof source.term === 'string' ? source.term : undefined })) : []
                 };
                 setMessages(prev => [...prev, aiMsg]);
             } else {
                 throw new Error(data.error);
             }
         } catch (err) {
-            setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: "Sorry, I had trouble reaching the AI. Please try again." }]);
+            if (active.current) { setError('The AI request failed or timed out. Your question is ready to retry.'); setInput(textToSend); }
         } finally {
-            setIsThinking(false);
+            clearTimeout(timeout); requestTimer.current = null; pending.current = false;
+            if (active.current) setIsThinking(false);
         }
     };
 
@@ -115,6 +136,7 @@ function AIChatWidgetInner() {
             {/* Trigger Button */}
             {!isOpen && (
                 <button
+                    type="button" aria-label="Open store analyst" aria-expanded="false"
                     onClick={() => setIsOpen(true)}
                     className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl flex items-center justify-center transition-all hover:scale-105 z-50 group"
                 >
@@ -124,7 +146,7 @@ function AIChatWidgetInner() {
 
             {/* Chat Window - Glassmorphism */}
             {isOpen && (
-                <div className="fixed bottom-6 right-6 w-[400px] h-[650px] flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-300 font-sans rounded-3xl shadow-2xl border border-white/20 backdrop-blur-xl bg-white/70">
+                <div role="dialog" aria-label="Store analyst" onKeyDown={event => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.stopPropagation(); setIsOpen(false); } }} className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 w-[min(400px,calc(100vw-1.5rem))] h-[min(650px,calc(100dvh-1.5rem))] flex flex-col z-50 overflow-hidden animate-in motion-reduce:animate-none slide-in-from-bottom-5 fade-in duration-300 font-sans rounded-3xl shadow-2xl border border-white/20 backdrop-blur-xl bg-white/95 dark:bg-slate-900/95">
 
                     {/* Header */}
                     <div className="bg-white/40 backdrop-blur-md p-4 flex justify-between items-center border-b border-white/20">
@@ -133,17 +155,17 @@ function AIChatWidgetInner() {
                                 <Bot size={18} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-slate-800 text-sm leading-tight">OverSeek AI</h3>
+                                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight">OverSeek AI</h3>
                                 <p className="text-[10px] text-slate-500 font-medium">Context-Aware Analyst</p>
                             </div>
                         </div>
-                        <button onClick={() => setIsOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-slate-500">
+                        <button type="button" aria-label="Close store analyst" onClick={() => setIsOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-slate-500">
                             <ChevronDown size={18} />
                         </button>
                     </div>
 
                     {/* Messages */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                    <div role="log" aria-label="Analyst conversation" aria-live="polite" className="flex-1 overflow-y-auto p-4 space-y-6">
                         {messages.map(msg => (
                             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[85%] px-5 py-3 shadow-sm ${msg.role === 'user'
@@ -177,7 +199,7 @@ function AIChatWidgetInner() {
                         ))}
 
                         {isThinking && (
-                            <div className="flex justify-start">
+                            <div role="status" className="flex justify-start">
                                 <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-none px-4 py-3 shadow-xs flex items-center gap-2">
                                     <Loader2 size={16} className="animate-spin text-blue-600" />
                                     <span className="text-xs text-slate-500 font-medium">Analyzing data...</span>
@@ -192,6 +214,7 @@ function AIChatWidgetInner() {
                         <div className="px-4 pb-2 bg-gray-50/50 flex gap-2 overflow-x-auto no-scrollbar">
                             {suggestedActions.map((action, idx) => (
                                 <button
+                                    type="button"
                                     key={idx}
                                     onClick={() => handleSend(undefined, action.query)}
                                     className="flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors shadow-xs"
@@ -205,8 +228,10 @@ function AIChatWidgetInner() {
 
                     {/* Input */}
                     <div className="p-3 bg-white/40 backdrop-blur-md border-t border-white/20">
+                        {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300 mb-2">{error}</p>}
                         <form onSubmit={(e) => handleSend(e)} className="flex gap-2">
                             <input
+                                aria-label="Question for store analyst" maxLength={10000}
                                 type="text"
                                 placeholder="Ask about sales, visitors, forecasts..."
                                 className="flex-1 px-4 py-3 bg-white/60 backdrop-blur-xl rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/50 focus:bg-white/80 transition-all text-slate-800 placeholder:text-slate-500 shadow-inner border border-white/40"
@@ -215,6 +240,7 @@ function AIChatWidgetInner() {
                                 disabled={isThinking}
                             />
                             <button
+                                aria-label="Send question"
                                 type="submit"
                                 disabled={!input.trim() || isThinking}
                                 className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg active:scale-95"

@@ -14,6 +14,9 @@ declare module 'lexical' {
         dispatchCommand<T>(command: any, payload?: T): boolean;
         getElementByKey(key: string): HTMLElement | null;
         getEditorState(): EditorState;
+        isEditable(): boolean;
+        isComposing(): boolean;
+        getRootElement(): HTMLElement | null;
     }
     export interface EditorThemeClasses {
         text?: {

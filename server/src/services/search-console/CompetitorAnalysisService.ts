@@ -288,7 +288,6 @@ export class CompetitorAnalysisService {
                     },
                     update: {
                         position: result.position,
-                        previousPosition,
                         rankingUrl: result.rankingUrl,
                     }
                 }));
@@ -336,9 +335,10 @@ export class CompetitorAnalysisService {
     // ─────────────────────────────────────────────────────
 
     /** Get competitor keywords with positions for a specific competitor. */
-    static async getCompetitorKeywords(competitorId: string): Promise<CompetitorKeywordPosition[]> {
+    static async getCompetitorKeywords(accountId: string, competitorId: string): Promise<CompetitorKeywordPosition[]> {
+        if (!accountId?.trim()) throw new Error('Account ID required');
         const keywords = await prisma.competitorKeyword.findMany({
-            where: { competitorId },
+            where: { competitorId, competitor: { accountId } },
             include: {
                 history: {
                     orderBy: { date: 'desc' },
@@ -371,15 +371,19 @@ export class CompetitorAnalysisService {
 
     /** Get rank history for a specific competitor keyword (chart data). */
     static async getCompetitorKeywordHistory(
+        accountId: string,
+        competitorId: string,
         competitorKeywordId: string,
         days: number = 30
     ): Promise<Array<{ date: string; position: number | null }>> {
+        if (!accountId?.trim()) throw new Error('Account ID required');
         const since = new Date();
         since.setDate(since.getDate() - days);
 
         const history = await prisma.competitorRankHistory.findMany({
             where: {
                 competitorKeywordId,
+                competitorKeyword: { competitorId, competitor: { accountId } },
                 date: { gte: since }
             },
             orderBy: { date: 'asc' },
@@ -406,7 +410,6 @@ export class CompetitorAnalysisService {
                     competitor: { accountId, isActive: true }
                 },
                 date: { gte: since },
-                previousPosition: { not: null },
             },
             include: {
                 competitorKeyword: {
@@ -473,14 +476,13 @@ export class CompetitorAnalysisService {
                 keyword: ck.keyword,
                 yourPosition: yourPos,
                 theirPosition: theirPos,
-                positionDelta: theirPos !== null
-                    ? (ck.currentPosition ?? 0) - (yourPos ?? 0)
-                    : null,
+                positionDelta: advantage,
                 advantage,
             };
         }).sort((a, b) => {
             // Sort: you're behind first, then by keyword
             if (a.advantage !== null && b.advantage !== null) return a.advantage - b.advantage;
+            if (a.advantage === null && b.advantage === null) return a.keyword.localeCompare(b.keyword);
             if (a.advantage === null) return 1;
             return -1;
         });

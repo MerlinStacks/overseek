@@ -29,6 +29,7 @@ export interface BudgetAction {
  * Includes specific CPC cap recommendations.
  */
 export interface KeywordAction {
+    adAccountId?: string;
     actionType: 'add_keyword' | 'add_negative' | 'adjust_bid' | 'pause_keyword';
     keyword: string;
     matchType: 'exact' | 'phrase' | 'broad';
@@ -202,21 +203,24 @@ export interface ActionableRecommendation {
  * Type guard to check if action is a BudgetAction.
  */
 export function isBudgetAction(action: RecommendationAction): action is BudgetAction {
-    return 'currentBudget' in action && 'suggestedBudget' in action;
+    return !!action && typeof action === 'object' && ['budget_increase', 'budget_decrease', 'pause', 'enable'].includes(action.actionType)
+        && 'currentBudget' in action && Number.isFinite(action.currentBudget) && 'suggestedBudget' in action && Number.isFinite(action.suggestedBudget);
 }
 
 /**
  * Type guard to check if action is a KeywordAction.
  */
 export function isKeywordAction(action: RecommendationAction): action is KeywordAction {
-    return 'keyword' in action && 'suggestedCpc' in action;
+    return !!action && typeof action === 'object' && ['add_keyword', 'add_negative', 'adjust_bid', 'pause_keyword'].includes(action.actionType)
+        && 'keyword' in action && typeof action.keyword === 'string' && 'suggestedCpc' in action && Number.isFinite(action.suggestedCpc);
 }
 
 /**
  * Type guard to check if action is a ProductAction.
  */
 export function isProductAction(action: RecommendationAction): action is ProductAction {
-    return 'productId' in action && 'productName' in action;
+    return !!action && typeof action === 'object' && ['create_campaign', 'increase_visibility', 'exclude_product', 'adjust_bid'].includes(action.actionType)
+        && 'productId' in action && typeof action.productId === 'string' && 'productName' in action && typeof action.productName === 'string';
 }
 
 /**
@@ -227,7 +231,8 @@ export function formatBudgetChange(action: BudgetAction): string {
     if (action.actionType === 'pause') return 'Pause campaign';
     if (action.actionType === 'enable') return 'Enable campaign';
 
-    const sign = action.changeAmount >= 0 ? '+' : '';
+    if (!Number.isFinite(action.changeAmount)) return 'Budget change unavailable';
+    const sign = action.changeAmount >= 0 ? '+' : '-';
     return `${sign}$${Math.abs(action.changeAmount).toFixed(0)}/day`;
 }
 
@@ -236,7 +241,7 @@ export function formatBudgetChange(action: BudgetAction): string {
  * Example: "$0.45 max CPC"
  */
 export function formatCpcRecommendation(action: KeywordAction): string {
-    return `$${action.suggestedCpc.toFixed(2)} max CPC`;
+    return Number.isFinite(action.suggestedCpc) && action.suggestedCpc >= 0 ? `$${action.suggestedCpc.toFixed(2)} max CPC` : 'CPC unavailable';
 }
 
 /**
@@ -263,7 +268,8 @@ export function createKeywordHeadline(action: KeywordAction): string {
  */
 export function createProductHeadline(action: ProductAction): string {
     if (action.actionType === 'create_campaign') {
-        return `Create campaign for "${action.productName}" - ${action.salesVelocity?.toFixed(1)} units/day with no ad coverage`;
+        const velocity = Number.isFinite(action.salesVelocity) ? `${action.salesVelocity.toFixed(1)} units/day` : 'sales velocity unavailable';
+        return `Create campaign for "${action.productName}" - ${velocity} with no ad coverage`;
     }
     if (action.actionType === 'exclude_product') {
         return `Exclude "${action.productName}" from Shopping - ${action.reason}`;

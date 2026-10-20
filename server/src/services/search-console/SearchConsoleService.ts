@@ -66,6 +66,7 @@ export interface QueryTrend {
 
 /** Options for search analytics queries */
 interface AnalyticsOptions {
+    strict?: boolean;
     days?: number;
     startDate?: string;
     endDate?: string;
@@ -226,7 +227,10 @@ export class SearchConsoleService {
         siteUrl?: string
     ): Promise<QueryAnalytics[]> {
         const scAccount = await this.getActiveAccount(accountId, siteUrl);
-        if (!scAccount) return [];
+        if (!scAccount) {
+            if (options.strict) throw new Error('Search Console is not connected');
+            return [];
+        }
 
         const days = options.days || 28;
         const endDate = options.endDate || formatDate(daysAgo(3)); // SC data has ~3 day lag
@@ -248,6 +252,8 @@ export class SearchConsoleService {
                 scAccount.id, scAccount.accessToken, url, { method: 'POST', body }
             );
 
+            if (options.strict && (!data || typeof data !== 'object' || Array.isArray(data) || (data.rows !== undefined && !Array.isArray(data.rows)))) throw new Error('Invalid search analytics response');
+
             return (data.rows || []).map(row => ({
                 query: row.keys[0],
                 clicks: row.clicks,
@@ -257,6 +263,7 @@ export class SearchConsoleService {
             }));
         } catch (error) {
             Logger.error('Failed to fetch search analytics', { error, accountId });
+            if (options.strict) throw error;
             return [];
         }
     }

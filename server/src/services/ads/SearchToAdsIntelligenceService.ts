@@ -18,6 +18,8 @@ import { prisma } from '../../utils/prisma';
 /** A query that exists in both organic and paid channels */
 export interface OverlapQuery {
     query: string;
+    /** Paid metrics are keyword-level totals, not measured query-level attribution. */
+    paidKeyword?: string;
     organic: { clicks: number; impressions: number; ctr: number; position: number };
     paid: { clicks: number; impressions: number; spend: number; cpc: number; conversions: number; roas: number };
     /** Estimated wasted spend from cannibalization (higher = more waste) */
@@ -39,6 +41,8 @@ export interface OrganicOnlyQuery {
 
 /** Full correlation result between SC and Ads */
 export interface SearchAdsCorrelation {
+    currency?: string | null;
+    reportingPeriod?: { startDate: string; endDate: string };
     overlap: OverlapQuery[];
     organicOnly: OrganicOnlyQuery[];
     paidOnlyCount: number;
@@ -61,6 +65,7 @@ export class SearchToAdsIntelligenceService {
      * Firing both simultaneously cuts wall-clock time roughly in half.
      */
     static async getCorrelation(accountId: string): Promise<SearchAdsCorrelation> {
+        if (!accountId?.trim()) throw new Error('Account ID required');
         const emptyResult: SearchAdsCorrelation = {
             overlap: [], organicOnly: [], paidOnlyCount: 0,
             summary: { totalOrganicQueries: 0, totalPaidKeywords: 0, overlapCount: 0, organicOnlyCount: 0, estimatedTotalWastedSpend: 0, estimatedUntappedValue: 0 }
@@ -74,18 +79,21 @@ export class SearchToAdsIntelligenceService {
 
             if (adAccounts.length === 0) return emptyResult;
 
-            // Fire SC queries + Ads queries in parallel
+            // Use the same delayed reporting window for both providers.
+            const end = new Date(); end.setUTCDate(end.getUTCDate() - 3);
+            const start = new Date(end); start.setUTCDate(start.getUTCDate() - 28);
+            const endDate = end.toISOString().slice(0, 10);
+            const startDate = start.toISOString().slice(0, 10);
             const [organicQueries, paidKeywords] = await Promise.all([
-                SearchConsoleService.getSearchAnalytics(accountId, { days: 28, rowLimit: 500 }),
-                this.getAllPaidKeywords(adAccounts.map(a => a.id))
+                SearchConsoleService.getSearchAnalytics(accountId, { startDate, endDate, rowLimit: 500, strict: true }),
+                this.getAllPaidKeywords(adAccounts.map(a => a.id), endDate)
             ]);
 
-            if (organicQueries.length === 0) return emptyResult;
-
-            return this.correlate(organicQueries, paidKeywords);
+            if (organicQueries.length >= 500) throw new Error('Search analytics reached the correlation limit; a complete comparison is unavailable');
+            return { ...this.correlate(organicQueries, paidKeywords), reportingPeriod: { startDate, endDate } };
         } catch (error) {
             Logger.error('SearchToAdsIntelligenceService.getCorrelation failed', { error, accountId });
-            return emptyResult;
+            throw error;
         }
     }
 
@@ -112,9 +120,13 @@ export class SearchToAdsIntelligenceService {
      * Aggregate paid keywords from all Google Ads accounts under one overseek account.
      * Why multiple accounts: users may have separate brand/non-brand accounts.
      */
-    private static async getAllPaidKeywords(adAccountIds: string[]): Promise<SearchKeywordInsight[]> {
+    private static async getAllPaidKeywords(adAccountIds: string[], endDate: string): Promise<SearchKeywordInsight[]> {
         const results = await Promise.all(
-            adAccountIds.map(id => GoogleAdsService.getSearchKeywords(id, 28, 500).catch(() => []))
+            adAccountIds.map(async id => {
+                const rows = await GoogleAdsService.getSearchKeywords(id, 28, 500, { strict: true, endDate });
+                if (rows.length >= 500) throw new Error('Paid keywords reached the correlation limit; a complete comparison is unavailable');
+                return rows;
+            })
         );
         return results.flat();
     }
@@ -130,15 +142,22 @@ export class SearchToAdsIntelligenceService {
         organic: QueryAnalytics[],
         paid: SearchKeywordInsight[]
     ): SearchAdsCorrelation {
+        const currencies = new Set(paid.map(row => row.currency?.trim().toUpperCase()));
+        if ([...currencies].some(currency => !currency || !/^[A-Z]{3}$/.test(currency)) || currencies.size > 1) throw new Error('Correlation requires paid keywords in one known currency');
+        if (!paid.every(row => ['spend', 'clicks', 'impressions', 'conversions', 'conversionsValue', 'cpc', 'ctr', 'roas'].every(key => Number.isFinite(row[key as keyof SearchKeywordInsight]) && Number(row[key as keyof SearchKeywordInsight]) >= 0)) ||
+            !organic.every(row => ['clicks', 'impressions', 'ctr', 'position'].every(key => Number.isFinite(row[key as keyof QueryAnalytics]) && Number(row[key as keyof QueryAnalytics]) >= 0))) throw new Error('Invalid keyword metrics');
         // Index paid keywords by normalized text for O(1) lookup
         const paidMap = new Map<string, SearchKeywordInsight>();
         for (const kw of paid) {
             const key = this.normalize(kw.keywordText);
             if (!key) continue;
-            // Keep the one with highest spend if duplicates
             const existing = paidMap.get(key);
-            if (!existing || kw.spend > existing.spend) {
-                paidMap.set(key, kw);
+            if (!existing) paidMap.set(key, { ...kw });
+            else {
+                for (const metric of ['spend', 'clicks', 'impressions', 'conversions', 'conversionsValue'] as const) existing[metric] += kw[metric];
+                existing.cpc = existing.clicks > 0 ? existing.spend / existing.clicks : 0;
+                existing.ctr = existing.impressions > 0 ? existing.clicks / existing.impressions * 100 : 0;
+                existing.roas = existing.spend > 0 ? existing.conversionsValue / existing.spend : 0;
             }
         }
 
@@ -149,26 +168,36 @@ export class SearchToAdsIntelligenceService {
         // Average paid conversion rate for estimating organic-only value
         const totalPaidClicks = paid.reduce((s, k) => s + k.clicks, 0);
         const totalPaidConversions = paid.reduce((s, k) => s + k.conversions, 0);
-        const avgPaidCvr = totalPaidClicks > 0 ? totalPaidConversions / totalPaidClicks : 0.02;
+        const avgPaidCvr = totalPaidClicks > 0 ? totalPaidConversions / totalPaidClicks : 0;
         const totalPaidRevenue = paid.reduce((s, k) => s + k.conversionsValue, 0);
-        const avgPaidAov = totalPaidConversions > 0 ? totalPaidRevenue / totalPaidConversions : 50;
+        const avgPaidAov = totalPaidConversions > 0 ? totalPaidRevenue / totalPaidConversions : 0;
 
-        for (const oq of organic) {
+        // Allocate each paid keyword's spend once across its matching organic queries.
+        const matches = organic.map(row => this.findPaidMatch(this.normalize(row.query), paidMap));
+        const matchWeights = new Map<string, number>();
+        organic.forEach((row, index) => {
+            const key = matches[index];
+            if (key) matchWeights.set(key, (matchWeights.get(key) || 0) + Math.max(1, row.impressions));
+        });
+
+        for (const [index, oq] of organic.entries()) {
             const normalizedQuery = this.normalize(oq.query);
             if (!normalizedQuery || normalizedQuery.length < 3) continue;
 
             // Try exact match first, then substring match
-            const matchedKey = this.findPaidMatch(normalizedQuery, paidMap);
+            const matchedKey = matches[index];
 
             if (matchedKey) {
                 const pk = paidMap.get(matchedKey)!;
                 matchedPaidKeys.add(matchedKey);
 
-                const wastedSpend = this.estimateWastedSpend(oq, pk);
+                const weight = Math.max(1, oq.impressions) / matchWeights.get(matchedKey)!;
+                const wastedSpend = this.estimateWastedSpend(oq, pk) * weight;
                 const score = this.scoreCannibalization(oq, pk);
 
                 overlap.push({
                     query: oq.query,
+                    paidKeyword: pk.keywordText,
                     organic: { clicks: oq.clicks, impressions: oq.impressions, ctr: oq.ctr, position: oq.position },
                     paid: { clicks: pk.clicks, impressions: pk.impressions, spend: pk.spend, cpc: pk.cpc, conversions: pk.conversions, roas: pk.roas },
                     estimatedWastedSpend: wastedSpend,
@@ -194,19 +223,20 @@ export class SearchToAdsIntelligenceService {
         overlap.sort((a, b) => b.estimatedWastedSpend - a.estimatedWastedSpend);
         organicOnly.sort((a, b) => b.estimatedPaidValue - a.estimatedPaidValue);
 
-        const paidOnlyCount = paid.length - matchedPaidKeys.size;
+        const paidOnlyCount = paidMap.size - matchedPaidKeys.size;
 
         // Compute summary from full data before truncating
         const totalWastedSpend = Math.round(overlap.reduce((s, o) => s + o.estimatedWastedSpend, 0) * 100) / 100;
         const totalUntappedValue = Math.round(organicOnly.reduce((s, o) => s + o.estimatedPaidValue, 0) * 100) / 100;
 
         return {
+            currency: paid[0]?.currency.toUpperCase() ?? null,
             overlap: overlap.slice(0, 50),
             organicOnly: organicOnly.slice(0, 50),
             paidOnlyCount,
             summary: {
                 totalOrganicQueries: organic.length,
-                totalPaidKeywords: paid.length,
+                totalPaidKeywords: paidMap.size,
                 overlapCount: overlap.length,
                 organicOnlyCount: organicOnly.length,
                 estimatedTotalWastedSpend: totalWastedSpend,
@@ -232,7 +262,7 @@ export class SearchToAdsIntelligenceService {
 
         // Substring match with word-boundary safety:
         // only match if the shorter string appears as whole words inside the longer.
-        for (const [key] of paidMap) {
+        for (const key of [...paidMap.keys()].sort((a, b) => b.length - a.length || a.localeCompare(b))) {
             // Require at least 4 chars for substring matching to avoid
             // single-word false positives like "ring" ↔ "earring"
             if (key.length < 4 && normalizedQuery.length < 4) continue;
@@ -268,7 +298,7 @@ export class SearchToAdsIntelligenceService {
         const paidCtr = paid.impressions > 0 ? (paid.clicks / paid.impressions) * 100 : 0;
         const organicShare = organic.ctr / (organic.ctr + paidCtr);
 
-        return Math.round(paid.clicks * paid.cpc * organicShare * 100) / 100;
+        return Math.min(paid.spend, paid.clicks * paid.cpc) * organicShare;
     }
 
     /**
@@ -302,6 +332,6 @@ export class SearchToAdsIntelligenceService {
 
     /** Lowercase, strip punctuation, collapse whitespace */
     private static normalize(text: string): string {
-        return text.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        return text.toLowerCase().trim().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ');
     }
 }

@@ -1,6 +1,6 @@
 /**
  * useClickOutside — Closes dropdowns/modals when user clicks outside the ref element.
- * Listens for mousedown events on the document and calls the handler
+ * Listens for pointer events (including touch and pen) on the document
  * if the click target is outside the referenced element.
  */
 import { useEffect, useRef, type RefObject } from 'react';
@@ -19,13 +19,20 @@ export function useClickOutside<T extends HTMLElement = HTMLElement>(
     useEffect(() => {
         if (!enabled) return;
 
-        const listener = (event: MouseEvent) => {
-            if (!ref.current || ref.current.contains(event.target as Node)) return;
+        const element = ref.current;
+        const owner = element?.ownerDocument ?? document;
+        const listener = (event: Event) => {
+            const current = ref.current;
+            const target = event.target;
+            const NodeType = owner.defaultView?.Node;
+            if (!current || !target || !NodeType || !(target instanceof NodeType)) return;
+            if (current.contains(target) || event.composedPath().includes(current)) return;
             handler();
         };
 
-        document.addEventListener('mousedown', listener);
-        return () => document.removeEventListener('mousedown', listener);
+        const eventName = typeof owner.defaultView?.PointerEvent === 'function' ? 'pointerdown' : 'mousedown';
+        owner.addEventListener(eventName, listener);
+        return () => owner.removeEventListener(eventName, listener);
     }, [handler, enabled]);
 
     return ref;

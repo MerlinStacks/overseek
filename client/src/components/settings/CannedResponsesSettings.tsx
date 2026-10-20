@@ -1,24 +1,25 @@
-/**
- * Canned Responses Settings Component.
- * Full CRUD interface for managing canned response templates with labels (rich text).
- */
-import { useState, useEffect, useCallback } from 'react';
-import { Logger } from '../../utils/logger';
+/** Account-isolated canned-response and label management. */
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Tag, Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
-import { cn } from '../../utils/cn';
-import { CannedResponseLabelManager, CannedResponseLabel } from './CannedResponseLabelManager';
+import { CannedResponseLabelManager, type CannedResponseLabel } from './CannedResponseLabelManager';
 import { CannedResponseForm } from './CannedResponseForm';
-import { CannedResponseList, CannedResponse } from './CannedResponseList';
-import { Toast, ToastType } from '../ui/Toast';
+import { CannedResponseList, type CannedResponse } from './CannedResponseList';
+import { Toast, type ToastType } from '../ui/Toast';
 
-export function CannedResponsesSettings() {
+export function CannedResponsesSettings({ onUpdate }: { onUpdate?: () => void } = {}) {
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    if (!token || !currentAccount) return <p role="status">Select an account to manage canned responses.</p>;
+    return <CannedResponsesContent key={JSON.stringify([currentAccount.id, token])} accountId={currentAccount.id} token={token} onUpdate={onUpdate} />;
+}
+
+function CannedResponsesContent({ accountId, token, onUpdate }: { accountId: string; token: string; onUpdate?: () => void }) {
     const [responses, setResponses] = useState<CannedResponse[]>([]);
     const [labels, setLabels] = useState<CannedResponseLabel[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadErrors, setLoadErrors] = useState<{ responses?: string; labels?: string }>({});
     const [editingId, setEditingId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [formData, setFormData] = useState({ shortcut: '', content: '', labelId: '' });
@@ -26,151 +27,117 @@ export function CannedResponsesSettings() {
     const [newLabelName, setNewLabelName] = useState('');
     const [newLabelColor, setNewLabelColor] = useState('#6366f1');
     const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: ToastType; visible: boolean }>({ message: '', type: 'error', visible: false });
+    const [isSaving, setIsSaving] = useState(false);
+    const active = useRef(true);
+    const pending = useRef(false);
+    const requests = useRef<{ responses?: AbortController; labels?: AbortController; mutation?: AbortController }>({});
+    const showToast = (message: string, type: ToastType = 'error') => setToast({ message, type, visible: true });
 
-    const [toastMessage, setToastMessage] = useState('');
-    const [toastVisible, setToastVisible] = useState(false);
-    const [toastType, setToastType] = useState<ToastType>('error');
-    const showToast = useCallback((message: string, type: ToastType = 'error') => {
-        setToastMessage(message); setToastType(type); setToastVisible(true);
-    }, []);
-
-    const fetchLabels = useCallback(async () => {
-        if (!currentAccount || !token) return;
+    const load = useCallback(async (kind: 'responses' | 'labels') => {
+        requests.current[kind]?.abort();
+        const controller = new AbortController(); requests.current[kind] = controller;
+        if (kind === 'responses') setIsLoading(true);
         try {
-            const res = await fetch('/api/chat/canned-labels', {
-                headers: { 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount.id }
+            const res = await fetch(`/api/chat/${kind === 'labels' ? 'canned-labels' : 'canned-responses'}`, {
+                signal: controller.signal, headers: { Authorization: `Bearer ${token}`, 'x-account-id': accountId },
             });
-            if (res.ok) setLabels(await res.json());
-        } catch (error) { Logger.error('Failed to fetch labels:', { error }); }
-    }, [currentAccount, token]);
+            if (!res.ok) throw new Error('Load failed');
+            const data = await res.json();
+            if (!Array.isArray(data) || !data.every(value => value && typeof value.id === 'string' && (kind === 'labels'
+                ? typeof value.name === 'string' && typeof value.color === 'string'
+                : typeof value.shortcut === 'string' && typeof value.content === 'string' && (value.label == null || typeof value.label.name === 'string')))) throw new Error('Invalid response');
+            if (!active.current || controller.signal.aborted) return;
+            if (kind === 'responses') setResponses(data); else setLabels(data);
+            setLoadErrors(previous => ({ ...previous, [kind]: undefined }));
+        } catch {
+            if (active.current && !controller.signal.aborted) setLoadErrors(previous => ({ ...previous, [kind]: `Could not load ${kind}.` }));
+        } finally {
+            if (active.current && !controller.signal.aborted && kind === 'responses') setIsLoading(false);
+        }
+    }, [accountId, token]);
 
-    const fetchResponses = useCallback(async () => {
-        if (!currentAccount || !token) return;
-        setIsLoading(true);
+    useEffect(() => {
+        active.current = true;
+        let disposed = false;
+        queueMicrotask(() => { if (!disposed) { void load('labels'); void load('responses'); } });
+        const current = requests.current;
+        return () => { disposed = true; active.current = false; Object.values(current).forEach(controller => controller?.abort()); };
+    }, [load]);
+
+    const mutate = async (url: string, method: string, body: unknown, success: () => void) => {
+        if (pending.current) return;
+        pending.current = true; setIsSaving(true);
+        const controller = new AbortController(); requests.current.mutation = controller;
         try {
-            const res = await fetch('/api/chat/canned-responses', {
-                headers: { 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount.id }
+            const res = await fetch(url, {
+                method, signal: controller.signal,
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-account-id': accountId },
+                ...(body === undefined ? {} : { body: JSON.stringify(body) }),
             });
-            if (res.ok) setResponses(await res.json());
-        } catch (error) { Logger.error('Failed to fetch canned responses:', { error }); }
-        finally { setIsLoading(false); }
-    }, [currentAccount, token]);
-
-    useEffect(() => { fetchLabels(); fetchResponses(); }, [fetchLabels, fetchResponses]);
-
-    const handleSave = async () => {
-        if (!formData.shortcut.trim()) { showToast('Shortcut is required'); return; }
-        if (!formData.content.trim()) { showToast('Response content is required'); return; }
-        const payload = { shortcut: formData.shortcut.trim(), content: formData.content.trim(), labelId: formData.labelId || null };
-        try {
-            const res = await fetch(editingId ? `/api/chat/canned-responses/${editingId}` : '/api/chat/canned-responses', {
-                method: editingId ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' },
-                body: JSON.stringify(payload)
-            });
-            if (res.ok) {
-                setFormData({ shortcut: '', content: '', labelId: '' }); setEditingId(null); fetchResponses();
-                showToast('Canned response saved', 'success');
-            } else {
-                const err = await res.json().catch(() => null);
-                showToast(err?.error || 'Failed to save canned response');
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not save changes. Please try again.');
+            if (active.current && !controller.signal.aborted) {
+                success();
+                try { void Promise.resolve(onUpdate?.()).catch(() => {}); } catch { /* A refresh callback must not turn a saved mutation into a retry. */ }
             }
         } catch (error) {
-            Logger.error('Failed to save canned response:', { error });
-            showToast('Failed to save — network error');
+            if (active.current && !controller.signal.aborted) showToast(error instanceof Error ? error.message : 'Request failed. Please try again.');
+        } finally {
+            pending.current = false; if (active.current) setIsSaving(false);
         }
     };
 
-    const handleEdit = (response: CannedResponse) => {
-        setEditingId(response.id);
-        setFormData({ shortcut: response.shortcut, content: response.content, labelId: response.labelId || '' });
+    const handleSave = () => {
+        if (!formData.shortcut.trim()) { showToast('Shortcut is required'); return; }
+        if (!formData.content.trim()) { showToast('Response content is required'); return; }
+        void mutate(editingId ? `/api/chat/canned-responses/${encodeURIComponent(editingId)}` : '/api/chat/canned-responses', editingId ? 'PUT' : 'POST',
+            { shortcut: formData.shortcut.trim(), content: formData.content.trim(), labelId: formData.labelId || null }, () => {
+                setFormData({ shortcut: '', content: '', labelId: '' }); setEditingId(null); void load('responses'); showToast('Canned response saved', 'success');
+            });
     };
-
-    const handleDelete = async (id: string) => {
+    const handleDelete = (id: string) => {
         if (!confirm('Delete this canned response?')) return;
-        try {
-            await fetch(`/api/chat/canned-responses/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' } });
-            fetchResponses();
-        } catch (error) { Logger.error('Failed to delete:', { error }); }
+        void mutate(`/api/chat/canned-responses/${encodeURIComponent(id)}`, 'DELETE', undefined, () => { void load('responses'); showToast('Canned response deleted', 'success'); });
     };
-
-    const handleCreateLabel = async () => {
+    const refreshLabels = () => { void load('labels'); void load('responses'); };
+    const createLabel = () => {
         if (!newLabelName.trim()) { showToast('Label name is required'); return; }
-        try {
-            const res = await fetch('/api/chat/canned-labels', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' },
-                body: JSON.stringify({ name: newLabelName.trim(), color: newLabelColor })
-            });
-            if (res.ok) { setNewLabelName(''); setNewLabelColor('#6366f1'); fetchLabels(); showToast('Label created', 'success'); }
-            else { const err = await res.json().catch(() => null); showToast(err?.error || 'Failed to create label'); }
-        } catch (error) { Logger.error('Failed to create label:', { error }); showToast('Failed to create label — network error'); }
+        void mutate('/api/chat/canned-labels', 'POST', { name: newLabelName.trim(), color: newLabelColor }, () => {
+            setNewLabelName(''); setNewLabelColor('#6366f1'); refreshLabels(); showToast('Label created', 'success');
+        });
     };
+    const groups = new Map<string, { label: CannedResponseLabel | null; items: CannedResponse[] }>();
+    for (const response of responses) {
+        const name = response.label?.name || 'Uncategorized';
+        const group = groups.get(name) || { label: response.label, items: [] };
+        group.items.push(response); groups.set(name, group);
+    }
+    const query = searchQuery.trim().toLowerCase();
+    const filteredGroups = [...groups].map(([name, group]) => ({ name, label: group.label, items: group.items.filter(response => response.shortcut.toLowerCase().includes(query) || response.content.toLowerCase().includes(query)) })).filter(group => group.items.length);
 
-    const handleUpdateLabel = async (id: string, name: string, color: string) => {
-        try {
-            await fetch(`/api/chat/canned-labels/${id}`, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' },
-                body: JSON.stringify({ name, color })
-            });
-            setEditingLabelId(null); fetchLabels(); fetchResponses();
-        } catch (error) { Logger.error('Failed to update label:', { error }); }
-    };
-
-    const handleDeleteLabel = async (id: string) => {
-        if (!confirm('Delete this label? Responses will keep their content but lose this label.')) return;
-        try {
-            await fetch(`/api/chat/canned-labels/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}`, 'x-account-id': currentAccount?.id || '' } });
-            fetchLabels(); fetchResponses();
-        } catch (error) { Logger.error('Failed to delete label:', { error }); }
-    };
-
-    // Group and filter responses
-    const groupedResponses = responses.reduce((acc, response) => {
-        const labelName = response.label?.name || 'Uncategorized';
-        if (!acc[labelName]) acc[labelName] = { label: response.label, items: [] };
-        acc[labelName].items.push(response);
-        return acc;
-    }, {} as Record<string, { label: CannedResponseLabel | null; items: CannedResponse[] }>);
-
-    const filteredGroups = Object.entries(groupedResponses)
-        .map(([name, { label, items }]) => ({
-            name, label,
-            items: items.filter(r => r.shortcut.toLowerCase().includes(searchQuery.toLowerCase()) || r.content.toLowerCase().includes(searchQuery.toLowerCase()))
-        }))
-        .filter(g => g.items.length > 0);
-
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Canned Responses</h2>
-                    <p className="text-sm text-gray-500">Create reusable rich text templates. Type "/" in the chat to use them.</p>
-                </div>
-                <button onClick={() => setShowLabelManager(!showLabelManager)} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors", showLabelManager ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-700 hover:bg-gray-200")}>
-                    <Tag size={14} />Manage Labels
-                </button>
+    return <div className="space-y-6" aria-busy={isSaving}>
+        {isSaving && <p role="status">Saving changes...</p>}
+        {Object.values(loadErrors).filter(Boolean).map(message => <p role="alert" key={message}>{message} <button type="button" onClick={refreshLabels}>Retry loading</button></p>)}
+        <fieldset disabled={isSaving} inert={isSaving} className="space-y-6">
+            <div className="flex flex-wrap gap-3 items-center justify-between">
+                <div><h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Canned Responses</h2><p className="text-sm text-gray-500">Create reusable rich text templates. Type "/" in the chat to use them.</p></div>
+                <button type="button" aria-expanded={showLabelManager} onClick={() => setShowLabelManager(!showLabelManager)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-100 text-indigo-700"><Tag size={14} />Manage Labels</button>
             </div>
-
-            {showLabelManager && (
-                <CannedResponseLabelManager
-                    labels={labels} editingLabelId={editingLabelId} newLabelName={newLabelName} newLabelColor={newLabelColor}
-                    onLabelsChange={setLabels} onEditingLabelIdChange={setEditingLabelId} onNewLabelNameChange={setNewLabelName} onNewLabelColorChange={setNewLabelColor}
-                    onCreateLabel={handleCreateLabel} onUpdateLabel={handleUpdateLabel} onDeleteLabel={handleDeleteLabel} onRefreshLabels={fetchLabels}
-                />
-            )}
-
-            <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Search responses..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
-            </div>
-
-            <CannedResponseForm formData={formData} labels={labels} editingId={editingId} onFormChange={setFormData} onSave={handleSave}
-                onCancel={() => { setEditingId(null); setFormData({ shortcut: '', content: '', labelId: '' }); }} />
-
-            <CannedResponseList groups={filteredGroups} editingId={editingId} isLoading={isLoading} searchQuery={searchQuery} onEdit={handleEdit} onDelete={handleDelete} />
-
-            <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} type={toastType} />
-        </div>
-    );
+            {showLabelManager && <CannedResponseLabelManager
+                labels={labels} editingLabelId={editingLabelId} newLabelName={newLabelName} newLabelColor={newLabelColor}
+                onLabelsChange={setLabels} onEditingLabelIdChange={setEditingLabelId} onNewLabelNameChange={setNewLabelName} onNewLabelColorChange={setNewLabelColor}
+                onCreateLabel={createLabel} onUpdateLabel={(id, name, color) => {
+                    if (!name.trim()) { showToast('Label name is required'); return; }
+                    void mutate(`/api/chat/canned-labels/${encodeURIComponent(id)}`, 'PUT', { name: name.trim(), color }, () => { setEditingLabelId(null); refreshLabels(); showToast('Label updated', 'success'); });
+                }} onDeleteLabel={id => {
+                    if (confirm('Delete this label? Responses will keep their content but lose this label.')) void mutate(`/api/chat/canned-labels/${encodeURIComponent(id)}`, 'DELETE', undefined, () => { refreshLabels(); showToast('Label deleted', 'success'); });
+                }} onRefreshLabels={refreshLabels}
+            />}
+            <div className="relative"><Search aria-hidden="true" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input aria-label="Search canned responses" placeholder="Search responses..." value={searchQuery} onChange={event => setSearchQuery(event.target.value)} className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm dark:bg-slate-800" /></div>
+            <CannedResponseForm formData={formData} labels={labels} editingId={editingId} onFormChange={setFormData} onSave={handleSave} onCancel={() => { setEditingId(null); setFormData({ shortcut: '', content: '', labelId: '' }); }} />
+            <CannedResponseList groups={filteredGroups} editingId={editingId} isLoading={isLoading} searchQuery={searchQuery} onEdit={response => { setEditingId(response.id); setFormData({ shortcut: response.shortcut, content: response.content, labelId: response.labelId || '' }); }} onDelete={handleDelete} />
+        </fieldset>
+        <Toast message={toast.message} isVisible={toast.visible} onClose={() => setToast(previous => ({ ...previous, visible: false }))} type={toast.type} />
+    </div>;
 }

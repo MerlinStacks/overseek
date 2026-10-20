@@ -98,6 +98,9 @@ export interface WizardStepProps {
 export function validateStep(step: number, draft: CampaignDraft): { isValid: boolean; error?: string } {
     switch (step) {
         case WIZARD_STEPS.GOAL:
+            if (draft.type !== 'SEARCH' && draft.type !== 'PMAX') {
+                return { isValid: false, error: 'Select a supported campaign type' };
+            }
             if (!draft.name.trim()) {
                 return { isValid: false, error: 'Campaign name is required' };
             }
@@ -108,6 +111,12 @@ export function validateStep(step: number, draft: CampaignDraft): { isValid: boo
             return { isValid: true };
 
         case WIZARD_STEPS.AD_COPY:
+            if (draft.adCopy.headlines.length > MAX_HEADLINES || draft.adCopy.headlines.some(value => !value.trim() || value.length > MAX_HEADLINE_LENGTH)) {
+                return { isValid: false, error: `Use up to ${MAX_HEADLINES} nonblank headlines, each at most ${MAX_HEADLINE_LENGTH} characters` };
+            }
+            if (draft.adCopy.descriptions.length > MAX_DESCRIPTIONS || draft.adCopy.descriptions.some(value => !value.trim() || value.length > MAX_DESCRIPTION_LENGTH)) {
+                return { isValid: false, error: `Use up to ${MAX_DESCRIPTIONS} nonblank descriptions, each at most ${MAX_DESCRIPTION_LENGTH} characters` };
+            }
             if (draft.adCopy.headlines.length < MIN_HEADLINES) {
                 return { isValid: false, error: `At least ${MIN_HEADLINES} headlines required` };
             }
@@ -117,16 +126,22 @@ export function validateStep(step: number, draft: CampaignDraft): { isValid: boo
             if (!draft.adCopy.finalUrl) {
                 return { isValid: false, error: 'Final URL is required' };
             }
+            try {
+                const url = new URL(draft.adCopy.finalUrl.trim());
+                if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) throw new Error('Invalid URL');
+            } catch {
+                return { isValid: false, error: 'Final URL must be an HTTP or HTTPS website URL without credentials' };
+            }
             return { isValid: true };
 
         case WIZARD_STEPS.BUDGET:
-            if (draft.budget <= 0) {
+            if (!Number.isFinite(draft.budget) || draft.budget <= 0) {
                 return { isValid: false, error: 'Budget must be greater than zero' };
             }
             return { isValid: true };
 
         default:
-            return { isValid: true };
+            return { isValid: false, error: 'Unknown wizard step' };
     }
 }
 

@@ -32,19 +32,29 @@ const CRED_CACHE_TTL_MS = 10 * 60 * 1000;
 /** In-memory result cache to avoid duplicate queries within a refresh cycle */
 const resultCache = new Map<string, { result: SerpPositionResult; expiry: number }>();
 const RESULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 5000;
+
+function cacheResult(key: string, result: SerpPositionResult): void {
+    const now = Date.now();
+    for (const [entryKey, entry] of resultCache) if (entry.expiry <= now) resultCache.delete(entryKey);
+    if (resultCache.size >= MAX_CACHE_ENTRIES) resultCache.delete(resultCache.keys().next().value!);
+    resultCache.set(key, { result, expiry: now + RESULT_CACHE_TTL_MS });
+}
 
 export class SerpCheckService {
 
     /**
      * Check the SERP position of a specific domain for a given keyword.
-     * Searches up to 100 results (10 pages × 10 results).
-     *
-     * Why paginate to 100: Google Custom Search API returns max 10 results
-     * per request and supports start=1..91. Most meaningful competitor
-     * analysis happens within the first 100 results.
+     * Searches the top 30 results (3 pages × 10 results) to limit quota usage.
+     * A null position means not found within that coverage, never a failed check.
      */
     static async checkPosition(keyword: string, domain: string): Promise<SerpPositionResult> {
-        const cacheKey = `${keyword.toLowerCase()}::${domain.toLowerCase()}`;
+        keyword = keyword.trim();
+        if (!keyword) throw new Error('Keyword required');
+        const domainUrl = new URL(domain.includes('://') ? domain : `https://${domain}`);
+        if (!['https:', 'http:'].includes(domainUrl.protocol) || domainUrl.username || domainUrl.password || domainUrl.pathname !== '/' || domainUrl.search || domainUrl.hash) throw new Error('Invalid competitor domain');
+        const normalizedDomain = domainUrl.hostname.toLowerCase().replace(/^www\./, '');
+        const cacheKey = JSON.stringify([keyword.toLowerCase(), normalizedDomain]);
         const cached = resultCache.get(cacheKey);
         if (cached && cached.expiry > Date.now()) {
             return cached.result;
@@ -52,44 +62,25 @@ export class SerpCheckService {
 
         const creds = await this.getCredentials();
         if (!creds) {
-            Logger.warn('SERP check skipped: no Google Custom Search credentials configured');
-            return { position: null, rankingUrl: null };
+            throw new Error('Google Custom Search credentials are not configured');
         }
 
-        const normalizedDomain = domain.toLowerCase().replace(/^www\./, '');
-
-        // Search pages 1-10 (positions 1-100)
         // Why stop at 3 pages initially: balances API quota vs coverage.
         // Most competitive analysis cares about top 30 positions.
         const maxPages = 3;
         for (let page = 0; page < maxPages; page++) {
             const startIndex = page * 10 + 1;
 
-            try {
-                const result = await this.fetchSearchPage(
-                    creds, keyword, normalizedDomain, startIndex
-                );
-
-                if (result) {
-                    resultCache.set(cacheKey, {
-                        result,
-                        expiry: Date.now() + RESULT_CACHE_TTL_MS,
-                    });
-                    return result;
-                }
-            } catch (error: any) {
-                // HTTP 429 = daily quota exceeded — stop immediately
-                if (error?.status === 429 || error?.response?.status === 429) {
-                    Logger.warn('Google Custom Search daily quota exceeded', { keyword, domain });
-                    return { position: null, rankingUrl: null };
-                }
-                Logger.error('SERP check page fetch failed', { keyword, domain, startIndex, error: error.message });
+            const result = await this.fetchSearchPage(creds, keyword, normalizedDomain, startIndex);
+            if (result) {
+                cacheResult(cacheKey, result);
+                return result;
             }
         }
 
         // Not found in searched pages
         const notFound: SerpPositionResult = { position: null, rankingUrl: null };
-        resultCache.set(cacheKey, { result: notFound, expiry: Date.now() + RESULT_CACHE_TTL_MS });
+        cacheResult(cacheKey, notFound);
         return notFound;
     }
 
@@ -104,12 +95,13 @@ export class SerpCheckService {
         const results = new Map<string, SerpPositionResult>();
         const DELAY_BETWEEN_CHECKS_MS = 200;
 
-        for (const keyword of keywords) {
+        const uniqueKeywords = [...new Set(keywords)];
+        for (const [index, keyword] of uniqueKeywords.entries()) {
             const result = await this.checkPosition(keyword, domain);
             results.set(keyword, result);
 
             // Throttle to stay within rate limits
-            if (keywords.indexOf(keyword) < keywords.length - 1) {
+            if (index < uniqueKeywords.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHECKS_MS));
             }
         }
@@ -130,6 +122,8 @@ export class SerpCheckService {
      */
     static clearCache(): void {
         resultCache.clear();
+        cachedCredentials = null;
+        credentialsCacheExpiry = 0;
     }
 
     /**
@@ -150,7 +144,7 @@ export class SerpCheckService {
 
         const response = await retryWithBackoff(
             async () => {
-                const res = await fetch(url.toString());
+                const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15000) });
                 if (!res.ok) {
                     const error: any = new Error(`Custom Search API error: ${res.status}`);
                     error.status = res.status;
@@ -162,7 +156,9 @@ export class SerpCheckService {
             { maxRetries: 2, baseDelayMs: 500, context: 'SerpCheck:fetchPage' }
         );
 
-        const items: Array<{ link: string }> = response.items || [];
+        if (!response || typeof response !== 'object' || response.error || (response.items !== undefined && !Array.isArray(response.items))) throw new Error('Invalid Custom Search response');
+        const items: Array<{ link: string }> = response.items ?? [];
+        if (!items.every(item => item && typeof item.link === 'string')) throw new Error('Invalid Custom Search results');
 
         for (let i = 0; i < items.length; i++) {
             try {

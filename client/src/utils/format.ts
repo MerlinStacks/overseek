@@ -1,10 +1,9 @@
 import { formatRelativeTime } from './relativeTime';
-
-const DEFAULT_LOCALE = 'en-AU';
+import { formatPreferredDateTime } from './dateTimePreferences';
 
 function parseDate(value?: string | Date | null): Date | null {
     if (!value) return null;
-    const parsed = value instanceof Date ? value : new Date(value);
+    const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
@@ -16,11 +15,11 @@ function parseDate(value?: string | Date | null): Date | null {
 export function formatDate(dateString: string): string {
     const parsed = parseDate(dateString);
     if (!parsed) return '-';
-    return parsed.toLocaleDateString(DEFAULT_LOCALE, {
+    return formatPreferredDateTime(parsed, 'date', {
         month: 'short',
         day: 'numeric',
         year: 'numeric'
-    });
+    }, undefined, /^\d{4}-\d{2}-\d{2}$/.test(dateString));
 }
 
 /**
@@ -31,7 +30,7 @@ export function formatDate(dateString: string): string {
 export function formatTime(dateString: string): string {
     const parsed = parseDate(dateString);
     if (!parsed) return '';
-    return parsed.toLocaleTimeString(DEFAULT_LOCALE, {
+    return formatPreferredDateTime(parsed, 'time', {
         hour: 'numeric',
         minute: '2-digit'
     });
@@ -45,28 +44,28 @@ export function formatTime(dateString: string): string {
 export function formatDateTime(dateString: string): string {
     const parsed = parseDate(dateString);
     if (!parsed) return '-';
-    return parsed.toLocaleDateString(DEFAULT_LOCALE, {
+    return formatPreferredDateTime(parsed, 'datetime', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
         hour: 'numeric',
         minute: 'numeric'
-    });
+    }, undefined, /^\d{4}-\d{2}-\d{2}$/.test(dateString));
 }
 
 export function formatDateSafe(value?: string | Date | null, fallback = '-'): string {
     const parsed = parseDate(value);
-    return parsed ? parsed.toLocaleDateString(DEFAULT_LOCALE) : fallback;
+    return parsed ? formatPreferredDateTime(parsed, 'date', {}, undefined, typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) : fallback;
 }
 
 export function formatTimeSafe(value?: string | Date | null, fallback = ''): string {
     const parsed = parseDate(value);
-    return parsed ? parsed.toLocaleTimeString(DEFAULT_LOCALE) : fallback;
+    return parsed ? formatPreferredDateTime(parsed, 'time', { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : fallback;
 }
 
 export function formatDateTimeSafe(value?: string | Date | null, fallback = '-'): string {
     const parsed = parseDate(value);
-    return parsed ? parsed.toLocaleString(DEFAULT_LOCALE) : fallback;
+    return parsed ? formatPreferredDateTime(parsed, 'datetime', { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }, undefined, typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) : fallback;
 }
 
 export function toValidDate(value?: string | Date | null): Date | null {

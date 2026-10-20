@@ -41,11 +41,12 @@ export function useKeyboardShortcuts({
 
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
         // Don't intercept browser shortcuts that use modifier keys
-        if (e.ctrlKey || e.metaKey) return;
+        if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
 
         // Don't handle if user is typing in an input/textarea
-        const target = e.target as HTMLElement;
-        const isTyping = ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable;
+        const target = e.target instanceof HTMLElement ? e.target : null;
+        if (!target) return;
+        const isTyping = !!target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]');
 
         // Allow only specific shortcuts when typing
         if (isTyping) {
@@ -55,6 +56,7 @@ export function useKeyboardShortcuts({
             }
             return;
         }
+        if (target.closest('button, a, [role="button"], [role="menu"], [role="listbox"], [role="dialog"], [aria-modal="true"]')) return;
 
         const currentIndex = selectedId
             ? conversations.findIndex(c => c.id === selectedId)

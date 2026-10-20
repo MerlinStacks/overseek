@@ -1,5 +1,5 @@
 import { ChevronsUpDown, Plus, Check } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from '../../context/AccountContext';
 
@@ -7,24 +7,34 @@ export function AccountSwitcher() {
     const { accounts, currentAccount, setCurrentAccount } = useAccount();
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const panelId = useId();
     const navigate = useNavigate();
 
     // Close dropdown when clicking outside
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
+        const handleClickOutside = (event: PointerEvent) => {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('pointerdown', handleClickOutside);
+        return () => document.removeEventListener('pointerdown', handleClickOutside);
     }, []);
 
     if (!currentAccount) return null;
 
     return (
-        <div className="relative mb-6" ref={containerRef}>
+        <div className="relative mb-6" ref={containerRef}
+            onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false); }}
+            onKeyDown={event => {
+                if (event.key === 'Escape' && isOpen) {
+                    event.preventDefault(); event.stopPropagation(); setIsOpen(false); triggerRef.current?.focus();
+                }
+            }}>
             <button
+                ref={triggerRef} type="button" aria-label={`Switch account: ${currentAccount.name}`}
+                aria-expanded={isOpen} aria-controls={isOpen ? panelId : undefined}
                 onClick={() => setIsOpen(!isOpen)}
                 className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-all duration-200 group"
             >
@@ -42,7 +52,7 @@ export function AccountSwitcher() {
 
             {/* Dropdown */}
             {isOpen && (
-                <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden z-20 animate-scale-in">
+                <div id={panelId} role="group" aria-label="My Accounts" className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden z-20 animate-scale-in">
                     <div className="p-1.5">
                         <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 px-3 py-2 uppercase tracking-wider">
                             My Accounts
@@ -50,10 +60,12 @@ export function AccountSwitcher() {
 
                         {accounts.map(account => (
                             <button
+                                type="button" aria-pressed={account.id === currentAccount.id}
                                 key={account.id}
                                 onClick={() => {
                                     setCurrentAccount(account);
                                     setIsOpen(false);
+                                    triggerRef.current?.focus();
                                 }}
                                 className="w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all duration-200"
                             >
@@ -67,7 +79,8 @@ export function AccountSwitcher() {
 
                     <div className="border-t border-slate-100 dark:border-slate-700 p-1.5">
                         <button
-                            onClick={() => navigate('/setup?addNew=true')}
+                            type="button"
+                            onClick={() => { setIsOpen(false); navigate('/setup?addNew=true'); }}
                             className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-all duration-200 font-medium"
                         >
                             <Plus size={14} />

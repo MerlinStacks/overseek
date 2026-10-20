@@ -153,10 +153,17 @@ export const CRAWLER_REGISTRY: CrawlerIdentity[] = [
         intent: 'neutral',
     },
     {
-        name: 'GPTBot', slug: 'gptbot', patterns: ['gptbot', 'chatgpt-user'],
+        name: 'GPTBot', slug: 'gptbot', patterns: ['gptbot'],
         category: 'ai_crawler', owner: 'OpenAI',
         description: 'Crawls pages for AI training data. Can be blocked without SEO impact.',
         website: 'https://platform.openai.com/docs/gptbot',
+        intent: 'neutral',
+    },
+    {
+        name: 'ChatGPT User', slug: 'chatgpt-user', patterns: ['chatgpt-user'],
+        category: 'ai_crawler', owner: 'OpenAI',
+        description: 'Fetches pages in response to user requests. Separate from the GPTBot training crawler.',
+        website: 'https://platform.openai.com/docs/bots',
         intent: 'neutral',
     },
     {

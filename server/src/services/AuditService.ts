@@ -98,7 +98,7 @@ export class AuditService {
     /**
      * Retrieve audit logs for a specific resource
      */
-    static async getLogsForResource(accountId: string, resource: string, resourceId: string) {
+    static async getLogsForResource(accountId: string, resource: string, resourceId: string, limit = 50, offset = 0) {
         return prisma.auditLog.findMany({
             where: {
                 accountId,
@@ -114,16 +114,16 @@ export class AuditService {
                     }
                 }
             },
-            orderBy: {
-                createdAt: 'desc'
-            }
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: limit,
+            skip: offset
         });
     }
 
     /**
     * Retrieve recent audit logs for an account
     */
-    static async getRecentLogs(accountId: string, limit = 50) {
+    static async getRecentLogs(accountId: string, limit = 50, offset = 0) {
         return prisma.auditLog.findMany({
             where: { accountId },
             include: {
@@ -135,8 +135,9 @@ export class AuditService {
                     }
                 }
             },
-            orderBy: { createdAt: 'desc' },
-            take: limit
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: limit,
+            skip: offset
         });
     }
 }

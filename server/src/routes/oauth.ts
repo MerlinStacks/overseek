@@ -8,6 +8,7 @@ import { requireAuthFastify } from '../middleware/auth';
 import { Logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { buildCallbackUrl, getApiBase } from './oauthHelpers';
+import { getOauthAccountIdOrReply } from './oauthRouteHelpers';
 
 // Import sub-plugins
 import oauthGoogleRoutes from './oauthGoogle';
@@ -56,7 +57,8 @@ const oauthRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.get('/social-accounts', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
 
             const socialAccounts = await prisma.socialAccount.findMany({
                 where: { accountId, isActive: true },
@@ -73,7 +75,7 @@ const oauthRoutes: FastifyPluginAsync = async (fastify) => {
             return { socialAccounts };
         } catch (error: any) {
             Logger.error('Failed to list social accounts', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(500).send({ error: 'Failed to list social accounts' });
         }
     });
 
@@ -83,18 +85,20 @@ const oauthRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.delete<{ Params: { id: string } }>('/social-accounts/:id', { preHandler: requireAuthFastify }, async (request, reply) => {
         try {
-            const accountId = request.accountId;
+            const accountId = getOauthAccountIdOrReply(request, reply);
+            if (!accountId) return;
             const { id } = request.params;
 
-            await prisma.socialAccount.updateMany({
+            const result = await prisma.socialAccount.updateMany({
                 where: { id, accountId },
                 data: { isActive: false },
             });
+            if (!result.count) return reply.code(404).send({ error: 'Social account not found' });
 
             return { success: true };
         } catch (error: any) {
             Logger.error('Failed to disconnect social account', { error });
-            return reply.code(500).send({ error: error.message });
+            return reply.code(500).send({ error: 'Failed to disconnect social account' });
         }
     });
 };

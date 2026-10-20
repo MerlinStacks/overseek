@@ -1,15 +1,11 @@
+import { runScript, withScriptPrisma } from './scriptUtils';
 
-import dotenv from 'dotenv';
-dotenv.config();
-import { createPrismaClient } from '../utils/prisma';
-const prisma = createPrismaClient();
-
-async function main() {
-    const accounts = await prisma.account.findMany();
-    console.log(`Found ${accounts.length} accounts:`);
-    accounts.forEach(a => {
-        console.log(`ID: ${a.id} | Name: ${a.name} | URL: ${a.wooUrl}`);
+export async function main() {
+    await withScriptPrisma(async prisma => {
+        const accounts = await prisma.account.findMany({ select: { id: true, name: true, wooUrl: true }, orderBy: { id: 'asc' } });
+        console.log(`Found ${accounts.length} accounts:`);
+        for (const account of accounts) console.log(`ID: ${account.id} | Name: ${account.name} | URL: ${account.wooUrl}`);
     });
-    await prisma.$disconnect();
 }
-main();
+
+if (require.main === module) void runScript(main);

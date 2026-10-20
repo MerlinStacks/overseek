@@ -64,19 +64,25 @@ export class KeywordTrackingService {
      * Add a keyword to tracking. Deduplicates by accountId + keyword.
      */
     static async addKeyword(accountId: string, keyword: string, targetUrl?: string): Promise<TrackedKeywordSummary> {
+        if (!accountId?.trim()) throw new Error('Account ID required');
         const normalized = keyword.toLowerCase().trim();
         if (!normalized || normalized.length > 200) {
             throw new Error('Keyword must be 1-200 characters');
         }
 
-        const existing = await prisma.trackedKeyword.findUnique({
+        return prisma.$transaction(async tx => {
+        // Serialize additions/reactivations for this account, including concurrent bulk imports.
+        await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR UPDATE`;
+        const existing = await tx.trackedKeyword.findUnique({
             where: { accountId_keyword: { accountId, keyword: normalized } }
         });
 
         if (existing) {
             // Reactivate if previously deactivated
             if (!existing.isActive) {
-                const updated = await prisma.trackedKeyword.update({
+                const count = await tx.trackedKeyword.count({ where: { accountId, isActive: true } });
+                if (count >= MAX_KEYWORDS_PER_ACCOUNT) throw new Error(`Maximum of ${MAX_KEYWORDS_PER_ACCOUNT} tracked keywords reached`);
+                const updated = await tx.trackedKeyword.update({
                     where: { id: existing.id },
                     data: { isActive: true, targetUrl }
                 });
@@ -86,14 +92,14 @@ export class KeywordTrackingService {
         }
 
         // Enforce per-account limit to prevent unbounded growth
-        const activeCount = await prisma.trackedKeyword.count({
+        const activeCount = await tx.trackedKeyword.count({
             where: { accountId, isActive: true }
         });
         if (activeCount >= MAX_KEYWORDS_PER_ACCOUNT) {
             throw new Error(`Maximum of ${MAX_KEYWORDS_PER_ACCOUNT} tracked keywords reached`);
         }
 
-        const created = await prisma.trackedKeyword.create({
+        const created = await tx.trackedKeyword.create({
             data: {
                 accountId,
                 keyword: normalized,
@@ -103,18 +109,21 @@ export class KeywordTrackingService {
         });
 
         return mapToSummary(created);
+        });
     }
 
     /**
      * Add multiple keywords in bulk. Returns summary of results.
      */
     static async addKeywordsBulk(accountId: string, keywords: string[], targetUrl?: string): Promise<BulkImportResult> {
+        if (!accountId?.trim()) throw new Error('Account ID required');
+        if (!Array.isArray(keywords) || keywords.length > 500) throw new Error('Import must contain at most 500 keywords');
         const result: BulkImportResult = { added: 0, skipped: 0, failed: 0, errors: [] };
 
         // Pre-fetch all existing keywords for this account in one query.
         // Why: avoids a findUnique + count per keyword in the loop (N+1).
         const existingKeywords = await prisma.trackedKeyword.findMany({
-            where: { accountId }
+            where: { accountId }, select: { id: true, keyword: true, isActive: true }
         });
         const existingMap = new Map(
             existingKeywords.map(kw => [kw.keyword, kw])
@@ -123,10 +132,10 @@ export class KeywordTrackingService {
         let activeCount = existingKeywords.filter(kw => kw.isActive).length;
 
         for (const kw of keywords) {
-            const normalized = kw.toLowerCase().trim();
+            const normalized = typeof kw === 'string' ? kw.toLowerCase().trim() : '';
             if (!normalized || normalized.length > 200) {
                 result.failed++;
-                result.errors.push(`Invalid keyword: "${kw.substring(0, 50)}"`);
+                result.errors.push(`Invalid keyword at import row ${result.added + result.skipped + result.failed}`);
                 continue;
             }
 
@@ -139,10 +148,7 @@ export class KeywordTrackingService {
                 }
 
                 if (existing && !existing.isActive) {
-                    await prisma.trackedKeyword.update({
-                        where: { id: existing.id },
-                        data: { isActive: true, targetUrl }
-                    });
+                    await this.addKeyword(accountId, normalized, targetUrl);
                     // Update Map so subsequent dedup checks reflect reactivation
                     existingMap.set(normalized, { ...existing, isActive: true });
                     activeCount++;
@@ -157,14 +163,7 @@ export class KeywordTrackingService {
                     continue;
                 }
 
-                const created = await prisma.trackedKeyword.create({
-                    data: {
-                        accountId,
-                        keyword: normalized,
-                        targetUrl: targetUrl || null,
-                        isActive: true,
-                    }
-                });
+                const created = await this.addKeyword(accountId, normalized, targetUrl);
                 existingMap.set(normalized, created);
                 activeCount++;
                 result.added++;
@@ -256,6 +255,7 @@ export class KeywordTrackingService {
         const analytics = await SearchConsoleService.getSearchAnalytics(accountId, {
             days: 7,
             rowLimit: 2000,
+            strict: true,
         });
 
         if (analytics.length === 0) {
@@ -328,7 +328,6 @@ export class KeywordTrackingService {
                     },
                     update: {
                         position: data.position,
-                        previousPosition: oldPosition || null,
                         clicks: data.clicks,
                         impressions: data.impressions,
                         ctr: data.ctr,

@@ -78,10 +78,13 @@ export function CampaignWizard({ isOpen, onClose, onSuccess }: CampaignWizardPro
         }
 
         // Final validation
-        const validation = validateStep(WIZARD_STEPS.BUDGET, draft);
-        if (!validation.isValid) {
-            setError(validation.error || 'Invalid configuration');
-            return;
+        for (let step = WIZARD_STEPS.GOAL; step <= WIZARD_STEPS.TOTAL; step++) {
+            const validation = validateStep(step, draft);
+            if (!validation.isValid) {
+                setCurrentStep(step);
+                setError(validation.error || 'Invalid configuration');
+                return;
+            }
         }
 
         setLoading(true);
