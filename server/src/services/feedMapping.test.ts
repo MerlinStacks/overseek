@@ -153,6 +153,7 @@ describe('FeedMappingService product exclusions', () => {
         await expect(FeedMappingService.getProductFilters('account-1')).resolves.toEqual({
             excludeOutOfStockProducts: false,
             excludeUnpublishedProducts: false,
+            backordersAsInStock: false,
         });
 
         mockPrisma.accountFeature.findUnique.mockResolvedValueOnce({ config: { maxBulkOptimizeRows: 2000 } });
@@ -164,6 +165,7 @@ describe('FeedMappingService product exclusions', () => {
         expect(filters).toEqual({
             excludeOutOfStockProducts: true,
             excludeUnpublishedProducts: true,
+            backordersAsInStock: false,
         });
         expect(mockPrisma.accountFeature.upsert).toHaveBeenCalledWith(expect.objectContaining({
             update: {
@@ -171,6 +173,7 @@ describe('FeedMappingService product exclusions', () => {
                     maxBulkOptimizeRows: 2000,
                     excludeOutOfStockProducts: true,
                     excludeUnpublishedProducts: true,
+                    backordersAsInStock: false,
                 },
             },
         }));
@@ -266,6 +269,293 @@ describe('FeedMappingService product exclusions', () => {
         const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_parent', 2);
 
         expect(result.rows.map((row) => row.rowId)).toEqual(['p:2']);
+    });
+});
+
+describe('FeedMappingService backorder availability override', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockPrisma.account.findUnique.mockResolvedValue({ name: 'Store', currency: 'AUD' });
+    });
+
+    const product = (wooId: number, stockStatus: string, rawData: Record<string, unknown> = {}) => ({
+        id: `product-${wooId}`, wooId, name: `Product ${wooId}`, sku: String(wooId), price: '10',
+        status: 'publish', stockStatus, rawData: { type: 'simple', ...rawData }, seoData: {}, variations: [],
+    });
+
+    it.each(['google', 'meta'])('includes allow and notify backorders as in stock for %s', async (channel) => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: {
+            backordersAsInStock: true, excludeOutOfStockProducts: true,
+        } });
+        const products = [
+            product(1, 'outofstock', { backorders: 'yes' }),
+            product(2, 'onbackorder', { backorders: 'notify' }),
+            product(3, 'outofstock', { backorders: 'no' }),
+            product(4, 'outofstock', { backorders_allowed: true }),
+            product(5, 'instock', { backorders: 'no' }),
+        ];
+        mockPrisma.wooProduct.findMany.mockResolvedValue(products);
+
+        const feed = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'variable_parent');
+        const refs = await FeedMappingService.getFeedRowRefs('account-1', channel, '', 'variable_parent');
+        expect(feed.rows.map((row) => row.rowId)).toEqual(['p:1', 'p:2', 'p:4', 'p:5']);
+        expect(refs.rows.map((row) => row.rowId)).toEqual(feed.rows.map((row) => row.rowId));
+        for (const row of feed.rows) {
+            expect(row.columns.find((column: any) => column.targetField === 'availability')?.finalValue).toBe(channel === 'meta' ? 'in stock' : 'in_stock');
+        }
+        expect(products[0].stockStatus).toBe('outofstock');
+        if (channel === 'google') {
+            expect(await FeedMappingService.getFeedExportXml('account-1', channel)).toContain('<g:availability>in_stock</g:availability>');
+        } else {
+            expect(await FeedMappingService.getFeedExportCsv('account-1', channel)).toContain('"in stock"');
+        }
+    });
+
+    it.each([
+        ['google', false], ['meta', false], ['pinterest', true],
+    ])('preserves existing availability for %s when override is %s', async (channel, enabled) => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { backordersAsInStock: enabled } });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([product(1, 'onbackorder', { backorders: 'yes' })]);
+        const feed = await FeedMappingService.getFeedRows('account-1', String(channel), 1, 50, '', 'variable_parent');
+        expect(feed.rows[0].columns.find((column: any) => column.targetField === 'availability')?.finalValue).toBe(channel === 'meta' ? 'available for order' : 'backorder');
+    });
+
+    it('resolves variation permissions and parent-managed stock without overriding explicit no', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: {
+            backordersAsInStock: true, excludeOutOfStockProducts: true,
+        } });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...product(1, 'outofstock', { type: 'variable', backorders: 'notify' }),
+            variations: [
+                { wooId: 11, stockStatus: 'outofstock', rawData: { backorders: 'yes' } },
+                { wooId: 12, stockStatus: 'outofstock', rawData: { backorders: 'notify' } },
+                { wooId: 13, stockStatus: 'outofstock', rawData: { backorders: 'no' } },
+                { wooId: 14, stockStatus: 'outofstock', rawData: { manage_stock: 'parent', backorders: 'no' } },
+            ],
+        }]);
+        const feed = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'all_variations');
+        const refs = await FeedMappingService.getFeedRowRefs('account-1', 'google', '', 'all_variations');
+        expect(feed.rows.map((row) => row.rowId)).toEqual(['v:1-11', 'v:1-12', 'v:1-14']);
+        expect(refs.rows.map((row) => row.rowId)).toEqual(feed.rows.map((row) => row.rowId));
+        expect(feed.rows.every((row) => row.columns.find((column: any) => column.targetField === 'availability')?.finalValue === 'in_stock')).toBe(true);
+        const preview = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_parent', 1);
+        expect(preview.rows[0].columns.find((column: any) => column.targetField === 'availability')?.finalValue).toBe('in_stock');
+    });
+
+    it('persists the override alongside existing account configuration', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { maxBulkOptimizeRows: 2000 } });
+        const saved = await FeedMappingService.setProductFilters('account-1', {
+            excludeOutOfStockProducts: true, excludeUnpublishedProducts: false, backordersAsInStock: true,
+        });
+        expect(saved.backordersAsInStock).toBe(true);
+        expect(mockPrisma.accountFeature.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            update: { config: { ...saved, maxBulkOptimizeRows: 2000 } },
+        }));
+    });
+});
+
+describe('FeedMappingService channel data and health', () => {
+    const base = (wooId: number, rawData: Record<string, unknown> = {}) => ({
+        id: `product-${wooId}`, wooId, name: `Product ${wooId}`, sku: `SKU-${wooId}`, price: '8',
+        status: 'publish', stockStatus: 'instock', permalink: 'https://example.com/product', mainImage: 'https://example.com/image.jpg',
+        rawData: { type: 'simple', description: 'A useful product', regular_price: '10', sale_price: '8', on_sale: true, ...rawData },
+        seoData: {}, variations: [],
+    });
+    const value = (row: any, field: string) => row.columns.find((column: any) => column.targetField === field)?.finalValue;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockPrisma.accountFeature.findUnique.mockResolvedValue(null);
+        mockPrisma.account.findUnique.mockResolvedValue({ name: 'Store', currency: 'AUD', timezone: 'Australia/Sydney' });
+    });
+
+    it.each(['google', 'meta'])('exports regular/sale prices without SKU-as-MPN or invented identifiers for %s', async (channel) => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([base(1)]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'variable_parent');
+        expect(value(result.rows[0], 'price')).toBe('10.00 AUD');
+        expect(value(result.rows[0], 'sale_price')).toBe('8.00 AUD');
+        expect(value(result.rows[0], 'mpn')).toBeNull();
+        expect(value(result.rows[0], 'brand')).toBeNull();
+        if (channel === 'google') expect(value(result.rows[0], 'identifier_exists')).toBeNull();
+    });
+
+    it('preserves explicit mapping, identifier and pricing overrides while reporting conflicts', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { mappings: { google: [
+            { targetField: 'sale_price', sourceField: 'salePrice', fallbackSourceField: 'price' },
+        ] } } });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1), seoData: { feedOverrides: { google: { price: '20.00 AUD', mpn: 'REAL-MPN', identifier_exists: 'no' } } },
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_parent');
+        expect(value(result.rows[0], 'price')).toBe('20.00 AUD');
+        expect(value(result.rows[0], 'mpn')).toBe('REAL-MPN');
+        expect(value(result.rows[0], 'identifier_exists')).toBe('no');
+        expect(result.rows[0].issues.some((issue: any) => issue.code === 'identifier_conflict')).toBe(true);
+        expect(result.mappings.find((mapping) => mapping.targetField === 'sale_price')?.fallbackSourceField).toBe('price');
+    });
+
+    it('groups Meta variants and exports real attributes without parent GTIN or parent sale inheritance', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { type: 'variable', global_unique_id: '4006381333931', attributes: [{ name: 'Material', options: ['Cotton'] }] }),
+            variations: [{ wooId: 11, price: '12', stockStatus: 'instock', rawData: { attributes: [{ name: 'Colour', option: 'Blue' }, { name: 'Size', option: 'Large' }] } }],
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'meta', 1, 50, '', 'all_variations');
+        const row = result.rows[0];
+        expect(value(row, 'id')).toBe('1-11');
+        expect(value(row, 'item_group_id')).toBe('1');
+        expect(value(row, 'color')).toBe('Blue');
+        expect(value(row, 'size')).toBe('Large');
+        expect(value(row, 'material')).toBe('Cotton');
+        expect(value(row, 'gtin')).toBeNull();
+        expect(value(row, 'sale_price')).toBeNull();
+        expect(value(row, 'price')).toBe('12.00 AUD');
+    });
+
+    it('exports explicit backorder dates and suppresses them under the in-stock override', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ ...base(1, { backorders: 'yes', availability_date: '2026-12-01T12:00:00+1100' }), stockStatus: 'onbackorder' }]);
+        let result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_parent');
+        expect(value(result.rows[0], 'availability_date')).toBe('2026-12-01T01:00:00Z');
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { backordersAsInStock: true } });
+        result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'variable_parent');
+        expect(value(result.rows[0], 'availability_date')).toBeNull();
+        expect(result.rows[0].issues.some((issue: any) => issue.code === 'backorder_override')).toBe(true);
+    });
+
+    it('reports read-only health with exclusion reasons, context and duplicate GTINs', async () => {
+        mockPrisma.accountFeature.findUnique.mockResolvedValue({ config: { excludeOutOfStockProducts: true, excludeUnpublishedProducts: true } });
+        mockPrisma.wooProduct.findMany.mockResolvedValue([
+            base(1, { global_unique_id: '4006381333931' }), base(2, { global_unique_id: '4006381333931' }),
+            { ...base(3), stockStatus: 'outofstock' }, { ...base(4), status: 'draft' },
+            { ...base(5), seoData: { excludeFromProductFeeds: true } },
+        ]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 0, '', 'all_variations', undefined, true);
+        expect(result.rows).toEqual([]);
+        expect(result.health).toMatchObject({ scannedProducts: 5, included: 2, excluded: 3,
+            exclusions: { 'Out of stock': 1, 'Unpublished product': 1, 'Explicit product exclusion': 1 } });
+        expect(result.health?.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'duplicate_gtin', rowId: 'p:2', wooId: 2 })]));
+        expect(mockPrisma.wooProduct.update).not.toHaveBeenCalled();
+    });
+
+    it('does not silently drop invalid products and permits explicit identifier controls', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{ ...base(1), price: '', mainImage: null, rawData: { type: 'simple' } }]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'all_variations', undefined, true);
+        expect(result.total).toBe(1);
+        expect(result.health?.errors).toBeGreaterThan(0);
+        expect(result.rows[0].issues.some((issue: any) => issue.field === 'price' && issue.code === 'missing_required')).toBe(true);
+        mockPrisma.wooProduct.findUnique.mockResolvedValue({ seoData: { focusKeyword: 'mug' } });
+        await FeedMappingService.saveRowOverrides('account-1', 'google', 1, { mpn: 'MAKER-1', identifier_exists: 'no', id: 'changed' });
+        expect(mockPrisma.wooProduct.update).toHaveBeenCalledWith(expect.objectContaining({
+            where: { accountId_wooId: { accountId: 'account-1', wooId: 1 } },
+            data: { seoData: { focusKeyword: 'mug', feedOverrides: { google: { mpn: 'MAKER-1', identifier_exists: 'no' }, shared: {} } } },
+        }));
+    });
+
+    it.each([
+        ['automatic', ['v:1-11', 'v:1-12']],
+        ['variable_parent', ['p:1']], ['all_variations', ['v:1-11', 'v:1-12']],
+        ['default_variation', ['v:1-12']], ['first_variation', ['v:1-11']],
+        ['last_variation', ['v:1-12']], ['variable_and_variations', ['p:1', 'v:1-11', 'v:1-12']],
+    ] as const)('keeps rows, references and health consistent for %s', async (mode, ids) => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { type: 'variable', default_attributes: [{ name: 'Colour', option: 'Blue' }] }),
+            variations: [
+                { wooId: 11, price: '10', stockStatus: 'instock', rawData: { attributes: [{ name: 'Colour', option: 'Red' }] } },
+                { wooId: 12, price: '10', stockStatus: 'instock', rawData: { attributes: [{ name: 'Colour', option: 'Blue' }] } },
+            ],
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', mode, undefined, true);
+        const refs = await FeedMappingService.getFeedRowRefs('account-1', 'google', '', mode);
+        expect(result.rows.map((row) => row.rowId)).toEqual(ids);
+        expect(refs.rows.map((row) => row.rowId)).toEqual(ids);
+        expect(result.health?.included).toBe(ids.length);
+    });
+
+    it('scans raw products in bounded batches and only retains requested rows', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValueOnce(Array.from({ length: 250 }, (_, index) => base(index + 1)))
+            .mockResolvedValueOnce([base(251)]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 2, 1, '', 'variable_parent');
+        expect(result.total).toBe(251);
+        expect(result.rows.map((row) => row.rowId)).toEqual(['p:2']);
+        expect(mockPrisma.wooProduct.findMany.mock.calls[0][0]).toMatchObject({ where: { accountId: 'account-1' }, take: 250 });
+        expect(mockPrisma.wooProduct.findMany.mock.calls[1][0]).toMatchObject({ cursor: { id: 'product-250' }, skip: 1, take: 250 });
+    });
+
+    it.each(['google', 'meta'])('automatically aligns mixed simple/variable records for %s without duplicate parent offers', async (channel) => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([
+            base(1),
+            { ...base(2, { type: 'variable', attributes: [
+                { id: 7, name: 'Colour', slug: 'pa_colour', variation: true, options: ['Blue', 'Red'] },
+                { id: 8, name: 'Age Group', variation: true, options: ['Adult'] },
+            ] }), variations: [
+                { wooId: 21, price: '12', stockStatus: 'instock', rawData: { status: 'publish',
+                    permalink: 'https://example.com/product/?attribute_pa_colour=blue', image: { src: 'https://example.com/blue.jpg' },
+                    attributes: [{ id: 7, option: 'Blue' }, { id: 8, option: 'Adult' }], global_unique_id: '4006381333931' } },
+                { wooId: 22, price: '15', stockStatus: 'outofstock', rawData: { status: 'publish',
+                    permalink: 'https://example.com/product/?attribute_pa_colour=red', attributes: [{ id: 7, option: 'Red' }, { id: 8, option: 'Adult' }] } },
+                { wooId: 23, price: '15', stockStatus: 'instock', rawData: { status: 'private' } },
+            ] },
+            { ...base(3), variations: [{ wooId: 31, price: '20', stockStatus: 'instock', rawData: {} }] },
+        ]);
+        const result = await FeedMappingService.getFeedRows('account-1', channel, 1, 50, '', 'automatic', undefined, true);
+        const refs = await FeedMappingService.getFeedRowRefs('account-1', channel, '', 'automatic');
+        expect(result.rows.map((row) => row.rowId)).toEqual(['p:1', 'v:2-21', 'v:2-22', 'v:3-31']);
+        expect(refs.rows.map((row) => row.rowId)).toEqual(result.rows.map((row) => row.rowId));
+        expect(result.health?.exclusions).toEqual({ 'Disabled or unpublished variation': 1 });
+        expect(value(result.rows[0], 'item_group_id')).toBeNull();
+        const blue = result.rows[1];
+        expect(value(blue, 'item_group_id')).toBe('2');
+        expect(value(blue, 'color')).toBe('Blue');
+        expect(value(blue, 'age_group')).toBe('adult');
+        expect(value(blue, 'price')).toBe('12.00 AUD');
+        expect(value(blue, 'image_link')).toBe('https://example.com/blue.jpg');
+        expect(value(blue, 'gtin')).toBe('4006381333931');
+        expect(value(blue, 'link')).toBe('https://example.com/product/?attribute_pa_colour=blue');
+        expect(value(result.rows[2], 'gtin')).toBeNull();
+        expect(value(result.rows[2], 'availability')).toBe(channel === 'meta' ? 'out of stock' : 'out_of_stock');
+        const exported = channel === 'google' ? await FeedMappingService.getFeedExportXml('account-1', channel)
+            : await FeedMappingService.getFeedExportCsv('account-1', channel);
+        expect(exported).toContain(channel === 'google' ? '<g:item_group_id>2</g:item_group_id>' : '"item_group_id"');
+        expect(exported).not.toContain(channel === 'google' ? '<g:id>2</g:id>' : '"SKU-2"');
+    });
+
+    it('reports missing synced variants and ambiguous options rather than inventing offers', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([
+            base(1, { type: 'variable', variations: [11] }),
+            { ...base(2, { type: 'variable', attributes: [{ id: 7, name: 'Colour', variation: true, options: ['Red', 'Blue'] }] }), variations: [
+                { wooId: 21, price: '', stockStatus: 'instock', rawData: { attributes: [{ id: 7, option: '' }, { name: 'Engraving', option: 'Script' }] } },
+            ] },
+        ]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'automatic', undefined, true);
+        expect(result.rows.map((row) => row.rowId)).toEqual(['v:2-21']);
+        expect(result.health?.exclusions).toEqual({ 'Missing synced variations': 1 });
+        expect(result.health?.issues.some((issue) => issue.code === 'missing_variations')).toBe(true);
+        expect(result.rows[0].issues.map((issue: any) => issue.code)).toEqual(expect.arrayContaining(['missing_variant_attribute', 'ambiguous_variant_selection', 'unsupported_variant_dimensions', 'variant_link_selection']));
+        expect(value(result.rows[0], 'color')).toBeNull();
+        expect(value(result.rows[0], 'price')).toBeNull();
+    });
+
+    it('preserves manual modes, explicit variant overrides and other channels', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { type: 'variable' }), seoData: { feedOverrides: { google: { '1-11:color': 'Custom blue', '1-11:link': 'https://example.com/selected-blue' } } },
+            variations: [{ wooId: 11, price: '10', stockStatus: 'instock', rawData: { status: 'private', attributes: [{ name: 'Colour', option: 'Blue' }] } }],
+        }]);
+        const manual = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'all_variations');
+        expect(value(manual.rows[0], 'color')).toBe('Custom blue');
+        expect(value(manual.rows[0], 'link')).toBe('https://example.com/selected-blue');
+        expect((await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'automatic')).rows).toEqual([]);
+        expect((await FeedMappingService.getFeedRows('account-1', 'pinterest', 1, 50, '', 'automatic')).rows).toHaveLength(1);
+    });
+    it('flags inconsistent sibling dimensions and avoids duplicate or known other-variant gallery images', async () => {
+        mockPrisma.wooProduct.findMany.mockResolvedValue([{
+            ...base(1, { type: 'variable', images: [{ src: 'https://example.com/blue.jpg' }, { src: 'https://example.com/red.jpg' }, { src: 'https://example.com/shared.jpg' }, { src: 'https://example.com/shared.jpg' }] }),
+            variations: [
+                { wooId: 11, price: '10', stockStatus: 'instock', rawData: { image: { src: 'https://example.com/blue.jpg' }, attributes: [{ name: 'Colour', option: 'Blue' }] } },
+                { wooId: 12, price: '10', stockStatus: 'instock', rawData: { image: { src: 'https://example.com/red.jpg' }, attributes: [{ name: 'Colour', option: 'Red' }, { name: 'Size', option: 'Large' }] } },
+            ],
+        }]);
+        const result = await FeedMappingService.getFeedRows('account-1', 'google', 1, 50, '', 'automatic');
+        expect(value(result.rows[0], 'additional_image_link')).toBe('https://example.com/shared.jpg');
+        expect(result.rows[0].issues.some((issue: any) => issue.code === 'missing_variant_attribute' && issue.field === 'size')).toBe(true);
     });
 });
 

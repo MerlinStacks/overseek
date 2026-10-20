@@ -44,13 +44,25 @@ export function dateKeyInTimezone(date: Date, timezone: string): string {
 
 /** Converts a calendar date in an IANA timezone to its UTC midnight instant. */
 export function startOfDateInTimezone(dateKey: string, timezone: string): Date {
+    return dateAtTimeInTimezone(dateKey, timezone, 0, 0, 0, 0);
+}
+
+/** The reference's store-local wall-clock time on another date; DST gaps move forward. */
+export function sameTimeOnDateInTimezone(reference: Date, dateKey: string, timezone: string): Date {
+    const parts = zonedParts(reference, normalizeTimezone(timezone));
+    return dateAtTimeInTimezone(dateKey, timezone, parts.hour, parts.minute, parts.second, reference.getUTCMilliseconds());
+}
+
+function dateAtTimeInTimezone(dateKey: string, timezone: string, hour: number, minute: number, second: number, millisecond: number): Date {
     const [year, month, day] = dateKey.split('-').map(Number);
     const normalizedTimezone = normalizeTimezone(timezone);
-    const desiredWallTime = Date.UTC(year, month - 1, day, 0, 0, 0);
+    const desiredWallTime = Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
     let result = new Date(desiredWallTime);
+    const visited = new Set<number>();
 
     // Recalculate to account for the offset at the target instant (including DST changes).
     for (let attempt = 0; attempt < 3; attempt++) {
+        visited.add(result.getTime());
         const parts = zonedParts(result, normalizedTimezone);
         const actualWallTime = Date.UTC(
             parts.year,
@@ -58,11 +70,15 @@ export function startOfDateInTimezone(dateKey: string, timezone: string): Date {
             parts.day,
             parts.hour,
             parts.minute,
-            parts.second
+            parts.second,
+            result.getUTCMilliseconds()
         );
         const correction = desiredWallTime - actualWallTime;
         if (correction === 0) break;
-        result = new Date(result.getTime() + correction);
+        const next = result.getTime() + correction;
+        // A nonexistent DST wall time oscillates between the surrounding offsets.
+        if (visited.has(next)) return new Date(Math.max(next, result.getTime()));
+        result = new Date(next);
     }
 
     return result;

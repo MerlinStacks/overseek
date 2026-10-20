@@ -234,13 +234,13 @@ export function MobileChat() {
                                         className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-lg shadow-black/10 ${msg.deliveryStatus === 'FAILED'
                                             ? 'rounded-br-lg border border-rose-400/40 bg-rose-500/20 text-rose-50'
                                             : msg.direction === 'outbound'
-                                            ? 'rounded-br-lg bg-indigo-500 text-white'
+                                            ? 'mobile-brand-solid rounded-br-lg'
                                             : 'rounded-bl-lg border border-white/10 bg-slate-900 text-white'
                                             }`}
                                     >
                                         {/<[a-z][\s\S]*>/i.test(msg.body) ? (
                                             <div
-                                                className="text-sm leading-relaxed [&_a]:text-indigo-200 [&_a]:underline [&_img]:max-w-full [&_img]:rounded-xl"
+                                                className="text-sm leading-relaxed [&_a]:text-inherit [&_a]:underline [&_img]:max-w-full [&_img]:rounded-xl"
                                                 dangerouslySetInnerHTML={{
                                                     __html: DOMPurify.sanitize(msg.body, {
                                                         ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'ul', 'ol', 'li', 'div', 'span'],
@@ -251,7 +251,7 @@ export function MobileChat() {
                                         ) : (
                                             <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.body}</p>
                                         )}
-                                        <p className={`mt-2 text-[11px] font-medium ${msg.direction === 'outbound' ? 'text-indigo-100/80' : 'text-slate-500'}`}>
+                                        <p className={`mt-2 text-[11px] font-medium ${msg.direction === 'outbound' ? 'opacity-80' : 'text-slate-500'}`}>
                                             {formatTime(msg.createdAt)}
                                         </p>
                                         {msg.deliveryStatus === 'FAILED' && (

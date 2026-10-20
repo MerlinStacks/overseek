@@ -38,33 +38,47 @@ const trackingRoutes: FastifyPluginAsync = async (fastify) => {
                 };
             }
 
-            const healthUrl = `${account.wooUrl}/wp-json/overseek/v1/health?account_id=${accountId}`;
+            const healthUrl = new URL(`${account.wooUrl.replace(/\/+$/, '')}/wp-json/overseek/v1/health`);
+            healthUrl.searchParams.set('account_id', accountId);
 
+            let storeReachable = false;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
             try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 10000);
-
-                const response = await fetch(healthUrl, {
+                const response = await fetch(healthUrl.toString(), {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' },
                     signal: controller.signal
                 });
 
-                clearTimeout(timeout);
+                storeReachable = true;
 
                 if (!response.ok) {
                     return {
                         success: false,
                         storeUrl: account.wooUrl,
                         storeReachable: true,
-                        pluginInstalled: response.status !== 404,
+                        pluginInstalled: false,
                         error: response.status === 404
                             ? 'OverSeek plugin not detected'
                             : `Store returned status ${response.status}`
                     };
                 }
 
-                const data = await response.json() as any;
+                const data = await response.json() as unknown;
+                const health = data as Record<string, unknown> | null;
+                // Current plugins identify themselves even when configuration details are private.
+                // Older plugins exposed only a version and configuration flags.
+                const identified = health && !Array.isArray(health) && health.success !== false && (
+                    (health.plugin === 'overseek-wc' && health.success === true) ||
+                    (health.plugin === undefined && typeof health.version === 'string' && health.version.trim() && typeof health.configured === 'boolean')
+                );
+                if (!identified) {
+                    return {
+                        success: false, storeUrl: account.wooUrl, storeReachable: true,
+                        pluginInstalled: false, error: 'Store returned an invalid OverSeek health response'
+                    };
+                }
 
                 return {
                     success: true,
@@ -72,25 +86,28 @@ const trackingRoutes: FastifyPluginAsync = async (fastify) => {
                     storeName: account.name,
                     storeReachable: true,
                     pluginInstalled: true,
-                    pluginVersion: data.version || 'unknown',
-                    configured: data.configured,
-                    accountMatch: data.accountMatch,
-                    trackingEnabled: data.trackingEnabled,
-                    chatEnabled: data.chatEnabled,
-                    woocommerceActive: data.woocommerceActive,
-                    woocommerceVersion: data.woocommerceVersion
+                    pluginVersion: typeof health.version === 'string' && health.version.trim() ? health.version : 'unknown',
+                    configured: health.configured,
+                    accountMatch: health.accountMatch,
+                    trackingEnabled: health.trackingEnabled,
+                    chatEnabled: health.chatEnabled,
+                    woocommerceActive: health.woocommerceActive,
+                    woocommerceVersion: health.woocommerceVersion
                 };
 
             } catch (fetchError: any) {
                 return {
                     success: false,
                     storeUrl: account.wooUrl,
-                    storeReachable: false,
+                    storeReachable,
                     pluginInstalled: false,
-                    error: fetchError.name === 'AbortError'
+                    error: controller.signal.aborted || fetchError?.name === 'AbortError'
                         ? 'Connection timed out'
+                        : storeReachable ? 'Store returned an invalid OverSeek health response'
                         : `Failed to connect: ${fetchError.message}`
                 };
+            } finally {
+                clearTimeout(timeout);
             }
 
         } catch (error) {

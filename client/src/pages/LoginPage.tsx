@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { LayoutDashboard, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -11,6 +11,12 @@ export function LoginPage() {
     const [loading, setLoading] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const from: unknown = location.state?.from;
+    // Only restore local routes, never external URLs or the login page itself.
+    const returnTo = typeof from === 'string' && from.startsWith('/') &&
+        !from.startsWith('//') && !/[\\\s]/.test(from) && !/^\/login\/*(?:[?#]|$)/i.test(from)
+        ? from : '/dashboard';
 
     // Check for session expired message from global auth error handler
     useEffect(() => {
@@ -42,7 +48,7 @@ export function LoginPage() {
 
             // EDGE CASE FIX: Pass refresh token to auth context for silent refresh
             login(data.token, data.user, data.refreshToken);
-            navigate('/dashboard');
+            navigate(returnTo, { replace: true });
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'Login failed');
         } finally {

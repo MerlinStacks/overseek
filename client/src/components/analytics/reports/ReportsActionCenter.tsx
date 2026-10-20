@@ -79,6 +79,8 @@ interface SearchData {
 }
 
 interface LtvData {
+    identifiedOnly?: boolean;
+    currency?: string;
     avgLTV?: number;
     totalCustomers?: number;
     repeatCustomers?: number;
@@ -398,10 +400,12 @@ export function ReportsActionCenter({
                         icon={<Users size={20} />}
                         title="Cohorts & Retention"
                         status="live"
-                        description="Repeat behaviour, LTV, and cohort health from tracked purchase and session events."
+                        description={data.ltv?.identifiedOnly
+                            ? `LTV covers identified buyers in ${data.ltv.currency || currency}; unidentified purchases are excluded and other currencies are reported separately.`
+                            : 'Repeat behaviour, LTV, and cohort health from tracked purchase and session events.'}
                     >
                         <div className="grid grid-cols-3 gap-3">
-                            <MiniMetric label="Avg LTV" value={formatCurrency(safeNumber(data.ltv?.avgLTV), currency)} />
+                            <MiniMetric label={data.ltv?.identifiedOnly ? 'Identified-buyer LTV' : 'Avg LTV'} value={formatCurrency(safeNumber(data.ltv?.avgLTV), data.ltv?.currency || currency)} />
                             <MiniMetric label="Repeat Rate" value={`${repeatRate.toFixed(1)}%`} tone={repeatRate >= 20 ? 'good' : 'default'} />
                             <MiniMetric label="Cohorts" value={formatNumber(data.cohorts?.cohorts?.length || 0)} />
                         </div>

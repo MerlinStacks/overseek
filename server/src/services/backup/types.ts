@@ -4,6 +4,8 @@
  * Shared types and constants for the backup service modules.
  */
 
+import type { BackupFrequency } from './constants';
+
 export interface BackupOptions {
     includeAuditLogs?: boolean;  // Default: false (can be large)
     includeAnalytics?: boolean;  // Default: false (session data)
@@ -25,7 +27,7 @@ export interface AccountBackup {
 
 export interface BackupSettings {
     isEnabled: boolean;
-    frequency: 'DAILY' | 'EVERY_3_DAYS' | 'WEEKLY';
+    frequency: BackupFrequency;
     maxBackups: number;
     lastBackupAt: Date | null;
     nextBackupAt: Date | null;

@@ -4,14 +4,14 @@ const mocks = vi.hoisted(() => ({
     findMany: vi.fn(),
     updateMany: vi.fn(),
     update: vi.fn(),
-    emailAccountFindFirst: vi.fn(),
+    emailAccountFindMany: vi.fn(),
     sendEmail: vi.fn(),
 }));
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
         message: { findMany: mocks.findMany, updateMany: mocks.updateMany, update: mocks.update },
-        emailAccount: { findFirst: mocks.emailAccountFindFirst },
+        emailAccount: { findMany: mocks.emailAccountFindMany },
     },
 }));
 vi.mock('../../utils/logger', () => ({
@@ -32,7 +32,7 @@ describe('MessageScheduler attachment defense', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.updateMany.mockResolvedValue({ count: 1 });
-        mocks.emailAccountFindFirst.mockResolvedValue({ id: 'email-account-1' });
+        mocks.emailAccountFindMany.mockResolvedValue([{ id: 'email-account-1', smtpEnabled: true }]);
         MessageScheduler.stop();
     });
 

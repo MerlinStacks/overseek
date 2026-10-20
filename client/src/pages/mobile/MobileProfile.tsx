@@ -3,12 +3,12 @@ import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useHaptic } from '../../hooks/useHaptic';
+import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
 import {
     User,
     Mail,
     Camera,
     Save,
-    ChevronLeft,
     Shield,
     LogOut,
     Building,
@@ -18,12 +18,11 @@ import {
 } from 'lucide-react';
 
 /**
- * MobileProfile - Premium dark-mode mobile profile page.
+ * MobileProfile - Account-branded mobile profile page.
  * Styled consistently with MobileDashboard for a cohesive PWA experience.
  * 
  * Features:
- * - Dark glassmorphism design
- * - Animated transitions
+ * - Quiet, shared companion surfaces
  * - Haptic feedback
  * - Success state feedback
  */
@@ -142,33 +141,25 @@ export function MobileProfile() {
     const shiftEnd = user?.shiftEnd;
 
     return (
-        <div className="space-y-6 animate-fade-slide-up">
+        <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center gap-3">
-                <button
-                    onClick={() => {
-                        triggerHaptic();
-                        navigate(-1);
-                    }}
-                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-700/40 border border-white/10 active:scale-95 transition-transform"
-                    aria-label="Go back"
-                >
-                    <ChevronLeft size={22} className="text-slate-300" />
-                </button>
-                <h1 className="text-xl font-bold text-white">Profile</h1>
-            </div>
+            <MobilePageHeader
+                title="Profile"
+                description="Your details and account information"
+                onBack={() => { triggerHaptic(); navigate(-1); }}
+            />
 
             {/* Avatar Section */}
-            <div className="flex flex-col items-center py-8">
+            <div className="mobile-panel flex flex-col items-center py-6 px-4">
                 <div className="relative">
                     {avatarUrl ? (
                         <img
                             src={avatarUrl}
                             alt="Profile"
-                            className="w-28 h-28 rounded-2xl object-cover ring-4 ring-slate-800 shadow-2xl"
+                            className="w-24 h-24 rounded-xl object-cover"
                         />
                     ) : (
-                        <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-4xl font-bold ring-4 ring-slate-800 shadow-2xl">
+                        <div className="mobile-brand-soft w-24 h-24 rounded-xl flex items-center justify-center text-4xl font-semibold">
                             {fullName?.[0]?.toUpperCase() || email?.[0]?.toUpperCase() || 'U'}
                         </div>
                     )}
@@ -183,9 +174,9 @@ export function MobileProfile() {
                     {/* Camera button */}
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg transition-all duration-200 ${uploadSuccess
+                        className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-lg flex items-center justify-center ${uploadSuccess
                             ? 'bg-emerald-500 text-white'
-                            : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white active:scale-95'
+                            : 'mobile-brand-solid'
                             }`}
                         aria-label="Change avatar"
                         disabled={uploading}
@@ -200,23 +191,23 @@ export function MobileProfile() {
                         className="hidden"
                     />
                 </div>
-                <h2 className="mt-5 text-xl font-bold text-white">{fullName || 'No name set'}</h2>
-                <p className="text-sm text-slate-400 mt-1">{email}</p>
+                <h2 className="mt-5 text-center text-xl font-semibold text-white">{fullName || 'No name set'}</h2>
+                <p className="max-w-full break-all text-center text-sm text-slate-400 mt-1">{email}</p>
             </div>
 
             {/* Profile Form */}
-            <div className="pwa-card p-5 space-y-5">
+            <div className="mobile-panel p-5 space-y-5">
                 <div>
                     <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Full Name</label>
                     <div className="relative">
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-blue-500/20">
-                            <User size={16} className="text-blue-400" />
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                            <User size={18} />
                         </div>
                         <input
                             type="text"
                             value={fullName}
                             onChange={e => setFullName(e.target.value)}
-                            className="w-full pl-14 pr-4 py-3.5 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                            className="mobile-field w-full pl-11 pr-4 py-3.5"
                             placeholder="Your name"
                         />
                     </div>
@@ -225,14 +216,14 @@ export function MobileProfile() {
                 <div>
                     <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Email</label>
                     <div className="relative">
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-emerald-500/20">
-                            <Mail size={16} className="text-emerald-400" />
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                            <Mail size={18} />
                         </div>
                         <input
                             type="email"
                             value={email}
                             disabled
-                            className="w-full pl-14 pr-4 py-3.5 bg-slate-900/30 border border-white/5 rounded-xl text-slate-500"
+                            className="mobile-field w-full pl-11 pr-4 py-3.5"
                         />
                     </div>
                     <p className="text-xs text-slate-500 mt-2">Email cannot be changed</p>
@@ -241,9 +232,9 @@ export function MobileProfile() {
                 <button
                     onClick={handleSave}
                     disabled={saving}
-                    className={`w-full py-3.5 font-semibold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 ${saved
-                        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
-                        : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25'
+                    className={`w-full py-3.5 font-semibold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 ${saved
+                        ? 'bg-emerald-500 text-white'
+                        : 'mobile-brand-solid'
                         }`}
                 >
                     {saving ? (
@@ -263,10 +254,10 @@ export function MobileProfile() {
             </div>
 
             {/* Account Info Cards */}
-            <div className="pwa-card divide-y divide-white/5 overflow-hidden">
+            <div className="mobile-panel divide-y divide-white/5 overflow-hidden">
                 <div className="flex items-center gap-4 p-4">
-                    <div className="w-11 h-11 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-                        <Shield size={20} className="text-emerald-400" />
+                    <div className="mobile-icon w-11 h-11 rounded-lg flex items-center justify-center">
+                        <Shield size={20} />
                     </div>
                     <div className="flex-1">
                         <p className="font-medium text-white">Account Role</p>
@@ -275,8 +266,8 @@ export function MobileProfile() {
                 </div>
 
                 <div className="flex items-center gap-4 p-4">
-                    <div className="w-11 h-11 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                        <Building size={20} className="text-blue-400" />
+                    <div className="mobile-icon w-11 h-11 rounded-lg flex items-center justify-center">
+                        <Building size={20} />
                     </div>
                     <div className="flex-1">
                         <p className="font-medium text-white">Account ID</p>
@@ -285,8 +276,8 @@ export function MobileProfile() {
                 </div>
 
                 <div className="flex items-center gap-4 p-4">
-                    <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center">
-                        <Clock size={20} className="text-amber-400" />
+                    <div className="mobile-icon w-11 h-11 rounded-lg flex items-center justify-center">
+                        <Clock size={20} />
                     </div>
                     <div className="flex-1">
                         <p className="font-medium text-white">Shift Hours</p>
@@ -310,4 +301,3 @@ export function MobileProfile() {
         </div>
     );
 }
-

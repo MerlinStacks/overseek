@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CheckCircle, MessageSquare, RefreshCw, Search, Star } from 'lucide-react';
+import { CheckCircle, MessageSquare, Search, Star } from 'lucide-react';
 import { Logger } from '../../utils/logger';
 import { formatDate } from '../../utils/format';
 import { formatReviewStatusLabel, formatReviewText } from '../../utils/reviews';
@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useHaptic } from '../../hooks/useHaptic';
 import { ListSkeleton } from '../../components/mobile/MobileSkeleton';
+import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
 
 interface ReviewRow {
     id: string;
@@ -183,14 +184,11 @@ export function MobileReviews() {
     }
 
     return (
-        <div className="space-y-4 pb-28 animate-fade-slide-up">
-            <div>
-                <h1 className="text-2xl font-black text-white">Reviews</h1>
-                <p className="mt-1 text-sm text-slate-400">Read and moderate store feedback.</p>
-            </div>
+        <div className="space-y-4 pb-6">
+            <MobilePageHeader title="Reviews" description="Read and moderate store feedback" />
 
             <form onSubmit={handleSearch} className="sticky top-2 z-10">
-                <div className="relative rounded-2xl border border-white/10 bg-slate-950/90 shadow-xl shadow-black/20 backdrop-blur-xl">
+                <div className="mobile-panel relative">
                     <Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                         type="search"
@@ -211,9 +209,9 @@ export function MobileReviews() {
                         <button
                             key={tab.value}
                             onClick={() => handleStatusChange(tab.value)}
-                            className={`min-w-[108px] rounded-2xl px-3 py-3 text-left transition active:scale-95 ${isActive ? 'bg-white text-slate-950 shadow-lg' : 'bg-slate-900/80 text-slate-300 ring-1 ring-white/10'}`}
+                            className={`min-w-[108px] rounded-lg px-3 py-3 text-left ${isActive ? 'mobile-brand-soft ring-1 ring-current' : 'bg-white/5 text-slate-300'}`}
                         >
-                            <span className="block text-sm font-black">{tab.label}</span>
+                            <span className="block text-sm font-semibold">{tab.label}</span>
                             <span className={`mt-1 block text-xs ${isActive ? 'text-slate-500' : 'text-slate-500'}`}>{count.toLocaleString()}</span>
                         </button>
                     );
@@ -247,7 +245,7 @@ export function MobileReviews() {
                     <button
                         onClick={() => fetchReviews(page + 1, false)}
                         disabled={isLoading}
-                        className="w-full rounded-2xl border border-white/10 bg-slate-900 py-4 text-sm font-black text-indigo-200 disabled:opacity-50"
+                        className="mobile-panel mobile-brand-text w-full py-4 text-sm font-medium disabled:opacity-50"
                     >
                         {isLoading ? 'Loading...' : 'Load more reviews'}
                     </button>
@@ -273,11 +271,11 @@ function ReviewCard({ review, index, isExpanded, isUpdating, onToggleExpanded, o
     const statusClass = STATUS_CLASSES[review.status] || STATUS_CLASSES.hold;
 
     return (
-        <article className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20" style={{ animationDelay: `${index * 12}ms` }}>
+        <article className="mobile-panel p-4" style={{ animationDelay: `${index * 12}ms` }}>
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                        <p className="truncate text-base font-black text-white">{review.reviewer || 'Customer'}</p>
+                        <p className="truncate text-base font-semibold text-white">{review.reviewer || 'Customer'}</p>
                         {review.order && <CheckCircle size={15} className="shrink-0 text-emerald-300" />}
                     </div>
                     <p className="mt-0.5 truncate text-sm text-slate-400">{review.productName || 'Unknown product'}</p>
@@ -297,7 +295,7 @@ function ReviewCard({ review, index, isExpanded, isUpdating, onToggleExpanded, o
                     <>
                         <p className={isExpanded ? 'whitespace-pre-wrap' : 'line-clamp-3'}>{reviewText}</p>
                         {canExpand && (
-                            <button type="button" onClick={onToggleExpanded} className="mt-2 text-xs font-black text-indigo-200">
+                            <button type="button" onClick={onToggleExpanded} className="mobile-brand-text mt-2 text-xs font-medium">
                                 {isExpanded ? 'Show less' : 'Read full review'}
                             </button>
                         )}
@@ -308,8 +306,8 @@ function ReviewCard({ review, index, isExpanded, isUpdating, onToggleExpanded, o
             </div>
 
             {replies.length > 0 && (
-                <div className="mt-4 space-y-3 rounded-2xl border border-indigo-300/10 bg-indigo-400/10 p-3">
-                    <p className="text-xs font-black uppercase tracking-wide text-indigo-200">
+                <div className="mt-4 space-y-3 rounded-lg border-l-2 border-white/20 bg-white/5 p-3">
+                    <p className="mobile-brand-text text-xs font-medium">
                         {replies.length === 1 ? 'Merchant reply' : `${replies.length} merchant replies`}
                     </p>
                     {replies.map((reply, replyIndex) => {
@@ -335,7 +333,7 @@ function ReviewCard({ review, index, isExpanded, isUpdating, onToggleExpanded, o
                     value={review.status}
                     disabled={isUpdating}
                     onChange={(event) => event.target.value !== review.status && onModerate(event.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 text-sm font-black text-white outline-none disabled:opacity-50"
+                    className="mobile-field w-full px-3 py-3 text-sm font-medium disabled:opacity-50"
                 >
                     <option value="approved">Published</option>
                     <option value="hold">Pending</option>

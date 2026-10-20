@@ -7,6 +7,7 @@ export interface SyncJobData {
 }
 
 export interface SyncQueue {
-    add(jobName: string, data: SyncJobData, options?: any): Promise<void>;
-    process(handler: (job: any) => Promise<void>): void;
+    add(jobName: string, data: SyncJobData, options?: JobsOptions): Promise<void>;
+    process(handler: (job: Job<SyncJobData>) => Promise<void>): void;
 }
+import type { Job, JobsOptions } from 'bullmq';

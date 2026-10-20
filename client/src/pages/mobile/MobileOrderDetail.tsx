@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Logger } from '../../utils/logger';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag, ChevronUp, ChevronDown, RotateCcw, Sparkles, FileText } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, MapPin, User, Mail, Phone, CreditCard, Copy, ExternalLink, X, TrendingUp, Globe, Smartphone, Monitor, Tablet, Tag, ChevronUp, ChevronDown, RotateCcw, FileText } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useToast } from '../../context/ToastContext';
@@ -348,7 +348,7 @@ export function MobileOrderDetail() {
     const StatusIcon = statusConfig.icon;
     const mobilePanels: Record<MobilePanelId, ReactNode | null> = {
             tracking: order.trackingItems.length > 0 ? (
-                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+                <div className="mobile-panel p-4">
                     <div className="flex items-center gap-2 mb-3">
                         <Truck size={18} className="text-indigo-200" />
                         <h2 className="font-black text-white">Shipment Tracking</h2>
@@ -373,7 +373,7 @@ export function MobileOrderDetail() {
                 </div>
             ) : null,
             customer: (
-                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+                <div className="mobile-panel p-4">
                     <h2 className="mb-3 font-black text-white">Customer</h2>
                     <div className="space-y-3">
                         <div className="flex items-center gap-3"><User size={18} className="text-slate-500" /><span className="text-slate-200">{order.customer.name}</span></div>
@@ -383,14 +383,14 @@ export function MobileOrderDetail() {
                 </div>
             ),
             shipping: (
-                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+                <div className="mobile-panel p-4">
                     <h2 className="mb-3 font-black text-white">Shipping Address</h2>
                     <div className="flex items-start gap-3"><MapPin size={18} className="mt-0.5 text-slate-500" /><div className="text-slate-300"><p>{order.shipping.address1 || 'No street address'}</p><p>{order.shipping.city}, {order.shipping.state} {order.shipping.postcode}</p><p>{order.shipping.country}</p></div></div>
                 </div>
             ),
             cogs: canViewCogs ? <OrderCOGSPanel orderId={order.id} currency={order.currency} /> : null,
             tags: orderTags.length > 0 ? (
-                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+                <div className="mobile-panel p-4">
                     <div className="flex items-center gap-2 mb-3">
                         <Tag size={18} className="text-indigo-200" />
                         <h2 className="font-black text-white">Tags</h2>
@@ -414,7 +414,7 @@ export function MobileOrderDetail() {
                 </div>
             ) : null,
             attribution: (
-                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+                <div className="mobile-panel p-4">
                     <div className="flex items-center gap-2 mb-3">
                         <TrendingUp size={18} className="text-indigo-200" />
                         <h2 className="font-black text-white">Attribution</h2>
@@ -466,13 +466,13 @@ export function MobileOrderDetail() {
 
     return (
         <div className="space-y-4 pb-28">
-            <div className="rounded-[2rem] border border-white/10 bg-slate-950 px-4 py-5 shadow-2xl shadow-black/30">
+            <div className="mobile-panel px-4 py-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
                     <button onClick={() => navigate('/m/orders')} className="rounded-2xl bg-white/10 p-3 text-slate-200 active:scale-95" aria-label="Back to orders"><ArrowLeft size={20} /></button>
                     <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black ${statusConfig.bg} ${statusConfig.color} ring-1 ${statusConfig.ring}`}><StatusIcon size={13} />{statusConfig.text}</span>
                 </div>
-                <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-400/10 px-2.5 py-1 text-xs font-semibold text-indigo-100 ring-1 ring-indigo-300/20"><Sparkles size={12} /> Order command</p>
-                <h1 className="text-3xl font-black tracking-tight text-white">{order.orderNumber}</h1>
+                <p className="mb-2 text-xs font-medium text-slate-400">Order details</p>
+                <h1 className="text-3xl font-semibold tracking-tight text-white">{order.orderNumber}</h1>
                 <p className="mt-1 text-sm text-slate-400">{formatDate(order.createdAt)} · {order.customer.name}</p>
                 <div className="mt-5 grid grid-cols-3 gap-2">
                     <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10"><p className="text-xl font-black text-white">{formatCurrency(order.total)}</p><p className="text-[11px] font-medium text-slate-400">Total</p></div>
@@ -481,14 +481,14 @@ export function MobileOrderDetail() {
                 </div>
             </div>
 
-            <div className="sticky top-2 z-10 grid grid-cols-3 gap-2 rounded-3xl border border-white/10 bg-slate-950/90 p-2 shadow-xl shadow-black/20 backdrop-blur-xl">
+            <div className="mobile-panel sticky top-2 z-10 grid grid-cols-3 gap-2 p-2">
                 {order.customer.email && <a href={`mailto:${order.customer.email}`} className="rounded-2xl bg-white px-3 py-3 text-center text-xs font-black text-slate-950 active:scale-95"><Mail size={15} className="mx-auto mb-1" />Email</a>}
                 {order.trackingItems[0]?.trackingUrl && <a href={getSafeHref(order.trackingItems[0].trackingUrl)} target="_blank" rel="noopener noreferrer" className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white active:scale-95"><Truck size={15} className="mx-auto mb-1" />Track</a>}
                 {order.trackingItems[0]?.trackingNumber && <button onClick={() => copyToClipboard(order.trackingItems[0].trackingNumber)} className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white active:scale-95"><Copy size={15} className="mx-auto mb-1" />Copy</button>}
                 <button onClick={() => void generateInvoice()} disabled={isGeneratingInvoice} className="rounded-2xl bg-slate-800 px-3 py-3 text-center text-xs font-black text-white disabled:opacity-50 active:scale-95"><FileText size={15} className="mx-auto mb-1" />{isGeneratingInvoice ? 'Wait' : 'Invoice'}</button>
             </div>
 
-            <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950 shadow-lg shadow-black/20">
+            <div className="mobile-panel overflow-hidden">
                 <h2 className="border-b border-white/10 p-4 font-black text-white">Items ({order.lineItems.length})</h2>
                 <div className="divide-y divide-white/10">
                     {order.lineItems.map((item) => (
@@ -552,7 +552,7 @@ export function MobileOrderDetail() {
                 </div>
             </div>
 
-            <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 shadow-lg shadow-black/20">
+            <div className="mobile-panel p-4">
                 <h2 className="mb-3 font-black text-white">Order Summary</h2>
                 <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span className="text-slate-200">{formatCurrency(order.subtotal)}</span></div>
@@ -563,7 +563,7 @@ export function MobileOrderDetail() {
                 <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3"><CreditCard size={16} className="text-slate-500" /><span className="text-sm text-slate-400">{order.paymentMethod}</span></div>
             </div>
 
-            <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-3 shadow-lg shadow-black/20">
+            <div className="mobile-panel p-3">
                 <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Reorder detail panels</span>
                     <button

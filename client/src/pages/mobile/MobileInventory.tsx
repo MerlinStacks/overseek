@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { formatCurrency } from '../../utils/format';
 import { subscribeToProductChanges } from '../../utils/productCrossTabEvents';
+import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
 
 interface ProductVariation {
     stock_quantity?: number;
@@ -130,15 +131,15 @@ export function MobileInventory() {
         return (
             <div className="space-y-4 animate-pulse">
                 <div className="flex items-center justify-between">
-                    <div className="h-8 bg-gray-200 rounded w-28" />
+                    <div className="h-8 bg-white/5 rounded w-28" />
                     <div className="flex gap-2">
-                        <div className="h-10 w-10 bg-gray-200 rounded-xl" />
-                        <div className="h-10 w-10 bg-gray-200 rounded-xl" />
+                        <div className="h-10 w-10 bg-white/5 rounded-lg" />
+                        <div className="h-10 w-10 bg-white/5 rounded-lg" />
                     </div>
                 </div>
-                <div className="h-12 bg-gray-200 rounded-2xl" />
+                <div className="h-12 bg-white/5 rounded-lg" />
                 {[...Array(5)].map((_, i) => (
-                    <div key={i} className="h-24 bg-gray-200 rounded-2xl" />
+                    <div key={i} className="h-24 mobile-panel" />
                 ))}
             </div>
         );
@@ -161,57 +162,58 @@ export function MobileInventory() {
     return (
         <div className="space-y-4">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
-                <div className="flex gap-2">
+            <MobilePageHeader title="Inventory" description="Products and stock levels" actions={<>
                     <button
                         onClick={() => setViewMode('list')}
-                        className={`p-2.5 rounded-xl transition-colors ${viewMode === 'list' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                        aria-label="List view"
+                        aria-pressed={viewMode === 'list'}
+                        className={`p-2.5 rounded-lg ${viewMode === 'list' ? 'mobile-brand-soft' : 'mobile-icon'}`}
                     >
                         <List size={20} />
                     </button>
                     <button
                         onClick={() => setViewMode('grid')}
-                        className={`p-2.5 rounded-xl transition-colors ${viewMode === 'grid' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                        aria-label="Grid view"
+                        aria-pressed={viewMode === 'grid'}
+                        className={`p-2.5 rounded-lg ${viewMode === 'grid' ? 'mobile-brand-soft' : 'mobile-icon'}`}
                     >
                         <Grid size={20} />
                     </button>
-                </div>
-            </div>
+            </>} />
 
             {/* Low Stock Alert */}
             {lowStockCount > 0 && (
                 <button
                     onClick={() => setFilter(filter === 'low' ? 'all' : 'low')}
-                    className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all active:scale-[0.98] ${filter === 'low'
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-amber-50 border border-amber-200'
+                    className={`w-full flex items-center gap-3 p-4 rounded-xl border ${filter === 'low'
+                        ? 'bg-amber-400/15 border-amber-400/40'
+                        : 'bg-amber-400/5 border-amber-400/15'
                         }`}
                 >
-                    <div className={`p-2 rounded-full ${filter === 'low' ? 'bg-amber-400' : 'bg-amber-100'}`}>
-                        <AlertTriangle size={20} className={filter === 'low' ? 'text-white' : 'text-amber-600'} />
+                    <div className="p-2 rounded-lg bg-amber-400/10">
+                        <AlertTriangle size={20} className="text-amber-300" />
                     </div>
                     <div className="flex-1 text-left">
-                        <p className={`font-semibold ${filter === 'low' ? 'text-white' : 'text-amber-900'}`}>
+                        <p className="font-medium text-amber-200">
                             {lowStockCount} item{lowStockCount > 1 ? 's' : ''} low on stock
                         </p>
-                        <p className={`text-sm ${filter === 'low' ? 'text-amber-100' : 'text-amber-700'}`}>
+                        <p className="text-sm text-amber-200/70">
                             {filter === 'low' ? 'Showing low stock only' : 'Tap to view'}
                         </p>
                     </div>
-                    <ChevronRight size={20} className={filter === 'low' ? 'text-amber-100' : 'text-amber-400'} />
+                    <ChevronRight size={20} className="text-amber-300" />
                 </button>
             )}
 
             {/* Search */}
             <form onSubmit={handleSearch} className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                 <input
                     type="text"
                     placeholder="Search products..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-base"
+                    className="mobile-field w-full pl-12 pr-4 py-3.5 text-base"
                 />
             </form>
 
@@ -219,18 +221,18 @@ export function MobileInventory() {
             <div className="flex gap-2">
                 <button
                     onClick={() => setFilter('all')}
-                    className={`px-4 py-2.5 rounded-full text-sm font-semibold transition-all ${filter === 'all'
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                        : 'bg-white text-gray-700 border border-gray-200'
+                    className={`px-4 py-2.5 rounded-lg text-sm font-medium ${filter === 'all'
+                        ? 'mobile-brand-soft ring-1 ring-current'
+                        : 'bg-white/5 text-slate-300'
                         }`}
                 >
                     All Products
                 </button>
                 <button
                     onClick={() => setFilter('low')}
-                    className={`px-4 py-2.5 rounded-full text-sm font-semibold flex items-center gap-1.5 transition-all ${filter === 'low'
-                        ? 'bg-amber-500 text-white shadow-lg shadow-amber-200'
-                        : 'bg-white text-gray-700 border border-gray-200'
+                    className={`px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-1.5 ${filter === 'low'
+                        ? 'bg-amber-400/15 text-amber-200 ring-1 ring-amber-400/40'
+                        : 'bg-white/5 text-slate-300'
                         }`}
                 >
                     <AlertTriangle size={14} />
@@ -241,11 +243,11 @@ export function MobileInventory() {
             {/* Products */}
             {products.length === 0 ? (
                 <div className="text-center py-16">
-                    <div className="w-20 h-20 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                        <Package2 className="text-gray-400" size={36} />
+                    <div className="mobile-icon w-16 h-16 mx-auto mb-4 rounded-xl flex items-center justify-center">
+                        <Package2 size={30} />
                     </div>
-                    <p className="text-gray-900 font-semibold mb-1">No products found</p>
-                    <p className="text-gray-500 text-sm">Products will appear here</p>
+                    <p className="text-white font-semibold mb-1">No products found</p>
+                    <p className="text-slate-400 text-sm">Products will appear here</p>
                 </div>
             ) : viewMode === 'grid' ? (
                 /* Grid View */
@@ -255,20 +257,20 @@ export function MobileInventory() {
                         return (
                             <div
                                 key={product.id}
-                                className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 active:scale-[0.98] transition-all"
+                                className="mobile-panel p-3"
                             >
                                 {product.image ? (
                                     <img src={product.image} alt={product.name} className="w-full h-28 rounded-xl object-cover mb-3" />
                                 ) : (
-                                    <div className="w-full h-28 rounded-xl bg-gray-100 flex items-center justify-center mb-3">
-                                        <Package2 size={32} className="text-gray-400" />
+                                    <div className="mobile-icon w-full h-28 rounded-lg flex items-center justify-center mb-3">
+                                        <Package2 size={32} />
                                     </div>
                                 )}
-                                <p className="font-semibold text-gray-900 text-sm line-clamp-2 mb-1">{product.name}</p>
-                                <p className="text-xs text-gray-500 mb-2">SKU: {product.sku}</p>
+                                <p className="font-medium text-white text-sm line-clamp-2 mb-1">{product.name}</p>
+                                <p className="text-xs text-slate-400 mb-2">SKU: {product.sku}</p>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm font-bold text-gray-900">{formatAccountCurrency(product.price)}</span>
-                                    <span className={`text-sm font-bold ${lowStock ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                    <span className="text-sm font-semibold text-white">{formatAccountCurrency(product.price)}</span>
+                                    <span className={`text-sm font-semibold ${lowStock ? 'text-amber-300' : 'text-slate-300'}`}>
                                         {product.stockQuantity}
                                     </span>
                                 </div>
@@ -284,27 +286,27 @@ export function MobileInventory() {
                         return (
                             <div
                                 key={product.id}
-                                className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 active:scale-[0.98] transition-all"
+                                className="mobile-panel p-4 flex items-center gap-4"
                             >
                                 {product.image ? (
                                     <img src={product.image} alt={product.name} className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
                                 ) : (
-                                    <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
-                                        <Package2 size={28} className="text-gray-400" />
+                                    <div className="mobile-icon w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0">
+                                        <Package2 size={28} />
                                     </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-gray-900 truncate mb-0.5">{product.name}</p>
-                                    <p className="text-sm text-gray-500">SKU: {product.sku}</p>
-                                    <p className="text-sm font-bold text-gray-900 mt-1">{formatAccountCurrency(product.price)}</p>
+                                    <p className="font-medium text-white truncate mb-0.5">{product.name}</p>
+                                    <p className="text-sm text-slate-400">SKU: {product.sku}</p>
+                                    <p className="text-sm font-semibold text-white mt-1">{formatAccountCurrency(product.price)}</p>
                                 </div>
                                 <div className="text-right flex-shrink-0">
-                                    <p className={`text-2xl font-bold ${lowStock ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                    <p className={`text-2xl font-semibold tabular-nums ${lowStock ? 'text-amber-300' : 'text-white'}`}>
                                         {product.stockQuantity}
                                     </p>
-                                    <p className="text-xs text-gray-500">in stock</p>
+                                    <p className="text-xs text-slate-400">in stock</p>
                                     {lowStock && (
-                                        <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium mt-1">
+                                        <span className="inline-flex items-center gap-1 text-xs text-amber-300 font-medium mt-1">
                                             <AlertTriangle size={10} /> Low
                                         </span>
                                     )}

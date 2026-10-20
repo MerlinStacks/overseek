@@ -35,7 +35,7 @@ export class SalesAnalytics {
     /**
      * Get Total Sales (KPI)
      */
-    static async getTotalSales(accountId: string, startDate?: string, endDate?: string) {
+    static async getTotalSales(accountId: string, startDate?: string, endDate?: string, options?: { throwOnError?: boolean }) {
         try {
             const account = await prisma.account.findUnique({ where: { id: accountId } });
             const useInclusive = account?.revenueTaxInclusive ?? true;
@@ -85,6 +85,7 @@ export class SalesAnalytics {
             };
         } catch (error) {
             Logger.error('Analytics Total Sales Error', { error });
+            if (options?.throwOnError) throw error;
             return { total: 0, count: 0 };
         }
     }

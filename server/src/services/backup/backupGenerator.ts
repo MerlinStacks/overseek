@@ -2,13 +2,15 @@
  * BackupGenerator - Generate account data backups
  * 
  * Handles collecting and packaging account data for backup.
- * Streams large tables in batches to avoid OOM issues.
+ * Reads a consistent snapshot in bounded batches. The legacy API still returns
+ * one materialized object, so a serialized-size budget guards oversized exports.
  */
 
 import { prisma } from '../../utils/prisma';
+import { Prisma } from '@prisma/client';
 import { Logger } from '../../utils/logger';
 import type { AccountBackup, BackupOptions } from './types';
-import { BACKUP_VERSION, SENSITIVE_ACCOUNT_FIELDS } from './constants';
+import { BACKUP_VERSION, BACKUP_LIMITS, SENSITIVE_ACCOUNT_FIELDS, SENSITIVE_EMAIL_FIELDS } from './constants';
 
 /**
  * Generate full account backup
@@ -17,13 +19,21 @@ export async function generateBackup(
     accountId: string,
     options: BackupOptions = {}
 ): Promise<AccountBackup | null> {
+    if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account ID required');
+    return prisma.$transaction(tx => generateBackupSnapshot(tx, accountId, options), {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: BACKUP_LIMITS.transactionTimeoutMs,
+    });
+}
+
+async function generateBackupSnapshot(db: Prisma.TransactionClient, accountId: string, options: BackupOptions): Promise<AccountBackup | null> {
     const { includeAuditLogs = false, includeAnalytics = false } = options;
 
     Logger.info('[AccountBackup] Starting backup generation', { accountId, options });
     const startTime = Date.now();
 
     // Fetch account record
-    const account = await prisma.account.findUnique({
+    const account = await db.account.findUnique({
         where: { id: accountId },
     });
 
@@ -35,11 +45,39 @@ export async function generateBackup(
     // Strip sensitive fields from account
     const sanitizedAccount = sanitizeAccount(account as Record<string, unknown>);
 
-    // Fetch all related data in parallel batches
+    let serializedBytes = 0;
+    function consume(value: unknown) {
+        serializedBytes += Buffer.byteLength(JSON.stringify(value), 'utf8') + 1;
+        if (serializedBytes > BACKUP_LIMITS.maxSerializedBytes) {
+            throw new Error('Backup exceeds the in-memory export size limit (100 MiB). Export a smaller scope or use a database backup.');
+        }
+    }
+    consume(sanitizedAccount);
+    async function load<T extends { id: string }>(
+        fetchPage: (page: BackupPage) => Promise<T[]>,
+        sanitize: (row: T) => unknown = row => row,
+    ): Promise<unknown[]> {
+        const rows: unknown[] = [];
+        let cursor: string | undefined;
+        while (true) {
+            const batch = await fetchPage({ take: BACKUP_LIMITS.batchSize, orderBy: { id: 'asc' },
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 as const } : {}) });
+            for (const row of batch) {
+                const safeRow = sanitize(row);
+                consume(safeRow);
+                rows.push(safeRow);
+            }
+            if (batch.length < BACKUP_LIMITS.batchSize) return rows;
+            cursor = batch[batch.length - 1].id;
+        }
+    }
+
+    // Every collection is paginated within the same repeatable-read snapshot.
     const data: Record<string, unknown[]> = {};
 
     // Users (with user details, excluding passwordHash)
-    data.users = await prisma.accountUser.findMany({
+    data.users = await load(page => db.accountUser.findMany({
+        ...page,
         where: { accountId },
         include: {
             user: {
@@ -54,150 +92,113 @@ export async function generateBackup(
                 },
             },
         },
-    });
+    }));
 
     // Roles
-    data.roles = await prisma.accountRole.findMany({
-        where: { accountId },
-    });
+    data.roles = await load(page => db.accountRole.findMany({ ...page, where: { accountId } }));
 
     // Features
-    data.features = await prisma.accountFeature.findMany({
-        where: { accountId },
-    });
+    data.features = await load(page => db.accountFeature.findMany({ ...page, where: { accountId } }));
 
     // Products with variations
-    data.products = await prisma.wooProduct.findMany({
+    data.products = await load(page => db.wooProduct.findMany({
+        ...page,
         where: { accountId },
-        include: { variations: true },
-    });
+        include: { variations: { orderBy: { id: 'asc' } } },
+    }));
 
     // Orders (batch to avoid memory issues)
-    data.orders = await fetchInBatches(
-        (skip, take) =>
-            prisma.wooOrder.findMany({
-                where: { accountId },
-                skip,
-                take,
-                orderBy: { dateCreated: 'desc' },
-            }),
-        5000
-    );
+    data.orders = await load(page => db.wooOrder.findMany({ ...page, where: { accountId }, orderBy: [{ dateCreated: 'desc' }, { id: 'asc' }] }));
 
     // Customers
-    data.customers = await prisma.wooCustomer.findMany({
-        where: { accountId },
-    });
+    data.customers = await load(page => db.wooCustomer.findMany({ ...page, where: { accountId } }));
 
     // Reviews
-    data.reviews = await prisma.wooReview.findMany({
-        where: { accountId },
-    });
+    data.reviews = await load(page => db.wooReview.findMany({ ...page, where: { accountId } }));
 
     // Suppliers with items
-    data.suppliers = await prisma.supplier.findMany({
+    data.suppliers = await load(page => db.supplier.findMany({
+        ...page,
         where: { accountId },
         include: { items: true },
-    });
+    }));
 
     // Internal Products
-    data.internalProducts = await prisma.internalProduct.findMany({
-        where: { accountId },
-    });
+    data.internalProducts = await load(page => db.internalProduct.findMany({ ...page, where: { accountId } }));
 
     // BOMs with items
-    data.boms = await prisma.bOM.findMany({
+    data.boms = await load(page => db.bOM.findMany({
+        ...page,
         where: { product: { accountId } },
         include: { items: true },
-    });
+    }));
 
     // Purchase Orders with items
-    data.purchaseOrders = await prisma.purchaseOrder.findMany({
+    data.purchaseOrders = await load(page => db.purchaseOrder.findMany({
+        ...page,
         where: { accountId },
         include: { items: true },
-    });
+    }));
 
     // Conversations with messages
-    data.conversations = await prisma.conversation.findMany({
+    data.conversations = await load(page => db.conversation.findMany({
+        ...page,
         where: { accountId },
         include: {
             messages: {
-                orderBy: { createdAt: 'asc' },
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             },
         },
-    });
-
-    // Canned responses
-    data.cannedResponses = await prisma.cannedResponse.findMany({
-        where: { accountId },
-    });
-
-    // Email accounts (mask credentials)
-    const emailAccounts = await prisma.emailAccount.findMany({
-        where: { accountId },
-    });
-    data.emailAccounts = emailAccounts.map((ea) => ({
-        ...ea,
-        password: '********', // Mask password
     }));
 
+    // Canned responses
+    data.cannedResponses = await load(page => db.cannedResponse.findMany({ ...page, where: { accountId } }));
+
+    // Email accounts (mask credentials)
+    data.emailAccounts = await load(page => db.emailAccount.findMany({ ...page, where: { accountId } }),
+        ea => redactFields({ ...ea, password: '********' }, SENSITIVE_EMAIL_FIELDS));
+
     // Email templates
-    data.emailTemplates = await prisma.emailTemplate.findMany({
-        where: { accountId },
-    });
+    data.emailTemplates = await load(page => db.emailTemplate.findMany({ ...page, where: { accountId } }));
 
     // Marketing automations with steps
-    data.automations = await prisma.marketingAutomation.findMany({
+    data.automations = await load(page => db.marketingAutomation.findMany({
+        ...page,
         where: { accountId },
         include: { steps: true },
-    });
+    }));
 
     // Campaigns
-    data.campaigns = await prisma.marketingCampaign.findMany({
-        where: { accountId },
-    });
+    data.campaigns = await load(page => db.marketingCampaign.findMany({ ...page, where: { accountId } }));
 
     // Segments
-    data.segments = await prisma.customerSegment.findMany({
-        where: { accountId },
-    });
+    data.segments = await load(page => db.customerSegment.findMany({ ...page, where: { accountId } }));
 
     // Invoice templates
-    data.invoiceTemplates = await prisma.invoiceTemplate.findMany({
-        where: { accountId },
-    });
+    data.invoiceTemplates = await load(page => db.invoiceTemplate.findMany({ ...page, where: { accountId } }));
 
     // Policies
-    data.policies = await prisma.policy.findMany({
-        where: { accountId },
-    });
+    data.policies = await load(page => db.policy.findMany({ ...page, where: { accountId } }));
 
     // Dashboards with widgets
-    data.dashboards = await prisma.dashboardLayout.findMany({
+    data.dashboards = await load(page => db.dashboardLayout.findMany({
+        ...page,
         where: { accountId },
         include: { widgets: true },
-    });
+    }));
 
     // Sync states
-    data.syncStates = await prisma.syncState.findMany({
-        where: { accountId },
-    });
+    data.syncStates = await load(page => db.syncState.findMany({ ...page, where: { accountId } }));
 
     // Ad accounts (mask tokens)
-    const adAccounts = await prisma.adAccount.findMany({
-        where: { accountId },
-    });
-    data.adAccounts = adAccounts.map((aa) => ({
+    data.adAccounts = await load(page => db.adAccount.findMany({ ...page, where: { accountId } }), aa => ({
         ...aa,
         accessToken: '********',
         refreshToken: aa.refreshToken ? '********' : null,
     }));
 
     // Social accounts (mask tokens)
-    const socialAccounts = await prisma.socialAccount.findMany({
-        where: { accountId },
-    });
-    data.socialAccounts = socialAccounts.map((sa) => ({
+    data.socialAccounts = await load(page => db.socialAccount.findMany({ ...page, where: { accountId } }), sa => ({
         ...sa,
         accessToken: '********',
         refreshToken: sa.refreshToken ? '********' : null,
@@ -206,31 +207,23 @@ export async function generateBackup(
 
     // Optional: Audit logs
     if (includeAuditLogs) {
-        data.auditLogs = await fetchInBatches(
-            (skip, take) =>
-                prisma.auditLog.findMany({
-                    where: { accountId },
-                    skip,
-                    take,
-                    orderBy: { createdAt: 'desc' },
-                }),
-            5000
-        );
+        data.auditLogs = await load(page => db.auditLog.findMany({ ...page, where: { accountId }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }));
     }
 
     // Optional: Analytics sessions
     if (includeAnalytics) {
-        data.analyticsSessions = await prisma.analyticsSession.findMany({
+        data.analyticsSessions = await load(page => db.analyticsSession.findMany({
+            ...page,
             where: { accountId },
             include: { events: true },
-        });
+        }));
     }
 
     const elapsedMs = Date.now() - startTime;
     Logger.info('[AccountBackup] Backup generation complete', {
         accountId,
         elapsedMs,
-        recordCount: Object.values(data).flat().length,
+        recordCount: Object.values(data).reduce((sum, rows) => sum + rows.length, 0),
     });
 
     return {
@@ -363,8 +356,12 @@ export async function getBackupPreview(accountId: string) {
  * Remove sensitive fields from account object
  */
 function sanitizeAccount(account: Record<string, unknown>): Record<string, unknown> {
+    return redactFields(account, SENSITIVE_ACCOUNT_FIELDS);
+}
+
+function redactFields(account: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
     const sanitized = { ...account };
-    for (const field of SENSITIVE_ACCOUNT_FIELDS) {
+    for (const field of fields) {
         if (field in sanitized) {
             sanitized[field] = '********';
         }
@@ -372,22 +369,9 @@ function sanitizeAccount(account: Record<string, unknown>): Record<string, unkno
     return sanitized;
 }
 
-/**
- * Fetch large tables in batches to avoid OOM
- */
-async function fetchInBatches<T>(
-    fetchFn: (skip: number, take: number) => Promise<T[]>,
-    batchSize: number = 5000
-): Promise<T[]> {
-    const results: T[] = [];
-    let skip = 0;
-    let batch: T[];
-
-    do {
-        batch = await fetchFn(skip, batchSize);
-        results.push(...batch);
-        skip += batchSize;
-    } while (batch.length === batchSize);
-
-    return results;
+interface BackupPage {
+    take: number;
+    orderBy: { id: 'asc' };
+    cursor?: { id: string };
+    skip?: 1;
 }

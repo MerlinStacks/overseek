@@ -2,7 +2,7 @@
  * AI Route - Fastify Plugin
  */
 
-import { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import { AIService } from '../services/ai';
 import { requireAuthFastify } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
@@ -36,10 +36,14 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post<{ Body: { message: string, context?: any } }>('/chat', async (request, reply) => {
         try {
+            if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body) ||
+                typeof request.body.message !== 'string' || !request.body.message.trim()) {
+                return reply.code(400).send({ error: 'Message required' });
+            }
+
             const { message, context } = request.body;
             const accountId = request.accountId;
 
-            if (!message) return reply.code(400).send({ error: 'Message required' });
             if (!accountId) return reply.code(400).send({ error: 'Account ID required' });
 
             const response = await AIService.generateResponse(message, accountId, context);

@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation, Outlet } from 'react-router-dom';
-import { RefreshCw, WifiOff, Download, X, Loader2 } from 'lucide-react';
+import { useLocation, useNavigate, Outlet } from 'react-router-dom';
+import { RefreshCw, WifiOff, Download, X, Loader2, ChevronDown } from 'lucide-react';
 import { MobileNav } from './MobileNav';
 import { MobileErrorBoundary } from '../mobile/MobileErrorBoundary';
 
@@ -10,13 +10,14 @@ import { useAccount } from '../../context/AccountContext';
 import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { useVisibilityRefreshThrottle } from '../../hooks/useVisibilityRefreshThrottle';
 import { useHaptic } from '../../hooks/useHaptic';
+import { getMobileBranding } from '../mobile/mobileBranding';
+import '../mobile/MobileCompanion.css';
 
 /**
- * MobileLayout - Premium dark glassmorphism layout for the PWA companion app.
+ * MobileLayout - Account-branded shell for the PWA companion app.
  * 
  * Features:
- * - Dark theme with gradient backgrounds
- * - Glassmorphism cards throughout
+ * - Shared Appearance branding with a quiet, dark workspace
  * - Bottom navigation with badge counts
  * - iOS safe areas handling
  * - Enhanced pull-to-refresh with custom spinner
@@ -38,8 +39,11 @@ const AUTH_REFRESHING_KEY = 'overseek:auth-refreshing';
 
 export function MobileLayout({ children }: MobileLayoutProps) {
     const location = useLocation();
+    const navigate = useNavigate();
     const { token } = useAuth();
     const { currentAccount } = useAccount();
+    const branding = getMobileBranding(currentAccount?.appearance, currentAccount?.name);
+    const [failedLogo, setFailedLogo] = useState<string | null>(null);
     const { triggerHaptic } = useHaptic();
     const shouldRefreshOnResume = useVisibilityRefreshThrottle(10_000);
 
@@ -269,12 +273,24 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
     return (
         <div
-            className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800/90 to-slate-800 flex flex-col"
+            className="mobile-companion min-h-screen flex flex-col"
             style={{
+                ...branding.style,
                 paddingTop: 'env(safe-area-inset-top)',
                 paddingBottom: 'calc(env(safe-area-inset-bottom) + 64px)'
             }}
         >
+            <header className="flex items-center justify-between gap-4 border-b border-white/5 px-5 py-4">
+                <button type="button" onClick={() => navigate('/m/settings')} aria-label={`Store settings for ${branding.name}`} className="flex min-w-0 items-center gap-3 text-left">
+                    {branding.logoUrl && failedLogo !== branding.logoUrl ? (
+                        <img key={branding.logoUrl} src={branding.logoUrl} alt="" onError={() => setFailedLogo(branding.logoUrl)} className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1" />
+                    ) : (
+                        <span className="mobile-brand-solid flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg font-semibold">{branding.name[0].toUpperCase()}</span>
+                    )}
+                    <span className="min-w-0"><span className="block truncate text-sm font-semibold">{branding.name}</span><span className="block text-xs text-slate-400">OverSeek companion</span></span>
+                    <ChevronDown size={14} className="shrink-0 text-slate-400" />
+                </button>
+            </header>
             {/* Offline Banner */}
             {!isOnline && (
                 <div className="bg-amber-500/90 backdrop-blur-sm text-white text-center py-2.5 px-4 flex items-center justify-center gap-2 text-sm font-medium animate-fade-slide-up">
@@ -298,25 +314,26 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
             {/* Install App Banner */}
             {showInstallBanner && installPrompt && (
-                <div className="bg-gradient-to-r from-emerald-500/90 to-teal-500/90 backdrop-blur-sm text-white py-3 px-4 flex items-center justify-between gap-3 animate-fade-slide-up">
+                <div className="mobile-brand-solid py-3 px-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-white/20 rounded-xl">
                             <Download size={20} />
                         </div>
                         <div>
-                            <p className="text-sm font-semibold">Install OverSeek</p>
-                            <p className="text-xs text-white/80">Add to home screen for the best experience</p>
+                            <p className="text-sm font-semibold">Install {branding.name}</p>
+                            <p className="text-xs opacity-80">Add the companion to your home screen</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleInstall}
-                            className="px-4 py-1.5 bg-white text-emerald-600 rounded-lg text-sm font-semibold hover:bg-white/90 active:scale-95 transition-all"
+                            className="min-h-11 px-4 bg-black/15 rounded-lg text-sm font-semibold"
                         >
                             Install
                         </button>
                         <button
                             onClick={dismissInstallBanner}
+                            aria-label="Dismiss install prompt"
                             className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
                         >
                             <X size={18} />
@@ -332,7 +349,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     height: refreshing ? 80 : Math.max(pullDistance, 0),
                     paddingTop: 'env(safe-area-inset-top)',
                     opacity: pullProgress > 0.1 || refreshing ? 1 : 0,
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.95) 0%, rgba(139, 92, 246, 0.95) 100%)',
+                    background: 'var(--mobile-surface)',
                 }}
             >
                 <div className="relative">

@@ -352,7 +352,7 @@ export class LTVAnalyzer {
         }
 
         // LTV vs immediate ROAS insight
-        const paidChannels = channelLtv.filter(c => ['google', 'meta'].includes(c.channel));
+        const paidChannels = channelLtv.filter(c => ['google', 'meta', 'paid_other'].includes(c.channel));
         if (paidChannels.length > 0) {
             const avgPaidLtv = paidChannels.reduce((sum, c) => sum + c.avgLtv * c.customers, 0) /
                 paidChannels.reduce((sum, c) => sum + c.customers, 0);

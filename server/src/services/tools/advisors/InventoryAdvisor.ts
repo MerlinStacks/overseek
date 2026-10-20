@@ -1,89 +1,56 @@
-/**
- * Inventory Advisor
- * 
- * Generates stock-related suggestions for ad optimization.
- * Extracted from AdOptimizer for modularity.
- */
-
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../utils/prisma';
 import { Logger } from '../../../utils/logger';
-import { InventorySummary } from '../../ads/types';
+import type { InventorySummary } from '../../ads/types';
+import { finiteAmount, record, text } from '../toolData';
 
-/**
- * Process inventory data to generate stock-related suggestions.
- * @param accountId - The account to analyze
- * @param suggestions - Array to push suggestions into
- * @param summary - Object to populate with inventory summary
- * @param activeAdProductIds - Optional list of product IDs currently in ads (skus or IDs)
- */
-export async function processInventorySuggestions(
-    accountId: string,
-    suggestions: string[],
-    summary: { inventory?: InventorySummary },
-    activeAdProductIds?: string[]
-): Promise<void> {
+export async function processInventorySuggestions(accountId: string, suggestions: string[],
+    summary: { inventory?: InventorySummary }, activeAdProductIds?: string[]): Promise<void> {
+    if (!text(accountId)) return;
     try {
-        const outOfStockProducts = await prisma.wooProduct.findMany({
-            where: { accountId, stockStatus: 'outofstock' },
-            take: 10,
-            select: { name: true, sku: true, wooId: true }
-        });
-
-        const lowStockProducts = await prisma.wooProduct.findMany({
-            where: { accountId, stockStatus: 'instock' },
-            take: 100,
-            select: { name: true, sku: true, rawData: true }
-        });
-
-        const trulyLowStock = lowStockProducts.filter((p: { rawData: unknown }) => {
-            const stockQty = (p.rawData as { stock_quantity?: number })?.stock_quantity;
-            return typeof stockQty === 'number' && stockQty > 0 && stockQty < 5;
-        }).slice(0, 5);
-
-        const totalProducts = await prisma.wooProduct.count({ where: { accountId } });
-
-        // Filter out of stock alerts to ONLY those being advertised
-        // If we have ad data, we shouldn't warn about products not in ads
-        let relevantOutOfStock = outOfStockProducts;
-
-        if (activeAdProductIds && activeAdProductIds.length > 0) {
-            const activeIdsSet = new Set(activeAdProductIds.map(id => id.toLowerCase().trim()));
-
-            relevantOutOfStock = outOfStockProducts.filter((p) => {
-                const sku = (p.sku || '').toLowerCase().trim();
-                const wooId = (p.wooId || '').toString();
-
-                // Match against SKU or ID (Google Merchant Center usually uses one of these)
-                return activeIdsSet.has(sku) || activeIdsSet.has(wooId);
-            });
-        }
-
-        const outOfStockCount = relevantOutOfStock.length;
-
-        summary.inventory = {
-            total_products: totalProducts,
-            out_of_stock_count: outOfStockProducts.length, // Keep real count in summary
-            relevant_out_of_stock: outOfStockCount,
-            low_stock_count: trulyLowStock.length
+        const knownAds = Array.isArray(activeAdProductIds);
+        const ids = knownAds ? [...new Set(activeAdProductIds.map(text).filter(Boolean))] : [];
+        const numericIds = ids.filter(id => /^\d+$/.test(id) && Number.isSafeInteger(Number(id))).map(Number);
+        const relevantWhere: Prisma.WooProductWhereInput = {
+            accountId, stockStatus: 'outofstock',
+            ...(knownAds ? { OR: [{ wooId: { in: numericIds } }, { sku: { in: ids, mode: 'insensitive' } }] } : {}),
         };
-
-        if (outOfStockCount > 0) {
-            const productNames = relevantOutOfStock.slice(0, 3).map((p) => `"${p.name}"`).join(', ');
-            const moreText = outOfStockCount > 3 ? ` and ${outOfStockCount - 3} more` : '';
-            suggestions.push(
-                `📦 **Restock Needed**: ${outOfStockCount} product(s) in your ad campaigns are out of stock: ${productNames}${moreText}. ` +
-                `Google Ads has auto-disabled these items. Restock to resume advertising and capture demand.`
-            );
+        const [total, outOfStock, relevantCount, examples] = await Promise.all([
+            prisma.wooProduct.count({ where: { accountId } }),
+            prisma.wooProduct.count({ where: { accountId, stockStatus: 'outofstock' } }),
+            knownAds && !ids.length ? Promise.resolve(0) : prisma.wooProduct.count({ where: relevantWhere }),
+            knownAds && !ids.length ? Promise.resolve([]) : prisma.wooProduct.findMany({ where: relevantWhere, take: 3,
+                orderBy: [{ name: 'asc' }, { id: 'asc' }], select: { name: true } }),
+        ]);
+        let lowCount = 0;
+        const lowExamples: string[] = [];
+        let cursor: string | undefined;
+        while (true) {
+            const products = await prisma.wooProduct.findMany({
+                where: { accountId, stockStatus: 'instock' }, take: 500, orderBy: { id: 'asc' },
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+                select: { id: true, name: true, stockQuantity: true, manageStock: true, rawData: true },
+            });
+            for (const product of products) {
+                const quantity = finiteAmount(product.manageStock && product.stockQuantity != null
+                    ? product.stockQuantity : record(product.rawData).stock_quantity);
+                if (quantity != null && quantity > 0 && quantity < 5) {
+                    lowCount++;
+                    if (lowExamples.length < 3) lowExamples.push(product.name);
+                }
+            }
+            if (products.length < 500) break;
+            cursor = products[products.length - 1].id;
         }
-
-        if (trulyLowStock.length > 0) {
-            const productNames = trulyLowStock.slice(0, 3).map((p) => `"${p.name}"`).join(', ');
-            suggestions.push(
-                `⚠️ **Low Stock Warning**: ${trulyLowStock.length} product(s) have low inventory: ${productNames}. ` +
-                `Avoid scaling ads for these until restocked.`
-            );
+        summary.inventory = { total_products: total, out_of_stock_count: outOfStock,
+            relevant_out_of_stock: relevantCount, low_stock_count: lowCount, ad_match_available: knownAds };
+        if (relevantCount > 0) {
+            const names = examples.map(p => `"${p.name}"`).join(', ');
+            const more = relevantCount > examples.length ? ` and ${relevantCount - examples.length} more` : '';
+            suggestions.push(`📦 **Restock Needed**: ${relevantCount} product(s)${knownAds ? ' matched to your ad products' : ''} are out of stock: ${names}${more}. ` +
+                'Review stock and campaign eligibility before advertising; automatic ad suspension has not been verified.');
         }
-
+        if (lowCount > 0) suggestions.push(`⚠️ **Low Stock Warning**: ${lowCount} product(s) have fewer than 5 units available, including ${lowExamples.map(name => `"${name}"`).join(', ')}. Review stock before scaling ads.`);
     } catch (error) {
         Logger.warn('Failed to process inventory suggestions', { error });
     }

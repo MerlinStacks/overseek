@@ -35,11 +35,11 @@ describe('OrderTaggingService Performance', () => {
     };
 
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.resetAllMocks();
         (prisma.account.findUnique as any).mockResolvedValue(mockMappings);
     });
 
-    it('demonstrates N+1 issue when calling extractTagsFromOrder in a loop', async () => {
+    it('returns the right mapped tags for individually processed orders', async () => {
         (prisma.wooProduct.findMany as any).mockImplementation(({ where }: any) => {
             const ids = where.wooId.in;
             if (ids.includes(101) && ids.length === 1) return Promise.resolve([{ wooId: 101, rawData: { tags: [{ name: 'Blue' }] } }]);
@@ -57,12 +57,11 @@ describe('OrderTaggingService Performance', () => {
             { id: 3, line_items: [{ product_id: 101 }, { product_id: 102 }] }
         ];
 
-        for (const order of orders) {
-            await OrderTaggingService.extractTagsFromOrder(accountId, order);
-        }
-
-        expect(prisma.wooProduct.findMany).toHaveBeenCalledTimes(3);
-        expect(prisma.account.findUnique).toHaveBeenCalledTimes(3);
+        const results = [];
+        for (const order of orders) results.push(await OrderTaggingService.extractTagsFromOrder(accountId, order));
+        expect(results).toEqual([['Has Blue'], ['Has Red'], ['Has Blue', 'Has Red']]);
+        expect(vi.mocked(prisma.wooProduct.findMany).mock.calls.length).toBeLessThanOrEqual(orders.length);
+        for (const [query] of vi.mocked(prisma.wooProduct.findMany).mock.calls) expect(query.where.accountId).toBe(accountId);
     });
 
     it('optimized: extractTagsFromOrder with knownMappings avoids redundant lookups', async () => {
@@ -92,7 +91,7 @@ describe('OrderTaggingService Performance', () => {
         ]);
 
         for (const order of orders) {
-            await OrderTaggingService.extractTagsFromOrder(accountId, order, mappings);
+            expect(await OrderTaggingService.extractTagsFromOrder(accountId, order, mappings)).toEqual(['ot1']);
         }
 
         // Assert that findUnique was NOT called (0 times) - mappings passed in
@@ -126,5 +125,45 @@ describe('OrderTaggingService Performance', () => {
         expect(tags3).toContain('Has Blue');
         expect(tags3).toContain('Has Red');
         expect(tags3?.length).toBe(2);
+    });
+
+    it('deduplicates products and tags, matches case-insensitively, and ignores disabled mappings', async () => {
+        vi.mocked(prisma.account.findUnique).mockResolvedValue({ orderTagMappings: [
+            { productTags: ['Blue', 'Red'], orderTag: 'Colour', enabled: true },
+            { productTag: 'Blue', orderTag: 'Disabled', enabled: false },
+        ] } as any);
+        vi.mocked(prisma.wooProduct.findMany).mockResolvedValue([
+            { wooId: 101, rawData: { tags: [{ name: 'BLUE' }, { name: 'red' }] } },
+        ] as any);
+        const result = await OrderTaggingService.extractTagsForOrders(accountId, [
+            { id: 1, line_items: [{ product_id: 101 }, { product_id: 101 }] },
+            { id: 2, line_items: [{ product_id: 999 }] },
+            { id: 3, line_items: [] },
+        ]);
+        expect([...result]).toEqual([[1, ['Colour']], [2, []], [3, []]]);
+        expect(prisma.wooProduct.findMany).toHaveBeenCalledWith({
+            where: { accountId, wooId: { in: [101, 999] } }, select: { wooId: true, rawData: true },
+        });
+    });
+
+    it('does not fetch anything for an empty batch', async () => {
+        expect(await OrderTaggingService.extractTagsForOrders(accountId, [])).toEqual(new Map());
+        expect(prisma.account.findUnique).not.toHaveBeenCalled();
+        expect(prisma.wooProduct.findMany).not.toHaveBeenCalled();
+    });
+
+    it('does not query products when mappings are disabled', async () => {
+        vi.mocked(prisma.account.findUnique).mockResolvedValue({ orderTagMappings: [
+            { productTag: 'Blue', orderTag: 'Disabled', enabled: false },
+        ] } as any);
+        expect(await OrderTaggingService.extractTagsForOrders(accountId, [{ id: 1, line_items: [{ product_id: 101 }] }]))
+            .toEqual(new Map([[1, []]]));
+        expect(prisma.wooProduct.findMany).not.toHaveBeenCalled();
+    });
+
+    it('propagates database failures instead of silently returning incorrect tags', async () => {
+        vi.mocked(prisma.wooProduct.findMany).mockRejectedValue(new Error('Database unavailable'));
+        await expect(OrderTaggingService.extractTagsForOrders(accountId, [{ id: 1, line_items: [{ product_id: 101 }] }]))
+            .rejects.toThrow('Database unavailable');
     });
 });

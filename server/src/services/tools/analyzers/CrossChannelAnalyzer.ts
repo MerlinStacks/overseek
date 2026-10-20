@@ -226,6 +226,8 @@ export class CrossChannelAnalyzer {
         channelPerformance: CrossChannelInsight['channelPerformance'],
         totalRevenue: number
     ): CrossChannelInsight['budgetRecommendation'] {
+        // Provider-ambiguous traffic must not be counted as organic or drive a Google/Meta split.
+        if (channelPerformance.some(channel => ['paid_other', 'other'].includes(channel.channel) && channel.revenue > 0)) return null;
         const googleData = channelPerformance.find(c => c.channel === 'google');
         const metaData = channelPerformance.find(c => c.channel === 'meta');
 
@@ -234,7 +236,7 @@ export class CrossChannelAnalyzer {
         const googleRevenue = googleData?.revenue || 0;
         const metaRevenue = metaData?.revenue || 0;
         const organicRevenue = channelPerformance
-            .filter(c => !['google', 'meta'].includes(c.channel))
+            .filter(c => ['organic_search', 'email', 'direct', 'social_organic'].includes(c.channel))
             .reduce((sum, c) => sum + c.revenue, 0);
 
         const paidTotal = googleRevenue + metaRevenue;

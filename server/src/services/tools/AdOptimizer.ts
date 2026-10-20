@@ -33,6 +33,7 @@ import {
 
 // Import knowledge base (AI Marketing Intelligence Phase 4)
 import { RecommendationEngine } from './knowledge';
+import { metricText } from './advisors/metricText';
 
 export interface AdOptimizerOptions {
     userContext?: string;
@@ -219,7 +220,7 @@ export class AdOptimizer {
                 };
             }
 
-            if (hasMeta && metaAnalysis.campaign_insights) {
+            if (hasMeta && !metaAnalysis.partial_data && metaAnalysis.summary.currency !== 'MULTIPLE' && metaAnalysis.campaign_insights) {
                 const kbRecs = RecommendationEngine.generateFromCampaigns(
                     metaAnalysis.campaign_insights as any, 'meta', trends
                 );
@@ -399,11 +400,13 @@ export class AdOptimizer {
     }
 
     private static processMetaSuggestions(
-        analysis: { underperformers?: { campaign: string }[]; high_performers?: { campaign: string }[]; summary?: unknown },
+        analysis: { underperformers?: { campaign: string }[]; high_performers?: { campaign: string }[]; summary?: unknown; partial_data?: boolean },
         suggestions: string[],
         summary: Record<string, unknown>,
         seasonalContext: SeasonalContext | null
     ) {
+        summary.meta = analysis.summary;
+        if (analysis.partial_data) return;
         if (analysis.underperformers?.length) {
             const directResponseUnderperformers = analysis.underperformers.filter(
                 c => !isBrandCampaign(c.campaign) && getCampaignType(c.campaign) !== 'awareness'
@@ -437,12 +440,14 @@ export class AdOptimizer {
     }
 
     private static addCrossPlatformSuggestion(
-        googleAnalysis: { summary: { overall_roas: string } },
-        metaAnalysis: { summary: { overall_roas: string } },
+        googleAnalysis: { summary: { overall_roas: string }; partial_data?: boolean },
+        metaAnalysis: { summary: { overall_roas: string }; partial_data?: boolean },
         suggestions: string[]
     ) {
-        const googleRoas = parseFloat(googleAnalysis.summary.overall_roas) || 0;
-        const metaRoas = parseFloat(metaAnalysis.summary.overall_roas) || 0;
+        if (googleAnalysis.partial_data || metaAnalysis.partial_data) return;
+        const googleRoas = metricText(googleAnalysis.summary.overall_roas, 'x');
+        const metaRoas = metricText(metaAnalysis.summary.overall_roas, 'x');
+        if (googleRoas == null || metaRoas == null) return;
 
         if (googleRoas > metaRoas * 1.5) {
             suggestions.push(

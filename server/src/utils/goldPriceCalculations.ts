@@ -5,6 +5,8 @@
  * Used by both the gold price report endpoints and potentially other services.
  */
 
+import { Prisma } from '@prisma/client';
+
 /** Gold purity percentages by type */
 export const GOLD_PURITY: Record<string, number> = {
     '24ct': 1.0,      // 100% gold (reference)
@@ -35,7 +37,7 @@ export function calculateGoldCogs(
     goldPriceType: string | null,
     accountPrices: AccountGoldPrices
 ): number {
-    if (!weight || !goldPriceType) return 0;
+    if (!Number.isFinite(weight) || weight <= 0 || !goldPriceType) return 0;
 
     const pricePerGram: Record<string, number> = {
         '18ct': accountPrices.goldPrice18ct,
@@ -44,7 +46,12 @@ export function calculateGoldCogs(
         '9ctWhite': accountPrices.goldPrice9ctWhite
     };
 
-    return weight * (pricePerGram[goldPriceType] || 0);
+    if (!Object.prototype.hasOwnProperty.call(pricePerGram, goldPriceType)) return 0;
+    const rate = pricePerGram[goldPriceType];
+    if (!Number.isFinite(rate) || rate < 0) return 0;
+
+    const cogs = weight * rate;
+    return Number.isFinite(cogs) ? cogs : 0;
 }
 
 /**
@@ -52,11 +59,19 @@ export function calculateGoldCogs(
  * 
  * @param price - Selling price
  * @param cogs - Cost of goods sold
- * @returns Profit margin as percentage (0-100)
+ * @returns Profit margin percentage, including negative margins for losses;
+ *          zero for invalid inputs or a zero selling price
  */
 export function calculateMargin(price: number, cogs: number): number {
-    if (!price || price === 0) return 0;
-    return ((price - cogs) / price) * 100;
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(cogs) || cogs < 0) return 0;
+    const margin = ((price - cogs) / price) * 100;
+    return Number.isFinite(margin) ? margin : 0;
+}
+
+function parseGoldPrice(value: unknown): number {
+    if (typeof value !== 'number' && typeof value !== 'string' && !Prisma.Decimal.isDecimal(value)) return 0;
+    const price = Number(value);
+    return Number.isFinite(price) && price >= 0 ? price : 0;
 }
 
 /**
@@ -70,11 +85,11 @@ export function parseAccountGoldPrices(account: {
     goldPrice9ct?: unknown;
     goldPrice18ctWhite?: unknown;
     goldPrice9ctWhite?: unknown;
-}): AccountGoldPrices {
+} | null | undefined): AccountGoldPrices {
     return {
-        goldPrice18ct: Number(account.goldPrice18ct) || 0,
-        goldPrice9ct: Number(account.goldPrice9ct) || 0,
-        goldPrice18ctWhite: Number(account.goldPrice18ctWhite) || 0,
-        goldPrice9ctWhite: Number(account.goldPrice9ctWhite) || 0
+        goldPrice18ct: parseGoldPrice(account?.goldPrice18ct),
+        goldPrice9ct: parseGoldPrice(account?.goldPrice9ct),
+        goldPrice18ctWhite: parseGoldPrice(account?.goldPrice18ctWhite),
+        goldPrice9ctWhite: parseGoldPrice(account?.goldPrice9ctWhite)
     };
 }

@@ -38,7 +38,7 @@ describe('PicklistService Benchmark', () => {
                 line_items: Array.from({ length: ITEMS_PER_ORDER }).map((__, j) => ({
                     product_id: 2000 + (i * ITEMS_PER_ORDER) + j,
                     variation_id: 0,
-                    quantity: 1,
+                    quantity: i === 0 && j === 0 ? 2 : 1,
                     name: `Product ${2000 + (i * ITEMS_PER_ORDER) + j}`
                 }))
             }
@@ -53,7 +53,7 @@ describe('PicklistService Benchmark', () => {
                  boms = [{
                     variationId: 0,
                     items: [{
-                        quantity: 1,
+                        quantity: 3,
                         childProduct: {
                             wooId: wooId + 1000,
                             name: `Child of ${wooId}`,
@@ -77,15 +77,13 @@ describe('PicklistService Benchmark', () => {
             };
         };
 
-        // Mock findFirst with latency
+        // A fallback lookup must not be needed for this fully-prefetched fixture.
         (prisma.wooProduct.findFirst as any).mockImplementation(async ({ where }) => {
-            await new Promise(r => setTimeout(r, 1)); // 1ms latency simulation
             return getMockProduct(where.wooId);
         });
 
         // Mock findMany for the future optimized version
         (prisma.wooProduct.findMany as any).mockImplementation(async (args: any) => {
-             await new Promise(r => setTimeout(r, 5)); // 5ms for a larger query
              // Handle 'in' clause
              const ids = args?.where?.wooId?.in;
              if (Array.isArray(ids)) {
@@ -98,22 +96,26 @@ describe('PicklistService Benchmark', () => {
              return [];
         });
 
-        const start = performance.now();
         const result = await service.generatePicklist(ACCOUNT_ID, { limit: 100 });
-        const end = performance.now();
 
         const findFirstCalls = (prisma.wooProduct.findFirst as any).mock.calls.length;
         const findManyCalls = (prisma.wooProduct.findMany as any).mock.calls.length;
 
-        console.log(`\n---------------------------------------------------`);
-        console.log(`Execution Time: ${(end - start).toFixed(2)}ms`);
-        console.log(`prisma.wooProduct.findFirst calls: ${findFirstCalls}`);
-        console.log(`prisma.wooProduct.findMany calls: ${findManyCalls}`);
-        console.log(`Total DB calls: ${findFirstCalls + findManyCalls}`);
-        console.log(`---------------------------------------------------\n`);
-
-        expect(result).toBeDefined();
-        // We don't assert specific counts here anymore as we want this test to pass for both
-        // optimized and unoptimized, but we inspect the console output.
+        expect(findFirstCalls).toBe(0);
+        expect(findManyCalls).toBe(2); // One order-product batch, one BOM-component batch.
+        for (const [query] of vi.mocked(prisma.wooProduct.findMany).mock.calls) {
+            expect(query.where.accountId).toBe(ACCOUNT_ID);
+        }
+        expect(prisma.wooOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: { accountId: ACCOUNT_ID, status: 'processing' }, take: 100,
+        }));
+        expect(result).toHaveLength(150);
+        expect(result.reduce((sum, item) => sum + item.totalQuantity, 0)).toBe(173);
+        expect(result.some(item => item.productId === '2000')).toBe(false);
+        expect(result.find(item => item.productId === '3000')).toEqual(expect.objectContaining({
+            totalQuantity: 6,
+            quantityUpdates: [{ orderNumber: 'ORD-0', quantity: 6, wooOrderId: 1000 }],
+        }));
+        expect(result.find(item => item.productId === '2010')?.totalQuantity).toBe(1);
     });
 });

@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
 import { Logger } from '../../utils/logger';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { useHaptic } from '../../hooks/useHaptic';
 import {
-    ChevronLeft,
     Search,
     Users,
     Mail,
@@ -181,42 +181,33 @@ export function MobileCustomers() {
     }
 
     return (
-        <div className="space-y-4 animate-fade-slide-up">
+        <div className="space-y-4">
             {/* Header */}
-            <div className="flex items-center gap-3">
-                <button
-                    onClick={() => {
-                        triggerHaptic();
-                        navigate(-1);
-                    }}
-                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-700/40 border border-white/10 active:scale-95 transition-transform"
-                    aria-label="Go back"
-                >
-                    <ChevronLeft size={22} className="text-slate-300" />
-                </button>
-                <h1 className="text-xl font-bold text-white">Customers</h1>
-                <span className="ml-auto text-sm text-slate-400 bg-slate-800/50 px-3 py-1 rounded-full">
-                    {customers.length}
-                </span>
-            </div>
+            <MobilePageHeader
+                title="Customers"
+                description="Customer records and order history"
+                onBack={() => { triggerHaptic(); navigate(-1); }}
+                actions={<span className="text-sm tabular-nums text-slate-400 bg-white/5 px-3 py-1 rounded-lg">{customers.length}</span>}
+            />
 
             {/* Search */}
             <form onSubmit={handleSearch} className="flex gap-2">
                 <div className="flex-1 relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-slate-700/50">
-                        <Search size={14} className="text-slate-400" />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                        <Search size={18} className="text-slate-400" />
                     </div>
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Search customers..."
-                        className="w-full pl-14 pr-4 py-3.5 pwa-card text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                        className="mobile-field w-full pl-11 pr-4 py-3.5"
                     />
                 </div>
                 <button
                     type="submit"
-                    className="px-4 py-3.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl active:scale-95 transition-transform shadow-lg shadow-indigo-500/25"
+                    aria-label="Search customers"
+                    className="mobile-brand-solid px-4 py-3.5 rounded-lg"
                 >
                     <Search size={18} />
                 </button>
@@ -225,15 +216,15 @@ export function MobileCustomers() {
             {/* Stats Summary */}
             {customers.length > 0 && (
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="pwa-card p-4">
-                        <div className="flex items-center gap-2 text-indigo-400 mb-1">
+                    <div className="mobile-panel p-4">
+                        <div className="mobile-brand-text flex items-center gap-2 mb-1">
                             <Users size={16} />
                             <span className="text-xs font-medium">Total</span>
                         </div>
                         <p className="text-xl font-bold text-white">{customers.length}</p>
                     </div>
-                    <div className="pwa-card p-4">
-                        <div className="flex items-center gap-2 text-emerald-400 mb-1">
+                    <div className="mobile-panel p-4">
+                        <div className="flex items-center gap-2 text-slate-400 mb-1">
                             <ShoppingBag size={16} />
                             <span className="text-xs font-medium">Total Spent</span>
                         </div>
@@ -247,7 +238,7 @@ export function MobileCustomers() {
             {/* Customer List */}
             {customers.length === 0 ? (
                 <div className="text-center py-16">
-                    <div className="w-20 h-20 mx-auto mb-4 pwa-card flex items-center justify-center">
+                    <div className="mobile-icon w-16 h-16 mx-auto mb-4 rounded-xl flex items-center justify-center">
                         <Users className="text-slate-500" size={36} />
                     </div>
                     <p className="text-white font-semibold mb-1">No customers found</p>
@@ -262,7 +253,7 @@ export function MobileCustomers() {
                                 triggerHaptic();
                                 navigate(`/m/customers/${customer.id}`);
                             }}
-                            className="w-full pwa-card p-4 flex items-center gap-4 text-left active:bg-slate-700/50 transition-all animate-fade-slide-up"
+                            className="mobile-panel w-full p-4 flex items-center gap-4 text-left active:bg-white/5"
                             style={{ animationDelay: `${index * 15}ms` }}
                         >
                             {/* Avatar */}
@@ -273,7 +264,7 @@ export function MobileCustomers() {
                                     className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
                                 />
                             ) : (
-                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 shadow-lg shadow-indigo-500/25">
+                                <div className="mobile-brand-soft w-12 h-12 rounded-lg flex items-center justify-center font-semibold text-lg flex-shrink-0">
                                     {getInitials(`${customer.firstName} ${customer.lastName}`)}
                                 </div>
                             )}
@@ -292,7 +283,7 @@ export function MobileCustomers() {
                                         <ShoppingBag size={10} />
                                         {customer.ordersCount} orders
                                     </span>
-                                    <span className="font-medium text-emerald-400">
+                                    <span className="font-medium text-slate-300">
                                         {formatAccountCurrency(customer.totalSpent)}
                                     </span>
                                 </div>
@@ -307,7 +298,7 @@ export function MobileCustomers() {
                         <button
                             onClick={loadMore}
                             disabled={loading}
-                            className="w-full py-4 text-indigo-400 font-semibold pwa-card active:bg-slate-700/50 transition-all flex items-center justify-center gap-2"
+                            className="mobile-panel mobile-brand-text w-full py-4 font-medium flex items-center justify-center gap-2"
                         >
                             {loading ? (
                                 <>

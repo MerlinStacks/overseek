@@ -7,6 +7,8 @@
  * - Trend indicator dot at end
  */
 
+import { useId } from 'react';
+
 interface SparklineProps {
     data: number[];
     color?: string;
@@ -20,6 +22,7 @@ export function Sparkline({
     height = 32,
     showTrend = true
 }: SparklineProps) {
+    const gradientId = `sparkline-${useId().replace(/:/g, '')}`;
     if (!data || data.length < 2) {
         return <div style={{ height }} />;
     }
@@ -63,7 +66,7 @@ export function Sparkline({
             preserveAspectRatio="none"
         >
             <defs>
-                <linearGradient id={`sparkline-gradient-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={color} stopOpacity="0.3" />
                     <stop offset="100%" stopColor={color} stopOpacity="0" />
                 </linearGradient>
@@ -72,7 +75,7 @@ export function Sparkline({
             {/* Gradient fill */}
             <path
                 d={fillPath}
-                fill={`url(#sparkline-gradient-${color.replace('#', '')})`}
+                fill={`url(#${gradientId})`}
             />
 
             {/* Line */}

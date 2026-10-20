@@ -6,6 +6,7 @@ import { useAccount } from '../context/AccountContext';
 import { useToast } from '../context/ToastContext';
 import { useApiMutation, useApiQuery } from '../hooks/useApiQuery';
 import { FEEDS_UI_STATE_KEY, type FeedVariationMode as VariationMode } from '../utils/feedVariationMode';
+import { FeedHealthPanel } from '../components/feeds/FeedHealthPanel';
 
 type FeedChannel = 'google' | 'meta' | 'pinterest' | 'similar';
 type FeedsViewTab = 'spreadsheet' | 'settings';
@@ -28,6 +29,7 @@ interface FeedRow {
     sku?: string | null;
     name: string;
     columns: FeedColumn[];
+    issues?: Array<{ severity: 'error' | 'warning'; field: string; message: string }>;
 }
 
 interface FeedRowsResponse {
@@ -50,6 +52,7 @@ interface FeedExportUrlsResponse {
 interface FeedProductFilters {
     excludeOutOfStockProducts: boolean;
     excludeUnpublishedProducts: boolean;
+    backordersAsInStock: boolean;
 }
 
 interface GoogleProductCategoryOption {
@@ -61,7 +64,7 @@ const CHANNELS: FeedChannel[] = ['google', 'meta', 'pinterest', 'similar'];
 const BULK_WARN_THRESHOLD = 1000;
 const BULK_HIGH_WARN_THRESHOLD = 10000;
 const FEEDS_EDIT_DRAFT_KEY = 'overseek:feeds:edit-draft:v1';
-const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
+const LOCKED_FEED_FIELDS = new Set(['id', 'sku']);
 const MIN_FEED_COLUMN_WIDTH = 120;
 const MAX_FEED_COLUMN_WIDTH = 720;
 const SOURCE_FIELD_OPTIONS = [
@@ -82,12 +85,22 @@ const SOURCE_FIELD_OPTIONS = [
     { value: 'googleProductCategory', label: 'Google category' },
     { value: 'productType', label: 'Product type' },
     { value: 'gtin', label: 'GTIN' },
-    { value: 'mpn', label: 'MPN / SKU' },
+    { value: 'mpn', label: 'Manufacturer part number' },
     { value: 'itemGroupId', label: 'Parent group ID' },
     { value: 'identifierExists', label: 'Identifier exists' },
     { value: 'salePriceEffectiveDate', label: 'Sale price dates' },
+    { value: 'availabilityDate', label: 'Expected shipping date' },
+    { value: 'color', label: 'Colour' },
+    { value: 'size', label: 'Size' },
+    { value: 'material', label: 'Material' },
+    { value: 'pattern', label: 'Pattern' },
+    { value: 'age_group', label: 'Age group' },
+    { value: 'gender', label: 'Gender' },
+    { value: 'size_type', label: 'Size type' },
+    { value: 'size_system', label: 'Size system' },
 ];
 const VARIATION_MODES: { value: VariationMode; label: string }[] = [
+    { value: 'automatic', label: 'Automatic (recommended)' },
     { value: 'all_variations', label: 'All Variations' },
     { value: 'variable_parent', label: 'Variable Products (Parent)' },
     { value: 'default_variation', label: 'Default Variation' },
@@ -102,7 +115,7 @@ export function FeedsPage() {
     const toast = useToast();
     const [activeChannel, setActiveChannel] = useState<FeedChannel>('google');
     const [activeTab, setActiveTab] = useState<FeedsViewTab>('spreadsheet');
-    const [variationMode, setVariationMode] = useState<VariationMode>('all_variations');
+    const [variationMode, setVariationMode] = useState<VariationMode>('automatic');
     const [query, setQuery] = useState('');
     const [editingCell, setEditingCell] = useState<{ channel: FeedChannel; rowId: string; field: string } | null>(null);
     const [editingValue, setEditingValue] = useState('');
@@ -119,6 +132,7 @@ export function FeedsPage() {
     const [productFiltersDraft, setProductFiltersDraft] = useState<FeedProductFilters>({
         excludeOutOfStockProducts: false,
         excludeUnpublishedProducts: false,
+        backordersAsInStock: false,
     });
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
     const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
@@ -695,6 +709,12 @@ export function FeedsPage() {
                 </div>
             </div>
 
+            {productFiltersData?.backordersAsInStock && (activeChannel === 'google' || activeChannel === 'meta') && (
+                <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                    Backorder availability override is enabled. Eligible products are reported as in stock in this feed. Ensure website availability, structured data and delivery promises agree; live product pages have not been checked.
+                </p>
+            )}
+
             {activeTab === 'settings' && (
                 <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg p-4 space-y-5">
                     <div className="space-y-2">
@@ -722,6 +742,9 @@ export function FeedsPage() {
 
                     <div className="space-y-2">
                         <h2 className="text-base font-semibold text-slate-900 dark:text-white">Variation mode</h2>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                            Automatic detects simple products and variants, exports individual variants without a duplicate parent, and maps their real attributes to Google/Meta fields. Disabled variants are excluded; stock exclusions still follow your settings. Missing or ambiguous details are flagged in feed health. Manual modes remain available below.
+                        </p>
                         <select
                             className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm w-full md:w-auto"
                             value={variationMode}
@@ -801,14 +824,34 @@ export function FeedsPage() {
                         )}
                     </div>
 
+                    {currentAccount && (activeChannel === 'google' || activeChannel === 'meta') && (
+                        <FeedHealthPanel key={`${currentAccount.id}-${activeChannel}-${variationMode}`} accountId={currentAccount.id} channel={activeChannel} variationMode={variationMode} headers={headers} />
+                    )}
+
                     <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
                         <div>
-                            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Product exclusions</h2>
+                            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Product availability and exclusions</h2>
                             <p className="text-xs text-slate-600 dark:text-slate-400">
                                 Excluded products are removed from the spreadsheet, bulk selection, and exported feeds.
                             </p>
                         </div>
                         <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                <input
+                                    type="checkbox"
+                                    checked={productFiltersDraft.backordersAsInStock}
+                                    disabled={productFiltersLoading || isSavingProductFilters}
+                                    onChange={(event) => setProductFiltersDraft((current) => ({
+                                        ...current,
+                                        backordersAsInStock: event.target.checked,
+                                    }))}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                Show backorderable products as in stock on Google and Meta
+                            </label>
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                                Includes products with WooCommerce backorders set to Allow or Allow, but notify customer, even when out-of-stock exclusion is enabled. Feed only; no stock quantities are changed. Off by default. Availability must match your website and delivery promises to avoid platform disapprovals.
+                            </p>
                             <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                                 <input
                                     type="checkbox"
@@ -848,13 +891,13 @@ export function FeedsPage() {
                                     setSelectedRows({});
                                     setAllMatchingSelected(false);
                                     await Promise.all([refetchProductFilters(), refetchRows()]);
-                                    toast.success('Product exclusions saved.');
+                                    toast.success('Product availability and exclusions saved.');
                                 } catch (error: any) {
-                                    toast.error(error?.message || 'Failed to save product exclusions');
+                                    toast.error(error?.message || 'Failed to save product availability and exclusions');
                                 }
                             }}
                         >
-                            {isSavingProductFilters ? 'Saving...' : 'Save exclusions'}
+                            {isSavingProductFilters ? 'Saving...' : 'Save availability and exclusions'}
                         </button>
                     </div>
 
@@ -940,7 +983,7 @@ export function FeedsPage() {
                             <div>
                                 <h2 className="text-base font-semibold text-slate-900 dark:text-white">Column mapping ({activeChannel})</h2>
                                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                                    Choose which product data feeds each catalog field. Product ID and MPN/SKU are locked to protect identifiers.
+                                    Choose which product data feeds each catalog field. Product ID and SKU are locked. Only use a genuine manufacturer part number for MPN, not an internal SKU.
                                 </p>
                             </div>
                             <button
@@ -1304,7 +1347,15 @@ export function FeedsPage() {
                                                     }}
                                                 />
                                             </td>
-                                            <td className="truncate py-2 pr-3 text-slate-600 dark:text-slate-300" title={row.sku || '-'}>{row.sku || '-'}</td>
+                                            <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">
+                                                <div className="truncate" title={row.sku || '-'}>{row.sku || '-'}</div>
+                                                {!!row.issues?.length && <details className="mt-1 text-xs">
+                                                    <summary className="cursor-pointer text-amber-700 dark:text-amber-300">{row.issues.length} issues</summary>
+                                                    <ul className="mt-1 max-h-48 space-y-2 overflow-y-auto">
+                                                        {row.issues.map((issue, index) => <li key={index} className={issue.severity === 'error' ? 'text-rose-600 dark:text-rose-400' : ''}>{issue.field}: {issue.message}</li>)}
+                                                    </ul>
+                                                </details>}
+                                            </td>
                                             {mappings.map((mapping) => {
                                                 const field = mapping.targetField;
                                                 const column = getColumn(row, field);
@@ -1396,7 +1447,7 @@ export function FeedsPage() {
                                                                         setExpandedDescription({ rowName: row.name, value: value || '-' });
                                                                     }
                                                                 }}
-                                                                title={displayValue}
+                                                                title={[displayValue, ...(row.issues || []).filter((issue) => issue.field === field).map((issue) => issue.message)].join('\n')}
                                                             >
                                                                 {displayValue}
                                                             </button>

@@ -145,30 +145,31 @@ export function MobileMore() {
     const initial = user?.fullName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
 
     return (
-        <div className="space-y-5 pb-28 animate-fade-slide-up">
+        <div className="space-y-6 pb-6">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">More</h1>
             <button
                 onClick={() => handleNavigate('/m/profile')}
-                className="flex w-full items-center gap-4 rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 active:scale-[0.99]"
+                className="mobile-panel flex w-full items-center gap-4 p-4 text-left"
             >
                 {user?.avatarUrl ? (
                     <img src={user.avatarUrl} alt="Profile" className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/20" />
                 ) : (
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500 text-xl font-black text-white shadow-lg shadow-indigo-500/25">
+                    <div className="mobile-brand-solid flex h-14 w-14 items-center justify-center rounded-xl text-xl font-semibold">
                         {initial}
                     </div>
                 )}
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-lg font-black text-white">{user?.fullName || 'Profile'}</p>
+                    <p className="truncate text-lg font-semibold text-white">{user?.fullName || 'Profile'}</p>
                     <p className="truncate text-sm text-slate-400">{user?.email || 'Manage your account'}</p>
-                    {currentAccount?.name && <p className="mt-1 truncate text-xs font-bold text-indigo-200">{currentAccount.name}</p>}
+                    {currentAccount?.name && <p className="mobile-brand-text mt-1 truncate text-xs font-medium">{currentAccount.appearance?.appName || currentAccount.name}</p>}
                 </div>
                 <ChevronRight size={18} className="shrink-0 text-slate-600" />
             </button>
 
             {menuSections.map((section) => (
                 <section key={section.title}>
-                    <h2 className="mb-3 px-1 text-xs font-bold uppercase tracking-wider text-slate-500">{section.title}</h2>
-                    <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950 shadow-lg shadow-black/20">
+                    <h2 className="mb-3 px-1 text-sm font-medium text-slate-400">{section.title}</h2>
+                    <div className="mobile-panel overflow-hidden">
                         {section.items.map((item) => {
                             const Icon = item.icon;
 
@@ -178,11 +179,11 @@ export function MobileMore() {
                                     onClick={() => item.action ? item.action() : item.path && handleNavigate(item.path)}
                                     className="flex w-full items-center gap-3 border-b border-white/5 p-4 text-left last:border-b-0 active:bg-white/[0.06]"
                                 >
-                                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${item.iconBg} ring-1 ring-white/10`}>
-                                        <Icon size={19} className={item.iconColor} />
+                                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${item.danger ? 'bg-rose-400/10 text-rose-200' : 'bg-white/5 text-slate-400'}`}>
+                                        <Icon size={19} />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <p className={`font-black ${item.danger ? 'text-rose-200' : 'text-white'}`}>{item.label}</p>
+                                        <p className={`font-semibold ${item.danger ? 'text-rose-200' : 'text-white'}`}>{item.label}</p>
                                         <p className="mt-0.5 truncate text-sm text-slate-500">{item.description}</p>
                                     </div>
                                     {!item.action && <ChevronRight size={17} className="shrink-0 text-slate-600" />}

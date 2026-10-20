@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    ArrowLeft,
     Bell,
     Package,
     MessageSquare,
@@ -11,6 +10,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useAccount } from '../../context/AccountContext';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
 
 interface NotificationSetting {
     id: string;
@@ -177,17 +177,9 @@ export function MobileNotifications() {
     const isCapacitorNative = capacitor?.isNativePlatform?.() ?? !!capacitor?.platform;
 
     return (
-        <div className="space-y-4 animate-fade-slide-up">
+        <div className="space-y-4">
             {/* Header */}
-            <div className="flex items-center gap-3 mb-2">
-                <button
-                    onClick={() => navigate('/m/more')}
-                    className="p-2 -ml-2 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors"
-                >
-                    <ArrowLeft size={24} className="text-white" />
-                </button>
-                <h1 className="text-2xl font-bold text-white">Notifications</h1>
-            </div>
+            <MobilePageHeader title="Notifications" description="Choose what keeps you informed" onBack={() => navigate('/m/more')} />
 
             {/* iOS Not-Installed Warning - only show if not in native app */}
             {isIOS && !isStandalone && !isCapacitorNative && !isSupported && (
@@ -215,11 +207,11 @@ export function MobileNotifications() {
             )}
 
             {/* Push Notifications Master Toggle */}
-            <div className="pwa-card p-4">
+            <div className="mobile-panel p-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-indigo-500/20 rounded-xl">
-                            <Bell size={22} className="text-indigo-400" />
+                        <div className="mobile-brand-soft p-2.5 rounded-lg">
+                            <Bell size={22} />
                         </div>
                         <div>
                             <p className="font-semibold text-white">Push Notifications</p>
@@ -236,10 +228,10 @@ export function MobileNotifications() {
                     <button
                         onClick={handlePushToggle}
                         disabled={!isSupported || isLoading || toggling}
-                        className={`w-14 h-8 rounded-full transition-colors relative ${isSubscribed ? 'bg-indigo-600' : 'bg-slate-600'
+                        className={`w-14 h-8 shrink-0 rounded-full transition-colors relative ${isSubscribed ? 'mobile-switch-on' : 'bg-slate-600'
                             } ${!isSupported || isLoading || toggling ? 'opacity-50' : ''}`}
                     >
-                        <div className={`w-6 h-6 bg-white rounded-full shadow-md absolute top-1 transition-all ${isSubscribed ? 'right-1' : 'left-1'
+                        <span className={`w-6 h-6 bg-white rounded-full absolute top-1 transition-all ${isSubscribed ? 'right-1' : 'left-1'
                             }`} />
                     </button>
                 </div>
@@ -247,18 +239,18 @@ export function MobileNotifications() {
 
             {/* Test Notification Buttons */}
             {isSubscribed && (
-                <div className="pwa-card p-4 space-y-3">
+                <div className="mobile-panel p-4 space-y-3">
                     <button
                         onClick={sendTestNotification}
                         disabled={testLoading}
-                        className="w-full py-3 px-4 bg-indigo-500/20 text-indigo-400 font-semibold rounded-xl active:bg-indigo-500/30 disabled:opacity-50 transition-colors"
+                        className="mobile-brand-soft w-full py-3 px-4 font-medium rounded-lg disabled:opacity-50"
                     >
                         {testLoading ? 'Sending...' : '🔔 Send Test Notification'}
                     </button>
                     <button
                         onClick={sendTestOrderNotification}
                         disabled={orderTestLoading}
-                        className="w-full py-3 px-4 bg-blue-500/20 text-blue-400 font-semibold rounded-xl active:bg-blue-500/30 disabled:opacity-50 transition-colors"
+                        className="mobile-icon w-full py-3 px-4 font-medium rounded-lg disabled:opacity-50"
                     >
                         {orderTestLoading ? 'Sending...' : '🛒 Test Order Notification'}
                     </button>
@@ -269,17 +261,9 @@ export function MobileNotifications() {
             )}
 
             {/* Notification Types */}
-            <div className="pwa-card divide-y divide-white/5 overflow-hidden">
+            <div className="mobile-panel divide-y divide-white/5 overflow-hidden">
                 {settings.map((setting) => {
                     const Icon = setting.icon;
-                    // Map light-mode colors to dark-mode equivalents
-                    const darkColorMap: Record<string, { text: string; bg: string }> = {
-                        'text-blue-600': { text: 'text-blue-400', bg: 'bg-blue-500/20' },
-                        'text-green-600': { text: 'text-emerald-400', bg: 'bg-emerald-500/20' },
-                        'text-amber-600': { text: 'text-amber-400', bg: 'bg-amber-500/20' },
-                        'text-purple-600': { text: 'text-purple-400', bg: 'bg-purple-500/20' },
-                    };
-                    const darkColors = darkColorMap[setting.color] || { text: 'text-slate-400', bg: 'bg-slate-500/20' };
                     return (
                         <button
                             key={setting.id}
@@ -288,17 +272,17 @@ export function MobileNotifications() {
                             className={`w-full flex items-center justify-between p-4 text-left active:bg-white/5 transition-colors ${!isSubscribed ? 'opacity-50' : ''}`}
                         >
                             <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-xl ${darkColors.bg}`}>
-                                    <Icon size={20} className={darkColors.text} />
+                                <div className="mobile-icon p-2 rounded-lg">
+                                    <Icon size={20} />
                                 </div>
                                 <div>
                                     <p className="font-medium text-white">{setting.label}</p>
                                     <p className="text-sm text-slate-400">{setting.description}</p>
                                 </div>
                             </div>
-                            <div className={`w-11 h-6 rounded-full transition-colors relative ${setting.enabled ? 'bg-indigo-600' : 'bg-slate-600'
+                            <div className={`w-11 h-6 shrink-0 rounded-full transition-colors relative ${setting.enabled ? 'mobile-switch-on' : 'bg-slate-600'
                                 }`}>
-                                <div className={`w-5 h-5 bg-white rounded-full shadow-md absolute top-0.5 transition-all ${setting.enabled ? 'right-0.5' : 'left-0.5'
+                                <span className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all ${setting.enabled ? 'right-0.5' : 'left-0.5'
                                     }`} />
                             </div>
                         </button>

@@ -1,4 +1,5 @@
 export type FeedVariationMode =
+    | 'automatic'
     | 'variable_parent'
     | 'all_variations'
     | 'default_variation'
@@ -9,6 +10,7 @@ export type FeedVariationMode =
 export const FEEDS_UI_STATE_KEY = 'overseek:feeds:ui-state:v1';
 
 const FEED_VARIATION_MODES = new Set<FeedVariationMode>([
+    'automatic',
     'variable_parent',
     'all_variations',
     'default_variation',
@@ -18,12 +20,12 @@ const FEED_VARIATION_MODES = new Set<FeedVariationMode>([
 ]);
 
 export function getStoredFeedVariationMode(rawState: string | null): FeedVariationMode {
-    if (!rawState) return 'all_variations';
+    if (!rawState) return 'automatic';
 
     try {
         const variationMode = JSON.parse(rawState)?.variationMode;
-        return FEED_VARIATION_MODES.has(variationMode) ? variationMode : 'all_variations';
+        return FEED_VARIATION_MODES.has(variationMode) ? variationMode : 'automatic';
     } catch {
-        return 'all_variations';
+        return 'automatic';
     }
 }

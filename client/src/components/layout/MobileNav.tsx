@@ -8,12 +8,10 @@ import {
 } from 'lucide-react';
 
 /**
- * MobileNav - Premium bottom navigation bar for the PWA.
+ * MobileNav - Account-accented bottom navigation for the companion.
  * 
  * Features:
- * - Glassmorphism design with blur backdrop
- * - Animated pill indicator
- * - Badge support with pulse animation
+ * - Clear active state and static, readable badges
  * - Haptic feedback on tap
  */
 
@@ -55,25 +53,12 @@ export function MobileNav({ activeTab, ordersBadge, inboxBadge }: MobileNavProps
         return undefined;
     };
 
-    const activeIndex = navItems.findIndex(item => item.id === activeTab);
-
     return (
         <nav
-            className="fixed bottom-0 left-0 right-0 z-50"
+            className="mobile-nav fixed bottom-0 left-0 right-0 z-50"
+            aria-label="Main navigation"
             style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-            {/* Glassmorphism background */}
-            <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl border-t border-white/10" />
-
-            {/* Animated pill indicator */}
-            <div
-                className="absolute top-0 h-0.5 bg-gradient-to-r from-indigo-400 via-purple-400 to-indigo-400 rounded-full transition-all duration-300 ease-out"
-                style={{
-                    width: `${100 / navItems.length}%`,
-                    left: `${(activeIndex / navItems.length) * 100}%`,
-                }}
-            />
-
             <div className="relative flex items-center justify-around h-16">
                 {navItems.map((item) => {
                     const isActive = activeTab === item.id;
@@ -83,36 +68,32 @@ export function MobileNav({ activeTab, ordersBadge, inboxBadge }: MobileNavProps
                     return (
                         <button
                             key={item.id}
+                            aria-current={isActive ? 'page' : undefined}
+                            aria-label={`${item.label}${badge ? `, ${badge} ${item.id === 'inbox' ? 'unread' : 'pending'}` : ''}`}
                             onClick={() => handleNavClick(item.path)}
                             className={`
                                 flex flex-col items-center justify-center flex-1 h-full
                                 transition-all duration-200 relative group
                                 ${isActive
-                                    ? 'text-white'
+                                    ? 'mobile-nav-active'
                                     : 'text-slate-400 active:text-slate-300'
                                 }
                             `}
                         >
-                            {/* Background glow for active item */}
-                            {isActive && (
-                                <div className="absolute inset-0 bg-gradient-to-t from-indigo-500/20 to-transparent pointer-events-none" />
-                            )}
-
                             <div className="relative">
                                 <div className={`
                                     p-1.5 rounded-xl transition-all duration-200
-                                    ${isActive ? 'bg-indigo-500/20 scale-110' : 'group-active:scale-95'}
+                                    ${isActive ? 'mobile-brand-soft' : 'group-active:scale-95'}
                                 `}>
                                     <Icon
                                         size={22}
                                         strokeWidth={isActive ? 2.5 : 1.8}
-                                        className={isActive ? 'drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]' : ''}
                                     />
                                 </div>
 
                                 {/* Badge with pulse animation */}
                                 {badge !== undefined && badge > 0 && (
-                                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-gradient-to-br from-red-400 to-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shadow-lg shadow-red-500/30 animate-pulse">
+                                    <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-rose-600 text-white text-[10px] font-semibold rounded-full flex items-center justify-center px-1">
                                         {badge > 99 ? '99+' : badge}
                                     </span>
                                 )}
@@ -120,7 +101,7 @@ export function MobileNav({ activeTab, ordersBadge, inboxBadge }: MobileNavProps
 
                             <span className={`
                                 text-[10px] mt-0.5 transition-all duration-200
-                                ${isActive ? 'font-semibold text-indigo-300' : 'font-medium'}
+                                ${isActive ? 'font-semibold' : 'font-medium'}
                             `}>
                                 {item.label}
                             </span>

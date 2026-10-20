@@ -240,6 +240,7 @@ export interface InventorySummary {
     out_of_stock_count: number;
     relevant_out_of_stock: number;
     low_stock_count: number;
+    ad_match_available?: boolean;
 }
 
 /**
@@ -250,6 +251,15 @@ export interface TrendsSummary {
     last_week_roas: string;
     roas_change: string;
     ctr_change: string;
+    available?: boolean;
+    partial_data?: boolean;
+    currency?: string;
+    by_currency?: Record<string, TrendsSummary>;
+    unavailable_accounts?: string[];
+    period_start?: string;
+    period_end?: string;
+    this_week_spend?: number;
+    last_week_spend?: number;
 }
 
 /**

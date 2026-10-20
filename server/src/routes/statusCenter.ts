@@ -372,7 +372,7 @@ async function getRevenueAlertStatus(accountId: string): Promise<StatusSection> 
     } catch (error) {
         Logger.error('[StatusCenter] Revenue alert check failed', { accountId, error });
         return {
-            status: 'healthy',
+            status: 'warning',
             message: 'Revenue data unavailable',
             lastChecked: new Date().toISOString(),
             details: { error: 'Could not calculate anomaly' },

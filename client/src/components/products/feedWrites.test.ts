@@ -9,7 +9,6 @@ import {
 describe('product feed writes', () => {
     it.each([
         'id',
-        'mpn',
         'sku',
         'price',
         'sale_price',
@@ -17,7 +16,6 @@ describe('product feed writes', () => {
         'canonical_link',
         'image_link',
         'additional_image_link',
-        'identifier_exists',
         'store_code',
     ])(
         'excludes %s from product-level editing',
@@ -28,6 +26,9 @@ describe('product feed writes', () => {
         expect(isProductFeedWriteField('title')).toBe(true);
         expect(isProductFeedWriteField('description')).toBe(true);
         expect(isProductFeedWriteField('google_product_category')).toBe(true);
+        expect(isProductFeedWriteField('mpn')).toBe(true);
+        expect(isProductFeedWriteField('identifier_exists')).toBe(true);
+        expect(isProductFeedWriteField('availability_date')).toBe(true);
     });
 
     it('uses the feed variation key format for variation writes', () => {

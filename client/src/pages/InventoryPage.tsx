@@ -713,6 +713,7 @@ export function InventoryPage() {
                                                             className="flex flex-col gap-1 items-start hover:opacity-80 transition-opacity"
                                                         >
                                                             <SeoScoreBadge
+                                                                interactive={false}
                                                                 score={product.seoScore || 0}
                                                                 size="sm"
                                                                 tests={Array.isArray(product.seoData?.tests) ? product.seoData.tests.filter(isSeoTest) : undefined}

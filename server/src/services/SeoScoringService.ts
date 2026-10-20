@@ -1,4 +1,5 @@
-import { WooProduct } from '@prisma/client';
+import type { WooProduct } from '@prisma/client';
+import { scoringHasImage, scoringHasPrice, scoringPlainText, scoringRecord, scoringText } from '../utils/productScoring';
 
 export interface SeoAnalysisResult {
     score: number;
@@ -16,16 +17,17 @@ export class SeoScoringService {
         let score = 0;
         let totalWeight = 0;
 
-        const name = product.name || '';
-        const description = (product.rawData as any)?.description || '';
-        const shortDescription = (product.rawData as any)?.short_description || '';
-        const permalink = product.permalink || '';
-        const images = (product.rawData as any)?.images || [];
+        const raw = scoringRecord(product.rawData);
+        const name = scoringText(product.name);
+        const description = scoringPlainText(raw.description);
+        const shortDescription = scoringPlainText(raw.short_description);
+        const permalink = scoringText(product.permalink);
+        const keyword = scoringText(focusKeyword).replace(/\s+/g, ' ');
         const price = product.price;
 
         // Helper to add test
         const addTest = (testName: string, passed: boolean, message: string, weight: number = 10) => {
-            tests.push({ test: testName, passed, message });
+            tests.push({ test: testName, passed, message: passed ? `${testName} passed.` : message });
             totalWeight += weight;
             if (passed) score += weight;
         };
@@ -33,16 +35,16 @@ export class SeoScoringService {
         // 1. Basic Content Checks
         addTest('Product Title', name.length > 5, 'Title is too short', 10);
         addTest('Product Description', description.length > 50 || shortDescription.length > 50, 'Description is too short', 10);
-        addTest('Images', images.length > 0, 'No images found', 15);
-        addTest('Price', !!price, 'Price is missing', 5);
+        addTest('Images', scoringHasImage(raw.images), 'No images found', 15);
+        addTest('Price', scoringHasPrice(price), 'Price is missing or invalid', 5);
 
         // 2. Keyword Checks (if keyword provided)
-        if (focusKeyword) {
-            const keywordLower = focusKeyword.toLowerCase();
+        if (keyword) {
+            const keywordLower = keyword.toLowerCase();
 
-            addTest('Keyword in Title', name.toLowerCase().includes(keywordLower), `Title does not contain focus keyword "${focusKeyword}"`, 20);
+            addTest('Keyword in Title', name.toLowerCase().includes(keywordLower), `Title does not contain focus keyword "${keyword}"`, 20);
 
-            const descLower = (description + shortDescription).toLowerCase();
+            const descLower = `${description} ${shortDescription}`.toLowerCase();
             addTest('Keyword in Description', descLower.includes(keywordLower), `Description does not contain focus keyword`, 15);
 
             addTest('Keyword in URL', permalink.toLowerCase().includes(keywordLower.replace(/ /g, '-')), 'URL does not contain keyword', 10);

@@ -37,7 +37,6 @@ export interface ProductFeedRowsResponse {
 
 const EXCLUDED_PRODUCT_FEED_FIELDS = new Set([
     'id',
-    'mpn',
     'sku',
     'price',
     'sale_price',
@@ -45,7 +44,6 @@ const EXCLUDED_PRODUCT_FEED_FIELDS = new Set([
     'canonical_link',
     'image_link',
     'additional_image_link',
-    'identifier_exists',
     'store_code',
 ]);
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
 import { Logger } from '../../utils/logger';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MessageSquare, Mail, Camera as Instagram, MessageCircle as Facebook, Music2, Search, Archive, CheckCheck, Plus, Zap } from 'lucide-react';
@@ -300,9 +301,10 @@ export function MobileInbox() {
     }
 
     return (
-        <div className="min-h-full flex flex-col space-y-4 pb-28 animate-fade-slide-up">
+        <div className="min-h-full flex flex-col space-y-4 pb-6">
+            <MobilePageHeader title="Inbox" description="Customer conversations, in one place" />
             <div className="sticky top-2 z-10 flex gap-2">
-                <div className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/90 shadow-xl shadow-black/20 backdrop-blur-xl">
+                <div className="mobile-panel min-w-0 flex-1">
                     <div className="relative">
                         <Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
@@ -319,7 +321,7 @@ export function MobileInbox() {
                         triggerHaptic();
                         setComposeDraft({});
                     }}
-                    className="shrink-0 rounded-2xl bg-white px-4 text-slate-950 shadow-xl shadow-black/20 active:scale-95"
+                    className="mobile-brand-solid shrink-0 rounded-lg px-4"
                     aria-label="Compose email"
                 >
                     <Plus size={18} />
@@ -333,13 +335,14 @@ export function MobileInbox() {
                     return (
                         <button
                             key={filter.value}
+                            aria-pressed={isActive}
                             onClick={() => {
                                 triggerHaptic();
                                 setActiveFilter(filter.value);
                             }}
-                            className={`min-w-[116px] rounded-2xl px-3 py-3 text-left transition active:scale-95 ${isActive ? 'bg-white text-slate-950 shadow-lg' : 'bg-slate-900/80 text-slate-300 ring-1 ring-white/10'}`}
+                            className={`min-w-[116px] rounded-lg px-3 py-3 text-left ${isActive ? 'mobile-brand-soft ring-1 ring-current' : 'bg-white/5 text-slate-300'}`}
                         >
-                            <span className="block text-sm font-black">{filter.label}</span>
+                            <span className="block text-sm font-semibold">{filter.label}</span>
                             <span className={`mt-1 block text-xs ${isActive ? 'text-slate-500' : 'text-slate-500'}`}>{count.toLocaleString()} · {filter.helper}</span>
                         </button>
                     );
@@ -385,14 +388,14 @@ export function MobileInbox() {
                                         triggerHaptic();
                                         navigate(`/m/inbox/${convo.id}`);
                                     }}
-                                    className="flex w-full items-center gap-4 rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 transition active:scale-[0.99] animate-fade-slide-up"
+                                    className="mobile-panel flex w-full items-center gap-4 p-4 text-left active:bg-white/5"
                                     style={{ animationDelay: `${index * 15}ms` }}
                                 >
                                     <div className="relative flex-shrink-0">
                                         <div className={`
                                             flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-black text-white
                                             ${convo.unread
-                                                ? 'bg-indigo-500 shadow-lg shadow-indigo-500/30'
+                                                ? 'mobile-brand-solid'
                                                 : 'bg-white/[0.08] ring-1 ring-white/10'
                                             }
                                         `}>
@@ -409,7 +412,7 @@ export function MobileInbox() {
 
                                     <div className="flex-1 min-w-0 text-left">
                                         <div className="flex items-center justify-between mb-1">
-                                            <span className={`truncate text-base ${convo.unread ? 'font-black text-white' : 'font-bold text-slate-300'}`}>
+                                            <span className={`truncate text-base ${convo.unread ? 'font-semibold text-white' : 'font-medium text-slate-300'}`}>
                                                 {convo.customerName}
                                             </span>
                                             <span className="text-xs text-slate-500 flex-shrink-0 ml-3">
@@ -421,12 +424,12 @@ export function MobileInbox() {
                                         </p>
                                         <div className="mt-3 flex items-center gap-2">
                                             <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${channelConfig.bg} ${channelConfig.color} ring-1 ${channelConfig.ring}`}>{channelConfig.label}</span>
-                                            {convo.unread ? <span className="rounded-full bg-indigo-400/15 px-2.5 py-1 text-[11px] font-bold text-indigo-100 ring-1 ring-indigo-300/20">Needs reply</span> : <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-[11px] font-bold text-slate-400 ring-1 ring-white/10">Handled</span>}
+                                            {convo.unread ? <span className="mobile-brand-soft rounded px-2.5 py-1 text-[11px] font-medium">Needs reply</span> : <span className="rounded bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium text-slate-400">Handled</span>}
                                         </div>
                                     </div>
 
                                     {convo.unread && (
-                                        <div className="h-3 w-3 flex-shrink-0 animate-pulse rounded-full bg-indigo-400 shadow-lg shadow-indigo-500/50" />
+                                        <div className="mobile-brand-solid h-2 w-2 flex-shrink-0 rounded-full" />
                                     )}
                                 </button>
                             </SwipeableRow>

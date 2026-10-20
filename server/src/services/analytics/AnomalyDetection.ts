@@ -7,6 +7,8 @@
 
 import { SalesAnalytics } from './sales';
 import { Logger } from '../../utils/logger';
+import { prisma } from '../../utils/prisma';
+import { dateKeyInTimezone, normalizeTimezone, sameTimeOnDateInTimezone, startOfDateInTimezone } from '../../utils/timezone';
 
 /** Anomaly detection result structure */
 export interface AnomalyResult {
@@ -31,39 +33,27 @@ export class AnomalyDetection {
     static async getRevenueAnomaly(accountId: string): Promise<AnomalyResult> {
         try {
             const now = new Date();
-            const todayStart = new Date(now);
-            todayStart.setHours(0, 0, 0, 0);
+            const account = await prisma.account.findUnique({ where: { id: accountId }, select: { timezone: true } });
+            if (!account) throw new Error('Account not found');
+            const timezone = normalizeTimezone(account.timezone);
+            const today = dateKeyInTimezone(now, timezone);
+            const revenues: number[] = [];
 
-            // Format dates for Elasticsearch queries
-            const todayStartISO = todayStart.toISOString();
-            const nowISO = now.toISOString();
-
-            // Get today's revenue (from midnight to now)
-            const todayData = await SalesAnalytics.getTotalSales(
-                accountId,
-                todayStartISO,
-                nowISO
-            );
-            const todayRevenue = todayData.total || 0;
-
-            // Calculate baseline: average of same time window for past 7 days
-            const baselineRevenues: number[] = [];
-
-            for (let i = 1; i <= 7; i++) {
-                const pastDayStart = new Date(todayStart);
-                pastDayStart.setDate(pastDayStart.getDate() - i);
-
-                const pastDayEnd = new Date(now);
-                pastDayEnd.setDate(pastDayEnd.getDate() - i);
-
-                const pastData = await SalesAnalytics.getTotalSales(
-                    accountId,
-                    pastDayStart.toISOString(),
-                    pastDayEnd.toISOString()
-                );
-
-                baselineRevenues.push(pastData.total || 0);
+            // Two windows at a time bounds database fan-out while avoiding eight sequential calls.
+            for (let offset = 0; offset < 8; offset += 2) {
+                const values = await Promise.all([offset, offset + 1].map(async daysAgo => {
+                    const date = new Date(`${today}T00:00:00.000Z`);
+                    date.setUTCDate(date.getUTCDate() - daysAgo);
+                    const day = date.toISOString().slice(0, 10);
+                    const start = startOfDateInTimezone(day, timezone);
+                    const end = daysAgo === 0 ? now : sameTimeOnDateInTimezone(now, day, timezone);
+                    const data = await SalesAnalytics.getTotalSales(accountId, start.toISOString(), end.toISOString(), { throwOnError: true });
+                    if (!Number.isFinite(data.total)) throw new Error('Invalid revenue data');
+                    return data.total;
+                }));
+                revenues.push(...values);
             }
+            const [todayRevenue, ...baselineRevenues] = revenues;
 
             // Calculate average baseline
             const totalBaseline = baselineRevenues.reduce((sum, val) => sum + val, 0);
@@ -113,15 +103,8 @@ export class AnomalyDetection {
             };
         } catch (error) {
             Logger.error('AnomalyDetection Error', { error, accountId });
-            // Graceful degradation: return normal status on error
-            return {
-                isAnomaly: false,
-                direction: 'normal',
-                todayRevenue: 0,
-                baselineRevenue: 0,
-                percentChange: 0,
-                message: ''
-            };
+            // Callers already have an unavailable/error path; never label a failed query normal.
+            throw error;
         }
     }
 }

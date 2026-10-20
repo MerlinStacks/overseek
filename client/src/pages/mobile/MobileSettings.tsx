@@ -147,7 +147,7 @@ export function MobileSettings() {
             </div>
 
             {/* Sync Card */}
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-xl shadow-indigo-500/20">
+            <div className="mobile-panel p-5">
                 <h3 className="font-semibold text-lg">Store Sync</h3>
                 <p className="text-sm text-white/70 mt-1">Keep products and orders up to date</p>
                 <button
@@ -228,21 +228,21 @@ export function MobileSettings() {
                                         window.location.reload();
                                     }}
                                     className={`w-full flex items-center gap-3 p-4 rounded-xl text-left transition-colors ${currentAccount?.id === account.id
-                                        ? 'bg-indigo-500/20 border-2 border-indigo-500'
+                                        ? 'mobile-brand-soft border-2 border-current'
                                         : 'bg-slate-800/50 border-2 border-transparent hover:bg-slate-700/50'
                                         }`}
                                 >
-                                    <div className={`w-10 h-10 rounded-xl ${currentAccount?.id === account.id ? 'bg-indigo-500/20' : 'bg-slate-700'} flex items-center justify-center`}>
-                                        <Globe size={18} className={currentAccount?.id === account.id ? 'text-indigo-400' : 'text-slate-400'} />
+                                    <div className={`w-10 h-10 rounded-xl ${currentAccount?.id === account.id ? 'mobile-brand-soft' : 'bg-slate-700'} flex items-center justify-center`}>
+                                        <Globe size={18} className={currentAccount?.id === account.id ? 'mobile-brand-text' : 'text-slate-400'} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className={`font-medium truncate ${currentAccount?.id === account.id ? 'text-indigo-400' : 'text-white'}`}>
+                                        <p className={`font-medium truncate ${currentAccount?.id === account.id ? 'mobile-brand-text' : 'text-white'}`}>
                                             {account.name}
                                         </p>
                                         <p className="text-sm text-slate-500 truncate">{account.wooUrl}</p>
                                     </div>
                                     {currentAccount?.id === account.id && (
-                                        <span className="text-xs font-medium text-indigo-400 bg-indigo-500/20 px-2.5 py-1 rounded-lg">Active</span>
+                                        <span className="mobile-brand-soft text-xs font-medium px-2.5 py-1 rounded-lg">Active</span>
                                     )}
                                 </button>
                             ))}

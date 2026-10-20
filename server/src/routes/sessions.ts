@@ -54,18 +54,14 @@ const sessionsRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
 
-            const token = await prisma.refreshToken.findFirst({
-                where: { id, userId }
-            });
-
-            if (!token) {
-                return reply.code(404).send({ error: 'Session not found' });
-            }
-
-            await prisma.refreshToken.update({
-                where: { id },
+            const result = await prisma.refreshToken.updateMany({
+                where: { id, userId },
                 data: { revokedAt: new Date() }
             });
+
+            if (result.count === 0) {
+                return reply.code(404).send({ error: 'Session not found' });
+            }
 
             Logger.info('Session revoked', { userId, sessionId: id });
             return { success: true };
@@ -82,12 +78,14 @@ const sessionsRoutes: FastifyPluginAsync = async (fastify) => {
             const currentSessionId = request.user?.sessionId;
             if (!userId) return reply.code(401).send({ error: 'Unauthorized' });
 
+            if (!currentSessionId) return reply.code(400).send({ error: 'Current session ID required' });
+
             // Exclude the current session from revocation to prevent self-logout
             const result = await prisma.refreshToken.updateMany({
                 where: {
                     userId,
                     revokedAt: null,
-                    ...(currentSessionId ? { id: { not: currentSessionId } } : {})
+                    id: { not: currentSessionId }
                 },
                 data: { revokedAt: new Date() }
             });

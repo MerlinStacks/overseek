@@ -20,6 +20,7 @@ import { useToast } from '../../context/ToastContext';
 import { useHaptic } from '../../hooks/useHaptic';
 import { formatCurrency } from '../../utils/format';
 import { OrdersSkeleton } from '../../components/mobile/MobileSkeleton';
+import { MobilePageHeader } from '../../components/mobile/MobilePageHeader';
 import { subscribeToCrossTabEvents } from '../../utils/productCrossTabEvents';
 
 interface OrderApiResponse {
@@ -81,7 +82,7 @@ const STATUS_CONFIG: Record<string, StatusConfig> = {
 };
 
 const VIEWS = [
-    { label: 'Command', status: 'all', hint: 'Everything live' },
+    { label: 'All orders', status: 'all', hint: 'All statuses' },
     { label: 'To Pack', status: 'processing', hint: 'Needs fulfilment' },
     { label: 'Payment', status: 'pending', hint: 'Waiting' },
     { label: 'On Hold', status: 'on-hold', hint: 'Blocked' },
@@ -302,9 +303,10 @@ export function MobileOrders() {
     }
 
     return (
-        <div className="space-y-4 pb-28 animate-fade-slide-up">
+        <div className="space-y-4 pb-6">
+            <MobilePageHeader title="Orders" description="Track and manage fulfilment" />
             <form onSubmit={handleSearch} className="sticky top-2 z-10">
-                <div className="relative rounded-2xl border border-white/10 bg-slate-950/90 shadow-xl shadow-black/20 backdrop-blur-xl">
+                <div className="mobile-panel relative">
                     <Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                         type="search"
@@ -324,10 +326,11 @@ export function MobileOrders() {
                     return (
                         <button
                             key={view.status}
+                            aria-pressed={isActive}
                             onClick={() => handleViewChange(view.status)}
-                            className={`min-w-[116px] rounded-2xl px-3 py-3 text-left transition active:scale-95 ${isActive ? 'bg-white text-slate-950 shadow-lg' : 'bg-slate-900/80 text-slate-300 ring-1 ring-white/10'}`}
+                            className={`min-w-[116px] rounded-lg px-3 py-3 text-left ${isActive ? 'mobile-brand-soft ring-1 ring-current' : 'bg-white/5 text-slate-300'}`}
                         >
-                            <span className="block text-sm font-black">{view.label}</span>
+                            <span className="block text-sm font-semibold">{view.label}</span>
                             <span className={`mt-1 block text-xs ${isActive ? 'text-slate-500' : 'text-slate-500'}`}>{count?.toLocaleString() ?? '...'} · {view.hint}</span>
                         </button>
                     );
@@ -360,7 +363,7 @@ export function MobileOrders() {
                     <button
                         onClick={() => fetchOrders(page, false)}
                         disabled={loading}
-                        className="w-full rounded-2xl border border-white/10 bg-slate-900 py-4 text-sm font-black text-indigo-200 disabled:opacity-50"
+                        className="mobile-brand-text mobile-panel w-full py-4 text-sm font-semibold disabled:opacity-50"
                     >
                         {loading ? 'Loading...' : 'Load more orders'}
                     </button>
@@ -389,7 +392,7 @@ function OrderRow({ order, index, getStatusConfig, getOrderSignal, formatAccount
     return (
         <button
             onClick={onOpen}
-            className="w-full rounded-[1.5rem] border border-white/10 bg-slate-950 p-4 text-left shadow-lg shadow-black/20 transition active:scale-[0.99]"
+            className="mobile-panel w-full p-4 text-left active:bg-white/5"
             style={{ animationDelay: `${index * 12}ms` }}
         >
             <div className="flex items-start justify-between gap-3">
@@ -399,7 +402,7 @@ function OrderRow({ order, index, getStatusConfig, getOrderSignal, formatAccount
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                            <p className="truncate text-base font-black text-white">{order.orderNumber}</p>
+                            <p className="truncate text-base font-semibold text-white">{order.orderNumber}</p>
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${signal.className}`}>{signal.label}</span>
                         </div>
                         <p className="mt-0.5 truncate text-sm text-slate-300">{order.customerName}</p>
@@ -407,7 +410,7 @@ function OrderRow({ order, index, getStatusConfig, getOrderSignal, formatAccount
                     </div>
                 </div>
                 <div className="shrink-0 text-right">
-                    <p className="text-base font-black text-white">{formatAccountCurrency(order.total)}</p>
+                    <p className="text-base font-semibold tabular-nums text-white">{formatAccountCurrency(order.total)}</p>
                     <p className="text-xs text-slate-500">{formatDate(order.createdAt)}</p>
                 </div>
             </div>

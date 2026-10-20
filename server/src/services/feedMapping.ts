@@ -4,11 +4,27 @@ import { Logger } from '../utils/logger';
 import type { Job } from 'bullmq';
 import crypto from 'crypto';
 import { getFeedFieldCharacterLimit } from '../utils/feedFieldLimits';
+import { feedAttribute, feedAvailabilityDate, feedIdentifier, feedIdentifierExists, feedMeta, feedPricing } from './feedProductData';
+import { channelAvailability, validateFeedColumns, type FeedIssue } from './feedValidation';
+import { isFeedVariable, platformVariantValue, resolvedVariantRaw, variantAttributeField, variantLandingLink } from './feedVariants';
+
+export interface FeedScanHealth {
+    generatedAt: string;
+    scannedProducts: number;
+    included: number;
+    excluded: number;
+    exclusions: Record<string, number>;
+    errors: number;
+    warnings: number;
+    issues: Array<FeedIssue & { rowId: string; wooId: number; variationWooId?: number; name: string }>;
+    excludedExamples: Array<{ rowId: string; name: string; reason: string }>;
+}
 
 export const FEED_FEATURE_KEY = 'FEED_EXPORTS';
 
 export type FeedChannel = 'google' | 'meta' | 'pinterest' | 'similar';
 export type VariationMode =
+    | 'automatic'
     | 'variable_parent'
     | 'all_variations'
     | 'default_variation'
@@ -33,6 +49,7 @@ export interface GoogleProductCategoryOption {
 export interface FeedProductFilters {
     excludeOutOfStockProducts: boolean;
     excludeUnpublishedProducts: boolean;
+    backordersAsInStock?: boolean;
 }
 
 interface FeedFeatureConfig {
@@ -42,11 +59,13 @@ interface FeedFeatureConfig {
     productTypeCategoryPriority?: string[];
     excludeOutOfStockProducts?: boolean;
     excludeUnpublishedProducts?: boolean;
+    backordersAsInStock?: boolean;
 }
 
 interface FeedAccountContext {
     name?: string | null;
     currency?: string | null;
+    timezone?: string | null;
 }
 
 const DEFAULT_REFRESH_MODE: FeedRefreshMode = 'manual';
@@ -56,7 +75,7 @@ const DEFAULT_PRODUCT_FILTERS: FeedProductFilters = {
     excludeOutOfStockProducts: false,
     excludeUnpublishedProducts: false,
 };
-const LOCKED_FEED_FIELDS = new Set(['id', 'mpn', 'sku']);
+const LOCKED_FEED_FIELDS = new Set(['id', 'sku']);
 const SHARED_REWRITE_FIELDS = new Set(['title', 'description']);
 const GOOGLE_LOCAL_INVENTORY_FIELDS = new Set(['store_code']);
 const GOOGLE_LOCAL_INVENTORY_SOURCES = new Set(['storeCode']);
@@ -83,9 +102,18 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'gtin', sourceField: 'gtin' },
         { targetField: 'mpn', sourceField: 'mpn' },
         { targetField: 'price', sourceField: 'price', required: true },
-        { targetField: 'sale_price', sourceField: 'salePrice', fallbackSourceField: 'price' },
+        { targetField: 'sale_price', sourceField: 'salePrice' },
         { targetField: 'sale_price_effective_date', sourceField: 'salePriceEffectiveDate' },
         { targetField: 'availability', sourceField: 'stockStatus', required: true },
+        { targetField: 'availability_date', sourceField: 'availabilityDate' },
+        { targetField: 'color', sourceField: 'color' },
+        { targetField: 'size', sourceField: 'size' },
+        { targetField: 'material', sourceField: 'material' },
+        { targetField: 'pattern', sourceField: 'pattern' },
+        { targetField: 'age_group', sourceField: 'age_group' },
+        { targetField: 'gender', sourceField: 'gender' },
+        { targetField: 'size_type', sourceField: 'size_type' },
+        { targetField: 'size_system', sourceField: 'size_system' },
         { targetField: 'brand', sourceField: 'brand' },
         { targetField: 'canonical_link', sourceField: 'canonicalLink' },
         { targetField: 'custom_label_0', sourceField: 'name' },
@@ -93,6 +121,7 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
     ],
     meta: [
         { targetField: 'id', sourceField: 'wooId', required: true },
+        { targetField: 'item_group_id', sourceField: 'itemGroupId' },
         { targetField: 'title', sourceField: 'name', required: true },
         { targetField: 'description', sourceField: 'description', fallbackSourceField: 'short_description' },
         { targetField: 'link', sourceField: 'permalink', required: true },
@@ -101,7 +130,14 @@ const DEFAULT_MAPPINGS: Record<FeedChannel, FeedFieldMapping[]> = {
         { targetField: 'video[0].url', sourceField: 'videoLink' },
         { targetField: 'price', sourceField: 'price', required: true },
         { targetField: 'sale_price', sourceField: 'salePrice' },
+        { targetField: 'sale_price_effective_date', sourceField: 'salePriceEffectiveDate' },
         { targetField: 'availability', sourceField: 'stockStatus' },
+        { targetField: 'color', sourceField: 'color' },
+        { targetField: 'size', sourceField: 'size' },
+        { targetField: 'material', sourceField: 'material' },
+        { targetField: 'pattern', sourceField: 'pattern' },
+        { targetField: 'age_group', sourceField: 'age_group' },
+        { targetField: 'gender', sourceField: 'gender' },
         { targetField: 'brand', sourceField: 'brand' },
         { targetField: 'condition', sourceField: 'condition' },
         { targetField: 'google_product_category', sourceField: 'googleProductCategory' },
@@ -181,6 +217,21 @@ function normalizeStockStatus(status: unknown): string | null {
 
 function isOutOfStock(status: unknown): boolean {
     return normalizeStockStatus(status) === 'out_of_stock';
+}
+
+/** Feed-only availability override; never changes Woo inventory or quantities. */
+function withFeedAvailability<T extends { rawData?: unknown; stockStatus?: string | null }>(product: T, enabled: boolean, parent?: T): T {
+    if (!enabled) return product;
+    const raw = (product.rawData || {}) as any;
+    const parentRaw = (parent?.rawData || {}) as any;
+    const status = normalizeStockStatus(product.stockStatus || raw.stock_status || parent?.stockStatus || parentRaw.stock_status);
+    const owner = raw.manage_stock === 'parent' && parent ? parentRaw : raw;
+    const allowsBackorders = owner.backorders === 'yes' || owner.backorders === 'notify'
+        || owner.backorders_allowed === true
+        || (owner.backorders == null && owner.backorders_allowed == null && status === 'backorder');
+    return allowsBackorders && (status === 'out_of_stock' || status === 'backorder')
+        ? { ...product, stockStatus: 'instock' }
+        : product;
 }
 
 function isPublished(product: { status?: string | null; rawData?: unknown }): boolean {
@@ -287,7 +338,96 @@ function normalizeChannel(channel: string): FeedChannel {
     throw new Error('Unsupported feed channel');
 }
 
-function getSourceValue(sourceField: string, product: any, account?: FeedAccountContext, categoryPriority: string[] = []): string | null {
+function selectFeedVariations(variations: any[], raw: any, mode: VariationMode): any[] {
+    if (mode === 'variable_parent') return [];
+    if (mode === 'first_variation') return variations.slice(0, 1);
+    if (mode === 'last_variation') return variations.slice(-1);
+    if (mode !== 'default_variation') return variations;
+    const defaults = Array.isArray(raw?.default_attributes) ? raw.default_attributes : [];
+    const matched = variations.filter((variation) => {
+        const attrs = Array.isArray(variation.rawData?.attributes) ? variation.rawData.attributes : [];
+        return defaults.length > 0 && defaults.every((def: any) => attrs.some((attr: any) =>
+            String(attr?.name || '').toLowerCase() === String(def?.name || '').toLowerCase()
+            && String(attr?.option || '').toLowerCase() === String(def?.option || '').toLowerCase(),
+        ));
+    });
+    return matched.length ? matched : variations.slice(0, 1);
+}
+
+function variantIssues(variation: any, parent: any, columns: any[], channel: FeedChannel, siblingFields: string[]): FeedIssue[] {
+    if (channel !== 'google' && channel !== 'meta') return [];
+    const issues: FeedIssue[] = [];
+    const add = (field: string, code: string, message: string) => issues.push({ field, code, message, severity: 'warning' });
+    const values = Object.fromEntries(columns.map((column) => [column.targetField, column.finalValue]));
+    if (values.item_group_id !== String(parent.wooId)) add('item_group_id', 'variant_group_mismatch', 'Use the same parent group ID for sibling variations. A custom mapping or override differs from the detected parent.');
+    const raw = resolvedVariantRaw(variation.rawData, parent.rawData);
+    const parentAttributes = Array.isArray(parent.rawData?.attributes) ? parent.rawData.attributes : [];
+    const dimensions = [...parentAttributes.filter((attr: any) => attr.variation === true), ...raw.attributes];
+    const expected = new Set([...siblingFields, ...dimensions.map(variantAttributeField).filter(Boolean)]);
+    expected.forEach((field) => {
+        if (!values[field]) add(field, 'missing_variant_attribute', `The product varies by ${field}, but this variation has no unambiguous ${field} value. Sync its selected option or provide a feed override.`);
+    });
+    const unsupported = [...new Set(dimensions.filter((attr) => !variantAttributeField(attr)).map((attr) => attr.name || attr.slug || `attribute ${attr.id}`))];
+    if (unsupported.length) add('item_group_id', 'unsupported_variant_dimensions', `No standard variant field was guessed for: ${unsupported.join(', ')}. These choices remain in the title/landing-page selection. Check platform grouping eligibility, especially on Google.`);
+    if (raw.attributes.some((attr: any) => !attr.option && !(Array.isArray(attr.options) && attr.options.length === 1))) {
+        add('link', 'ambiguous_variant_selection', 'This variation has an unspecified/Any option. No combinations or product details were invented; confirm the landing-page selection.');
+    }
+    const landingLink = variantLandingLink(variation, parent);
+    if (!landingLink.preselected && values.link === landingLink.url) {
+        add('link', 'variant_link_selection', 'A variant-specific Woo permalink or actual taxonomy option slugs are missing. The fallback identifies the variation, but attribute preselection is not verified. Resync its Woo permalink.');
+    }
+    return issues;
+}
+
+/** Bounded raw-data reads; stable tie-breaking avoids missing equal updatedAt values. */
+async function* feedProductBatches(args: Prisma.WooProductFindManyArgs): AsyncGenerator<any[]> {
+    let cursor: string | undefined;
+    do {
+        const products = await prisma.wooProduct.findMany({
+            ...args, take: 250,
+            orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+        if (!products.length) return;
+        yield products;
+        if (products.length < 250) return;
+        cursor = products[products.length - 1].id;
+    } while (cursor);
+}
+
+function getModernSourceValue(sourceField: string, product: any, account?: FeedAccountContext, parent?: any, channel?: FeedChannel): string | null | undefined {
+    const raw = product.rawData || {};
+    switch (sourceField) {
+        case 'price': return formatFeedPrice(feedPricing(product, account?.timezone || 'UTC').price, account?.currency);
+        case 'salePrice': return formatFeedPrice(feedPricing(product, account?.timezone || 'UTC').salePrice, account?.currency);
+        case 'salePriceEffectiveDate': return feedPricing(product, account?.timezone || 'UTC').salePriceEffectiveDate;
+        case 'gtin': return feedIdentifier(raw, 'gtin');
+        case 'mpn': return feedIdentifier(raw, 'mpn');
+        case 'brand': return getBrand(raw) || (parent ? getBrand(parent.rawData) : null);
+        case 'googleProductCategory': return raw.google_product_category || raw.googleProductCategory || parent?.rawData?.google_product_category || parent?.rawData?.googleProductCategory || null;
+        case 'additionalImages': {
+            if (!parent) return undefined;
+            const images = [...(Array.isArray(raw.images) ? raw.images : []), ...(Array.isArray(parent.rawData?.images) ? parent.rawData.images : [])];
+            const main = raw.image?.src || parent.mainImage || parent.rawData?.images?.[0]?.src;
+            const otherVariantImages = new Set((parent.variations || []).filter((sibling: any) => sibling.wooId !== product.wooId).map((sibling: any) => sibling.rawData?.image?.src).filter(Boolean));
+            const urls = [...new Set<string>(images.map((image: any) => image?.src).filter((url: unknown): url is string => typeof url === 'string' && !!url && url !== main && !otherVariantImages.has(url)))];
+            const selected = channel === 'google' ? urls.slice(0, 10) : urls;
+            return selected.length ? selected.join(',') : null;
+        }
+        case 'identifierExists': return feedIdentifierExists(raw) ?? (parent ? feedIdentifierExists({ identifier_exists: feedMeta(parent.rawData, ['identifier_exists', '_identifier_exists']) }) : null);
+        case 'availabilityDate': return feedAvailabilityDate(raw, account?.timezone || 'UTC');
+        case 'color': case 'size': case 'material': case 'pattern': case 'age_group': case 'gender': case 'size_type': case 'size_system':
+            return platformVariantValue(sourceField, feedAttribute(raw, sourceField) || (parent ? feedAttribute(parent.rawData, sourceField) : null), channel);
+        default: return undefined;
+    }
+}
+
+function getSourceValue(sourceField: string, product: any, account?: FeedAccountContext, categoryPriority: string[] = [], channel?: FeedChannel): string | null {
+    if (channel === 'google' || channel === 'meta') {
+        if (sourceField === 'itemGroupId') return null; // Group identifiers belong to variant rows, not standalone products.
+        const modern = getModernSourceValue(sourceField, product, account, undefined, channel);
+        if (modern !== undefined) return modern;
+    }
     switch (sourceField) {
         case 'wooId': return String(product.wooId);
         case 'itemGroupId': return String(product.wooId);
@@ -301,7 +441,7 @@ function getSourceValue(sourceField: string, product: any, account?: FeedAccount
         case 'price': return formatFeedPrice(product.price ?? product.rawData?.price, account?.currency);
         case 'stockStatus': {
             const status = product.stockStatus || product.rawData?.stock_status;
-            return normalizeStockStatus(status);
+            return channelAvailability(normalizeStockStatus(status), channel);
         }
         case 'brand': return getBrand(product.rawData, account);
         case 'additionalImages': {
@@ -321,7 +461,13 @@ function getSourceValue(sourceField: string, product: any, account?: FeedAccount
     }
 }
 
-function getVariationSourceValue(sourceField: string, variation: any, parent: any, account?: FeedAccountContext, categoryPriority: string[] = []): string | null {
+function getVariationSourceValue(sourceField: string, variation: any, parent: any, account?: FeedAccountContext, categoryPriority: string[] = [], channel?: FeedChannel): string | null {
+    if (channel === 'google' || channel === 'meta') {
+        variation = { ...variation, rawData: resolvedVariantRaw(variation.rawData, parent.rawData) };
+        if (sourceField === 'permalink') return variantLandingLink(variation, parent).url;
+        const modern = getModernSourceValue(sourceField, variation, account, parent, channel);
+        if (modern !== undefined) return modern;
+    }
     switch (sourceField) {
         case 'wooId': return `${parent.wooId}-${variation.wooId}`;
         case 'itemGroupId': return String(parent.wooId);
@@ -345,7 +491,7 @@ function getVariationSourceValue(sourceField: string, variation: any, parent: an
         case 'price': return formatFeedPrice(variation.price ?? variation.rawData?.price ?? parent.price ?? parent.rawData?.price, account?.currency);
         case 'stockStatus': {
             const status = variation.stockStatus || variation.rawData?.stock_status || parent.stockStatus || parent.rawData?.stock_status;
-            return normalizeStockStatus(status);
+            return channelAvailability(normalizeStockStatus(status), channel);
         }
         case 'brand': return getBrand(parent.rawData, account);
         case 'additionalImages': {
@@ -487,10 +633,10 @@ export class FeedMappingService {
     static async getFeedExportXml(
         accountId: string,
         channelInput: string,
-        variationMode: VariationMode = 'all_variations',
+        variationMode: VariationMode = 'automatic',
     ): Promise<string> {
         const channel = normalizeChannel(channelInput);
-        const { rows } = await this.getFeedRows(accountId, channel, 1, 1000000, '', variationMode);
+        const { rows } = await this.getFeedRows(accountId, channel, 1, Number.MAX_SAFE_INTEGER, '', variationMode);
 
         const xmlEscape = (value: string): string => value
             .replace(/&/g, '&amp;')
@@ -551,10 +697,10 @@ export class FeedMappingService {
     static async getFeedExportCsv(
         accountId: string,
         channelInput: string,
-        variationMode: VariationMode = 'all_variations',
+        variationMode: VariationMode = 'automatic',
     ): Promise<string> {
         const channel = normalizeChannel(channelInput);
-        const { rows, mappings } = await this.getFeedRows(accountId, channel, 1, 1000000, '', variationMode);
+        const { rows, mappings } = await this.getFeedRows(accountId, channel, 1, Number.MAX_SAFE_INTEGER, '', variationMode);
         const headers = mappings.map((mapping) => mapping.targetField);
         const csvEscape = (value: string): string => `"${value.replace(/"/g, '""')}"`;
         const lines = rows.map((row) => {
@@ -661,6 +807,7 @@ export class FeedMappingService {
         return {
             excludeOutOfStockProducts: config.excludeOutOfStockProducts === true,
             excludeUnpublishedProducts: config.excludeUnpublishedProducts === true,
+            backordersAsInStock: config.backordersAsInStock === true,
         };
     }
 
@@ -697,6 +844,7 @@ export class FeedMappingService {
         const normalized: FeedProductFilters = {
             excludeOutOfStockProducts: filters.excludeOutOfStockProducts === true,
             excludeUnpublishedProducts: filters.excludeUnpublishedProducts === true,
+            backordersAsInStock: filters.backordersAsInStock === true,
         };
         const feature = await prisma.accountFeature.findUnique({
             where: { accountId_featureKey: { accountId, featureKey: FEED_FEATURE_KEY } },
@@ -824,13 +972,20 @@ export class FeedMappingService {
         query: string,
         variationMode: VariationMode,
         productWooId?: number,
-    ): Promise<{ total: number; rows: any[]; mappings: FeedFieldMapping[] }> {
+        includeHealth = false,
+    ): Promise<{ total: number; rows: any[]; mappings: FeedFieldMapping[]; health?: FeedScanHealth }> {
         const channel = normalizeChannel(channelInput);
+        const automaticVariants = variationMode === 'automatic' && (channel === 'google' || channel === 'meta');
         const [mappings, categoryPriority, productFilters] = await Promise.all([
             this.getMappings(accountId, channel),
             this.getProductTypeCategoryPriority(accountId),
-            productWooId === undefined ? this.getProductFilters(accountId) : Promise.resolve(DEFAULT_PRODUCT_FILTERS),
+            this.getProductFilters(accountId),
         ]);
+
+        if (productWooId !== undefined) {
+            Object.assign(productFilters, DEFAULT_PRODUCT_FILTERS);
+        }
+        const overrideBackorders = productFilters.backordersAsInStock === true && (channel === 'google' || channel === 'meta');
 
         const where: any = { accountId };
         if (productWooId) {
@@ -847,46 +1002,45 @@ export class FeedMappingService {
 
         const account = await prisma.account.findUnique({
             where: { id: accountId },
-            select: { name: true, currency: true },
+            select: { name: true, currency: true, timezone: true },
         });
 
-        const products = await prisma.wooProduct.findMany({
-                where,
-                select: {
-                    id: true,
-                    wooId: true,
-                    name: true,
-                    sku: true,
-                    price: true,
-                    status: true,
-                    stockStatus: true,
-                    permalink: true,
-                    mainImage: true,
-                    rawData: true,
-                    seoData: true,
-                    variations: includeVariations ? {
-                        select: {
-                            wooId: true,
-                            sku: true,
-                            price: true,
-                            stockStatus: true,
-                            rawData: true,
-                        },
-                        orderBy: { wooId: 'asc' },
-                    } : false,
-                },
-                orderBy: { updatedAt: 'desc' },
-            });
-
-        const rows = products.flatMap((product) => {
-            if (productWooId === undefined && isProductExcludedFromFeeds(product.seoData)) return [];
-            if (productFilters.excludeUnpublishedProducts && !isPublished(product)) return [];
+        const health: FeedScanHealth = {
+            generatedAt: new Date().toISOString(), scannedProducts: 0, included: 0, excluded: 0,
+            exclusions: {}, errors: 0, warnings: 0, issues: [], excludedExamples: [],
+        };
+        const exclude = (rowId: string, name: string, reason: string) => {
+            if (!includeHealth) return;
+            health.excluded++;
+            health.exclusions[reason] = (health.exclusions[reason] || 0) + 1;
+            if (health.excludedExamples.length < 50) health.excludedExamples.push({ rowId, name, reason });
+        };
+        const rows: any[] = [];
+        let total = 0;
+        const start = (page - 1) * limit;
+        const gtins = new Map<string, string>();
+        const buildProductRows = (originalProduct: any) => {
+            health.scannedProducts++;
+            const product = withFeedAvailability(originalProduct, overrideBackorders);
 
             const productRawData = product.rawData as any;
-            const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
-            const isVariableProduct = String(productRawData?.type || '').includes('variable')
-                || (Array.isArray(productRawData?.variations) && productRawData.variations.length > 0)
-                || hasVariations;
+            const isVariableProduct = isFeedVariable(product);
+            const selectedVariations = selectFeedVariations(product.variations || [], productRawData, variationMode);
+            const exclusion = productWooId === undefined && isProductExcludedFromFeeds(product.seoData) ? 'Explicit product exclusion'
+                : productFilters.excludeUnpublishedProducts && !isPublished(product) ? 'Unpublished product' : null;
+            if (exclusion) {
+                if (includeParents || !isVariableProduct) exclude(`p:${product.wooId}`, product.name, exclusion);
+                selectedVariations.forEach((v) => exclude(`v:${product.wooId}-${v.wooId}`, product.name, exclusion));
+                return [];
+            }
+            if (automaticVariants && isVariableProduct && selectedVariations.length === 0) {
+                exclude(`p:${product.wooId}`, product.name, 'Missing synced variations');
+                if (includeHealth) {
+                    health.errors++;
+                    if (health.issues.length < 100) health.issues.push({ severity: 'error', field: 'id', code: 'missing_variations', message: 'This is a variable product, but its variations have not been synced. Sync Woo products/variations; no purchasable parent or variant combinations were invented.', rowId: `p:${product.wooId}`, wooId: product.wooId, name: product.name });
+                }
+                return [];
+            }
             const overrides = getFeedOverrides(product.seoData, channel);
             const aiSuggestions = getFeedAiSuggestions(product.seoData, channel);
             const googleOverrides = channel === 'google' ? overrides : getFeedOverrides(product.seoData, 'google');
@@ -894,7 +1048,7 @@ export class FeedMappingService {
             const sharedOverrides = getSharedFeedOverrides(product.seoData);
             const sharedAiSuggestions = getSharedFeedAiSuggestions(product.seoData);
             const mapColumns = (valueReader: (sourceField: string) => string | null, overridePrefix?: string) => {
-                return mappings.map((mapping) => {
+                const columns = mappings.map((mapping) => {
                     const raw = valueReader(mapping.sourceField);
                     const fallback = mapping.fallbackSourceField ? valueReader(mapping.fallbackSourceField) : null;
                     const mapped = raw || fallback;
@@ -923,9 +1077,18 @@ export class FeedMappingService {
                         isMissingRequired: !!mapping.required && !finalValue,
                     };
                 });
+                const availability = columns.find((column) => column.targetField === 'availability')?.finalValue;
+                if (channel === 'google' && !['backorder', 'preorder'].includes(availability || '')) {
+                    const date = columns.find((column) => column.targetField === 'availability_date');
+                    if (date && (!date.overrideValue && !date.aiSuggestedValue || overrideBackorders)) date.finalValue = null;
+                }
+                return columns;
             };
 
             const productRows: any[] = [];
+            const siblingFields = [...new Set<string>((product.variations || [])
+                .flatMap((variation: any) => resolvedVariantRaw(variation.rawData, productRawData).attributes)
+                .map(variantAttributeField).filter(Boolean))];
             const parentOutOfStock = isOutOfStock(product.stockStatus || productRawData?.stock_status);
             if ((includeParents || !isVariableProduct) && !(productFilters.excludeOutOfStockProducts && parentOutOfStock)) {
                 productRows.push({
@@ -935,40 +1098,26 @@ export class FeedMappingService {
                     sku: product.sku,
                     name: product.name,
                     channel,
-                    columns: mapColumns((sourceField) => getSourceValue(sourceField, product, account || undefined, categoryPriority)),
+                    columns: mapColumns((sourceField) => getSourceValue(sourceField, product, account || undefined, categoryPriority, channel)),
                 });
+            } else if (includeParents || !isVariableProduct) {
+                exclude(`p:${product.wooId}`, product.name, 'Out of stock');
             }
 
             if (includeVariations && Array.isArray(product.variations) && product.variations.length > 0) {
-                const variations = product.variations;
-                const parentRawData = product.rawData as any;
-                let selectedVariations = variations;
-                if (variationMode === 'default_variation') {
-                    const defaults = Array.isArray(parentRawData?.default_attributes)
-                        ? parentRawData.default_attributes
-                        : [];
-                    selectedVariations = variations.filter((v: any) => {
-                        const attrs = Array.isArray(v.rawData?.attributes) ? v.rawData.attributes : [];
-                        if (defaults.length === 0 || attrs.length === 0) return false;
-                        return defaults.every((def: any) =>
-                            attrs.some((attr: any) =>
-                                String(attr?.name || '').toLowerCase() === String(def?.name || '').toLowerCase()
-                                && String(attr?.option || '').toLowerCase() === String(def?.option || '').toLowerCase(),
-                            ),
-                        );
-                    });
-                    if (selectedVariations.length === 0) selectedVariations = variations.slice(0, 1);
-                } else if (variationMode === 'first_variation') {
-                    selectedVariations = variations.slice(0, 1);
-                } else if (variationMode === 'last_variation') {
-                    selectedVariations = variations.slice(-1);
-                }
-
-                selectedVariations.forEach((variation: any) => {
+                selectedVariations.forEach((originalVariation: any) => {
+                    if (automaticVariants && originalVariation.rawData?.status && originalVariation.rawData.status !== 'publish') {
+                        exclude(`v:${product.wooId}-${originalVariation.wooId}`, product.name, 'Disabled or unpublished variation');
+                        return;
+                    }
+                    const variation = withFeedAvailability(originalVariation, overrideBackorders, originalProduct);
                     const variationOutOfStock = isOutOfStock(
                         variation.stockStatus || variation.rawData?.stock_status || product.stockStatus || productRawData?.stock_status,
                     );
-                    if (productFilters.excludeOutOfStockProducts && variationOutOfStock) return;
+                    if (productFilters.excludeOutOfStockProducts && variationOutOfStock) {
+                        exclude(`v:${product.wooId}-${variation.wooId}`, product.name, 'Out of stock');
+                        return;
+                    }
                     const variationId = `${product.wooId}-${variation.wooId}`;
                     productRows.push({
                         rowType: 'variation',
@@ -978,26 +1127,63 @@ export class FeedMappingService {
                         sku: variation.sku || product.sku,
                         name: getVariationSourceValue('name', variation, product),
                         channel,
-                        columns: mapColumns((sourceField) => getVariationSourceValue(sourceField, variation, product, account || undefined, categoryPriority), variationId),
+                        columns: mapColumns((sourceField) => getVariationSourceValue(sourceField, variation, product, account || undefined, categoryPriority, channel), variationId),
                     });
                 });
             }
 
+            for (const row of productRows) {
+                const original = row.variationWooId ? originalProduct.variations.find((v: any) => v.wooId === row.variationWooId) : originalProduct;
+                row.sourceStockStatus = normalizeStockStatus(original?.stockStatus || original?.rawData?.stock_status || originalProduct.stockStatus);
+                row.availabilityOverridden = overrideBackorders && row.sourceStockStatus !== 'in_stock'
+                    && row.columns.find((column: any) => column.targetField === 'availability')?.finalValue === channelAvailability('in_stock', channel);
+                row.invalidSaleWindow = feedPricing(original || {}, account?.timezone || 'UTC').invalidSaleWindow;
+                row.variantIssues = row.variationWooId ? variantIssues(original, originalProduct, row.columns, channel, siblingFields) : [];
+            }
             return productRows;
-        });
+        };
 
-        const filteredRows = query
-            ? rows.filter((row: any) => {
-                const q = query.toLowerCase();
-                return (row.name || '').toLowerCase().includes(q) || (row.sku || '').toLowerCase().includes(q);
-            })
-            : rows;
-
-        const total = filteredRows.length;
-        const start = (page - 1) * limit;
-        const pagedRows = filteredRows.slice(start, start + limit);
-
-        return { total, rows: pagedRows, mappings };
+        for await (const products of feedProductBatches({
+            where,
+            select: {
+                id: true, wooId: true, name: true, sku: true, price: true, status: true,
+                stockStatus: true, permalink: true, mainImage: true, rawData: true, seoData: true,
+                variations: includeVariations ? {
+                    select: { wooId: true, sku: true, price: true, stockStatus: true, rawData: true },
+                    orderBy: { wooId: 'asc' },
+                } : false,
+            },
+        })) {
+            const batchRows = products.flatMap(buildProductRows);
+            const filteredRows = query
+                ? batchRows.filter((row: any) => {
+                    const q = query.toLowerCase();
+                    return (row.name || '').toLowerCase().includes(q) || (row.sku || '').toLowerCase().includes(q);
+                })
+                : batchRows;
+            for (const row of filteredRows) {
+                const onPage = total >= start && total < start + limit;
+                if (includeHealth || onPage) {
+                    row.issues = validateFeedColumns(channel, row.columns);
+                    row.issues.push(...row.variantIssues);
+                    if (row.availabilityOverridden) row.issues.push({ severity: 'warning', field: 'availability', code: 'backorder_override', message: `Feed reports in stock, but synced Woo status is ${row.sourceStockStatus}. Check website availability, structured data and delivery promises; the live page has not been checked.` });
+                    if (row.invalidSaleWindow && (channel === 'google' || channel === 'meta')) row.issues.push({ severity: 'warning', field: 'sale_price_effective_date', code: 'invalid_woo_sale_dates', message: 'Woo sale dates are invalid or reversed. No automatic sale price was exported.' });
+                    if (includeHealth) {
+                        const gtin = row.columns.find((column: any) => column.targetField === 'gtin')?.finalValue;
+                        if (gtin && gtins.has(gtin)) row.issues.push({ severity: 'warning', field: 'gtin', code: 'duplicate_gtin', message: `GTIN is also used by ${gtins.get(gtin)}. Distinct variants must not share a barcode.` });
+                        else if (gtin) gtins.set(gtin, row.rowId);
+                        for (const issue of row.issues as FeedIssue[]) {
+                            if (issue.severity === 'error') health.errors++; else health.warnings++;
+                            if (health.issues.length < 100) health.issues.push({ ...issue, rowId: row.rowId, wooId: row.wooId, variationWooId: row.variationWooId, name: row.name });
+                        }
+                    }
+                }
+                if (onPage) rows.push(row);
+                total++;
+            }
+        }
+        health.included = total;
+        return { total, rows, mappings, ...(includeHealth ? { health } : {}) };
     }
 
     static async getFeedRowRefs(
@@ -1006,8 +1192,10 @@ export class FeedMappingService {
         query: string,
         variationMode: VariationMode,
     ): Promise<{ total: number; rows: Array<{ rowId: string; wooId: number; variationWooId?: number }> }> {
-        normalizeChannel(channelInput);
+        const channel = normalizeChannel(channelInput);
+        const automaticVariants = variationMode === 'automatic' && (channel === 'google' || channel === 'meta');
         const productFilters = await this.getProductFilters(accountId);
+        const overrideBackorders = productFilters.backordersAsInStock === true && (channel === 'google' || channel === 'meta');
 
         const where: any = { accountId };
         if (query) {
@@ -1020,63 +1208,24 @@ export class FeedMappingService {
         const includeParents = variationMode === 'variable_parent' || variationMode === 'variable_and_variations';
         const includeVariations = variationMode !== 'variable_parent';
 
-        const products = await prisma.wooProduct.findMany({
-            where,
-            select: {
-                wooId: true,
-                status: true,
-                stockStatus: true,
-                seoData: true,
-                rawData: true,
-                variations: includeVariations ? {
-                    select: { wooId: true, stockStatus: true, rawData: true },
-                    orderBy: { wooId: 'asc' },
-                } : false,
-            },
-            orderBy: { updatedAt: 'desc' },
-        });
-
-        const rows = products.flatMap((product) => {
+        const rows: Array<{ rowId: string; wooId: number; variationWooId?: number }> = [];
+        const collectRefs = (originalProduct: any) => {
+            const product = withFeedAvailability(originalProduct, overrideBackorders);
             const out: Array<{ rowId: string; wooId: number; variationWooId?: number }> = [];
             const productRawData = product.rawData as any;
             if (isProductExcludedFromFeeds(product.seoData)) return out;
             if (productFilters.excludeUnpublishedProducts && !isPublished(product)) return out;
-            const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
-            const isVariableProduct = String(productRawData?.type || '').includes('variable')
-                || (Array.isArray(productRawData?.variations) && productRawData.variations.length > 0)
-                || hasVariations;
+            const isVariableProduct = isFeedVariable(product);
             const parentOutOfStock = isOutOfStock(product.stockStatus || productRawData?.stock_status);
             if ((includeParents || !isVariableProduct) && !(productFilters.excludeOutOfStockProducts && parentOutOfStock)) {
                 out.push({ rowId: `p:${product.wooId}`, wooId: product.wooId });
             }
 
             if (includeVariations && Array.isArray(product.variations) && product.variations.length > 0) {
-                const variations = product.variations;
-                const parentRawData = product.rawData as any;
-                let selectedVariations = variations;
-
-                if (variationMode === 'default_variation') {
-                    const defaults = Array.isArray(parentRawData?.default_attributes)
-                        ? parentRawData.default_attributes
-                        : [];
-                    selectedVariations = variations.filter((v: any) => {
-                        const attrs = Array.isArray(v.rawData?.attributes) ? v.rawData.attributes : [];
-                        if (defaults.length === 0 || attrs.length === 0) return false;
-                        return defaults.every((def: any) =>
-                            attrs.some((attr: any) =>
-                                String(attr?.name || '').toLowerCase() === String(def?.name || '').toLowerCase()
-                                && String(attr?.option || '').toLowerCase() === String(def?.option || '').toLowerCase(),
-                            ),
-                        );
-                    });
-                    if (selectedVariations.length === 0) selectedVariations = variations.slice(0, 1);
-                } else if (variationMode === 'first_variation') {
-                    selectedVariations = variations.slice(0, 1);
-                } else if (variationMode === 'last_variation') {
-                    selectedVariations = variations.slice(-1);
-                }
-
-                selectedVariations.forEach((variation: any) => {
+                const selectedVariations = selectFeedVariations(product.variations, productRawData, variationMode);
+                selectedVariations.forEach((originalVariation: any) => {
+                    if (automaticVariants && originalVariation.rawData?.status && originalVariation.rawData.status !== 'publish') return;
+                    const variation = withFeedAvailability(originalVariation, overrideBackorders, originalProduct);
                     const variationOutOfStock = isOutOfStock(
                         variation.stockStatus || variation.rawData?.stock_status || product.stockStatus || productRawData?.stock_status,
                     );
@@ -1091,7 +1240,19 @@ export class FeedMappingService {
             }
 
             return out;
-        });
+        };
+        for await (const products of feedProductBatches({
+            where,
+            select: {
+                id: true, wooId: true, status: true, stockStatus: true, seoData: true, rawData: true,
+                variations: includeVariations ? {
+                    select: { wooId: true, stockStatus: true, rawData: true },
+                    orderBy: { wooId: 'asc' },
+                } : false,
+            },
+        })) {
+            rows.push(...products.flatMap(collectRefs));
+        }
 
         return { total: rows.length, rows };
     }

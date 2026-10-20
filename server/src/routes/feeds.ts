@@ -6,6 +6,7 @@ import { FeedMappingService, FEED_FEATURE_KEY } from '../services/feedMapping';
 import { Logger } from '../utils/logger';
 import { QueueFactory, QUEUES } from '../services/queue/QueueFactory';
 import { getFeedFieldLengthError } from '../utils/feedFieldLimits';
+import { getFeedHealth } from '../services/feedHealth';
 
 const paramsSchema = z.object({
     channel: z.string().min(1),
@@ -21,29 +22,32 @@ const listQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(200).default(50),
     q: z.string().optional().default(''),
     variationMode: z.enum([
+        'automatic',
         'variable_parent',
         'all_variations',
         'default_variation',
         'first_variation',
         'last_variation',
         'variable_and_variations',
-    ]).optional().default('all_variations'),
+    ]).optional().default('automatic'),
 });
 
 const refsQuerySchema = z.object({
     q: z.string().optional().default(''),
     variationMode: z.enum([
+        'automatic',
         'variable_parent',
         'all_variations',
         'default_variation',
         'first_variation',
         'last_variation',
         'variable_and_variations',
-    ]).optional().default('all_variations'),
+    ]).optional().default('automatic'),
 });
 
 const productQuerySchema = z.object({
     variationMode: z.enum([
+        'automatic',
         'variable_parent',
         'all_variations',
         'default_variation',
@@ -105,6 +109,7 @@ const productTypeCategoryPriorityBodySchema = z.object({
 const productFiltersBodySchema = z.object({
     excludeOutOfStockProducts: z.boolean(),
     excludeUnpublishedProducts: z.boolean(),
+    backordersAsInStock: z.boolean().optional().default(false),
 });
 
 const productFeedExclusionBodySchema = z.object({
@@ -199,6 +204,18 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
             Logger.error('Failed to save feed mappings', { error: error?.message || error });
             const status = error?.message === 'Unsupported feed channel' ? 400 : 500;
             return reply.code(status).send({ error: status === 400 ? error.message : 'Failed to save mappings' });
+        }
+    });
+
+    fastify.get<{ Params: { channel: string } }>('/:channel/health', async (request, reply) => {
+        try {
+            const { channel } = paramsSchema.parse(request.params);
+            const { variationMode } = refsQuerySchema.parse(request.query);
+            return await getFeedHealth(request.accountId!, FeedMappingService.parseChannel(channel), variationMode);
+        } catch (error: any) {
+            Logger.error('Failed to inspect feed health', { error: error?.message || error });
+            return reply.code(error?.message === 'Unsupported feed channel' || error instanceof z.ZodError ? 400 : 500)
+                .send({ error: 'Failed to inspect feed health' });
         }
     });
 
@@ -463,7 +480,7 @@ const feedsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.put<{ Body: { excludeOutOfStockProducts: boolean; excludeUnpublishedProducts: boolean } }>('/settings/product-filters', async (request, reply) => {
+    fastify.put<{ Body: { excludeOutOfStockProducts: boolean; excludeUnpublishedProducts: boolean; backordersAsInStock?: boolean } }>('/settings/product-filters', async (request, reply) => {
         try {
             const filters = productFiltersBodySchema.parse(request.body);
             return await FeedMappingService.setProductFilters(request.accountId!, filters);

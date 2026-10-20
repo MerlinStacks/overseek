@@ -79,9 +79,9 @@ export const ANALYTICS_CONFIG = {
  */
 export const CATEGORY_PATTERNS: [string[], string][] = [
     [['ring', 'rings'], 'Rings'],
-    [['necklace', 'pendant', 'chain'], 'Necklaces'],
-    [['bracelet', 'bangle'], 'Bracelets'],
-    [['earring', 'stud', 'hoop'], 'Earrings'],
+    [['necklace', 'necklaces', 'pendant', 'pendants', 'chain', 'chains'], 'Necklaces'],
+    [['bracelet', 'bracelets', 'bangle', 'bangles'], 'Bracelets'],
+    [['earring', 'earrings', 'stud', 'studs', 'hoop', 'hoops'], 'Earrings'],
     [['watch', 'watches'], 'Watches'],
 ];
 
@@ -89,8 +89,8 @@ export const CATEGORY_PATTERNS: [string[], string][] = [
  * Acquisition source normalization patterns
  */
 export const SOURCE_PATTERNS: [string[], string][] = [
-    [['google', 'gclid'], 'Google Ads'],
-    [['facebook', 'meta', 'fbclid'], 'Meta Ads'],
+    [['google ads', 'google_ads', 'gclid'], 'Google Ads'],
+    [['meta ads', 'facebook ads', 'meta_ads', 'facebook_ads'], 'Meta Ads'],
     [['instagram'], 'Instagram'],
     [['tiktok'], 'TikTok'],
     [['email', 'newsletter'], 'Email'],
@@ -100,28 +100,41 @@ export const SOURCE_PATTERNS: [string[], string][] = [
 /**
  * Normalize an acquisition source string using SOURCE_PATTERNS
  */
-export function normalizeSource(source: string | null): string {
-    if (!source) return 'Direct';
+export function normalizeSource(source: string | null, medium?: string | null): string {
+    if (typeof source !== 'string' || !source.trim()) return 'Direct';
+    const trimmed = source.trim();
+    const lowerSource = trimmed.toLowerCase();
+    const tokens = new Set(lowerSource.match(/[\p{L}\p{N}]+/gu) || []);
+    let urlMedium: string | null = null;
+    try { urlMedium = new URL(trimmed).searchParams.get('utm_medium'); } catch { /* A source need not be a URL. */ }
+    const paid = /^(?:cpc|ppc|paid|paid[_ -]?social|paid[_ -]?search)$/i.test((medium || urlMedium || '').trim()) ||
+        /(?:^|[\s/_-])(?:cpc|ppc|paid)(?:$|[\s/_-])/.test(lowerSource);
 
-    const lowerSource = source.toLowerCase();
+    if (tokens.has('google')) {
+        if (tokens.has('gclid') || paid || /\bgoogle[ _-]ads\b/.test(lowerSource)) return 'Google Ads';
+        return tokens.has('organic') || (medium || urlMedium || '').toLowerCase() === 'organic' ? 'Organic Search' : 'Google';
+    }
+    if (tokens.has('facebook') || tokens.has('meta') || tokens.has('fbclid')) {
+        return paid || /\b(?:meta|facebook)[ _-]ads\b/.test(lowerSource) ? 'Meta Ads' : 'Facebook';
+    }
 
     for (const [patterns, normalized] of SOURCE_PATTERNS) {
-        if (patterns.some(p => lowerSource.includes(p))) {
+        if (patterns.some(p => p.includes(' ') || p.includes('_') ? lowerSource === p : tokens.has(p))) {
             return normalized;
         }
     }
 
-    return source;
+    return trimmed;
 }
 
 /**
  * Infer product category from product name using CATEGORY_PATTERNS
  */
 export function inferCategory(productName: string): string {
-    const name = productName.toLowerCase();
+    const words = new Set(typeof productName === 'string' ? productName.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [] : []);
 
     for (const [patterns, category] of CATEGORY_PATTERNS) {
-        if (patterns.some(p => name.includes(p))) {
+        if (patterns.some(p => words.has(p))) {
             return category;
         }
     }

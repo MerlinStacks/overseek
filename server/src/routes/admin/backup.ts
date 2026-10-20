@@ -5,8 +5,25 @@
  * Extracted from admin.ts for maintainability.
  */
 
-import { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+import { validateFastify } from '../../middleware/validate';
 import { Logger } from '../../utils/logger';
+
+const backupOptionsSchema = z.object({
+    body: z.object({
+        includeAuditLogs: z.boolean().optional(),
+        includeAnalytics: z.boolean().optional(),
+    }).default({}),
+});
+
+const backupSettingsSchema = z.object({
+    body: z.object({
+        isEnabled: z.boolean().optional(),
+        frequency: z.enum(['DAILY', 'EVERY_3_DAYS', 'WEEKLY']).optional(),
+        maxBackups: z.number().int().min(1).max(2_147_483_647).optional(),
+    }),
+});
 
 export const backupRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -37,15 +54,15 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{
         Params: { accountId: string };
         Body: { includeAuditLogs?: boolean; includeAnalytics?: boolean };
-    }>('/accounts/:accountId/backup', async (request, reply) => {
+    }>('/accounts/:accountId/backup', { preHandler: validateFastify(backupOptionsSchema) }, async (request, reply) => {
         try {
             const { accountId } = request.params;
             const { includeAuditLogs, includeAnalytics } = request.body || {};
             const { AccountBackupService } = await import('../../services/AccountBackupService');
 
             const backup = await AccountBackupService.generateBackup(accountId, {
-                includeAuditLogs: Boolean(includeAuditLogs),
-                includeAnalytics: Boolean(includeAnalytics),
+                includeAuditLogs: includeAuditLogs ?? false,
+                includeAnalytics: includeAnalytics ?? false,
             });
 
             if (!backup) {
@@ -65,7 +82,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
             return backup;
         } catch (e: any) {
             Logger.error('[Admin] Backup generation failed', { error: e });
-            return reply.code(500).send({ error: 'Failed to generate backup', details: e.message });
+            return reply.code(500).send({ error: 'Failed to generate backup' });
         }
     });
 
@@ -76,15 +93,15 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post<{
         Params: { accountId: string };
         Body: { includeAuditLogs?: boolean; includeAnalytics?: boolean };
-    }>('/accounts/:accountId/backup/save', async (request, reply) => {
+    }>('/accounts/:accountId/backup/save', { preHandler: validateFastify(backupOptionsSchema) }, async (request, reply) => {
         try {
             const { accountId } = request.params;
             const { includeAuditLogs, includeAnalytics } = request.body || {};
             const { AccountBackupService } = await import('../../services/AccountBackupService');
 
             const backup = await AccountBackupService.generateBackup(accountId, {
-                includeAuditLogs: Boolean(includeAuditLogs),
-                includeAnalytics: Boolean(includeAnalytics),
+                includeAuditLogs: includeAuditLogs ?? false,
+                includeAnalytics: includeAnalytics ?? false,
             });
 
             if (!backup) {
@@ -100,7 +117,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
             return stored;
         } catch (e: any) {
             Logger.error('[Admin] Backup save failed', { error: e });
-            return reply.code(500).send({ error: 'Failed to save backup', details: e.message });
+            return reply.code(500).send({ error: 'Failed to save backup' });
         }
     });
 
@@ -125,8 +142,8 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
      */
     fastify.put<{
         Params: { accountId: string };
-        Body: { isEnabled?: boolean; frequency?: string; maxBackups?: number };
-    }>('/accounts/:accountId/backup/settings', async (request, reply) => {
+        Body: { isEnabled?: boolean; frequency?: 'DAILY' | 'EVERY_3_DAYS' | 'WEEKLY'; maxBackups?: number };
+    }>('/accounts/:accountId/backup/settings', { preHandler: validateFastify(backupSettingsSchema) }, async (request, reply) => {
         try {
             const { accountId } = request.params;
             const { isEnabled, frequency, maxBackups } = request.body;
@@ -134,7 +151,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
 
             const settings = await AccountBackupService.updateSettings(accountId, {
                 isEnabled,
-                frequency: frequency as any,
+                frequency,
                 maxBackups,
             });
 
@@ -217,7 +234,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
             return result;
         } catch (e: any) {
             Logger.error('[Admin] Backup restore failed', { error: e });
-            return reply.code(500).send({ error: 'Failed to restore backup', details: e.message });
+            return reply.code(500).send({ error: 'Failed to restore backup' });
         }
     });
 };
